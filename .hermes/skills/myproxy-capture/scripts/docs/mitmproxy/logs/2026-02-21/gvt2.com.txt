@@ -1,0 +1,102 @@
+时间: 2026-02-21 13:04:00
+请求地址: https://beacons.gcp.gvt2.com/domainreliability/upload
+请求方法: POST
+请求协议: https
+请求路径: /domainreliability/upload
+请求头:
+  content-length: 625
+  content-type: application/json; charset=utf-8
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+  accept-encoding: gzip, deflate, br, zstd
+  accept-language: zh-CN,zh;q=0.9,en;q=0.8
+  priority: u=4, i
+请求参数(POST JSON):
+  {"entries":[{"failure_data":{"custom_error":"net::ERR_CONNECTION_CLOSED"},"network_changed":false,"protocol":"","request_age_ms":96173,"request_elapsed_ms":10006,"sample_rate":1.0,"server_ip":"198.18.0.97:443","status":"tcp.connection.closed","url":"https://waa-pa.clients6.google.com/","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_CONNECTION_CLOSED"},"network_changed":false,"protocol":"","request_age_ms":96173,"request_elapsed_ms":10006,"sample_rate":1.0,"server_ip":"198.18.0.97:443","status":"tcp.connection.closed","url":"https://waa-pa.clients6.google.com/","was_proxied":false}],"reporter":"chrome"}
+响应内容:
+
+====================================================================================================
+时间: 2026-02-21 13:04:15
+请求地址: https://beacons.gcp.gvt2.com/domainreliability/upload
+请求方法: POST
+请求协议: https
+请求路径: /domainreliability/upload
+请求头:
+  content-length: 1447
+  content-type: application/json; charset=utf-8
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+  accept-encoding: gzip, deflate, br, zstd
+  accept-language: zh-CN,zh;q=0.9,en;q=0.8
+  priority: u=4, i
+请求参数(POST JSON):
+  {"entries":[{"failure_data":{"custom_error":"net::ERR_CONNECTION_CLOSED"},"network_changed":false,"protocol":"","request_age_ms":111135,"request_elapsed_ms":10005,"sample_rate":1.0,"server_ip":"198.18.0.111:443","status":"tcp.connection.closed","url":"https://play.google.com/","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_CONNECTION_CLOSED"},"network_changed":false,"protocol":"","request_age_ms":111135,"request_elapsed_ms":10005,"sample_rate":1.0,"server_ip":"198.18.0.111:443","status":"tcp.connection.closed","url":"https://play.google.com/","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_CONNECTION_CLOSED"},"network_changed":false,"protocol":"","request_age_ms":75122,"request_elapsed_ms":10004,"sample_rate":1.0,"server_ip":"198.18.0.111:443","status":"tcp.connection.closed","url":"https://play.google.com/","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_CONNECTION_CLOSED"},"network_changed":false,"protocol":"","request_age_ms":75122,"request_elapsed_ms":10004,"sample_rate":1.0,"server_ip":"198.18.0.111:443","status":"tcp.connection.closed","url":"https://play.google.com/","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":502,"network_changed":false,"protocol":"HTTP","request_age_ms":14961,"request_elapsed_ms":5030,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://google.com/","was_proxied":true}],"reporter":"chrome"}
+响应内容:
+
+====================================================================================================
+时间: 2026-02-21 13:04:48
+请求地址: https://beacons.gcp.gvt2.com/domainreliability/upload
+请求方法: POST
+请求协议: https
+请求路径: /domainreliability/upload
+请求头:
+  content-length: 637
+  content-type: application/json; charset=utf-8
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+  accept-encoding: gzip, deflate, br, zstd
+  accept-language: zh-CN,zh;q=0.9
+  priority: u=4, i
+请求参数(POST JSON):
+  {"entries":[{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":318529,"request_elapsed_ms":370,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":true},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":87892,"request_elapsed_ms":344,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":false}],"reporter":"chrome"}
+响应内容:
+
+====================================================================================================
+时间: 2026-02-21 13:05:02
+请求地址: https://beacons.gcp.gvt2.com/domainreliability/upload
+请求方法: POST
+请求协议: https
+请求路径: /domainreliability/upload
+请求头:
+  content-length: 1241
+  content-type: application/json; charset=utf-8
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+  accept-encoding: gzip, deflate, br, zstd
+  accept-language: zh-CN,zh;q=0.9,en;q=0.8
+  priority: u=4, i
+请求参数(POST JSON):
+  {"entries":[{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":1022722,"request_elapsed_ms":448,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":true},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":169061,"request_elapsed_ms":389,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":62027,"request_elapsed_ms":387,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":true},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":47064,"request_elapsed_ms":115,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":true}],"reporter":"chrome"}
+响应内容:
+
+====================================================================================================
+时间: 2026-02-21 13:05:04
+请求地址: https://beacons.gcp.gvt2.com/domainreliability/upload
+请求方法: POST
+请求协议: https
+请求路径: /domainreliability/upload
+请求头:
+  content-length: 1480
+  content-type: application/json; charset=utf-8
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+  accept-encoding: gzip, deflate, br, zstd
+  accept-language: zh-CN,zh;q=0.9
+  priority: u=4, i
+请求参数(POST JSON):
+  {"entries":[{"failure_data":{"custom_error":"net::ERR_ABORTED"},"network_changed":false,"protocol":"","request_age_ms":61855,"request_elapsed_ms":1505,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://www.google.com/","was_proxied":false},{"http_response_code":502,"network_changed":false,"protocol":"HTTPS","request_age_ms":59158,"request_elapsed_ms":760,"sample_rate":1.0,"server_ip":"127.0.0.1:8882","status":"http.error","url":"https://www.google.com/","was_proxied":true},{"http_response_code":502,"network_changed":false,"protocol":"HTTPS","request_age_ms":16649,"request_elapsed_ms":1,"sample_rate":1.0,"server_ip":"127.0.0.1:8882","status":"http.error","url":"https://www.google.com/","was_proxied":true},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"network_changed":false,"protocol":"","request_age_ms":16511,"request_elapsed_ms":153,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://www.google.com/","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"network_changed":false,"protocol":"","request_age_ms":16357,"request_elapsed_ms":140,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://www.google.com/","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"network_changed":false,"protocol":"","request_age_ms":16217,"request_elapsed_ms":615,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://www.google.com/","was_proxied":false}],"reporter":"chrome"}
+响应内容:
+
+====================================================================================================
+时间: 2026-02-21 13:06:00
+请求地址: https://beacons.gcp.gvt2.com/domainreliability/upload
+请求方法: POST
+请求协议: https
+请求路径: /domainreliability/upload
+请求头:
+  content-length: 941
+  content-type: application/json; charset=utf-8
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+  accept-encoding: gzip, deflate, br, zstd
+  accept-language: zh-CN,zh;q=0.9
+  priority: u=4, i
+请求参数(POST JSON):
+  {"entries":[{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":149745,"request_elapsed_ms":316,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":149745,"request_elapsed_ms":316,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":false},{"failure_data":{"custom_error":"net::ERR_ABORTED"},"http_response_code":200,"network_changed":false,"protocol":"SPDY","request_age_ms":129719,"request_elapsed_ms":87,"sample_rate":1.0,"server_ip":"","status":"aborted","url":"https://beacons.gcp.gvt2.com/domainreliability/upload","was_proxied":false}],"reporter":"chrome"}
+响应内容:
+
+====================================================================================================

@@ -1,0 +1,13 @@
+{
+  "mode": "server",
+  "server": {
+    "url": "https://api.dongchuangai.com",
+    "username": "20000",
+    "password": "ak222222",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc3MTM4NzI0MiwianRpIjoiMzg4NjZlMmYtM2FjZC00Y2Y1LTk4ZGEtMTEwZjg5MmE5ZDUwIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjQ2IiwibmJmIjoxNzcxMzg3MjQyLCJjc3JmIjoiZWRkOGIzMTgtNTBjYS00YWQ3LTgyYjctZTQ2YzhlYjFjMGU1IiwiZXhwIjoxNzczOTc5MjQyfQ.AznCV53ORG6ncdf_TZefpj2ENuZcwDlsusKHBlK3xSc"
+  },
+  "local": {
+    "user_id": 1,
+    "app_base_url": "http://localhost:5000"
+  }
+}

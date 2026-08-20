@@ -1,0 +1,38 @@
+时间: 2026-02-21 12:59:51
+请求地址: https://cn.bing.com/RelatedSearch?
+请求方法: POST
+请求协议: https
+请求路径: /RelatedSearch?
+请求头:
+  accept-encoding: gzip, deflate
+  content-length: 430
+  content-type: application/json; charset=UTF-8
+  cache-control: no-cache
+  cookie: SRCHUID=V=2&GUID=DB90C608991144E49941FD14C985E705&dmnchg=1; SRCHD=AF=NOFORM; MUID=35702BA8EDC763EA39593F4DEC8D6219; SRCHUSR=DOB=20240824&DS=1; SRCHHPGUSR=SRCHLANG=zh-Hans; _EDGE_S=SID=3B2E066935AD633D2113116E347F629E; _SS=SID=3B2E066935AD633D2113116E347F629E; MUIDB=35702BA8EDC763EA39593F4DEC8D6219
+请求参数(POST JSON):
+  {"EntryPointId":"HaveAQuestion","LastCacheRefreshTimeStamp":"","UserContextInfo":{"OSName":"Windows 10 Pro","OSVersion":"26200","Platform":"","DeviceModel":"","Language":"","Market":"zh-CN","DateTime":""},"UserSettingPageNavigationInfo":{"CategoryIds":[{"Id":"CategoryId1","RecentVisitTimeStamp":"","VisitFrequency":"","PageIds":[{"Id":"SettingsPageNetworkProxy","RecentVisitTimeStamp":"","VisitFrequency":"","SettingIds":[]}]}]}}
+响应内容:
+
+====================================================================================================
+时间: 2026-02-21 13:06:22
+请求地址: https://www.bing.com/api/shopping/v1/savings/user/readNotifications
+请求方法: POST
+请求协议: https
+请求路径: /api/shopping/v1/savings/user/readNotifications
+请求头:
+  content-length: 3097
+  source: EdgeClient
+  content-type: application/json
+  sec-fetch-site: none
+  sec-fetch-mode: no-cors
+  sec-fetch-dest: empty
+  sec-fetch-storage-access: active
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0
+  accept-encoding: gzip, deflate, br, zstd
+  accept-language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6
+  priority: u=4, i
+请求参数(POST JSON):
+  {"Muids":["02A3C657B7AC623E1FE3D09DB6CA6354"],"NotificationTypes":[],"clientContext":{"appname":"Edge","buildversion":"145.0.3800.58","enabledfeatures":[{"name":"msAutofillAutoPopup","params":[]},{"name":"msShoppingAutoShowAfterRender","params":[]},{"name":"msEdgeShoppingPriceHistory","params":[]},{"name":"msEdgeShoppingExpressCheckout","params":[]},{"name":"msEdgeShoppingGuestDomainCoupons","params":[]},{"name":"msEdgeShoppingEncryptionKey","params":[]},{"name":"msEdgeShoppingRewards","params":[]},{"name":"msEdgeShoppingExpressCheckoutFillDetails","params":[]},{"name":"msEdgeShoppingRebatesSignUp","params":[]},{"name":"msEdgeShoppingAutoShowControlForFeature","params":[]},{"name":"msEdgeShoppingAutoShowMuteForFeature","params":[]},{"name":"msZipPayVirtualCard","params":[]},{"name":"msEdgeShoppingOtherSeller","params":[]},{"name":"msEdgeShoppingWalmartOtherSeller","params":[]},{"name":"msEdgePwiloAsyncFallback","params":[]},{"name":"msEdgeShoppingClarityEnabled","params":[]},{"name":"msEdgeShoppingClarityEnabledWithCookies","params":[]},{"name":"msEdgeShoppingServerNotifications","params":[]},{"name":"msEdgeShoppingPersistentStorage","params":[]},{"name":"msShoppingEdgeTemplateAutomation","params":[]},{"name":"msEdgeShoppingProductPageScript","params":[]},{"name":"msEdgeShoppingEnableAccelerateStrategyForBgaaWebContents","params":[]},{"name":"msShoppingCheckoutMultiMessage","params":[]},{"name":"msEdgeShoppingAutoOpenControllerScript","params":[]},{"name":"msEdgeShoppingAutoOpenControllerOnCheckout","params":[]},{"name":"msEdgeShoppingServerSideAutoShow","params":[{"key":"msEdgeShoppingAutoShowScenariosFirstMask","value":-809239298},{"key":"msEdgeShoppingAutoShowScenariosSecondMask","value":-9},{"key":"msEdgeShoppingAutoShowScenariosThirdMask","value":0},{"key":"msEdgeShoppingAutoShowScenarioFourthMask","value":0}]},{"name":"msEdgeShoppingPwiloNotifications","params":[]},{"name":"msEdgeShoppingPwiloNotificationsAbandonedCarts","params":[]},{"name":"msEdgeShoppingPwiloNotificationsProductTracking","params":[]},{"name":"msEdgeShoppingRebatesAutoShowExistingUser","params":[]},{"name":"msEdgeShoppingOptimizeUrlSanitization","params":[]},{"name":"msEdgeShoppingRebatesV2Enroll","params":[]},{"name":"msEdgeShoppingRebatesForAADAccounts","params":[]},{"name":"msEdgeShoppingCohorts","params":[{"key":"test_config_mask","value":0}]},{"name":"msEdgeShoppingCohortsVulnerable","params":[{"key":"allowedCohortIds","value":"1000,1001"}]},{"name":"msEdgeShoppingGenericDealsService","params":[]},{"name":"msEdgeShoppingSettingsInPane","params":[]},{"name":"msEdgeShoppingSettingsInPaneNotificationBottomToggle","params":[]},{"name":"msEdgeShoppingCouponCopyAttribution","params":[]},{"name":"msEdgeShoppingCouponAutofillAcceptAttribution","params":[]},{"name":"msEdgeShoppingPrioritizeCashbackOverCouponAttribution","params":[]},{"name":"msEdgeShoppingOmniboxAnimationAOC","params":[]},{"name":"msEdgeShoppingControlBadgeTextFromServer","params":[]}],"enabledservicefeaturesv2":{"edgeServerUX.shopping.msEdgeShoppingCashbackDismissTimeout2s":{"params":{},"value":true}}}}
+响应内容:
+{"errorCode":"Error","notificationsList":[],"errorMessage":"No notifications found"}
+====================================================================================================

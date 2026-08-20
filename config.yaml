@@ -1,0 +1,86 @@
+version: 1
+global:
+  api:
+    provider: dongchuangai
+    # Shared base URL for models, OAuth, skill marketplace, and software updates.
+    #baseUrl: https://api.dongchuangai.com/v1
+    baseUrl: http://localhost:5000/v1
+    apiKey: sk-f44ddd933d221b13d4d5c48362b778bb8694cac4452bf939
+    model: gpt-5.5
+    authSource: dongchuangai-oauth
+    authAccountName: 李春锃
+    authAccountPhone: ""
+  launch:
+    openclawConfigPath: D:\myworks\便携式u盘\.openclaw\state\openclaw.json
+    openclawStateDir: D:\myworks\便携式u盘\.openclaw\state
+    webUrls:
+      openclaw: http://127.0.0.1:18789
+      hermes: ""
+      claude: http://127.0.0.1:8081
+      codex: http://127.0.0.1:8082
+      deepseek-harness: http://127.0.0.1:3080
+  update:
+    # Fill these with the update record owner and application IDs from the update service.
+    app_id: 28
+    user_id: 50
+apps:
+  openclaw:
+    wechat:
+      enabled: true
+      accountId: b42f7e65385f-im-bot
+      token: b42f7e65385f@im.bot:0600000aeda8f8442c374f81cfb99d316941ee
+      baseUrl: https://ilinkai.weixin.qq.com
+      cdnBaseUrl: https://novac2c.cdn.weixin.qq.com/c2c
+      dmPolicy: open
+      groupPolicy: disabled
+      allowFrom: []
+      groupAllowFrom: []
+      splitMultilineMessages: false
+  hermes:
+    wechat:
+      enabled: false
+      accountId: ""
+      token: ""
+      baseUrl: https://ilinkai.weixin.qq.com
+      cdnBaseUrl: https://novac2c.cdn.weixin.qq.com/c2c
+      dmPolicy: open
+      groupPolicy: disabled
+      allowFrom: []
+      groupAllowFrom: []
+      splitMultilineMessages: false
+  claude:
+    wechat:
+      enabled: false
+      accountId: ""
+      token: ""
+      baseUrl: https://ilinkai.weixin.qq.com
+      cdnBaseUrl: https://novac2c.cdn.weixin.qq.com/c2c
+      dmPolicy: open
+      groupPolicy: disabled
+      allowFrom: []
+      groupAllowFrom: []
+      splitMultilineMessages: false
+  codex:
+    wechat:
+      enabled: false
+      accountId: ""
+      token: ""
+      baseUrl: https://ilinkai.weixin.qq.com
+      cdnBaseUrl: https://novac2c.cdn.weixin.qq.com/c2c
+      dmPolicy: open
+      groupPolicy: disabled
+      allowFrom: []
+      groupAllowFrom: []
+      splitMultilineMessages: false
+  deepseek-harness:
+    wechat:
+      enabled: false
+      accountId: ""
+      token: ""
+      baseUrl: https://ilinkai.weixin.qq.com
+      cdnBaseUrl: https://novac2c.cdn.weixin.qq.com/c2c
+      dmPolicy: open
+      groupPolicy: disabled
+      allowFrom: []
+      groupAllowFrom: []
+      splitMultilineMessages: false

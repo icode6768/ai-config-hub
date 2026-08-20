@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>网页截图工具</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            border: 2px solid #e0e0e0;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .input-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="url"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus, input[type="url"]:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .success {
+            color: #28a745;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .info {
+            color: #17a2b8;
+            background: #d1ecf1;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .screenshot-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        .screenshot-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            background: white;
+        }
+        .screenshot-item:last-child {
+            border-bottom: none;
+        }
+        .screenshot-info {
+            flex: 1;
+        }
+        .screenshot-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .screenshot-preview {
+            max-width: 200px;
+            max-height: 150px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .feature-list {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .feature-list h3 {
+            margin-top: 0;
+            color: #2c5282;
+        }
+        .feature-list ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .feature-list li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 网页截图工具</h1>
+        
+        <div class="feature-list">
+            <h3>功能特点：</h3>
+            <ul>
+                <li>自动获取网页标题作为图片文件名</li>
+                <li>支持所有主流网站截图</li>
+                <li>高清1920x1080分辨率截图</li>
+                <li>自动清理文件名中的非法字符</li>
+                <li>支持自定义保存路径</li>
+                <li>右键点击页面即可快速截图</li>
+                <li>支持批量截图和下载管理</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>📸 网页截图</h2>
+            <div class="input-group">
+                <label for="urlInput">网页地址：</label>
+                <input type="url" id="urlInput" placeholder="请输入要截图的网页地址，例如：https://www.baidu.com" 
+                       style="width: 100%; padding: 12px; font-size: 16px;">
+            </div>
+            
+            <div class="input-group">
+                <label for="saveDirInput">保存路径：</label>
+                <input type="text" id="saveDirInput" placeholder="请输入截图保存路径，留空使用默认路径" 
+                       style="width: 100%; padding: 12px; font-size: 16px;">
+                <button onclick="selectSaveDirectory()" style="margin-top: 5px;">选择文件夹</button>
+                <button onclick="resetSaveDirectory()" style="margin-top: 5px;">重置为默认</button>
+            </div>
+            
+            <button id="screenshotBtn" onclick="takeScreenshot()">开始截图</button>
+            <button onclick="clearUrl()">清空地址</button>
+            
+            <div style="background: #e8f4f8; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                <strong>💡 快捷操作：</strong>输入网页地址后，右键点击页面任意位置即可快速截图！
+            </div>
+            
+            <div id="screenshotResult"></div>
+        </div>
+        
+        <div class="section">
+            <h2>📁 截图管理</h2>
+            <button onclick="refreshScreenshots()">刷新列表</button>
+            <button onclick="downloadAllScreenshots()">下载全部</button>
+            <button onclick="clearAllScreenshots()">清空全部</button>
+            
+            <div id="screenshotsList" class="screenshot-list">
+                <div class="info">点击"刷新列表"查看已保存的截图</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🔧 快速截图</h2>
+            <p>常用网站快速截图：</p>
+            <button onclick="quickScreenshot('https://www.baidu.com')">百度</button>
+            <button onclick="quickScreenshot('https://www.google.com')">谷歌</button>
+            <button onclick="quickScreenshot('https://www.github.com')">GitHub</button>
+            <button onclick="quickScreenshot('https://www.stackoverflow.com')">Stack Overflow</button>
+        </div>
+    </div>
+
+    <script>
+        // 截图功能
+        function takeScreenshot() {
+            const url = document.getElementById('urlInput').value.trim();
+            const saveDir = document.getElementById('saveDirInput').value.trim();
+            const resultDiv = document.getElementById('screenshotResult');
+            const screenshotBtn = document.getElementById('screenshotBtn');
+            
+            if (!url) {
+                resultDiv.innerHTML = '<div class="error">请输入网页地址</div>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<div class="info">正在截图，请稍候... <span class="loading"></span></div>';
+            screenshotBtn.disabled = true;
+            screenshotBtn.textContent = '截图中...';
+            
+            const requestData = { url: url };
+            if (saveDir) {
+                requestData.save_dir = saveDir;
+            }
+            
+            fetch('/screenshot', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultDiv.innerHTML = 
+                        '<div class="success">' +
+                        '<strong>截图成功！</strong><br>' +
+                        '<strong>文件名：</strong>' + data.filename + '<br>' +
+                        '<strong>页面标题：</strong>' + data.title + '<br>' +
+                        '<strong>保存路径：</strong>' + data.filepath + '<br>' +
+                        '<button onclick="downloadScreenshot(\'' + data.filename + '\')">下载截图</button>' +
+                        '<button onclick="copyPath(\'' + data.filepath + '\')">复制路径</button>' +
+                        '</div>';
+                    
+                    // 自动刷新截图列表
+                    setTimeout(refreshScreenshots, 1000);
+                } else {
+                    resultDiv.innerHTML = '<div class="error">截图失败：' + data.error + '</div>';
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = '<div class="error">截图失败：' + error.message + '</div>';
+            })
+            .finally(() => {
+                screenshotBtn.disabled = false;
+                screenshotBtn.textContent = '开始截图';
+            });
+        }
+        
+        // 选择保存目录
+        function selectSaveDirectory() {
+            // 创建一个隐藏的文件输入框来选择目录
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.webkitdirectory = true;
+            input.style.display = 'none';
+            
+            input.onchange = function(e) {
+                if (e.target.files.length > 0) {
+                    const path = e.target.files[0].path;
+                    const dir = path.substring(0, path.lastIndexOf('\\'));
+                    document.getElementById('saveDirInput').value = dir;
+                }
+            };
+            
+            input.click();
+        }
+        
+        // 重置保存目录
+        function resetSaveDirectory() {
+            document.getElementById('saveDirInput').value = '';
+        }
+        
+        // 右键截图功能
+        function setupRightClickScreenshot() {
+            // 为整个页面添加右键事件监听
+            document.addEventListener('contextmenu', function(e) {
+                e.preventDefault(); // 阻止默认右键菜单
+                
+                // 检查是否在URL输入框中
+                const urlInput = document.getElementById('urlInput');
+                if (urlInput.value.trim()) {
+                    // 如果有URL，执行截图
+                    takeScreenshot();
+                } else {
+                    alert('请先输入要截图的网页地址，然后右键点击页面进行截图');
+                }
+            });
+        }
+        
+        // 快速截图
+        function quickScreenshot(url) {
+            document.getElementById('urlInput').value = url;
+            takeScreenshot();
+        }
+        
+        // 清空URL
+        function clearUrl() {
+            document.getElementById('urlInput').value = '';
+            document.getElementById('screenshotResult').innerHTML = '';
+        }
+        
+        // 下载截图
+        function downloadScreenshot(filename) {
+            window.open('/download/' + filename, '_blank');
+        }
+        
+        // 复制路径
+        function copyPath(path) {
+            navigator.clipboard.writeText(path).then(function() {
+                alert('路径已复制到剪贴板');
+            }).catch(function(err) {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动复制路径');
+            });
+        }
+        
+        // 刷新截图列表
+        function refreshScreenshots() {
+            const listDiv = document.getElementById('screenshotsList');
+            listDiv.innerHTML = '<div class="info">正在加载截图列表...</div>';
+            
+            fetch('/list_screenshots')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.files.length === 0) {
+                        listDiv.innerHTML = '<div class="info">暂无截图文件</div>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.files.forEach(file => {
+                        const sizeKB = Math.round(file.size / 1024);
+                        html += 
+                            '<div class="screenshot-item">' +
+                            '<div class="screenshot-info">' +
+                            '<strong>' + file.filename + '</strong><br>' +
+                            '<small>大小: ' + sizeKB + 'KB | 修改时间: ' + file.modified + '</small>' +
+                            '</div>' +
+                            '<div class="screenshot-actions">' +
+                            '<button onclick="downloadScreenshot(\'' + file.filename + '\')">下载</button>' +
+                            '<button onclick="deleteScreenshot(\'' + file.filename + '\')">删除</button>' +
+                            '</div>' +
+                            '</div>';
+                    });
+                    listDiv.innerHTML = html;
+                } else {
+                    listDiv.innerHTML = '<div class="error">加载失败：' + data.error + '</div>';
+                }
+            })
+            .catch(error => {
+                listDiv.innerHTML = '<div class="error">加载失败：' + error.message + '</div>';
+            });
+        }
+        
+        // 删除截图
+        function deleteScreenshot(filename) {
+            if (confirm('确定要删除截图 "' + filename + '" 吗？')) {
+                // 这里可以添加删除API调用
+                alert('删除功能待实现');
+                refreshScreenshots();
+            }
+        }
+        
+        // 下载全部截图
+        function downloadAllScreenshots() {
+            alert('批量下载功能待实现');
+        }
+        
+        // 清空全部截图
+        function clearAllScreenshots() {
+            if (confirm('确定要删除所有截图吗？此操作不可恢复！')) {
+                // 这里可以添加清空API调用
+                alert('清空功能待实现');
+                refreshScreenshots();
+            }
+        }
+        
+        // 页面加载时自动刷新截图列表
+        window.onload = function() {
+            refreshScreenshots();
+            setupRightClickScreenshot(); // 初始化右键截图功能
+        };
+        
+        // 回车键触发截图
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                takeScreenshot();
+            }
+        });
+    </script>
+</body>
+</html> 

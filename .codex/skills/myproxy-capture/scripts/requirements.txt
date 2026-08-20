@@ -1,0 +1,10 @@
+requests
+mysql-connector-python
+mitmproxy>=9.0
+chardet
+oss2
+bs4
+jinja2
+markupsafe
+itsdangerous
+werkzeug

@@ -1,0 +1,931 @@
+:root {
+  color-scheme: light;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --panel-2: #eef0f4;
+  --line: #dfe3e8;
+  --text: #20242c;
+  --muted: #70798a;
+  --accent: #ff6b14;
+  --accent-2: #e56a14;
+  --good: #18a968;
+  --bad: #e5484d;
+  --skill-bg: #f7f8fa;
+  --skill-line: #dfe3e8;
+  --skill-text: #20242c;
+  --skill-muted: #70798a;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background:
+    radial-gradient(circle at top left, rgba(255, 107, 20, 0.06), transparent 34%),
+    #f7f8fa;
+  color: var(--text);
+}
+
+button, input, textarea {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100%;
+  display: block;
+}
+
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  width: 300px;
+  height: 100vh;
+  border-right: 1px solid var(--line);
+  background: #ffffff;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow: hidden;
+}
+
+.rail > .stack { min-height: 0; overflow-y: auto; }
+
+.brand {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.brandLogo {
+  width: 190px;
+  height: auto;
+  object-fit: contain;
+  object-position: left;
+}
+
+.brandText {
+  display: grid;
+  gap: 3px;
+  padding-left: 70px;
+}
+
+.brandTitle { font-weight: 700; color: var(--text); }
+.brandSub, .muted, .stepText small, .appHead span, .entryRow span, .summaryCard span, .railFooter code, .topbar p, .editorHead p {
+  color: var(--muted);
+}
+
+.updateNotice {
+  width: 100%;
+  border: 1px solid #ffc99f;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #bd4a09;
+  background: #fff4ec;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.updateNotice:hover { border-color: var(--accent); color: var(--accent-2); }
+
+.stack { display: flex; flex-direction: column; gap: 10px; }
+
+.stepItem {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.stepItem.active {
+  border-color: rgba(255, 107, 20, 0.6);
+  background: #fff4ec;
+  box-shadow: 0 0 0 1px rgba(255, 107, 20, 0.12) inset;
+}
+
+.stepIndex {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  color: var(--accent);
+}
+
+.stepItem.active .stepIndex {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.stepText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.railFooter {
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.railActions { display: grid; gap: 6px; margin-top: 8px; }
+.railButton {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fff;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.railButton:hover { border-color: var(--accent); color: var(--accent); }
+.railButton span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.accountAction { position: relative; }
+.accountMenu {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 10px 24px rgba(26, 34, 50, 0.16);
+}
+.accountMenu strong, .accountMenu span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.accountMenu span { color: var(--muted); font-size: 12px; }
+.accountMenu button { display: inline-flex; align-items: center; gap: 7px; color: var(--bad); border: 0; background: transparent; padding: 5px 0; cursor: pointer; }
+
+.authOverlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(22, 27, 35, 0.46); }
+.authDialog { width: min(460px, 100%); border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 20px 55px rgba(21, 28, 39, 0.28); overflow: hidden; }
+.authDialogHead { display: flex; justify-content: space-between; gap: 18px; padding: 19px 20px; border-bottom: 1px solid var(--line); }
+.authDialogHead h2 { margin: 0 0 5px; font-size: 18px; }
+.authDialogHead p { margin: 0; color: var(--muted); font-size: 13px; }
+.authDialogBody { display: grid; gap: 15px; padding: 20px; color: var(--muted); line-height: 1.55; }
+.authDialogBody p { margin: 0; }
+.authDialogBody a { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-2); overflow-wrap: anywhere; }
+.authCode { border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; justify-items: center; gap: 6px; background: var(--panel-2); }
+.authCode span { font-size: 12px; color: var(--muted); }
+.authCode strong { color: var(--text); font-size: 25px; font-family: Consolas, monospace; letter-spacing: 2px; }
+.authDialogBody.success { color: var(--good); font-weight: 700; }
+.authDialogBody.error { color: var(--bad); }
+.authDialogFooter { display: flex; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--line); }
+.updateDialog { width: min(580px, 100%); }
+.updateChanges { display: grid; gap: 8px; margin: 0; padding-left: 20px; color: var(--text); }
+.updateChanges li { overflow-wrap: anywhere; }
+.updateMessage { padding: 10px 12px; border: 1px solid #b9e7cd; border-radius: 8px; color: #167746; background: #effaf4; }
+.updateMessage.error { border-color: #f1bdc0; color: #bb2e35; background: #fff2f3; }
+.updateDialogFooter { gap: 10px; flex-wrap: wrap; }
+.updateDownload { text-decoration: none; }
+
+.main {
+  min-height: 100vh;
+  margin-left: 300px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.topbar, .editorHead, .entryRow, .appHead, .infoCard, .summaryCard, .loading {
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.topbar {
+  padding: 18px 20px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.topbar h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.topbar p { margin: 0; }
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ghost, .primary {
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.ghost {
+  background: #ffffff;
+  color: var(--text);
+}
+
+.ghost:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.primary {
+  background: var(--accent);
+  color: #ffffff;
+  border: 1px solid var(--accent);
+  font-weight: 700;
+}
+
+.primary:hover:not(:disabled) {
+  background: #e5600d;
+  border-color: #e5600d;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+}
+
+.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.apiLayout { grid-template-columns: 1.1fr 0.9fr; }
+.wechatGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.doneSummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.wechatConnect { display: grid; gap: 12px; margin-top: 14px; }
+.qrLoginPanel { display: grid; gap: 10px; justify-items: start; padding-top: 4px; }
+.wechatQr { width: 240px; height: 240px; display: block; background: #fff; padding: 10px; border-radius: 8px; }
+.qrVerify { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
+.qrVerify input { flex: 1 1 180px; min-width: 0; }
+.routeList { display: grid; gap: 10px; margin-top: 14px; }
+.routeList > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.routeList > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.routeList code { color: var(--muted); font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+
+.infoCard, .summaryCard, .appCard, .entryRow {
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.infoCard {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.infoIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+}
+
+.infoCard span, .summaryCard strong, .appHead strong, .entryRow strong { display: block; }
+.infoCard strong, .summaryCard strong, .entryRow strong, .appHead strong { margin-top: 2px; }
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.form.compact label[for], .form.compact label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.field input, .field select, .editor {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+  border-radius: 10px;
+}
+
+.field input, .field select {
+  padding: 11px 12px;
+}
+
+.modelRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.modelCustom {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--muted);
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.modelCustom:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hint {
+  padding: 12px;
+  border: 1px dashed #ffd0ae;
+  border-radius: 10px;
+  background: #fff7f0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.providerSection {
+  display: grid;
+  gap: 14px;
+}
+
+.providerHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.providerHead h3 { margin: 0; font-size: 18px; }
+.providerHead span { color: var(--muted); font-size: 13px; }
+
+.providerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.providerCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 16px 12px 14px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.providerCard:hover { border-color: rgba(255, 107, 20, 0.5); }
+
+.providerCard.active {
+  border-color: var(--accent);
+  background: #fff4ec;
+  box-shadow: 0 0 0 1px rgba(255, 107, 20, 0.12) inset;
+}
+
+.providerMark {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.providerCard.active .providerMark { border-color: rgba(255, 107, 20, 0.45); }
+
+.providerLogo {
+  width: 96px;
+  height: 40px;
+  object-fit: contain;
+  object-position: center;
+}
+
+.providerName { font-size: 14px; font-weight: 600; }
+
+.providerCheck {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--accent);
+}
+
+.configCard { gap: 14px; }
+
+.configTitle {
+  display: grid;
+  gap: 6px;
+}
+
+.configLogo {
+  height: 26px;
+  max-width: 220px;
+  justify-self: start;
+  object-fit: contain;
+  object-position: left;
+}
+
+.appCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.appHead, .entryRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chip.green { color: var(--good); }
+
+.appOps {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.entryMain {
+  min-width: 240px;
+  display: grid;
+  gap: 7px;
+}
+
+.entryDetails {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.runtimeChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+
+.runtimeChip.running { color: var(--good); }
+.runtimeChip.error { color: var(--bad); }
+
+.entryActions {
+  justify-content: flex-end;
+  max-width: 620px;
+}
+
+.doneLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.summaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summaryTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summaryCard.ok {
+  border-color: rgba(24, 169, 104, 0.45);
+}
+
+.entries {
+  display: grid;
+  gap: 12px;
+}
+
+.editorPanel {
+  min-height: 360px;
+}
+
+.editorHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.editorHead h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.editor {
+  min-height: 290px;
+  padding: 14px;
+  resize: vertical;
+  line-height: 1.55;
+  font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+}
+
+.footer {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  gap: 12px;
+}
+
+.skillsPage {
+  margin: -2px -2px 0;
+  padding: 18px 10px 28px;
+  color: var(--skill-text);
+  background: var(--skill-bg);
+  border: 1px solid var(--skill-line);
+  border-radius: 12px;
+}
+
+.skillsIntro {
+  margin: 0 0 20px;
+  color: var(--skill-muted);
+  font-size: 20px;
+}
+
+.skillToolbar {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+
+.skillSearch {
+  flex: 1;
+  min-width: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  color: #687286;
+  background: #fff;
+  border: 1px solid var(--skill-line);
+  border-radius: 18px;
+}
+
+.skillSearch input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--skill-text);
+  background: transparent;
+  font-size: 20px;
+}
+
+.skillSearch input::placeholder { color: #758093; }
+
+.skillAddButton {
+  height: 56px;
+  padding: 0 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--skill-text);
+  background: #fff;
+  border: 1px solid var(--skill-line);
+  border-radius: 18px;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.skillTabs {
+  display: flex;
+  gap: 34px;
+  margin-top: 26px;
+  border-bottom: 1px solid var(--skill-line);
+}
+
+.skillTabs button {
+  position: relative;
+  padding: 0 2px 16px;
+  color: #737d90;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 19px;
+}
+
+.skillTabs button.active { color: var(--skill-text); }
+.skillTabs button.active::after {
+  content: '';
+  position: absolute;
+  right: -24px;
+  bottom: -1px;
+  left: -24px;
+  height: 3px;
+  background: #ff6b14;
+  border-radius: 3px 3px 0 0;
+}
+
+.skillTabs span {
+  display: inline-grid;
+  min-width: 29px;
+  height: 25px;
+  margin-left: 5px;
+  padding: 0 7px;
+  place-items: center;
+  color: #758093;
+  background: #eef0f4;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.skillCategories {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 22px 0 24px;
+}
+
+.skillCategories button {
+  padding: 8px 15px;
+  color: #697488;
+  background: #fff;
+  border: 1px solid var(--skill-line);
+  border-radius: 13px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.skillCategories button.active {
+  color: #fff;
+  background: #ff6b14;
+  border-color: #ff6b14;
+}
+
+.skillGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.skillCard {
+  min-width: 0;
+  min-height: 158px;
+  padding: 18px 18px 16px;
+  background: #ffffff;
+  border: 1px solid var(--skill-line);
+  border-radius: 17px;
+}
+
+.skillCardHead {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.skillName {
+  min-width: 0;
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+
+.skillName strong {
+  overflow: hidden;
+  color: var(--skill-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 20px;
+}
+
+.skillIcon {
+  width: 39px;
+  height: 39px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #768092;
+  background: #fff;
+  border-radius: 11px;
+}
+
+.skillCard p {
+  display: -webkit-box;
+  min-height: 47px;
+  margin: 14px 0 12px;
+  overflow: hidden;
+  color: var(--skill-muted);
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.skillMeta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #707a8c;
+  font-size: 13px;
+}
+
+.skillMeta span {
+  padding: 5px 9px;
+  background: #eef0f4;
+  border-radius: 5px;
+}
+
+.skillMeta i { font-style: normal; }
+
+.skillInstall, .skillInstalled {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.skillInstall {
+  color: #fff;
+  background: #ff6b14;
+  border: 1px solid #ff6b14;
+  cursor: pointer;
+}
+
+.skillInstall:disabled { cursor: not-allowed; opacity: .55; }
+
+.skillInstalled {
+  color: #18a968;
+  background: #e3f6ed;
+}
+
+.skillControls {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+}
+
+.syncButton {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 5px 8px;
+  color: #e56a14;
+  background: #fff2e9;
+  border: 1px solid #ffd7bf;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.iconButton {
+  display: inline-grid;
+  padding: 0;
+  place-items: center;
+  color: #758093;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.skillToggle {
+  width: 55px;
+  height: 30px;
+  position: relative;
+  padding: 0;
+  color: #fff;
+  background: #c8ced7;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.skillToggle::after {
+  content: '';
+  width: 24px;
+  height: 24px;
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .18s ease;
+}
+
+.skillToggle.on { background: #ff6b14; }
+.skillToggle.on::after { transform: translateX(23px); }
+.skillEmpty {
+  min-height: 180px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  color: var(--skill-muted);
+}
+
+.loading {
+  margin: 40px auto;
+  width: min(520px, calc(100vw - 40px));
+  border-radius: 12px;
+  padding: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1100px) {
+  .shell, .two, .apiLayout, .wechatGrid, .doneSummary, .skillGrid {
+    grid-template-columns: 1fr;
+  }
+  .shell {
+    display: flex;
+    flex-direction: column;
+  }
+  .rail {
+    position: static;
+    width: auto;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow: visible;
+  }
+  .rail > .stack { overflow: visible; }
+  .main { min-height: auto; margin-left: 0; }
+
+  .skillToolbar { align-items: stretch; flex-direction: column; }
+  .skillAddButton { justify-content: center; }
+}

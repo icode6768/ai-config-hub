@@ -1,0 +1,6 @@
+interface:
+  display_name: "Patent Search"
+  short_description: "Search patents and retrieve PDF links"
+  default_prompt: "Use $patents-search to search patents by keyword or publication number and summarize drafting-relevant references."
+policy:
+  allow_implicit_invocation: true

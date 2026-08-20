@@ -1,0 +1,30 @@
+时间: 2026-02-21 13:05:44
+请求地址: http://c.pki.goog/r/r4.crl
+请求方法: GET
+请求协议: http
+请求路径: /r/r4.crl
+请求头:
+  Cache-Control: max-age = 3000
+  Proxy-Connection: Keep-Alive
+  Accept: */*
+  If-Modified-Since: Wed, 11 Feb 2026 14:38:00 GMT
+  User-Agent: Microsoft-CryptoAPI/10.0
+  Host: c.pki.goog
+响应内容:
+
+====================================================================================================
+时间: 2026-02-21 13:05:44
+请求地址: http://c.pki.goog/r/gsr1.crl
+请求方法: GET
+请求协议: http
+请求路径: /r/gsr1.crl
+请求头:
+  Cache-Control: max-age = 3000
+  Proxy-Connection: Keep-Alive
+  Accept: */*
+  If-Modified-Since: Wed, 07 Jan 2026 14:53:16 GMT
+  User-Agent: Microsoft-CryptoAPI/10.0
+  Host: c.pki.goog
+响应内容:
+
+====================================================================================================

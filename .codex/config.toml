@@ -1,0 +1,34 @@
+model = "MiniMax-M3"
+model_provider = "dongchuangai"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+personality = "pragmatic"
+
+[model_providers.dongchuangai]
+name = "dongchuangai"
+base_url = "https://api.dongchuangai.com/v1"
+wire_api = "responses"
+env_key = "DONGCHUANGAI_API_KEY"
+supports_websockets = false
+requires_openai_auth = false
+
+[projects."e:\\mywroks\\软著专利项目\\东创软著\\软著材料\\待提交\\新项目"]
+trust_level = "trusted"
+
+[projects."d:\\myworks\\openclaw\\dcopenclawpanel-2026.5.6-win\\.codex"]
+trust_level = "trusted"
+
+[projects."j:\\dcopenclawpanel-win\\codex-data"]
+trust_level = "trusted"
+
+[projects."d:\\disk-data\\openclaw-home\\op1000\\.hermes\\dc-panel\\accounts\\acct_6e536dc885adfadd\\instances\\rt_8b5c9177515341f281d7a987\\workspace"]
+trust_level = "trusted"
+
+[projects."d:\\myworks\\便携式u盘"]
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+"gpt-5.6-sol" = 3
+
+[windows]
+sandbox = "unelevated"

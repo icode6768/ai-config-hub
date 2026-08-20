@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PII 数据脱敏体验 · 可逆令牌</title>
+<style>
+  :root{
+    --bg:#0f1226; --panel:#181c34; --panel2:#1f2442; --line:#2c3258;
+    --txt:#e7e9f5; --muted:#9aa0c4; --brand:#6c7bff; --brand2:#8b5cf6;
+    --ok:#34d399; --warn:#fbbf24; --token:#ffd166;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:linear-gradient(160deg,#0f1226,#141833);color:var(--txt);min-height:100vh}
+  header{padding:22px 28px;border-bottom:1px solid var(--line);
+    background:rgba(20,24,51,.7);backdrop-filter:blur(8px);position:sticky;top:0;z-index:5}
+  h1{margin:0;font-size:20px;font-weight:700}
+  h1 .tag{font-size:12px;color:var(--brand);background:rgba(108,123,255,.14);
+    padding:3px 9px;border-radius:20px;margin-left:10px;vertical-align:middle}
+  .sub{color:var(--muted);font-size:13px;margin-top:6px}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 28px 60px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h2{margin:0 0 12px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .card h2 .n{width:22px;height:22px;border-radius:50%;background:var(--brand);
+    color:#fff;font-size:12px;display:grid;place-items:center}
+  label{font-size:13px;color:var(--muted);display:block;margin:10px 0 5px}
+  textarea,input[type=text],select{width:100%;background:var(--panel2);color:var(--txt);
+    border:1px solid var(--line);border-radius:9px;padding:10px;font-size:13px;font-family:inherit}
+  textarea{min-height:130px;resize:vertical;line-height:1.6}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .seg{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{background:transparent;border:0;color:var(--muted);padding:8px 16px;cursor:pointer;font-size:13px}
+  .seg button.on{background:var(--brand);color:#fff}
+  .chk{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);
+    border:1px solid var(--line);padding:6px 11px;border-radius:8px;font-size:13px;cursor:pointer;color:var(--txt)}
+  .chk input{accent-color:var(--brand)}
+  .btn{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border:0;
+    padding:11px 20px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--txt)}
+  .out{white-space:pre-wrap;word-break:break-word;background:#0c0f22;border:1px solid var(--line);
+    border-radius:9px;padding:12px;font-size:13px;line-height:1.7;min-height:80px;font-family:"SF Mono",Consolas,monospace}
+  .token{color:var(--token);font-weight:600}
+  .hl{background:rgba(52,211,153,.18);color:var(--ok);border-radius:3px;padding:0 2px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+  th{background:var(--panel2);color:var(--muted);font-weight:600}
+  .map-wrap{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:9px}
+  .note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+  .pill{font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(139,92,246,.16);color:#c4b5fd}
+  .stat{font-size:12px;color:var(--ok);margin-top:8px}
+  .colcfg{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:7px}
+  .colcfg .name{font-size:13px}
+  .warnbox{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fde68a;
+    border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-top:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>PII 数据脱敏体验<span class="tag">可逆令牌 · 本地运行</span></h1>
+  <div class="sub">把隐私字段替换为唯一令牌后再交给大模型；处理完成后用映射表精确还原。本页全程在浏览器本地运行，数据不外传。</div>
+</header>
+
+<div class="wrap">
+  <div class="row" style="margin-bottom:18px">
+    <span style="font-size:13px;color:var(--muted)">模式：</span>
+    <div class="seg">
+      <button id="modeText" class="on" onclick="setMode('text')">文本模式</button>
+      <button id="modeTable" onclick="setMode('table')">表格模式（CSV）</button>
+    </div>
+    <button class="btn ghost" onclick="loadSample()">载入示例</button>
+  </div>
+
+  <div class="grid">
+    <!-- 左：输入 + 脱敏 -->
+    <div class="card">
+      <h2><span class="n">1</span> 原始数据（含隐私）</h2>
+
+      <label>输入内容</label>
+      <textarea id="input" placeholder="在此粘贴文本，或切换到表格模式粘贴 CSV"></textarea>
+
+      <!-- 文本模式配置 -->
+      <div id="cfgText">
+        <label>自动识别字段（强正则）</label>
+        <div class="row">
+          <label class="chk"><input type="checkbox" class="fld" value="邮箱" checked>邮箱</label>
+          <label class="chk"><input type="checkbox" class="fld" value="身份证" checked>身份证</label>
+          <label class="chk"><input type="checkbox" class="fld" value="银行卡" checked>银行卡</label>
+          <label class="chk"><input type="checkbox" class="fld" value="手机" checked>手机号</label>
+        </div>
+        <label>姓名词表（逗号分隔，精确替换）</label>
+        <input type="text" id="names" placeholder="张三,李四">
+        <label>公司/组织词表（逗号分隔）</label>
+        <input type="text" id="orgs" placeholder="北京华信科技有限公司">
+      </div>
+
+      <!-- 表格模式配置 -->
+      <div id="cfgTable" style="display:none">
+        <label>选择敏感列与类型（解析表头后出现）</label>
+        <div id="colConfig" class="note">先在上方粘贴含表头的 CSV，再点“解析表头”。</div>
+        <button class="btn ghost" style="margin-top:8px" onclick="parseHeader()">解析表头</button>
+      </div>
+
+      <div style="margin-top:16px">
+        <button class="btn" onclick="doMask()">🔒 脱敏</button>
+      </div>
+      <div class="stat" id="maskStat"></div>
+    </div>
+
+    <!-- 右：脱敏结果 + 映射表 -->
+    <div class="card">
+      <h2><span class="n">2</span> 脱敏结果（交给大模型）</h2>
+      <div id="maskedOut" class="out">脱敏后内容显示在这里，只含令牌，可安全发送给大模型。</div>
+      <button class="btn ghost" style="margin-top:10px" onclick="copyMasked()">复制脱敏内容</button>
+
+      <h2 style="margin-top:18px"><span class="n">·</span> 本地映射表 <span class="pill">勿发给大模型</span></h2>
+      <div class="map-wrap"><table id="mapTable"><thead><tr><th>令牌</th><th>类型</th><th>真实值</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- 还原 -->
+  <div class="card" style="margin-top:20px">
+    <h2><span class="n">3</span> 还原大模型结果</h2>
+    <div class="note">把大模型返回的、仍含令牌的结果粘贴到这里，用上面的映射表还原成真实值（支持 <code>【】</code> 被改写成 <code>[]</code> 的容错）。</div>
+    <label>大模型返回结果</label>
+    <textarea id="llmOut" placeholder="例：【脱敏_公司_001】 平均工资最高，最高员工为【脱敏_姓名_004】"></textarea>
+    <div style="margin-top:12px"><button class="btn" onclick="doRestore()">🔓 还原</button></div>
+    <label style="margin-top:14px">还原后（真实信息）</label>
+    <div id="restoreOut" class="out">还原结果显示在这里。</div>
+  </div>
+
+  <!-- 批量：文件 / 文件夹上传脱敏 -->
+  <div class="card" style="margin-top:20px">
+    <h2><span class="n">★</span> 批量：上传文件 / 文件夹脱敏（本地打包下载）</h2>
+    <div class="note">选择多个文件或整个文件夹，在浏览器本地脱敏后打包为 ZIP 下载（含 <code>_maskmap.json</code> 映射表）。
+      整批共用一份映射表，非文本文件原样打包。全程不上传服务器。</div>
+
+    <div class="row" style="margin-top:12px">
+      <label class="btn ghost" style="cursor:pointer">📄 选择文件<input type="file" id="batchFiles" multiple style="display:none" onchange="onBatchPick(this)"></label>
+      <label class="btn ghost" style="cursor:pointer">📁 选择文件夹<input type="file" id="batchDir" webkitdirectory directory multiple style="display:none" onchange="onBatchPick(this)"></label>
+      <button class="btn ghost" onclick="clearBatch()">清空选择</button>
+      <span id="batchInfo" class="note" style="margin:0">未选择</span>
+    </div>
+
+    <label>自动识别字段（强正则，对所有文本生效）</label>
+    <div class="row">
+      <label class="chk"><input type="checkbox" class="bfld" value="邮箱" checked>邮箱</label>
+      <label class="chk"><input type="checkbox" class="bfld" value="身份证" checked>身份证</label>
+      <label class="chk"><input type="checkbox" class="bfld" value="银行卡" checked>银行卡</label>
+      <label class="chk"><input type="checkbox" class="bfld" value="手机" checked>手机号</label>
+    </div>
+    <div class="grid" style="margin-top:4px">
+      <div><label>姓名词表（逗号分隔）</label><input type="text" id="bnames" placeholder="张三,李四"></div>
+      <div><label>公司/组织词表（逗号分隔）</label><input type="text" id="borgs" placeholder="北京华信科技有限公司"></div>
+    </div>
+    <label>CSV 敏感列（对所有 CSV 生效，格式 列名:类型,列名:类型）</label>
+    <input type="text" id="bcolumns" placeholder="姓名:姓名,公司:公司,手机号:手机,工资:金额">
+
+    <div style="margin-top:14px"><button class="btn" onclick="batchMask()">🔒 脱敏并打包下载 ZIP</button></div>
+    <div class="stat" id="batchStat"></div>
+
+    <h2 style="margin-top:22px"><span class="n">↩</span> 批量还原（上传结果 + 映射表）</h2>
+    <div class="note">选择大模型处理后（仍含令牌）的文件/文件夹，并选择之前下载的 <code>_maskmap.json</code>，本地还原后打包下载。</div>
+    <div class="row" style="margin-top:12px">
+      <label class="btn ghost" style="cursor:pointer">📄 选择待还原文件<input type="file" id="restoreFiles" multiple style="display:none" onchange="onRestorePick(this)"></label>
+      <label class="btn ghost" style="cursor:pointer">📁 选择待还原文件夹<input type="file" id="restoreDir" webkitdirectory directory multiple style="display:none" onchange="onRestorePick(this)"></label>
+      <label class="btn ghost" style="cursor:pointer">🗺 选择映射表<input type="file" id="restoreMap" accept=".json,application/json" style="display:none" onchange="onRestoreMap(this)"></label>
+      <button class="btn ghost" onclick="clearRestore()">清空选择</button>
+    </div>
+    <div style="margin-top:12px"><button class="btn" onclick="batchRestore()">🔓 还原并打包下载 ZIP</button></div>
+    <div class="stat" id="restoreBatchStat"></div>
+  </div>
+
+  <div class="warnbox">
+    ⚠️ 说明：本页为本地体验版，脱敏逻辑与后端 <code>backend/app/utils/pii_masker.py</code> 一致（可逆令牌）。
+    生产环境请通过 <code>/api/v1/pii/mask</code>、<code>/api/v1/pii/restore</code> 接口或 CLI <code>scripts/test/pii_mask_cli.py</code> 使用，映射表请妥善保管、切勿发给大模型。
+  </div>
+</div>
+
+<script>
+// ===== 与 Python 模块一致的核心逻辑 =====
+const TOKEN_PREFIX = "脱敏";
+// 容错令牌正则：匹配 【脱敏_姓名_001】，也匹配方括号被改写成 []
+const TOKEN_RE = /[【\[]\s*脱敏_([^_\]】\s]+)_(\d{3,})\s*[】\]]/g;
+
+const DETECTORS = [
+  ["邮箱",   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g],
+  ["身份证", /(?<![0-9Xx])\d{17}[\dXx](?![0-9Xx])/g],
+  ["银行卡", /(?<!\d)\d{16,19}(?!\d)/g],
+  ["手机",   /(?<!\d)1[3-9]\d{9}(?!\d)/g],
+];
+
+class PIIMasker{
+  constructor(){ this.tokenToValue={}; this.valueToToken={}; this.counters={}; }
+  _next(type){ this.counters[type]=(this.counters[type]||0)+1;
+    return `【${TOKEN_PREFIX}_${type}_${String(this.counters[type]).padStart(3,"0")}】`; }
+  _get(value,type){ value=String(value);
+    if(this.valueToToken[value]) return this.valueToToken[value];
+    const t=this._next(type); this.tokenToValue[t]={type,value}; this.valueToToken[value]=t; return t; }
+  maskText(text,{fields,nameList,orgList}={}){
+    let r=String(text??"");
+    const words=[];
+    (nameList||[]).forEach(w=>{w=w.trim(); if(w) words.push([w,"姓名"]);});
+    (orgList||[]).forEach(w=>{w=w.trim(); if(w) words.push([w,"公司"]);});
+    words.sort((a,b)=>b[0].length-a[0].length);
+    for(const [w,t] of words){ if(w) r=r.split(w).join(this._get(w,t)); }
+    const active=fields||["邮箱","身份证","银行卡","手机"];
+    for(const [type,re] of DETECTORS){ if(!active.includes(type)) continue;
+      r=r.replace(re,m=>this._get(m,type)); }
+    return r;
+  }
+  maskRecords(rows,sensitive){ // rows: array of obj; sensitive: {col:type}
+    return rows.map(row=>{ const nr={...row};
+      for(const col in sensitive){ if(!(col in nr)) continue;
+        const v=nr[col]; if(v===null||String(v).trim()==="") continue;
+        nr[col]=this._get(String(v),sensitive[col]); }
+      return nr; }); }
+  restore(text,map){ map=map||this._flat();
+    let r=String(text??"");
+    Object.keys(map).sort((a,b)=>b.length-a.length).forEach(tok=>{ if(r.includes(tok)) r=r.split(tok).join(map[tok]); });
+    r=r.replace(TOKEN_RE,(m,type,seq)=>{ const canon=`【${TOKEN_PREFIX}_${type}_${seq}】`; return map[canon]??m; });
+    return r; }
+  _flat(){ const f={}; for(const t in this.tokenToValue) f[t]=this.tokenToValue[t].value; return f; }
+  static fromMap(map){ const m=new PIIMasker();
+    for(const tok in map){ const info=map[tok];
+      const type=(info&&typeof info==="object")?info.type:"";
+      const value=(info&&typeof info==="object")?info.value:String(info);
+      m.tokenToValue[tok]={type,value}; m.valueToToken[value]=tok; }
+    return m; }
+}
+
+// ===== UI 状态 =====
+let mode="text";
+let masker=null;
+let headers=[];
+
+function setMode(m){ mode=m;
+  document.getElementById("modeText").classList.toggle("on",m==="text");
+  document.getElementById("modeTable").classList.toggle("on",m==="table");
+  document.getElementById("cfgText").style.display = m==="text"?"":"none";
+  document.getElementById("cfgTable").style.display = m==="table"?"":"none";
+}
+
+function parseCSV(text){
+  const lines=text.trim().split(/\r?\n/).filter(l=>l.trim()!=="");
+  if(!lines.length) return {headers:[],rows:[]};
+  const split=l=>l.split(",").map(s=>s.trim());
+  const hs=split(lines[0]);
+  const rows=lines.slice(1).map(l=>{ const c=split(l); const o={}; hs.forEach((h,i)=>o[h]=c[i]??""); return o; });
+  return {headers:hs,rows};
+}
+
+const TYPE_OPTS=["姓名","公司","手机","身份证","银行卡","邮箱","金额"];
+function parseHeader(){
+  const {headers:hs}=parseCSV(document.getElementById("input").value);
+  headers=hs;
+  if(!hs.length){ document.getElementById("colConfig").textContent="未解析到表头，请粘贴含表头的 CSV。"; return; }
+  const guess=h=>{ if(/姓名|名字|name/i.test(h))return"姓名"; if(/公司|单位|企业|组织|org|company/i.test(h))return"公司";
+    if(/手机|电话|phone|mobile/i.test(h))return"手机"; if(/身份证|id.?card/i.test(h))return"身份证";
+    if(/银行卡|卡号|bank/i.test(h))return"银行卡"; if(/邮箱|email|mail/i.test(h))return"邮箱";
+    if(/工资|薪资|金额|salary|amount/i.test(h))return"金额"; return""; };
+  document.getElementById("colConfig").innerHTML = hs.map((h,i)=>{
+    const g=guess(h);
+    return `<div class="colcfg">
+      <label class="chk"><input type="checkbox" class="colchk" data-col="${escapeAttr(h)}" ${g?"checked":""}>
+        <span class="name">${escapeHtml(h)}</span></label>
+      <select class="coltype" data-col="${escapeAttr(h)}">
+        ${TYPE_OPTS.map(t=>`<option ${t===g?"selected":""}>${t}</option>`).join("")}
+      </select></div>`;
+  }).join("");
+}
+
+function doMask(){
+  masker=new PIIMasker();
+  const input=document.getElementById("input").value;
+  let maskedDisplay="";
+  if(mode==="text"){
+    const fields=[...document.querySelectorAll(".fld:checked")].map(c=>c.value);
+    const names=document.getElementById("names").value.split(",").map(s=>s.trim()).filter(Boolean);
+    const orgs=document.getElementById("orgs").value.split(",").map(s=>s.trim()).filter(Boolean);
+    maskedDisplay=masker.maskText(input,{fields,nameList:names,orgList:orgs});
+    document.getElementById("maskedOut").innerHTML=highlightTokens(maskedDisplay);
+  }else{
+    const {headers:hs,rows}=parseCSV(input);
+    if(!hs.length){ alert("请先粘贴含表头的 CSV，并点击“解析表头”"); return; }
+    const sensitive={};
+    document.querySelectorAll(".colchk:checked").forEach(c=>{
+      const col=c.getAttribute("data-col");
+      const sel=document.querySelector(`.coltype[data-col="${cssEsc(col)}"]`);
+      sensitive[col]=sel?sel.value:"姓名";
+    });
+    if(!Object.keys(sensitive).length){ alert("请先解析表头并勾选敏感列"); return; }
+    const masked=masker.maskRecords(rows,sensitive);
+    document.getElementById("maskedOut").innerHTML=renderTable(hs,masked);
+  }
+  renderMap();
+  const n=Object.keys(masker.tokenToValue).length;
+  document.getElementById("maskStat").textContent=`✓ 已脱敏，生成 ${n} 个令牌`;
+}
+
+function doRestore(){
+  if(!masker){ alert("请先执行脱敏以生成映射表"); return; }
+  const out=masker.restore(document.getElementById("llmOut").value);
+  document.getElementById("restoreOut").innerHTML=highlightRestored(out);
+}
+
+// ===== 渲染辅助 =====
+function renderMap(){
+  const tb=document.querySelector("#mapTable tbody"); tb.innerHTML="";
+  for(const tok in masker.tokenToValue){ const {type,value}=masker.tokenToValue[tok];
+    tb.innerHTML+=`<tr><td class="token">${escapeHtml(tok)}</td><td>${escapeHtml(type)}</td><td>${escapeHtml(value)}</td></tr>`; }
+}
+function renderTable(hs,rows){
+  let h=`<table><thead><tr>${hs.map(x=>`<th>${escapeHtml(x)}</th>`).join("")}</tr></thead><tbody>`;
+  rows.forEach(r=>{ h+="<tr>"+hs.map(c=>{ const v=r[c]??"";
+    const isTok=/^【脱敏_/.test(v); return `<td class="${isTok?"token":""}">${escapeHtml(v)}</td>`; }).join("")+"</tr>"; });
+  return h+"</tbody></table>";
+}
+function highlightTokens(text){ return escapeHtml(text).replace(/【脱敏_[^】]+】/g,m=>`<span class="token">${m}</span>`); }
+function highlightRestored(text){
+  // 把还原出的真实值高亮
+  let html=escapeHtml(text); const vals=new Set(Object.values(masker._flat()));
+  vals.forEach(v=>{ if(v) html=html.split(escapeHtml(v)).join(`<span class="hl">${escapeHtml(v)}</span>`); });
+  return html;
+}
+function copyMasked(){ const t=document.getElementById("maskedOut").innerText;
+  navigator.clipboard?.writeText(t).then(()=>{ document.getElementById("maskStat").textContent="✓ 脱敏内容已复制"; }); }
+
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+function cssEsc(s){ return String(s).replace(/["\\]/g,"\\$&"); }
+
+// ===== 批量：文件 / 文件夹上传脱敏（纯前端，打包 ZIP 下载）=====
+const TEXT_EXTS=new Set(["txt","csv","tsv","md","markdown","json","log","html","htm",
+  "xml","yaml","yml","sql","ini","conf","py","js","ts","java","go","css","srt","vtt"]);
+function extOf(name){ const i=name.lastIndexOf("."); return i<0?"":name.slice(i+1).toLowerCase(); }
+
+function parseColumnsSpec(spec){ const m={};
+  (spec||"").split(",").forEach(p=>{ p=p.trim(); if(!p) return;
+    const parts=p.includes(":")?p.split(":"):[p,p]; m[parts[0].trim()]=(parts[1]||parts[0]).trim(); });
+  return m; }
+
+function serializeCSV(headers,rows){
+  const esc=v=>{ v=String(v??""); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  return [headers.map(esc).join(",")].concat(rows.map(r=>headers.map(h=>esc(r[h])).join(","))).join("\n");
+}
+
+// 极简 ZIP（store，无压缩），自包含、无外部依赖
+const _crcTable=(()=>{ let c,t=[]; for(let n=0;n<256;n++){ c=n;
+  for(let k=0;k<8;k++) c=c&1?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; } return t; })();
+function crc32(buf){ let c=0xFFFFFFFF;
+  for(let i=0;i<buf.length;i++) c=_crcTable[(c^buf[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files){
+  const enc=new TextEncoder(); const chunks=[]; const central=[]; let offset=0;
+  for(const f of files){
+    const nameBytes=enc.encode(f.name); const data=f.data; const crc=crc32(data);
+    const lh=new Uint8Array(30+nameBytes.length); const dv=new DataView(lh.buffer);
+    dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true); dv.setUint16(6,0x0800,true);
+    dv.setUint16(8,0,true); dv.setUint16(10,0,true); dv.setUint16(12,0,true);
+    dv.setUint32(14,crc,true); dv.setUint32(18,data.length,true); dv.setUint32(22,data.length,true);
+    dv.setUint16(26,nameBytes.length,true); dv.setUint16(28,0,true); lh.set(nameBytes,30);
+    chunks.push(lh,data);
+    const ch=new Uint8Array(46+nameBytes.length); const cv=new DataView(ch.buffer);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint16(8,0x0800,true); cv.setUint16(10,0,true); cv.setUint16(12,0,true); cv.setUint16(14,0,true);
+    cv.setUint32(16,crc,true); cv.setUint32(20,data.length,true); cv.setUint32(24,data.length,true);
+    cv.setUint16(28,nameBytes.length,true); cv.setUint32(42,offset,true); ch.set(nameBytes,46);
+    central.push(ch); offset+=lh.length+data.length;
+  }
+  let cdSize=0; central.forEach(c=>cdSize+=c.length); const cdOffset=offset;
+  central.forEach(c=>chunks.push(c));
+  const eocd=new Uint8Array(22); const ev=new DataView(eocd.buffer);
+  ev.setUint32(0,0x06054b50,true); ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+  ev.setUint32(12,cdSize,true); ev.setUint32(16,cdOffset,true); chunks.push(eocd);
+  return new Blob(chunks,{type:"application/zip"});
+}
+function downloadBlob(blob,name){ const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500); }
+
+// 选择状态
+let batchSelected=[]; let restoreSelected=[]; let restoreMapObj=null;
+function onBatchPick(input){ for(const f of input.files){ batchSelected.push({file:f,rel:f.webkitRelativePath||f.name}); }
+  input.value=""; document.getElementById("batchInfo").textContent=`已选 ${batchSelected.length} 个文件`; }
+function clearBatch(){ batchSelected=[]; document.getElementById("batchInfo").textContent="未选择";
+  document.getElementById("batchStat").textContent=""; }
+function onRestorePick(input){ for(const f of input.files){ restoreSelected.push({file:f,rel:f.webkitRelativePath||f.name}); }
+  input.value=""; updateRestoreInfo(); }
+function onRestoreMap(input){ const f=input.files[0]; if(!f) return;
+  f.text().then(t=>{ try{ restoreMapObj=JSON.parse(t); }catch(e){ alert("映射表解析失败："+e.message); restoreMapObj=null; } updateRestoreInfo(); });
+  input.value=""; }
+function clearRestore(){ restoreSelected=[]; restoreMapObj=null; updateRestoreInfo();
+  document.getElementById("restoreBatchStat").textContent=""; }
+function updateRestoreInfo(){ document.getElementById("restoreBatchStat").textContent=
+  `已选 ${restoreSelected.length} 个待还原文件，映射表：${restoreMapObj?"已加载":"未选择"}`; }
+
+async function batchMask(){
+  if(!batchSelected.length){ alert("请先选择文件或文件夹"); return; }
+  const masker=new PIIMasker();
+  const fields=[...document.querySelectorAll(".bfld:checked")].map(c=>c.value);
+  const names=document.getElementById("bnames").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const orgs=document.getElementById("borgs").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const columns=parseColumnsSpec(document.getElementById("bcolumns").value);
+  const enc=new TextEncoder(); const out=[]; let textN=0, copyN=0;
+  for(const {file,rel} of batchSelected){
+    const ext=extOf(rel);
+    if(TEXT_EXTS.has(ext)){
+      const text=await file.text(); let masked;
+      if(ext==="csv" && Object.keys(columns).length){
+        const {headers,rows}=parseCSV(text); masked=serializeCSV(headers,masker.maskRecords(rows,columns));
+      } else { masked=masker.maskText(text,{fields,nameList:names,orgList:orgs}); }
+      out.push({name:rel,data:enc.encode(masked)}); textN++;
+    } else { out.push({name:rel,data:new Uint8Array(await file.arrayBuffer())}); copyN++; }
+  }
+  out.push({name:"_maskmap.json",data:enc.encode(JSON.stringify(masker.tokenToValue,null,2))});
+  downloadBlob(zipStore(out),"masked.zip");
+  document.getElementById("batchStat").textContent=
+    `✓ 已脱敏 ${textN} 个文本文件、原样打包 ${copyN} 个文件，生成 ${Object.keys(masker.tokenToValue).length} 个令牌，已下载 masked.zip`;
+}
+
+async function batchRestore(){
+  if(!restoreSelected.length){ alert("请选择待还原文件/文件夹"); return; }
+  if(!restoreMapObj){ alert("请选择映射表 _maskmap.json"); return; }
+  const masker=PIIMasker.fromMap(restoreMapObj);
+  const enc=new TextEncoder(); const out=[]; let textN=0, copyN=0;
+  for(const {file,rel} of restoreSelected){
+    if(rel.endsWith("_maskmap.json")) continue; // 跳过映射表本身
+    const ext=extOf(rel);
+    if(TEXT_EXTS.has(ext)){
+      const text=await file.text(); let restored;
+      if(ext==="csv"){ const {headers,rows}=parseCSV(text);
+        restored=serializeCSV(headers,rows.map(r=>{ const nr={...r};
+          for(const k in nr) nr[k]=masker.restore(nr[k]); return nr; }));
+      } else { restored=masker.restore(text); }
+      out.push({name:rel,data:enc.encode(restored)}); textN++;
+    } else { out.push({name:rel,data:new Uint8Array(await file.arrayBuffer())}); copyN++; }
+  }
+  downloadBlob(zipStore(out),"restored.zip");
+  document.getElementById("restoreBatchStat").textContent=
+    `✓ 已还原 ${textN} 个文本文件、原样打包 ${copyN} 个文件，已下载 restored.zip`;
+}
+
+function loadSample(){
+  if(mode==="text"){
+    document.getElementById("input").value="员工张三，手机13812345678，身份证110101199003071234，邮箱zhang@huaxin.com，就职于北京华信科技有限公司。";
+    document.getElementById("names").value="张三";
+    document.getElementById("orgs").value="北京华信科技有限公司";
+    document.getElementById("llmOut").value="";
+  }else{
+    document.getElementById("input").value=
+"姓名,公司,部门,手机号,工资\n张三,北京华信科技有限公司,研发部,13812345678,18500\n李四,北京华信科技有限公司,研发部,13987654321,16000\n王五,上海明远集团,市场部,13511112222,14000\n赵六,上海明远集团,市场部,13633334444,22000";
+    parseHeader();
+    document.getElementById("llmOut").value="按公司汇总平均工资：\n【脱敏_公司_001】 平均 17250 元\n【脱敏_公司_002】 平均 18000 元\n最高工资员工：【脱敏_姓名_004】";
+  }
+}
+</script>
+</body>
+</html>

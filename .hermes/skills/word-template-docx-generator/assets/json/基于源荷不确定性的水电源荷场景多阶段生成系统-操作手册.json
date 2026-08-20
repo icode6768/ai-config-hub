@@ -1,0 +1,822 @@
+{
+  "系统名": "基于源荷不确定性的水电源荷场景多阶段生成系统",
+  "文档版本": "V1.0",
+  "编制单位": "电力调度技术研究中心",
+  "编制日期": "2026-04-30",
+  "适用对象": "调度分析员、数据分析员、运维工程师、系统管理员",
+  "系统地址": "http://localhost:5174",
+  "锁定次数": "5",
+  "超时分钟": "120",
+  "系统简介": "基于源荷不确定性的水电源荷场景多阶段生成系统是面向水电系统调度的综合管理平台，融合实时源荷数据采集、T-LSTM 概率预测、多智能体强化学习（MARL）协同决策、多阶段场景生成与评估三大核心模块，采用 Tucker 分解的轻量化 LSTM 模型对水电、风电、光伏出力与负荷进行多时间尺度概率预测，结合 5 类专业智能体（水电/火电/可再生/储能/负荷）的协同优化策略，通过蒙特卡洛模拟生成符合源荷不确定性分布的多阶段场景集合，为水电系统的调度决策、风险评估和备用容量规划提供数据支撑。",
+  "适用对象说明": "本手册面向四类用户：系统管理员（用户账号管理与系统维护）、调度分析员（场景生成、调度策略评估）、数据分析员（实时数据管理、模型与场景评估）、运维工程师（预测模型管理、MARL 仿真任务管理）。",
+  "模块列表": [
+    {
+      "模块名": "系统登录与首页总览",
+      "模块说明": "用户登录系统后进入首页总览，集中展示实时数据条数、预测模型数、MARL 仿真次数、场景集合数等核心指标，并通过饼图、柱状图直观呈现系统运行状态。",
+      "章节列表": [
+        {
+          "章节名": "系统登录",
+          "章节说明": "通过用户名和密码完成身份认证，获取 JWT Token 后进入系统主界面。",
+          "功能点列表": [
+            {
+              "功能名称": "用户登录",
+              "功能说明": "验证用户名密码，生成 JWT Token 并跳转首页。",
+              "操作列表": [
+                {
+                  "操作名称": "登录系统",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "打开浏览器，访问系统地址 http://localhost:5174，系统自动跳转至登录页面",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/01_login.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "在【用户名】输入框输入账号，在【密码】输入框输入对应密码（默认管理员：admin / Admin1234!）",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/01_login.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "点击【登录】按钮，验证通过后获取 Token 并跳转至首页总览",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/02_dashboard.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "连续输错5次密码将锁定账号，需联系管理员解锁",
+                    "登录 Token 有效期为 120 分钟，超时后需重新登录"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/01_login.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/01_login.png"
+            }
+          ]
+        },
+        {
+          "章节名": "首页总览",
+          "章节说明": "展示全系统当前运行状态快照，包含核心指标卡片、数据分布饼图、场景质量分布柱状图与系统运行状态表。",
+          "功能点列表": [
+            {
+              "功能名称": "实时运行指标",
+              "功能说明": "以卡片形式展示实时数据条数、预测模型数、MARL 仿真次数、场景集合数四项核心指标。",
+              "操作列表": [
+                {
+                  "操作名称": "查看首页总览",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "登录成功后自动进入首页，或点击左侧导航【首页总览】",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/02_dashboard.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "顶部展示四张指标卡片：实时数据条数、预测模型数、MARL 仿真次数、场景集合数",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/02_dashboard.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "中部左侧饼图展示水电/风电/光伏/负荷四类数据分布，右侧柱状图展示场景质量等级分布",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/02_dashboard.png"
+                    },
+                    {
+                      "序号": 4,
+                      "说明": "底部系统运行状态表展示后端服务、数据库、预测引擎、MARL 环境运行状态",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/02_dashboard.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "首页指标数据每次刷新页面时实时拉取后端 API"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/02_dashboard.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/02_dashboard.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/01_login.png"
+    },
+    {
+      "模块名": "实时源荷数据采集",
+      "模块说明": "采集和管理水电、风电、光伏、负荷四类实时数据，提供完整的增删改查、过滤查询、批量清洗异常数据等管理功能，为预测模型与场景生成提供数据基础。",
+      "章节列表": [
+        {
+          "章节名": "实时源荷数据管理",
+          "章节说明": "对实时源荷数据进行新增、查看、编辑、删除管理，支持按数据类型与电站名称过滤。",
+          "功能点列表": [
+            {
+              "功能名称": "实时源荷数据",
+              "功能说明": "管理水电、风电、光伏、负荷四类实时数据的全生命周期。",
+              "操作列表": [
+                {
+                  "操作名称": "查看数据列表",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击左侧导航【源荷数据管理】→【实时数据采集】，进入数据列表页",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "列表展示所有记录，字段包括：ID、数据类型、电站名称、电站编号、数值(MW)、采集时间、质量标志、已清洗",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "通过顶部筛选区切换数据类型（水电/风电/光伏/负荷）或输入电站名称进行过滤查询",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                },
+                {
+                  "操作名称": "新增实时数据",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击【新增数据】按钮，弹出表单对话框",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "选择数据类型，输入电站名称、电站编号、数值(MW)、采集时间，选择质量标志",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "点击【保存】提交，提示成功后列表自动刷新",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "数据类型、电站名称、数值、采集时间为必填字段"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection_add.png"
+                },
+                {
+                  "操作名称": "编辑/删除数据",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在列表中找到目标记录，点击该行【编辑】按钮修改字段，或【删除】按钮触发确认",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "对话框确认后保存或删除，列表自动刷新",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "删除操作不可撤销"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection_edit.png"
+                },
+                {
+                  "操作名称": "批量清洗异常数据",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击【批量清洗异常】按钮，系统自动将所有 quality_flag=warning 的数据标记为已清洗",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "提示弹出 “批量清洗成功: N 条” 后列表自动刷新，已清洗列显示绿色勾",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "批量清洗会将异常值替换为原始值并标记 is_cleaned=true"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/03_data_collection.png"
+    },
+    {
+      "模块名": "T-LSTM 预测模型与预测任务",
+      "模块说明": "提供基于 Tucker 分解轻量化 LSTM（T-LSTM）的概率预测模型配置与预测任务执行管理。模型支持短期(24h)、中期(7d)、长期(3mo)三种时间尺度，输出 PICP、CRPS、RMSE 三项概率预测精度评分。",
+      "章节列表": [
+        {
+          "章节名": "预测模型配置",
+          "章节说明": "对 T-LSTM 预测模型的网络结构、Tucker 分解秩、损失函数权重等超参数进行配置，并管理模型的活跃状态。",
+          "功能点列表": [
+            {
+              "功能名称": "预测模型配置",
+              "功能说明": "管理 T-LSTM 模型的创建、参数修改、激活、归档与删除。",
+              "操作列表": [
+                {
+                  "操作名称": "查看模型列表",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击左侧导航【源荷数据管理】→【预测模型配置】，进入模型列表页",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "列表展示模型名称、编号、状态(活跃/归档/草稿)、LSTM层数、隐藏维度、训练PICP、训练RMSE",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                },
+                {
+                  "操作名称": "新建预测模型",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击【新建模型】按钮，弹出模型参数对话框",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "依次输入模型名称、模型编号、LSTM层数、隐藏维度、输入窗口、Tucker秩(R1/R2/R3)、损失函数权重(α/β/γ)",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "点击【保存】提交，提示成功后列表自动刷新",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "LSTM 层数建议 2-4 层，隐藏维度建议 64/128/256；α+β+γ 建议接近 1.0"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model_add.png"
+                },
+                {
+                  "操作名称": "激活模型",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在列表中点击非活跃模型行的【激活】按钮",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "系统自动归档当前活跃模型并将所选模型标记为活跃，提示成功后列表自动刷新",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "同一时刻系统中仅有一个活跃模型用于真实预测任务"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                },
+                {
+                  "操作名称": "编辑/删除模型",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击模型行【编辑】修改超参数，或【删除】按钮删除草稿/归档模型",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "建议删除前先归档；活跃模型不建议直接删除"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model_edit.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+            }
+          ]
+        },
+        {
+          "章节名": "预测任务执行",
+          "章节说明": "基于已激活的 T-LSTM 模型创建短期/中期/长期预测任务并执行，输出概率预测精度评分。",
+          "功能点列表": [
+            {
+              "功能名称": "预测任务",
+              "功能说明": "管理预测任务的创建、启动执行、结果查看与删除。",
+              "操作列表": [
+                {
+                  "操作名称": "新建预测任务",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在预测模型页面下方任务列表，点击【新建任务】按钮",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "输入任务名称、选择关联模型、选择时间尺度（短期24h/中期7d/长期3mo）",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "点击【保存】，任务以 pending 状态创建",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model_add.png"
+                },
+                {
+                  "操作名称": "启动预测任务",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在任务列表中找到 pending 状态的任务，点击【启动】按钮",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "系统执行预测计算，任务状态由 pending → running → completed",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "完成后任务行显示 PICP（区间覆盖率）和 RMSE（均方根误差）评分",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "仅 pending 状态的任务可启动；completed/failed 状态不可重新启动"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/04_prediction_model.png"
+    },
+    {
+      "模块名": "MARL 环境与智能体配置",
+      "模块说明": "配置多智能体强化学习（MARL）的仿真环境与 5 类专业智能体（水电/火电/可再生/储能/负荷），定义动作空间与多目标奖励权重(W1-W5)，为协同调度决策提供策略基础。",
+      "章节列表": [
+        {
+          "章节名": "MARL 环境配置",
+          "章节说明": "定义 MARL 仿真环境的物理结构（机组数量）、电网约束（电压/输电）和水电运行约束（生态流量/水库容量）。",
+          "功能点列表": [
+            {
+              "功能名称": "MARL 仿真环境",
+              "功能说明": "管理 MARL 环境的新建、参数编辑、状态切换与删除。",
+              "操作列表": [
+                {
+                  "操作名称": "新建仿真环境",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击左侧导航【MARL决策】→【环境与智能体配置】，进入配置页面",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "在左侧环境卡片点击【新建环境】按钮，弹出参数对话框",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "输入环境名称、编号、各类机组数量（水电/火电/风电/光伏）、最大输电容量、生态流量、水库容量等参数",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    },
+                    {
+                      "序号": 4,
+                      "说明": "点击【保存】完成创建，列表自动刷新",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "最小生态流量建议根据河流类型设定，避免对生态造成影响"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config_add.png"
+                },
+                {
+                  "操作名称": "编辑/删除环境",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在环境列表点击【编辑】修改参数，或【删除】按钮移除环境（同时清除关联智能体与仿真任务）",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "删除前请确认环境未被运行中的仿真任务引用"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config_edit.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+            }
+          ]
+        },
+        {
+          "章节名": "智能体配置",
+          "章节说明": "为 MARL 环境配置 5 类专业智能体，并设置各智能体的动作空间与多目标奖励权重。",
+          "功能点列表": [
+            {
+              "功能名称": "MARL 智能体",
+              "功能说明": "管理智能体的创建、奖励权重调整与删除。",
+              "操作列表": [
+                {
+                  "操作名称": "新建智能体",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在右侧智能体卡片点击【新建智能体】按钮",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "输入智能体名称、选择关联环境、选择类型（水电/火电/风电/光伏/储能/负荷）",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "调整 5 项奖励权重：W1经济(0-1)、W2安全(0-1)、W3可再生(0-1)、W4平衡(0-1)、W5预测(0-1)",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    },
+                    {
+                      "序号": 4,
+                      "说明": "点击【保存】完成创建",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "建议 5 项权重之和接近 1.0，根据调度目标灵活调整侧重"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config_add.png"
+                },
+                {
+                  "操作名称": "编辑/删除智能体",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在智能体列表点击【编辑】调整奖励权重，或【删除】按钮移除",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config_edit.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/05_marl_config.png"
+    },
+    {
+      "模块名": "MARL 协同仿真执行",
+      "模块说明": "基于已配置的 MARL 环境与智能体执行多智能体协同仿真，输出经济/安全/可再生/平衡四项分项奖励与总奖励，并通过折线图与柱状图可视化奖励演化趋势。",
+      "章节列表": [
+        {
+          "章节名": "MARL 仿真任务",
+          "章节说明": "创建 MARL 仿真任务并执行协同决策，监控奖励演化。",
+          "功能点列表": [
+            {
+              "功能名称": "MARL 仿真",
+              "功能说明": "管理仿真任务的创建、启动、停止、删除与奖励可视化。",
+              "操作列表": [
+                {
+                  "操作名称": "新建仿真任务",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击左侧导航【MARL决策】→【协同仿真执行】",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "点击【新建仿真任务】按钮，输入任务名称、选择关联环境、时间尺度、总步数",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "点击【保存】，任务以 pending 状态创建",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "总步数建议 500/1000/2000，时间尺度越长建议步数越多"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation_add.png"
+                },
+                {
+                  "操作名称": "启动/停止仿真",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在任务列表中点击 pending 状态任务的【启动】按钮，系统执行 MARL 协同仿真",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "任务完成后状态变为 completed，列表显示总奖励与四项分项奖励（经济/安全/可再生/平衡）",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "对运行中任务点击【停止】可中止仿真，状态变为 failed",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "仅 pending 状态可启动；仅 running 状态可停止"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                },
+                {
+                  "操作名称": "查看奖励趋势",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "页面下方【仿真奖励趋势】卡片以折线图展示总奖励，柱状图展示经济与可再生奖励",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "可对比不同任务的奖励差异，辅助调度策略选择",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/06_marl_simulation.png"
+    },
+    {
+      "模块名": "场景集合生成",
+      "模块说明": "基于 MARL 仿真结果通过蒙特卡洛模拟生成多阶段水电源荷场景集合，每个集合包含若干个具体场景（正常/极端高/极端低），并自动评估 PICP、CRPS、多样性、物理可行性四项质量指标，给出 A/B/C/D 质量评级。",
+      "章节列表": [
+        {
+          "章节名": "场景集合生成",
+          "章节说明": "生成场景集合并查看每个场景的水电、风电、光伏出力与负荷分布。",
+          "功能点列表": [
+            {
+              "功能名称": "场景生成",
+              "功能说明": "管理场景集合的创建、查看、删除与 CSV 导出。",
+              "操作列表": [
+                {
+                  "操作名称": "生成新场景集",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击左侧导航【场景管理】→【场景集合生成】",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "点击【生成新场景集】按钮，输入集合名称、编号、选择时间尺度、场景数量(10-500)",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "（可选）选择关联的已完成 MARL 仿真任务，点击【生成】",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    },
+                    {
+                      "序号": 4,
+                      "说明": "系统自动通过蒙特卡洛模拟生成场景并计算 PICP、多样性、物理可行率与质量评级 A/B/C/D",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "生成的场景默认每集合 100 条，实际限制为 20 条用于演示"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                },
+                {
+                  "操作名称": "查看场景明细",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在场景集合列表中点击任意行，右侧场景明细面板显示该集合下所有场景",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "明细字段包括：场景编号、类型(正常/极端高/极端低)、水电(MW)、负荷(MW)、物理可行性",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                },
+                {
+                  "操作名称": "导出 CSV / 删除集合",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "选中场景集合后点击右侧【导出CSV】按钮，浏览器自动下载 scenario_set_N.csv 文件",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "点击集合行【删除】按钮，系统同时删除关联场景与评估",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "删除集合操作不可撤销"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                },
+                {
+                  "操作名称": "查看质量对比图",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "页面下方【场景集合质量对比】卡片以柱状图与折线图展示各集合的 PICP、多样性、物理可行率",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/07_scenario_generation.png"
+    },
+    {
+      "模块名": "场景评估管理",
+      "模块说明": "对场景集合进行 CVaR 风险评估、可再生率评估、物理可行性评估、多样性评估，输出 VaR/CVaR、期望可再生率、期望弃电率、薄弱时段等关键风险指标，并通过雷达图可视化对比。",
+      "章节列表": [
+        {
+          "章节名": "场景评估",
+          "章节说明": "管理场景评估的创建、查看与删除，并通过雷达图对比多组评估。",
+          "功能点列表": [
+            {
+              "功能名称": "场景评估",
+              "功能说明": "管理 4 类场景评估（risk/renewable/physical/diversity）。",
+              "操作列表": [
+                {
+                  "操作名称": "新增场景评估",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击左侧导航【场景管理】→【场景评估管理】",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "点击【新增评估】按钮，选择场景集合、输入评估名称、选择评估类型（CVaR风险/可再生率/物理可行性/多样性）",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "输入 VaR 95%、CVaR 95%、期望可再生率(0-1)、期望弃电率(0-1)、薄弱时段(JSON 数组)",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                    },
+                    {
+                      "序号": 4,
+                      "说明": "点击【保存】提交，列表自动刷新并显示新评估",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "VaR 与 CVaR 均为 95% 置信度风险指标；CVaR ≥ VaR"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management_add.png"
+                },
+                {
+                  "操作名称": "筛选评估",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在顶部【筛选场景集】下拉框选择目标场景集合，列表自动过滤显示该集合的评估记录",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                },
+                {
+                  "操作名称": "查看雷达图对比",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "页面下方【风险分析雷达图】卡片以雷达图展示前 5 组评估的 CVaR风险、可再生率、物理可行、多样性、弃电率五维对比",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                    }
+                  ],
+                  "注意事项": [],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                },
+                {
+                  "操作名称": "删除评估",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击评估行【删除】按钮，确认后删除",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "删除操作不可撤销"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/08_scenario_management.png"
+    },
+    {
+      "模块名": "用户管理",
+      "模块说明": "系统管理员对系统用户的账号、角色、状态进行统一管理，支持创建、编辑、启用/禁用、删除四类操作。",
+      "章节列表": [
+        {
+          "章节名": "用户管理",
+          "章节说明": "管理系统所有用户账号。",
+          "功能点列表": [
+            {
+              "功能名称": "用户管理",
+              "功能说明": "管理用户账号全生命周期。",
+              "操作列表": [
+                {
+                  "操作名称": "新建用户",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击左侧导航【用户管理】",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "点击【新建用户】按钮，输入用户名、邮箱、密码、选择角色（系统管理员/调度分析员/数据分析员/运维工程师）",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+                    },
+                    {
+                      "序号": 3,
+                      "说明": "点击【保存】完成创建，列表自动刷新",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "用户名与邮箱在系统中必须唯一"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users_add.png"
+                },
+                {
+                  "操作名称": "启用/禁用用户",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "在用户列表点击目标用户行的【启用】或【禁用】按钮",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+                    },
+                    {
+                      "序号": 2,
+                      "说明": "状态切换成功后，被禁用的用户无法登录系统",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "禁用 admin 账号将导致无法登录系统，请谨慎操作"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+                },
+                {
+                  "操作名称": "编辑/删除用户",
+                  "步骤": [
+                    {
+                      "序号": 1,
+                      "说明": "点击用户行【编辑】修改邮箱、角色、密码（可选），或【删除】按钮删除用户",
+                      "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+                    }
+                  ],
+                  "注意事项": [
+                    "删除用户操作不可撤销"
+                  ],
+                  "操作截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users_edit.png"
+                }
+              ],
+              "功能截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+            }
+          ]
+        }
+      ],
+      "模块首页截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/09_users.png"
+    }
+  ],
+  "登录界面截图": "E:/mywroks/软著专利项目/东创软著/源码模版/copyright-demo-vue1/docs/screenshot/基于源荷不确定性的水电源荷场景多阶段生成系统/01_login.png"
+}
