@@ -92,10 +92,10 @@ def test_skips_untrusted_provider_pricing_lookup_for_custom_provider(monkeypatch
 
 
 def test_known_confusing_model_still_warns_on_custom_provider():
-    """The gpt-5.5-pro confusion nudge is id-keyed, not pricing-keyed: it must
+    """The gpt-5.5 confusion nudge is id-keyed, not pricing-keyed: it must
     survive the custom-provider pricing distrust (54cc39aa15 x 83d373aae6)."""
     warning = expensive_model_warning(
-        "openai/gpt-5.5-pro",
+        "openai/gpt-5.5",
         provider="custom:routerai",
         base_url="https://routerai.example/v1",
     )

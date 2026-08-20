@@ -277,7 +277,7 @@ async function main(): Promise<void> {
         return
       }
 
-      const appAction = url.pathname.match(/^\/api\/apps\/([^/]+)\/(start|stop|restart|update|terminal)$/)
+      const appAction = url.pathname.match(/^\/api\/apps\/([^/]+)\/(start|stop|restart|update|terminal(?:-desktop)?)$/)
       if (appAction) {
         if (req.method !== 'POST') {
           sendJson(res, { error: '该操作只支持 POST' }, 405)
@@ -298,7 +298,7 @@ async function main(): Promise<void> {
         else if (action === 'stop') await stopApp(appId, currentConfig)
         else if (action === 'restart') await restartApp(appId, currentConfig)
         else if (action === 'update') await updateApp(appId, currentConfig)
-        else await openAppTerminal(appId, currentConfig)
+        else await openAppTerminal(appId, currentConfig, { desktop: action === 'terminal-desktop' })
         sendJson(res, { ok: true, action, appId, appStatuses: await getAppRuntimeStatuses(currentConfig, runtimeVersions) })
         return
       }

@@ -37,6 +37,12 @@ export NVM_DIR PYENV_ROOT MISE_DATA_DIR NPM_GLOBAL_DIR
 export NPM_CONFIG_PREFIX="$NPM_GLOBAL_DIR"
 mkdir -p "$NPM_GLOBAL_DIR/bin"
 
+# --- Corepack 镜像（独立于 npm registry，不走 ~/.npmrc）---
+# Corepack 下载 pnpm/yarn 时直接连 registry.npmjs.org，国内连通性差
+# 通过 COREPACK_NPM_REGISTRY 强制走镜像；与用户 .npmrc 的 registry 保持一致
+COREPACK_REGISTRY_DEFAULT="https://registry.npmmirror.com"
+export COREPACK_NPM_REGISTRY="${COREPACK_NPM_REGISTRY:-$COREPACK_REGISTRY_DEFAULT}"
+
 # --- 1. NVM (Node.js 版本管理) ---
 if [ -f "$NVM_DIR/nvm.sh" ]; then
   export NVM_DIR
@@ -61,13 +67,8 @@ export PATH="$_RUNTIME_DIR/bin:$NPM_GLOBAL_DIR/bin:$PATH"
 
 # Load the portable project's API key into this process only. It is never
 # printed and the obsolete variable is explicitly cleared.
-unset DONGCHUANGAI_KEY
-unset DONGCHUANGAI_API_KEY
-_PROJECT_ROOT="$(cd "$_RUNTIME_DIR/../.." && pwd)"
-if command -v node >/dev/null 2>&1 && [ -f "$_PROJECT_ROOT/config.yaml" ] && [ -d "$_PROJECT_ROOT/webui/node_modules/yaml" ]; then
-  DONGCHUANGAI_API_KEY="$(node -e "const fs=require('fs');const YAML=require(process.argv[1]);const c=YAML.parse(fs.readFileSync(process.argv[2],'utf8'));process.stdout.write(String(c?.global?.api?.apiKey??''))" "$_PROJECT_ROOT/webui/node_modules/yaml" "$_PROJECT_ROOT/config.yaml")"
-  export DONGCHUANGAI_API_KEY
-fi
+# (Delegated to load-creds.sh — same helper also used by deepseek harness launchers.)
+source "$_SCRIPT_DIR/load-creds.sh"
 
 # 保留对 scripts/ 目录的引用（安装脚本位置）
 export PORTABLE_SCRIPTS_DIR="$_SCRIPT_DIR"

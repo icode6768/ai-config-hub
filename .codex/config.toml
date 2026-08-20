@@ -27,8 +27,11 @@ trust_level = "trusted"
 [projects."d:\\myworks\\便携式u盘"]
 trust_level = "trusted"
 
+[projects."/Users/apple/Desktop/myworks/codes/claw-panels"]
+trust_level = "trusted"
+
 [tui.model_availability_nux]
-"gpt-5.6-sol" = 3
+"gpt-5.6-sol" = 4
 
 [windows]
 sandbox = "unelevated"
