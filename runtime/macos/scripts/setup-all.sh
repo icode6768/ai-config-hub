@@ -32,26 +32,21 @@ if ! xcode-select -p &>/dev/null; then
   exit 1
 fi
 
-# 创建目录结构
-mkdir -p "$RUNTIME_DIR"/{homebrew,nvm,pyenv,bin,npm-global}
+# 创建目录结构（npm-global 必须放在 nvm/ 下，否则 NVM 会拒绝加载）
+mkdir -p "$RUNTIME_DIR"/{nvm,pyenv,bin} "$RUNTIME_DIR/nvm/npm-global"
 
-# Step 1: Homebrew
-echo "━━━ Step 1/3: 安装 Homebrew ━━━"
-bash "$SCRIPT_DIR/install-homebrew.sh"
-echo ""
-
-# Step 2: Node.js
-echo "━━━ Step 2/3: 安装 Node.js (LTS) ━━━"
+# Step 1: Node.js
+echo "━━━ Step 1/3: 安装 Node.js (LTS) ━━━"
 bash "$SCRIPT_DIR/install-node.sh" "lts/*"
 echo ""
 
-# Step 3: Python
-echo "━━━ Step 3/3: 安装 Python 3.11 ━━━"
+# Step 2: Python
+echo "━━━ Step 2/3: 安装 Python 3.11 ━━━"
 bash "$SCRIPT_DIR/install-python.sh" "3.11.9"
 echo ""
 
-# Step 4: 创建可移植 wrapper 脚本（必须在 Node.js 安装后执行）
-echo "━━━ Step 4/4: 创建 runtime/macos/bin/ 可移植 wrapper ━━━"
+# Step 3: 创建可移植 wrapper 脚本（必须在 Node.js 安装后执行）
+echo "━━━ Step 3/3: 创建 runtime/macos/bin/ 可移植 wrapper ━━━"
 bash "$SCRIPT_DIR/link-node.sh"
 echo ""
 

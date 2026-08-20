@@ -635,7 +635,7 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function appAction(appId: AppId, action: 'start' | 'stop' | 'restart' | 'update' | 'terminal'): Promise<void> {
+  async function appAction(appId: AppId, action: 'start' | 'stop' | 'restart' | 'update' | 'terminal' | 'terminal-desktop'): Promise<void> {
     setAppBusy(previous => ({ ...previous, [appId]: true }))
     setStatus('')
     try {
@@ -1135,7 +1135,7 @@ export default function App(): React.ReactElement {
                           <Terminal size={15} /> 打开终端
                         </button>
                         {id === 'hermes' && (
-                          <button type="button" className="primary" onClick={() => void appAction(id, 'terminal')} disabled={busy}>
+                          <button type="button" className="primary" onClick={() => void appAction(id, 'terminal-desktop')} disabled={busy}>
                             <ExternalLink size={15} /> 打开桌面端
                           </button>
                         )}
@@ -1290,7 +1290,7 @@ function targetSummary(skill: SkillRecord): string {
   return `应用 ${targets.filter(Boolean).length}/5`
 }
 
-function actionMessage(appId: AppId, action: 'start' | 'stop' | 'restart' | 'update' | 'terminal'): string {
+function actionMessage(appId: AppId, action: 'start' | 'stop' | 'restart' | 'update' | 'terminal' | 'terminal-desktop'): string {
   const name = label(appId)
   return {
     start: `${name} 启动命令已执行`,
@@ -1298,6 +1298,7 @@ function actionMessage(appId: AppId, action: 'start' | 'stop' | 'restart' | 'upd
     restart: `${name} 重启命令已执行`,
     update: `${name} 更新完成`,
     terminal: `${name} 终端已打开`,
+    'terminal-desktop': `${name} 桌面端已打开`,
   }[action]
 }
 

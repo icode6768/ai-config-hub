@@ -3,7 +3,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 运行时根目录在 scripts/ 上一级
 RUNTIME_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-NPM_GLOBAL_DIR="$RUNTIME_DIR/npm-global"
+NPM_GLOBAL_DIR="$RUNTIME_DIR/nvm/npm-global"
 NODE_BIN="$RUNTIME_DIR/nvm/versions/node/$(ls "$RUNTIME_DIR/nvm/versions/node/" 2>/dev/null | sort -V | tail -1)/bin"
 
 export PATH="$RUNTIME_DIR/bin:$NPM_GLOBAL_DIR/bin:$NODE_BIN:$PATH"

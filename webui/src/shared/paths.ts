@@ -30,7 +30,12 @@ export function runtimeNodeVersionsPath(platform: NodeJS.Platform = process.plat
 }
 
 export function runtimeNpmGlobalPath(platform: NodeJS.Platform = process.platform): string {
-  return join(runtimePlatformDir(platform), 'npm-global')
+  // macOS: npm-global 位于 nvm/ 子树下（NVM 加载时会检查 NPM_CONFIG_PREFIX
+  //        是否在 NVM_DIR 内，否则 nvm deactivate，runtime/macos/scripts/activate.sh:35）
+  // Windows: 顶层 npm-global
+  return platform === 'darwin'
+    ? join(runtimePlatformDir(platform), 'nvm', 'npm-global')
+    : join(runtimePlatformDir(platform), 'npm-global')
 }
 
 export function runtimeBinPath(platform: NodeJS.Platform = process.platform): string {

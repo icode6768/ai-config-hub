@@ -47,17 +47,15 @@ info "运行时目录" "$RUNTIME_DIR"
 echo ""
 
 # ─── 先激活环境 ───
-HOMEBREW_DIR="$RUNTIME_DIR/homebrew"
 NVM_DIR="$RUNTIME_DIR/nvm"
 PYENV_ROOT="$RUNTIME_DIR/pyenv"
 
-[ -f "$HOMEBREW_DIR/bin/brew" ]  && eval "$("$HOMEBREW_DIR/bin/brew" shellenv)" 2>/dev/null
 [ -f "$NVM_DIR/nvm.sh" ]         && export NVM_DIR && . "$NVM_DIR/nvm.sh" 2>/dev/null
 [ -d "$PYENV_ROOT/bin" ]         && export PYENV_ROOT && export PATH="$PYENV_ROOT/bin:$PATH" && eval "$(pyenv init - 2>/dev/null)"
 
 # ─── 1. 目录结构 ───
 echo -e "${BOLD}【目录结构】${RESET}"
-for dir in homebrew nvm pyenv bin npm-global; do
+for dir in nvm pyenv bin nvm/npm-global; do
   if [ -d "$RUNTIME_DIR/$dir" ]; then
     SIZE=$(du -sh "$RUNTIME_DIR/$dir" 2>/dev/null | cut -f1)
     ok "$dir/" "$SIZE"
@@ -69,18 +67,7 @@ for dir in homebrew nvm pyenv bin npm-global; do
 done
 echo ""
 
-# ─── 2. Homebrew ───
-echo -e "${BOLD}【Homebrew】${RESET}"
-check "brew 可执行"    "brew --version | head -1"              "运行 bash install-homebrew.sh"
-check "brew 路径隔离"  "brew --prefix | grep -v '^/opt/homebrew$' | grep -v '^/usr/local$'" \
-                      "brew --prefix 应指向 runtime/homebrew"
-if command -v brew &>/dev/null; then
-  PKG_COUNT=$(brew list --formula 2>/dev/null | wc -l | tr -d ' ')
-  info "已安装包数量" "$PKG_COUNT 个"
-fi
-echo ""
-
-# ─── 3. Node.js ───
+# ─── 2. Node.js ───
 echo -e "${BOLD}【Node.js / NVM】${RESET}"
 check "nvm 可执行"     "nvm --version"                         "运行 bash install-node.sh"
 check "node 可执行"    "node --version"                        "运行: nvm install lts/*"
@@ -103,7 +90,7 @@ if command -v nvm &>/dev/null; then
 fi
 echo ""
 
-# ─── 4. Python / pyenv ───
+# ─── 3. Python / pyenv ───
 echo -e "${BOLD}【Python / pyenv】${RESET}"
 check "pyenv 可执行"   "pyenv --version"                       "运行 bash install-python.sh"
 check "python3 可执行" "python3 --version"                     "运行: pyenv install 3.11.9"
@@ -125,7 +112,7 @@ if command -v pyenv &>/dev/null; then
 fi
 echo ""
 
-# ─── 5. 功能验证 ───
+# ─── 4. 功能验证 ───
 echo -e "${BOLD}【功能验证】${RESET}"
 
 # Node.js 运行一段代码
@@ -177,9 +164,9 @@ if command -v npm &>/dev/null; then
 fi
 echo ""
 
-# ─── 6. 路径隔离总结 ───
+# ─── 5. 路径隔离总结 ───
 echo -e "${BOLD}【路径总览】${RESET}"
-for cmd in brew node npm python3 pip3 pyenv; do
+for cmd in node npm python3 pip3 pyenv; do
   if PATH_RESULT=$(command -v "$cmd" 2>/dev/null); then
     printf "  %-10s → %s\n" "$cmd" "$PATH_RESULT"
   else
@@ -201,7 +188,7 @@ echo -e "${BOLD}╚════════════════════�
 if [ "$FAIL" -gt 0 ]; then
   echo ""
   echo -e "${YELLOW}修复建议:${RESET}"
-  echo "  1. 确认已运行对应安装脚本（install-homebrew.sh / install-node.sh / install-python.sh）"
+  echo "  1. 确认已运行对应安装脚本（install-node.sh / install-python.sh）"
   echo "  2. 如果路径不在 runtime 目录，先激活环境: source activate.sh，再重新运行 check.sh"
   echo "  3. macOS 外置设备隔离问题: xattr -rd com.apple.quarantine \"$RUNTIME_DIR\""
 fi

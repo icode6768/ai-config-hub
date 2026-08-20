@@ -408,21 +408,37 @@ export function terminalArgs(appId: AppId, args: string[]): string[] {
   return appId === 'openclaw' ? [] : args
 }
 
-function terminalCommand(appId: AppId, config: LauncherConfig): string {
+function terminalCommand(appId: AppId, config: LauncherConfig, options: { desktop?: boolean } = {}): string {
   const spec = commandFor(appId, config)
   if (!spec) return 'echo "未找到该应用的启动命令"'
+  const root = rootPath()
+  const environment = terminalEnvironment(root, config)
+  const exports = Object.entries(environment).map(([key, value]) => `export ${key}="${value}"`).join(' && ')
+  const activate = join(runtimeScriptsPath('darwin'), 'activate.sh')
+
+  // Hermes 必须跑在它自己的 venv 里（python + hermes_cli 模块都在 venv），
+  // 但 **不要** 叠加 runtime/macos 那一套：用户希望这个终端是 hermes-agent
+  // 独立的 Python 环境，而不是 runtime + venv 双重 PATH 污染。
+  // 只透传 hermes 必需的凭据（API key），其它 env 让 hermes 自己发现。
+  if (appId === 'hermes') {
+    const hermesCwd = join(root, '.hermes', 'hermes-agent')
+    const hermesVenvActivate = join(hermesCwd, 'venv', 'bin', 'activate')
+    const hermesCmd = `hermes${options.desktop ? ' desktop' : ''}`
+    const apiKey = config?.global.api.apiKey ?? ''
+    const apiKeyExport = apiKey ? `export DONGCHUANGAI_API_KEY="${apiKey}"` : ''
+    return `cd "${hermesCwd}" && source "${hermesVenvActivate}" && unset DONGCHUANGAI_KEY && ${apiKeyExport} && ${hermesCmd}`
+  }
+
   const appCommand = appId === 'openclaw'
     ? 'openclaw'
     : [spec.command, ...terminalArgs(appId, spec.args)].map(part => `"${part.replaceAll('"', '\\"')}"`).join(' ')
-  const exports = Object.entries(terminalEnvironment(rootPath(), config)).map(([key, value]) => `export ${key}="${value}"`).join(' && ')
-  const activate = join(runtimeScriptsPath('darwin'), 'activate.sh')
-  return `cd "${rootPath()}" && unset DONGCHUANGAI_KEY && source "${activate}" && ${exports} && ${appCommand}`
+  return `cd "${root}" && unset DONGCHUANGAI_KEY && source "${activate}" && ${exports} && ${appCommand}`
 }
 
 // Windows：Node 的 spawn 会把含引号的参数序列化成 cmd 不认识的 \" 转义，
 // 直接把一长串 && 命令塞给 cmd /k 会拆坏引号。因此把启动逻辑写成一个临时
 // .cmd 批处理文件，让新终端窗口直接执行该文件，引号由 cmd 原生解析。
-function writeWindowsTerminalBatch(appId: AppId, config: LauncherConfig): string | null {
+function writeWindowsTerminalBatch(appId: AppId, config: LauncherConfig, options: { desktop?: boolean } = {}): string | null {
   const spec = commandFor(appId, config)
   if (!spec) return null
   const root = rootPath()
@@ -439,7 +455,7 @@ function writeWindowsTerminalBatch(appId: AppId, config: LauncherConfig): string
   if (appId !== 'hermes' && activate) lines.push(`call "${activate}"`)
   else if (appId !== 'hermes') lines.push(`set "PATH=${runtimePathEntries().join(';')};%PATH%"`)
   const appCommand = appId === 'hermes'
-    ? 'hermes desktop'
+    ? `hermes${options.desktop ? ' desktop' : ''}`
     : appId === 'openclaw'
       ? 'openclaw'
       : `"${spec.command}" ${terminalArgs(appId, spec.args).map(arg => `"${arg}"`).join(' ')}`
@@ -455,18 +471,18 @@ function writeWindowsTerminalBatch(appId: AppId, config: LauncherConfig): string
   return batchPath
 }
 
-export async function openAppTerminal(appId: AppId, config: LauncherConfig): Promise<void> {
+export async function openAppTerminal(appId: AppId, config: LauncherConfig, options: { desktop?: boolean } = {}): Promise<void> {
   if (appId === 'openclaw' && !await probeUrl(config.global.launch.webUrls.openclaw)) {
     throw new Error('OpenClaw 实例未运行，请先启动后再打开终端')
   }
   if (process.platform === 'win32') {
-    const batchPath = writeWindowsTerminalBatch(appId, config)
+    const batchPath = writeWindowsTerminalBatch(appId, config, options)
     if (!batchPath) return
     const child = spawn('cmd.exe', ['/d', '/c', 'start', `USB Lobster - ${APP_LABELS[appId]}`, 'cmd.exe', '/d', '/k', batchPath], { detached: true, stdio: 'ignore', windowsHide: false })
     child.unref()
     return
   }
-  const command = terminalCommand(appId, config)
+  const command = terminalCommand(appId, config, options)
   const escaped = command.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
   const script = `tell application "Terminal" to do script "${escaped}"\ntell application "Terminal" to activate`
   const child = spawn('osascript', ['-e', script], { detached: true, stdio: 'ignore' })

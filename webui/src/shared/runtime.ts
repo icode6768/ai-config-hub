@@ -133,15 +133,15 @@ export async function detectRuntimeVersions(): Promise<RuntimeVersions> {
   const python = await pythonRuntimeVersion()
   const [openclaw, claude, codex, hermes, deepseekHarness] = await Promise.all([
     packageVersion([
-      process.platform === 'win32' ? 'runtime/windows/npm-global/node_modules/openclaw/package.json' : 'runtime/macos/npm-global/lib/node_modules/openclaw/package.json',
+      process.platform === 'win32' ? 'runtime/windows/npm-global/node_modules/openclaw/package.json' : 'runtime/macos/nvm/npm-global/lib/node_modules/openclaw/package.json',
       'node_modules/openclaw/package.json',
     ], process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'openclaw.cmd') : 'openclaw'),
     packageVersion([
-      process.platform === 'win32' ? 'runtime/windows/npm-global/node_modules/@anthropic-ai/claude-code/package.json' : 'runtime/macos/npm-global/lib/node_modules/@anthropic-ai/claude-code/package.json',
+      process.platform === 'win32' ? 'runtime/windows/npm-global/node_modules/@anthropic-ai/claude-code/package.json' : 'runtime/macos/nvm/npm-global/lib/node_modules/@anthropic-ai/claude-code/package.json',
       'node_modules/@anthropic-ai/claude-code/package.json',
     ], process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'claude.cmd') : 'claude'),
     packageVersion([
-      process.platform === 'win32' ? 'runtime/windows/npm-global/node_modules/@openai/codex/package.json' : 'runtime/macos/npm-global/lib/node_modules/@openai/codex/package.json',
+      process.platform === 'win32' ? 'runtime/windows/npm-global/node_modules/@openai/codex/package.json' : 'runtime/macos/nvm/npm-global/lib/node_modules/@openai/codex/package.json',
       'node_modules/@openai/codex/package.json',
     ], process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'codex.cmd') : 'codex'),
     versionFromMetadata(join(root, '.hermes', 'hermes-agent', 'pyproject.toml'), versionFromToml),

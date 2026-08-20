@@ -25,10 +25,28 @@ if [[ -d "$runtime_root/node/versions" ]]; then
   done
 fi
 
+# macOS 布局：runtime/macos/nvm/versions/node/...
+# 上面的 Windows 布局分支在 macOS 上不会触发，需要单独处理
+if [[ -d "$runtime_root/macos/nvm/versions/node" ]]; then
+  _macos_node_dir="$(ls -d "$runtime_root"/macos/nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
+  if [[ -x "$_macos_node_dir/node" ]]; then
+    export PATH="$_macos_node_dir:$runtime_root/macos/nvm/npm-global/bin:$runtime_root/macos/bin:$PATH"
+    unset _macos_node_dir
+  fi
+fi
+
+# 注入凭据（必须早于 pnpm dsh web 启动，因为 llm-pi-ai 在请求时才读 env）
+# $root = <project>/.dsh/deepseek-harness，所以 project_root = $root/../..
+_project_root="$(cd "$root/../.." 2>/dev/null && pwd)"
+if [[ -f "$_project_root/runtime/macos/scripts/load-creds.sh" ]]; then
+  source "$_project_root/runtime/macos/scripts/load-creds.sh"
+fi
+unset _project_root
+
 cd "$root"
 if ! command -v node >/dev/null 2>&1; then print -u2 'Node.js is not installed or is not on PATH.'; exit 1; fi
 pnpm_bin="$(command -v pnpm || true)"
-if [[ -z "$pnpm_bin" && -x "$runtime_root/npm-global/pnpm" ]]; then pnpm_bin="$runtime_root/npm-global/pnpm"; fi
+if [[ -z "$pnpm_bin" && -x "$runtime_root/macos/nvm/npm-global/bin/pnpm" ]]; then pnpm_bin="$runtime_root/macos/nvm/npm-global/bin/pnpm"; fi
 if [[ -z "$pnpm_bin" ]]; then print -u2 'pnpm is not installed or is not on PATH.'; exit 1; fi
 
 modules_marker="$root/node_modules/.modules.yaml"
