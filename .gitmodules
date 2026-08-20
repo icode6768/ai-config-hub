@@ -1,9 +1,0 @@
-[submodule ".dsh/deepseek-harness"]
-	path = .dsh/deepseek-harness
-	url = https://github.com/deepseek-ai/deepseek-harness.git
-	branch = master
-
-[submodule ".hermes/hermes-agent"]
-	path = .hermes/hermes-agent
-	url = https://github.com/NousResearch/hermes-agent.git
-	branch = main

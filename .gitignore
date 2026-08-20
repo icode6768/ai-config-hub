@@ -202,3 +202,8 @@ docs
 **/myproxy-capture/scripts/*_test_output.txt
 **/myproxy-capture/scripts/*.db
 **/myproxy-capture/scripts/*.sqlite*
+
+# Hermes runtime 会在 .hermes/hermes-agent/contributors/emails/ 注入本机用户名
+# (形如 agent@<Hostname>.local、agent@openclaw.local),只是本地运行时标记,不入版本控制
+.hermes/hermes-agent/contributors/emails/*@*.local
+.hermes/hermes-agent/contributors/emails/agent@*.local
