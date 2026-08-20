@@ -143,12 +143,20 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
-# Runtime files
-runtime/*
-!runtime/windows/scripts
-!runtime/windows/scripts/**
-!runtime/macos/scripts
-!runtime/macos/scripts/**
+# Runtime files — 逐项忽略二进制/数据目录,scripts 子目录不在列表中即默认跟踪
+runtime/windows/bin
+runtime/windows/node
+runtime/windows/npm-global
+runtime/windows/python
+runtime/windows/temp
+runtime/macos/bin
+runtime/macos/node
+runtime/macos/npm-global
+runtime/macos/python
+runtime/macos/temp
+runtime/macos/homebrew
+runtime/macos/nvm
+runtime/macos/pyenv
 
 docs
 
