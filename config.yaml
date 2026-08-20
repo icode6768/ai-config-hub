@@ -3,8 +3,8 @@ global:
   api:
     provider: dongchuangai
     # Shared base URL for models, OAuth, skill marketplace, and software updates.
-    #baseUrl: https://api.dongchuangai.com/v1
-    baseUrl: http://localhost:5000/v1
+    baseUrl: https://api.dongchuangai.com/v1
+    # baseUrl: http://localhost:5000/v1
     apiKey: sk-f44ddd933d221b13d4d5c48362b778bb8694cac4452bf939
     model: gpt-5.5
     authSource: dongchuangai-oauth

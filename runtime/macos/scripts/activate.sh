@@ -23,27 +23,21 @@ _RUNTIME_DIR="$(cd "$_SCRIPT_DIR/.." && pwd)"
 export PORTABLE_RUNTIME_DIR="$_RUNTIME_DIR"
 
 # --- 路径定义 ---
-HOMEBREW_DIR="$_RUNTIME_DIR/homebrew"
 NVM_DIR="$_RUNTIME_DIR/nvm"
 PYENV_ROOT="$_RUNTIME_DIR/pyenv"
 MISE_DATA_DIR="$_RUNTIME_DIR/mise"
-NPM_GLOBAL_DIR="$_RUNTIME_DIR/npm-global"
+# npm-global 必须放在 nvm/ 子树下：NVM 在加载时检查 NPM_CONFIG_PREFIX
+# 是否在 NVM_DIR 内（nvm.sh:3038），否则直接 nvm deactivate 并退出。
+NPM_GLOBAL_DIR="$_RUNTIME_DIR/nvm/npm-global"
 
-export HOMEBREW_DIR NVM_DIR PYENV_ROOT MISE_DATA_DIR NPM_GLOBAL_DIR
+export NVM_DIR PYENV_ROOT MISE_DATA_DIR NPM_GLOBAL_DIR
 
 # --- npm 全局安装目录重定向到 runtime（覆盖 ~/.npmrc 的 prefix 设置）---
-# 使用环境变量而非修改 ~/.npmrc，对 nvm 友好且不影响系统 npm
+# 必须放在 nvm.sh 加载后；但 NVM 只读不写 NPM_CONFIG_PREFIX，所以可以安全覆盖
 export NPM_CONFIG_PREFIX="$NPM_GLOBAL_DIR"
 mkdir -p "$NPM_GLOBAL_DIR/bin"
 
-# --- 1. Homebrew ---
-if [ -f "$HOMEBREW_DIR/bin/brew" ]; then
-  eval "$("$HOMEBREW_DIR/bin/brew" shellenv)"
-  export HOMEBREW_NO_AUTO_UPDATE=1
-  export HOMEBREW_NO_ANALYTICS=1
-fi
-
-# --- 2. NVM (Node.js 版本管理) ---
+# --- 1. NVM (Node.js 版本管理) ---
 if [ -f "$NVM_DIR/nvm.sh" ]; then
   export NVM_DIR
   # shellcheck source=/dev/null
@@ -52,7 +46,7 @@ if [ -f "$NVM_DIR/nvm.sh" ]; then
   [ -f ".nvmrc" ] && nvm use --silent 2>/dev/null || true
 fi
 
-# --- 3. pyenv (Python 版本管理) ---
+# --- 2. pyenv (Python 版本管理) ---
 if [ -d "$PYENV_ROOT/bin" ]; then
   export PYENV_ROOT
   export PATH="$PYENV_ROOT/bin:$PATH"
@@ -92,7 +86,6 @@ _print_version() {
   fi
 }
 
-_print_version "brew"      "brew --version | head -1"
 _print_version "node"      "node --version"
 _print_version "npm"       "npm --version"
 _print_version "openclaw"  "openclaw --version 2>/dev/null || openclaw -v 2>/dev/null"

@@ -24,7 +24,6 @@ echo ""
 
 # --- 检查编译依赖 ---
 echo "🔍 检查编译依赖..."
-MISSING_DEPS=()
 
 # Xcode Command Line Tools（提供 gcc、make 等）
 if ! xcode-select -p &>/dev/null; then
@@ -32,30 +31,22 @@ if ! xcode-select -p &>/dev/null; then
   echo "   xcode-select --install"
   exit 1
 fi
+echo "   ✅ Xcode Command Line Tools 已就绪"
 
-# 检查可选的本地 Homebrew（优先用便携 Homebrew）
-BREW_BIN=""
-if [ -f "$RUNTIME_DIR/homebrew/bin/brew" ]; then
-  BREW_BIN="$RUNTIME_DIR/homebrew/bin/brew"
-  eval "$("$BREW_BIN" shellenv)" 2>/dev/null || true
-elif command -v brew &>/dev/null; then
-  BREW_BIN="$(command -v brew)"
-fi
+# 不再通过 Homebrew 安装编译依赖；pyenv 会使用 macOS 自带的 SDK 库
+# 若需要完整的 ssl/tcl-tk 支持，可手动安装 Homebrew 后再补装对应 formulae
 
-# 安装 Python 编译依赖（通过可用的 Homebrew）
-if [ -n "$BREW_BIN" ]; then
-  echo "   使用 Homebrew: $BREW_BIN"
-  BREW_DEPS=(openssl readline sqlite3 xz zlib tcl-tk)
-  for dep in "${BREW_DEPS[@]}"; do
-    if ! "$BREW_BIN" list "$dep" &>/dev/null; then
-      echo "   安装编译依赖: $dep"
-      "$BREW_BIN" install "$dep" || echo "   ⚠️  $dep 安装失败，Python 某些功能可能受限"
-    fi
-  done
-else
-  echo "   ⚠️  未找到 Homebrew，Python 某些可选模块可能无法编译"
-  echo "      建议先运行: bash install-homebrew.sh"
-fi
+# --- Python 源镜像（DNS 不通 python.org 时使用）---
+# 默认清华 TUNA，国内可达；可运行时覆盖：
+#   PYTHON_BUILD_MIRROR_URL=https://your-mirror bash install-python.sh
+#
+# 工作原理：python-build 默认会拼 `${MIRROR}/<sha256>`，
+# 对国内按版本号组织的镜像无效，需要同时设置 SKIP_CHECKSUM 走 sed 重写路径。
+# 下载完成后仍会校验 sha256（python-build line 603 的 verify_checksum），安全。
+PYTHON_BUILD_MIRROR_URL_DEFAULT="https://mirrors.tuna.tsinghua.edu.cn/python"
+export PYTHON_BUILD_MIRROR_URL="${PYTHON_BUILD_MIRROR_URL:-$PYTHON_BUILD_MIRROR_URL_DEFAULT}"
+export PYTHON_BUILD_MIRROR_URL_SKIP_CHECKSUM=1
+echo "   Python 源镜像: $PYTHON_BUILD_MIRROR_URL"
 
 # --- 安装 pyenv ---
 echo ""
@@ -96,17 +87,28 @@ for PY_VERSION in "${PY_VERSIONS[@]}"; do
     continue
   fi
 
-  # 设置编译参数（链接 Homebrew 的 openssl 和 readline）
-  if [ -n "$BREW_BIN" ]; then
-    BREW_PREFIX="$("$BREW_BIN" --prefix)"
-    CONFIGURE_OPTS=""
-    LDFLAGS="-L$BREW_PREFIX/lib"
-    CPPFLAGS="-I$BREW_PREFIX/include"
-    export CONFIGURE_OPTS LDFLAGS CPPFLAGS
-  fi
-
-  PYTHON_CONFIGURE_OPTS="--enable-optimizations --with-lto" \
-    pyenv install "$PY_VERSION"
+  # 让 pyenv 使用 macOS SDK 自带的 openssl/readline/sqlite 等
+  # 3 次重试 + 指数退避（2s/4s/8s），规避瞬时网络抖动
+  MAX_RETRY=3
+  ATTEMPT=0
+  while [ $ATTEMPT -lt $MAX_RETRY ]; do
+    ATTEMPT=$((ATTEMPT + 1))
+    # if 是 set -e 的安全上下文，pyenv install 失败不会立即退出
+    if PYTHON_CONFIGURE_OPTS="--enable-optimizations --with-lto" \
+        pyenv install "$PY_VERSION"; then
+      break
+    fi
+    if [ $ATTEMPT -lt $MAX_RETRY ]; then
+      WAIT=$((2 ** ATTEMPT))   # 2, 4, 8
+      echo "   ⚠️  安装失败，${WAIT}s 后重试 (第 $ATTEMPT/$MAX_RETRY 次)..."
+      sleep "$WAIT"
+    else
+      echo "   ❌ 已重试 $MAX_RETRY 次仍失败"
+      echo "      检查网络: ping www.python.org"
+      echo "      切换镜像: PYTHON_BUILD_MIRROR_URL=https://mirrors.aliyun.com/python/ftp/python bash install-python.sh"
+      exit 1
+    fi
+  done
 
   echo "   ✅ Python $PY_VERSION 安装完成"
 done
