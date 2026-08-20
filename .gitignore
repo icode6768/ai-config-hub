@@ -185,3 +185,12 @@ docs
 !.hermes/skills/**
 !.hermes/hermes-agent
 !.hermes/hermes-agent/**
+
+# myproxy-capture skill 中的敏感文件(曾在 commit 783283a 入仓,已用 git filter-repo 清理)
+# 任何 .<agent>/skills/myproxy-capture/scripts/ 下的 system.conf / *.pem / test_output / *.db 都视作敏感
+**/myproxy-capture/scripts/system.conf
+**/myproxy-capture/scripts/key.pem
+**/myproxy-capture/scripts/*.pem
+**/myproxy-capture/scripts/*_test_output.txt
+**/myproxy-capture/scripts/*.db
+**/myproxy-capture/scripts/*.sqlite*
