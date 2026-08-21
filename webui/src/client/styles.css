@@ -464,6 +464,44 @@ button:disabled {
 
 .configCard { gap: 14px; }
 
+.envCard {
+  gap: 14px;
+}
+
+.systemPathRow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfd;
+  cursor: pointer;
+}
+
+.systemPathRow input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.systemPathRow span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.systemPathRow strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.systemPathRow small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .configTitle {
   display: grid;
   gap: 6px;

@@ -36,6 +36,7 @@ type Bootstrap = {
   config: LauncherConfig
   appFiles: Record<AppId, AppFileState>
   steps: StepStatus[]
+  platform: 'win32' | 'darwin' | 'linux'
   runtime: {
     configExists: boolean
     versions: {
@@ -358,6 +359,14 @@ export default function App(): React.ReactElement {
   const [updateModalOpen, setUpdateModalOpen] = useState(false)
   const [updateBusy, setUpdateBusy] = useState(false)
   const [updateMessage, setUpdateMessage] = useState('')
+  const systemPathNodeVersion = bootstrap?.runtime.versions.node.available ? bootstrap.runtime.versions.node.version : 'v24.18.0'
+  const systemPathVersion = bootstrap?.runtime.versions.python.available ? bootstrap.runtime.versions.python.version : '3.11.9'
+  const systemPathEnabled = Boolean(bootstrap?.config.global.launch.persistSystemPath)
+  const systemPathDescription = bootstrap?.platform === 'win32'
+    ? `写入 runtime/windows/bin、runtime/windows/npm-global、runtime/windows/node/versions/${systemPathNodeVersion} 和 runtime/windows/python/versions/${systemPathVersion} 到系统 PATH`
+    : bootstrap?.platform === 'darwin'
+      ? '写入 ~/.bash_profile，并执行 source ~/.bash_profile'
+      : '当前平台不支持自动写入系统环境变量'
 
   async function refresh({ reloadDraft = false }: { reloadDraft?: boolean } = {}): Promise<void> {
     const controller = new AbortController()
@@ -510,13 +519,15 @@ export default function App(): React.ReactElement {
     setSaving(true)
     setStatus('')
     try {
-      await fetch('/api/global-config', {
+      const response = await fetch('/api/global-config', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ config: bootstrap.config }),
       })
+      const body = await response.json() as { error?: string; systemPath?: { message: string } }
+      if (!response.ok) throw new Error(body.error ?? '保存全局配置失败')
       await refresh({ reloadDraft: !appRawDirty })
-      setStatus('全局配置已保存')
+      setStatus(body.systemPath?.message ? `全局配置已保存；${body.systemPath.message}` : '全局配置已保存')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '保存全局配置失败')
     } finally {
@@ -848,6 +859,42 @@ export default function App(): React.ReactElement {
         <section className="panel">
           {activeStep === 'environment' && (
             <div className="stack">
+              <div className="appCard envCard">
+                <div className="appHead">
+                  <div>
+                    <strong>系统环境写入</strong>
+                    <span>保存后会按平台同步运行时环境</span>
+                  </div>
+                  <div className={`chip ${systemPathEnabled ? 'green' : ''}`}>{systemPathEnabled ? '已启用' : '未启用'}</div>
+                </div>
+                <label className="systemPathRow">
+                  <input
+                    type="checkbox"
+                    checked={systemPathEnabled}
+                    disabled={bootstrap?.platform !== 'win32' && bootstrap?.platform !== 'darwin'}
+                    onChange={event => setBootstrap(previous => previous ? {
+                      ...previous,
+                      config: {
+                        ...previous.config,
+                        global: {
+                          ...previous.config.global,
+                          launch: {
+                            ...previous.config.global.launch,
+                            persistSystemPath: event.target.checked,
+                          },
+                        },
+                      },
+                    } : previous)}
+                  />
+                  <span>
+                    <strong>写入系统环境变量 PATH</strong>
+                    <small>{systemPathDescription}</small>
+                  </span>
+                </label>
+                <div className="hint">
+                  勾选后再点击右上角“保存全局”，会把这套运行环境持久化到当前用户或系统环境中。
+                </div>
+              </div>
               <div className="grid two">
                 <VersionCard title="Node.js" version={bootstrap.runtime.versions.node} />
                 <VersionCard title="Python" version={bootstrap.runtime.versions.python} />

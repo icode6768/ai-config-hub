@@ -39,6 +39,7 @@ export function defaultLauncherConfig(): LauncherConfig {
           codex: 'http://127.0.0.1:8082',
           'deepseek-harness': 'http://127.0.0.1:3080',
         },
+        persistSystemPath: false,
       },
       update: {
         app_id: 0,
@@ -211,6 +212,7 @@ export async function loadGlobalConfig(): Promise<LauncherConfig> {
           codex: typeof launch.webUrls?.codex === 'string' ? launch.webUrls.codex : defaults.global.launch.webUrls.codex,
           'deepseek-harness': typeof launch.webUrls?.['deepseek-harness'] === 'string' ? launch.webUrls['deepseek-harness'] : defaults.global.launch.webUrls['deepseek-harness'],
         },
+        persistSystemPath: typeof launch.persistSystemPath === 'boolean' ? launch.persistSystemPath : defaults.global.launch.persistSystemPath,
       },
       update: {
         app_id: typeof update.app_id === 'number' && Number.isSafeInteger(update.app_id) && update.app_id >= 0 ? update.app_id : defaults.global.update.app_id,

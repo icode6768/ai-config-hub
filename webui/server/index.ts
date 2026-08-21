@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite'
 import { APP_IDS, type AppId, type AppFileState, type LauncherConfig, type RuntimeVersions } from '../src/shared/types'
 import { APP_FILE_BINDINGS, dshHomePath, globalConfigPath, rootPath } from '../src/shared/paths'
 import { applySharedApi, defaultLauncherConfig, inferSharedApiFromAppFiles, isStepComplete, loadAppFileState, loadGlobalConfig, saveAppFile, saveGlobalConfig, syncAppPayload } from '../src/shared/config'
+import { syncRuntimeSystemPath } from '../src/shared/system-path'
 import { ensureDshHome } from '../src/shared/dsh'
 import { detectRuntimeVersions } from '../src/shared/runtime'
 import { ensureDeepseekWechatBridge } from './deepseek-wechat'
@@ -142,9 +143,10 @@ async function main(): Promise<void> {
   let currentFiles = await buildAppFiles()
   const runtimeVersions: RuntimeVersions = await detectRuntimeVersions()
 
-  async function syncGlobalConfig(config: LauncherConfig): Promise<void> {
+  async function syncGlobalConfig(config: LauncherConfig): Promise<Awaited<ReturnType<typeof syncRuntimeSystemPath>>> {
     currentConfig = applySharedApi(config)
     await saveGlobalConfig(currentConfig)
+    const systemPathResult = await syncRuntimeSystemPath(rootPath(), currentConfig.global.launch.persistSystemPath)
     await ensureOpenclawGatewayConfig(currentConfig)
     for (const appId of APP_IDS) {
       if (appId === 'openclaw') continue
@@ -153,6 +155,7 @@ async function main(): Promise<void> {
       if (payload) await saveAppFile(appId, payload)
     }
     currentFiles = await buildAppFiles()
+    return systemPathResult
   }
 
   const server = createHttpServer(async (req, res) => {
@@ -168,6 +171,7 @@ async function main(): Promise<void> {
           appFiles: currentFiles,
           steps: isStepComplete(currentConfig, currentFiles, installedSkills.length),
           skills: installedSkills,
+          platform: process.platform,
           runtime: {
             configExists: existsSync(globalConfigPath()),
             versions: runtimeVersions,
@@ -310,8 +314,8 @@ async function main(): Promise<void> {
           sendJson(res, { error: 'Missing config' }, 400)
           return
         }
-        await syncGlobalConfig(next)
-        sendJson(res, { ok: true, config: currentConfig, steps: isStepComplete(currentConfig, currentFiles, (await listInstalledSkills()).length) })
+        const systemPath = await syncGlobalConfig(next)
+        sendJson(res, { ok: true, config: currentConfig, systemPath, steps: isStepComplete(currentConfig, currentFiles, (await listInstalledSkills()).length) })
         return
       }
 

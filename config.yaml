@@ -2,9 +2,7 @@ version: 1
 global:
   api:
     provider: dongchuangai
-    # Shared base URL for models, OAuth, skill marketplace, and software updates.
     baseUrl: https://api.dongchuangai.com/v1
-    # baseUrl: http://localhost:5000/v1
     apiKey: sk-f44ddd933d221b13d4d5c48362b778bb8694cac4452bf939
     model: gpt-5.5
     authSource: dongchuangai-oauth
@@ -19,16 +17,16 @@ global:
       claude: http://127.0.0.1:8081
       codex: http://127.0.0.1:8082
       deepseek-harness: http://127.0.0.1:3080
+    persistSystemPath: true
   update:
-    # Fill these with the update record owner and application IDs from the update service.
     app_id: 28
     user_id: 50
 apps:
   openclaw:
     wechat:
       enabled: true
-      accountId: b42f7e65385f-im-bot
-      token: b42f7e65385f@im.bot:0600000aeda8f8442c374f81cfb99d316941ee
+      accountId: b8223f12f106-im-bot
+      token: b8223f12f106@im.bot:06000094977c7574f9d7be3e54e4f7df92f7b4
       baseUrl: https://ilinkai.weixin.qq.com
       cdnBaseUrl: https://novac2c.cdn.weixin.qq.com/c2c
       dmPolicy: open

@@ -1,4 +1,4 @@
-model = "MiniMax-M3"
+model = "gpt-5.5"
 model_provider = "dongchuangai"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
@@ -35,3 +35,4 @@ trust_level = "trusted"
 
 [windows]
 sandbox = "unelevated"
+

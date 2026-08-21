@@ -13,6 +13,7 @@ import { appSkillDirectories, parseSkillDocument } from './skill-store'
 import { resolveRuntimePhase, terminalArgs, terminalEnvironment } from './app-processes'
 import { resolveEditorDraft } from '../src/shared/editor-draft'
 import { runtimePlatformDir, runtimeStartEnvPath } from '../src/shared/paths'
+import { applyBashProfile, applyWindowsPath, resolveWindowsRuntimePathEntries, resolveWindowsPathSyncScopes } from '../src/shared/system-path'
 
 assert.equal(parseVersionOutput('node v24.18.0\r\n'), 'v24.18.0')
 assert.equal(parseVersionOutput('Python 3.11.9\r\n'), '3.11.9')
@@ -24,6 +25,32 @@ assert.equal(runtimePlatformDir('win32').endsWith('runtime\\windows'), true)
 assert.equal(runtimePlatformDir('darwin').endsWith('runtime\\macos'), true)
 assert.equal(runtimeStartEnvPath('win32').endsWith('runtime\\windows\\scripts\\start-env.cmd'), true)
 assert.equal(runtimeStartEnvPath('darwin').endsWith('runtime\\macos\\scripts\\start-env.sh'), true)
+const runtimeRoot = 'X:\\portable-lobster'
+assert.deepEqual(resolveWindowsRuntimePathEntries(runtimeRoot), [
+  'X:\\portable-lobster\\runtime\\windows\\bin',
+  'X:\\portable-lobster\\runtime\\windows\\npm-global',
+  'X:\\portable-lobster\\runtime\\windows\\node\\versions\\v24.18.0',
+  'X:\\portable-lobster\\runtime\\windows\\python\\versions\\3.11.9',
+])
+assert.equal(
+  applyWindowsPath('C:\\Windows\\System32;X:\\portable-lobster\\runtime\\windows\\bin', resolveWindowsRuntimePathEntries(runtimeRoot), true),
+  'X:\\portable-lobster\\runtime\\windows\\npm-global;X:\\portable-lobster\\runtime\\windows\\node\\versions\\v24.18.0;X:\\portable-lobster\\runtime\\windows\\python\\versions\\3.11.9;C:\\Windows\\System32',
+)
+assert.equal(
+  applyWindowsPath('X:\\portable-lobster\\runtime\\windows\\bin;C:\\Windows\\System32', resolveWindowsRuntimePathEntries(runtimeRoot), false),
+  'C:\\Windows\\System32',
+)
+assert.deepEqual(resolveWindowsPathSyncScopes(true, false), ['User'])
+assert.deepEqual(resolveWindowsPathSyncScopes(true, true), ['Machine'])
+assert.deepEqual(resolveWindowsPathSyncScopes(false, true), ['Machine', 'User'])
+assert.equal(
+  applyBashProfile('', '/Users/demo/usb-lobster', true),
+  "# USB LOBSTER RUNTIME START\nsource '/Users/demo/usb-lobster/runtime/macos/scripts/activate.sh'\n# USB LOBSTER RUNTIME END\n",
+)
+assert.equal(
+  applyBashProfile("# existing\n\n# USB LOBSTER RUNTIME START\nsource '/Users/demo/usb-lobster/runtime/macos/scripts/activate.sh'\n# USB LOBSTER RUNTIME END\n", '/Users/demo/usb-lobster', false),
+  '# existing\n',
+)
 
 const syncedOpenclaw = JSON.parse(syncAppPayload(
   'openclaw',

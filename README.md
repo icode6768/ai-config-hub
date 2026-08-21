@@ -4,7 +4,7 @@
 > panel that orchestrates five AI agent frameworks behind a single local web UI.
 
 ![Version](https://img.shields.io/badge/version-1.0.2-blue)
-![License](https://img.shields.io/badge/license-Apache--2.0-green)
+![License](https://img.shields.io/badge/license-LGPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B%20%7C%20macOS%2012%2B-lightgrey)
 
 [English](README.md) · [简体中文](README_zh.md)
@@ -132,7 +132,7 @@ when you are ready.
 ├── start-windows.bat          ← Windows entry point
 ├── start-macos.command         ← macOS entry point
 ├── config.yaml                 ← single source of truth (tracked)
-├── LICENSE                     ← Apache 2.0 (this file)
+├── LICENSE                     ← LGPL-3.0 (this file)
 ├── README.md / README_zh.md    ← you are here
 │
 ├── webui/                      ← panel source (tracked)
@@ -283,26 +283,61 @@ On macOS the helper also strips Gatekeeper quarantine xattrs
 
 ## 📜 License & Commercial Use
 
-This project is licensed under the **Apache License, Version 2.0**. See
-[`LICENSE`](LICENSE) for the full text.
+This project is dual-licensed:
 
-`SPDX-License-Identifier: Apache-2.0`
+1. **GNU Lesser General Public License v3.0** (`SPDX-License-Identifier:
+   LGPL-3.0-only`) — see [`LICENSE`](LICENSE) for the full text.
+2. A separate **commercial license** for organizations that want to bypass
+   LGPL-3.0 obligations — see [Commercial license](#commercial-license)
+   below.
 
-### Free use
+### Free use under LGPL-3.0
 
-- **Individual users** — completely free, no restrictions.
-- **One-person companies** (sole proprietors, freelancers, single-member LLCs,
-  individual industrial / commercial households) — completely free, no
-  restrictions.
+LGPL-3.0 already permits free use, copying, modification, and
+redistribution of this software. The standard LGPL-3.0 obligations you
+must follow when you distribute this software (or a Combined Work that
+links against it):
+
+- **Preserve copyright & license notices** on every copy and on each
+  source file header (LGPL-3.0 §1, §4(a)).
+- **Modifications to the Library itself** must be released under LGPL-3.0
+  (LGPL-3.0 §2, §5; weak copyleft applies only to the Library portions,
+  not to your Application).
+- **Static linking** — if you link the Library statically into your
+  Application, you must provide the Minimal Corresponding Source plus the
+  Corresponding Application Code, and a clear relinking procedure
+  (LGPL-3.0 §4(d)).
+- **Dynamic linking** — the recommended path for proprietary Applications.
+  You may link against the unmodified Library at run time with no
+  relinking obligations beyond preserving notices (LGPL-3.0 §4(d)(1)).
+- **No anti-circumvention** — do not apply technical measures that
+  restrict the LGPL §3 rights of end users (e.g. DRM that blocks
+  replacement of the Library).
+- **No sublicensing** — you may not impose further restrictions on the
+  LGPL-licensed portions.
+- **Pure SaaS / internal use** (no distribution of the Library or
+  Combined Work) — no LGPL obligations beyond preserving notices in any
+  source you keep.
 
 ### Commercial license
 
-- **Enterprises with 3 or more people** (by registered headcount or active
-  team size, whichever is greater) — a commercial license is required.
-- The commercial license grants: technical support, SLA guarantees, custom
-  development, on-premise / private deployment, and IP indemnification.
-- For pricing and procurement, contact the maintainers (the contact on file
-  in [`config.yaml`](config.yaml) → `global.api.authAccountName`).
+If your product, procurement policy, or IP posture makes the LGPL-3.0
+weak-copyleft obligations unworkable — for example:
+
+- You need to ship a **proprietary / closed-source derivative work**
+  without releasing the Library's modifications.
+- You need to **statically link** without providing relinking capability
+  or the Minimal Corresponding Source.
+- You need an **IP indemnification** or commercial warranty that LGPL-3.0
+  disclaims (LGPL-3.0 §15, §16).
+- Your legal team requires a **paperwork-only** license on top of the
+  open-source terms.
+
+…then the commercial license is the alternative path. It grants the
+above freedoms (and usually technical support, custom development, and
+on-premise / private deployment assistance) without the LGPL-3.0
+copyleft obligations. Contact the maintainers via the address in
+[`config.yaml`](config.yaml) → `global.api.authAccountName`.
 
 ## 🙏 Acknowledgments / Third-party Notices
 
@@ -325,8 +360,11 @@ subdirectories.
   TypeScript (Apache-2.0), tsx (MIT), `@iarna/toml`, `yaml`, `qrcode`,
   `lucide-react` — each carries its own license.
 
-Per **Apache License §4(d)**, any modified files from upstream MIT-licensed
-subprojects retain their original copyright and license notice.
+Per **LGPL-3.0 §1 & §4(a)**, all upstream MIT-licensed subprojects retain
+their original copyright and license notice; the LGPL-3.0 weak-copyleft
+(per §2 & §5) applies only to modifications of this project's own source
+that is part of the Library, not to those upstream MIT-licensed portions,
+which remain under their original MIT terms.
 
 ---
 

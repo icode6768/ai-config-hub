@@ -54,6 +54,7 @@ export interface LauncherConfig {
       openclawConfigPath: string
       openclawStateDir: string
       webUrls: LaunchUrls
+      persistSystemPath: boolean
     }
     update: {
       app_id: number
