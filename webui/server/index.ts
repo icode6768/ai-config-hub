@@ -228,8 +228,7 @@ async function main(): Promise<void> {
           sendJson(res, { error: error instanceof Error ? error.message : '准备更新失败' }, 422)
           return
         }
-        sendJson(res, { ok: true, message: '更新包已验证，正在关闭服务并安装新版本' })
-        setTimeout(() => stopChildProcesses(0), 350)
+        sendJson(res, { ok: true, message: '更新文件已直接覆盖到 webui，当前进程无需关闭' })
         return
       }
 

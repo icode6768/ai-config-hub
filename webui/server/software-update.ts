@@ -1,14 +1,16 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { execFile as execFileCallback } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import { promisify } from 'node:util'
 import { rootPath } from '../src/shared/paths'
 import { dongchuangPlatformUrl } from '../src/shared/dongchuangai'
 import type { LauncherConfig } from '../src/shared/types'
 
-const PRESERVED_PATHS = ['config.yaml', '.openclaw', '.claude', '.codex', '.hermes', '.dsh']
+const PRESERVED_WEBUI_PATHS = ['config.yaml', 'node_modules']
+const execFile = promisify(execFileCallback)
 
 export type SoftwareUpdate = {
   version: string
@@ -102,12 +104,8 @@ function expectedHash(hash: string): string {
   return hash.trim().replace(/^sha256:/i, '').toLowerCase()
 }
 
-function platformMarker(): string {
-  return process.platform === 'darwin' ? 'start-macos.command' : 'start-windows.bat'
-}
-
 function assertCompletePortableArchive(archive: Buffer): void {
-  const requiredEntries = ['webui/package.json', platformMarker()]
+  const requiredEntries = ['webui/package.json']
   const missing = requiredEntries.filter(entry => !archive.includes(Buffer.from(entry, 'utf8')))
   if (missing.length > 0) {
     throw new Error(`更新包不是完整便携版，缺少 ${missing.join('、')}。请在更新服务上传包含项目根目录的完整 ZIP 包`)
@@ -123,11 +121,10 @@ function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
-function buildPowerShellInstaller(
+export function buildPowerShellInstaller(
   root: string,
   zipPath: string,
   staging: string,
-  launcher: string,
   errorPath: string,
 ): string {
   return [
@@ -135,16 +132,20 @@ function buildPowerShellInstaller(
     `$root = ${psLiteral(root)}`,
     `$zip = ${psLiteral(zipPath)}`,
     `$staging = ${psLiteral(staging)}`,
-    `$launcher = ${psLiteral(launcher)}`,
     `$errorPath = ${psLiteral(errorPath)}`,
-    `$preserve = @(${PRESERVED_PATHS.map(psLiteral).join(', ')})`,
+    `$preserve = @(${PRESERVED_WEBUI_PATHS.map(psLiteral).join(', ')})`,
     'try {',
     '  New-Item -ItemType Directory -Path $staging -Force | Out-Null',
     '  Expand-Archive -LiteralPath $zip -DestinationPath $staging -Force',
     '  $entries = @(Get-ChildItem -LiteralPath $staging -Force)',
     '  $source = if ($entries.Count -eq 1 -and $entries[0].PSIsContainer) { $entries[0].FullName } else { $staging }',
-    '  Get-ChildItem -LiteralPath $source -Force | ForEach-Object { if ($preserve -notcontains $_.Name) { Copy-Item -LiteralPath $_.FullName -Destination $root -Recurse -Force } }',
-    '  Start-Process -FilePath $launcher -WorkingDirectory $root',
+    '  $webuiSource = Join-Path $source "webui"',
+    '  $webuiTarget = Join-Path $root "webui"',
+    '  if (-not (Test-Path -LiteralPath $webuiSource -PathType Container)) {',
+    '    if (Test-Path -LiteralPath (Join-Path $source "package.json") -PathType Leaf) { $webuiSource = $source } else { throw "更新包缺少 webui 目录或 package.json" }',
+    '  }',
+    '  New-Item -ItemType Directory -Path $webuiTarget -Force | Out-Null',
+    '  Get-ChildItem -LiteralPath $webuiSource -Force | ForEach-Object { if ($preserve -notcontains $_.Name) { Copy-Item -LiteralPath $_.FullName -Destination $webuiTarget -Recurse -Force } }',
     '} catch {',
     '  $_ | Out-File -LiteralPath $errorPath -Encoding utf8',
     '  exit 1',
@@ -152,15 +153,13 @@ function buildPowerShellInstaller(
   ].join('\r\n')
 }
 
-function buildMacosInstaller(
+export function buildMacosInstaller(
   root: string,
   zipPath: string,
   staging: string,
-  launcher: string,
   errorPath: string,
 ): string {
-  // PRESERVE 数组的 shell 单引号形式
-  const preserveShell = PRESERVED_PATHS.map((entry) => `  ${shQuote(entry)}`).join('\n')
+  const preserveShell = PRESERVED_WEBUI_PATHS.map((entry) => `  ${shQuote(entry)}`).join('\n')
   return [
     '#!/bin/bash',
     'set -euo pipefail',
@@ -169,7 +168,6 @@ function buildMacosInstaller(
     `ROOT=${shQuote(root)}`,
     `ZIP=${shQuote(zipPath)}`,
     `STAGING=${shQuote(staging)}`,
-    `LAUNCHER=${shQuote(launcher)}`,
     `ERROR_LOG=${shQuote(errorPath)}`,
     '',
     'PRESERVED=(',
@@ -198,25 +196,27 @@ function buildMacosInstaller(
     '  SRC="$STAGING"',
     'fi',
     '',
-    '# 3) 复制非 PRESERVED 项到 ROOT',
-    'for item in "$SRC"/*; do',
+    '# 3) 只复制 webui 内容，保留当前配置和 node_modules',
+    'WEBUI_SOURCE="$SRC/webui"',
+    'WEBUI_TARGET="$ROOT/webui"',
+    'if [ ! -d "$WEBUI_SOURCE" ]; then',
+    '  if [ -f "$SRC/package.json" ]; then WEBUI_SOURCE="$SRC"; else log_error "webui directory or package.json is missing"; fi',
+    'fi',
+    'mkdir -p "$WEBUI_TARGET"',
+    'shopt -s dotglob nullglob',
+    'for item in "$WEBUI_SOURCE"/*; do',
     '  name="$(basename "$item")"',
     '  skip=0',
     '  for p in "${PRESERVED[@]}"; do',
     '    if [ "$name" = "$p" ]; then skip=1; break; fi',
     '  done',
     '  if [ "$skip" -eq 0 ]; then',
-    '    cp -R "$item" "$ROOT/" || log_error "copy failed: $item -> $ROOT"',
+    '    cp -R "$item" "$WEBUI_TARGET/" || log_error "copy failed: $item -> $WEBUI_TARGET"',
     '  fi',
     'done',
     '',
-    '# 4) 解除新复制文件的 macOS 隔离属性（外置/U 盘装新文件时必需）',
-    'xattr -rd com.apple.quarantine "$ROOT" 2>/dev/null || true',
-    '',
-    '# 5) 重启启动器（macOS .command 文件双击 / open 都会用 Terminal.app 打开）',
-    'if [ -f "$LAUNCHER" ]; then',
-    '  nohup open "$LAUNCHER" >/dev/null 2>&1 &',
-    'fi',
+    '# 4) 解除新复制 webui 文件的 macOS 隔离属性',
+    'xattr -rd com.apple.quarantine "$WEBUI_TARGET" 2>/dev/null || true',
     '',
     'exit 0',
     '',
@@ -247,58 +247,19 @@ export async function prepareSoftwareUpdate(config: LauncherConfig, expectedVers
   const staging = join(updateDir, 'staging')
 
   if (process.platform === 'win32') {
-    const launcher = join(root, 'start-windows.bat')
-    if (!existsSync(launcher)) throw new Error('未找到 Windows 启动脚本，无法自动安装')
     const scriptPath = join(updateDir, 'install-update.ps1')
     const errorPath = join(updateDir, 'install-update-error.log')
-    const script = buildPowerShellInstaller(root, zipPath, staging, launcher, errorPath)
+    const script = buildPowerShellInstaller(root, zipPath, staging, errorPath)
     // Windows PowerShell 5.1 needs a BOM to read portable paths containing Chinese correctly.
     await writeFile(scriptPath, `﻿${script}`, 'utf8')
-    const waiterPath = join(updateDir, 'wait-and-install.ps1')
-    const waiter = [
-      `$targetPid = ${process.pid}`,
-      `$installer = ${psLiteral(scriptPath)}`,
-      `$errorPath = ${psLiteral(errorPath)}`,
-      'try {',
-      '  while (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 250 }',
-      '  & $installer',
-      '} catch {',
-      '  $_ | Out-File -LiteralPath $errorPath -Encoding utf8',
-      '  exit 1',
-      '}',
-    ].join('\r\n')
-    await writeFile(waiterPath, `﻿${waiter}`, 'utf8')
-    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', waiterPath], { detached: true, stdio: 'ignore', windowsHide: true })
-    child.unref()
+    await execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], { cwd: root, windowsHide: true })
     return
   }
 
   // macOS path
-  const launcher = join(root, 'start-macos.command')
-  if (!existsSync(launcher)) throw new Error('未找到 macOS 启动脚本 (start-macos.command)，无法自动安装')
   const scriptPath = join(updateDir, 'install-update.sh')
   const errorPath = join(updateDir, 'install-update-error.log')
-  const script = buildMacosInstaller(root, zipPath, staging, launcher, errorPath)
+  const script = buildMacosInstaller(root, zipPath, staging, errorPath)
   await writeFile(scriptPath, script, { mode: 0o755 })
-  // 等 dev server 退出后再装，避免覆盖运行中文件
-  const waiterPath = join(updateDir, 'wait-and-install.sh')
-  const waiter = [
-    '#!/bin/bash',
-    'set -euo pipefail',
-    `TARGET_PID=${process.pid}`,
-    `INSTALLER=${shQuote(scriptPath)}`,
-    `ERROR_LOG=${shQuote(errorPath)}`,
-    '',
-    '# 轮询等待父进程退出',
-    'while kill -0 "$TARGET_PID" 2>/dev/null; do sleep 0.5; done',
-    '',
-    'bash "$INSTALLER" || {',
-    '  echo "install-update failed: see $ERROR_LOG" >> "$ERROR_LOG"',
-    '  exit 1',
-    '}',
-  ].join('\n')
-  await writeFile(waiterPath, waiter, { mode: 0o755 })
-  // 用 setsid + & 让 waiter 独立成进程组，与父 dev server 解耦
-  const child = spawn('bash', [waiterPath], { detached: true, stdio: 'ignore' })
-  child.unref()
+  await execFile('/bin/bash', [scriptPath], { cwd: root })
 }

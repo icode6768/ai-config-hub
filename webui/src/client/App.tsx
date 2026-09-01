@@ -363,9 +363,9 @@ export default function App(): React.ReactElement {
   const systemPathVersion = bootstrap?.runtime.versions.python.available ? bootstrap.runtime.versions.python.version : '3.11.9'
   const systemPathEnabled = Boolean(bootstrap?.config.global.launch.persistSystemPath)
   const systemPathDescription = bootstrap?.platform === 'win32'
-    ? `写入 runtime/windows/bin、runtime/windows/npm-global、runtime/windows/node/versions/${systemPathNodeVersion} 和 runtime/windows/python/versions/${systemPathVersion} 到系统 PATH`
+    ? `写入 runtime/windows/bin、runtime/windows/npm-global、runtime/windows/node/versions/${systemPathNodeVersion}、runtime/windows/python/versions/${systemPathVersion} 与 runtime/windows/python/versions/${systemPathVersion}/Scripts（pip/playwright/uvicorn 等 console scripts 入口）到系统 PATH`
     : bootstrap?.platform === 'darwin'
-      ? '写入 ~/.bash_profile，并执行 source ~/.bash_profile'
+      ? '写入 ~/.bash_profile 触发 runtime/macos/scripts/activate.sh；Python 入口由 pyenv shims 接管，无需逐项拼接'
       : '当前平台不支持自动写入系统环境变量'
 
   async function refresh({ reloadDraft = false }: { reloadDraft?: boolean } = {}): Promise<void> {
@@ -433,7 +433,9 @@ export default function App(): React.ReactElement {
       })
       const body = await response.json() as { message?: string; error?: string }
       if (!response.ok) throw new Error(body.error || `更新接口返回 ${response.status}`)
-      setUpdateMessage(body.message || '正在安装更新...')
+      setUpdateBusy(false)
+      setUpdateMessage(body.message ? `更新成功：${body.message}，页面即将刷新...` : '更新成功，页面即将刷新...')
+      window.setTimeout(() => window.location.reload(), 1200)
     } catch (error) {
       setUpdateMessage(error instanceof Error ? error.message : '自动安装更新失败')
       setUpdateBusy(false)

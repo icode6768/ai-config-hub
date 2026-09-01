@@ -19,7 +19,7 @@ global:
       deepseek-harness: http://127.0.0.1:3080
     persistSystemPath: true
   update:
-    app_id: 28
+    app_id: 30
     user_id: 50
 apps:
   openclaw:
