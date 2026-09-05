@@ -14,6 +14,8 @@ import { resolveRuntimePhase, terminalArgs, terminalEnvironment } from './app-pr
 import { resolveEditorDraft } from '../src/shared/editor-draft'
 import { runtimePlatformDir, runtimeStartEnvPath } from '../src/shared/paths'
 import { applyBashProfile, applyWindowsPath, resolveWindowsRuntimePathEntries, resolveWindowsPathSyncScopes } from '../src/shared/system-path'
+import { buildMacosInstaller, buildPowerShellInstaller } from './software-update'
+import { deepseekPackageManagerCommand } from './deepseek-wechat'
 
 assert.equal(parseVersionOutput('node v24.18.0\r\n'), 'v24.18.0')
 assert.equal(parseVersionOutput('Python 3.11.9\r\n'), '3.11.9')
@@ -31,10 +33,11 @@ assert.deepEqual(resolveWindowsRuntimePathEntries(runtimeRoot), [
   'X:\\portable-lobster\\runtime\\windows\\npm-global',
   'X:\\portable-lobster\\runtime\\windows\\node\\versions\\v24.18.0',
   'X:\\portable-lobster\\runtime\\windows\\python\\versions\\3.11.9',
+  'X:\\portable-lobster\\runtime\\windows\\python\\versions\\3.11.9\\Scripts',
 ])
 assert.equal(
   applyWindowsPath('C:\\Windows\\System32;X:\\portable-lobster\\runtime\\windows\\bin', resolveWindowsRuntimePathEntries(runtimeRoot), true),
-  'X:\\portable-lobster\\runtime\\windows\\npm-global;X:\\portable-lobster\\runtime\\windows\\node\\versions\\v24.18.0;X:\\portable-lobster\\runtime\\windows\\python\\versions\\3.11.9;C:\\Windows\\System32',
+  'X:\\portable-lobster\\runtime\\windows\\npm-global;X:\\portable-lobster\\runtime\\windows\\node\\versions\\v24.18.0;X:\\portable-lobster\\runtime\\windows\\python\\versions\\3.11.9;X:\\portable-lobster\\runtime\\windows\\python\\versions\\3.11.9\\Scripts;C:\\Windows\\System32',
 )
 assert.equal(
   applyWindowsPath('X:\\portable-lobster\\runtime\\windows\\bin;C:\\Windows\\System32', resolveWindowsRuntimePathEntries(runtimeRoot), false),
@@ -43,6 +46,26 @@ assert.equal(
 assert.deepEqual(resolveWindowsPathSyncScopes(true, false), ['User'])
 assert.deepEqual(resolveWindowsPathSyncScopes(true, true), ['Machine'])
 assert.deepEqual(resolveWindowsPathSyncScopes(false, true), ['Machine', 'User'])
+const windowsInstaller = buildPowerShellInstaller('D:\\portable', 'C:\\Temp\\update.zip', 'C:\\Temp\\staging', 'C:\\Temp\\error.log')
+assert.match(windowsInstaller, /webui/)
+assert.match(windowsInstaller, /package\.json/)
+assert.match(windowsInstaller, /node_modules/)
+assert.doesNotMatch(windowsInstaller, /Start-Process/)
+const macosInstaller = buildMacosInstaller('/Volumes/portable', '/tmp/update.zip', '/tmp/staging', '/tmp/error.log')
+assert.match(macosInstaller, /webui/)
+assert.match(macosInstaller, /package\.json/)
+assert.match(macosInstaller, /node_modules/)
+assert.doesNotMatch(macosInstaller, /open \"\$LAUNCHER\"/)
+assert.deepEqual(deepseekPackageManagerCommand('win32'), {
+  command: 'pnpm.cmd',
+  args: ['add', 'qrcode', '-w'],
+  shell: true,
+})
+assert.deepEqual(deepseekPackageManagerCommand('darwin'), {
+  command: 'pnpm',
+  args: ['add', 'qrcode', '-w'],
+  shell: false,
+})
 assert.equal(
   applyBashProfile('', '/Users/demo/usb-lobster', true),
   "# USB LOBSTER RUNTIME START\nsource '/Users/demo/usb-lobster/runtime/macos/scripts/activate.sh'\n# USB LOBSTER RUNTIME END\n",

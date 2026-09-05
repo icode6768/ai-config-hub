@@ -73,6 +73,9 @@ export function resolveWindowsRuntimePathEntries(root: string): string[] {
     join(root, 'runtime', 'windows', 'npm-global'),
     join(root, 'runtime', 'windows', 'node', 'versions', nodeVersion),
     join(root, 'runtime', 'windows', 'python', 'versions', pythonVersion),
+    // pip 等 console scripts 在 Windows 上落地到 Scripts\ 目录（PEP 370），
+    // 仅把 python/versions/<ver> 加进 PATH 找不到 pip / playwright / uvicorn 等命令。
+    join(root, 'runtime', 'windows', 'python', 'versions', pythonVersion, 'Scripts'),
   ]
 }
 

@@ -67,11 +67,19 @@ async function ensureQrcodeInstalled(): Promise<void> {
   if (isQrcodeInstalled()) return
   console.log('[DeepSeek Harness] qrcode 缺失，正在安装到 harness 工作区...')
   const pathEntries = [...await runtimePathEntries(), process.env.PATH ?? process.env.Path ?? ''].filter(Boolean)
+  const command = deepseekPackageManagerCommand()
+  const packageManagerEnv = process.platform === 'win32'
+    ? {
+        npm_config_node_linker: 'hoisted',
+        npm_config_confirm_modules_purge: 'false',
+      }
+    : {}
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['add', 'qrcode', '-w'], {
+    const child = spawn(command.command, command.args, {
       cwd: harnessWorkspaceRoot(),
-      env: { ...process.env, PATH: pathEntries.join(delimiter) },
+      env: { ...process.env, ...packageManagerEnv, PATH: pathEntries.join(delimiter) },
       windowsHide: true,
+      shell: command.shell,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     child.stdout?.on('data', chunk => process.stdout.write(`[DeepSeek Harness] ${chunk}`))
@@ -80,6 +88,14 @@ async function ensureQrcodeInstalled(): Promise<void> {
     child.once('exit', code => (code === 0 ? resolve() : reject(new Error(`pnpm add qrcode 失败，退出码 ${code}`))))
   })
   console.log('[DeepSeek Harness] qrcode 已安装')
+}
+
+export function deepseekPackageManagerCommand(platform: NodeJS.Platform = process.platform): { command: string; args: string[]; shell: boolean } {
+  return {
+    command: platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
+    args: ['add', 'qrcode', '-w'],
+    shell: platform === 'win32',
+  }
 }
 
 export async function ensureDeepseekWechatBridge(): Promise<boolean> {

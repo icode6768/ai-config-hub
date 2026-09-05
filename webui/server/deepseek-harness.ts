@@ -64,6 +64,11 @@ export async function startDeepseekHarness(): Promise<ChildProcess | null> {
     DSH_HOME: dshHomePath(),
     DSH_WEB_PORT: String(DEEPSEEK_HARNESS_PORT),
     DC_PANEL_AUTOSTART: '1',
+    ...(process.platform === 'win32' ? {
+      // U 盘常用 exFAT，不支持 pnpm 默认创建的 junction；使用普通目录布局。
+      npm_config_node_linker: 'hoisted',
+      npm_config_confirm_modules_purge: 'false',
+    } : {}),
   }
   const child = process.platform === 'win32'
     ? spawn('cmd.exe', ['/d', '/c', 'call', launcher], {
