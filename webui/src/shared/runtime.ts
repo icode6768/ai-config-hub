@@ -148,6 +148,8 @@ export async function detectRuntimeVersions(): Promise<RuntimeVersions> {
     packageVersion([
       '.dsh/deepseek-harness/apps/cli/package.json',
       '.dsh/deepseek-harness/package.json',
+      'dsh/deepseek-harness/apps/cli/package.json',
+      'dsh/deepseek-harness/package.json',
       'deepseek-harness/deepseek-harness/apps/cli/package.json',
       'deepseek-harness/deepseek-harness/package.json',
     ], process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'dsh.cmd') : 'dsh'),
