@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 import { APP_IDS, APP_LABELS, type AppId, type AppRuntimeStatus, type LauncherConfig, type RuntimeVersions } from '../src/shared/types'
 import { dshHomePath, rootPath, runtimeBinPath, runtimeNodeVersionsPath, runtimeNpmGlobalPath, runtimePythonPath, runtimeScriptsPath } from '../src/shared/paths'
 import { detectRuntimeVersions } from '../src/shared/runtime'
-import { deepseekHarnessLauncherPath, isDeepseekHarnessWebReady, startDeepseekHarness, stopDeepseekHarness } from './deepseek-harness'
+import { deepseekHarnessHomePath, deepseekHarnessLauncherPath, deepseekHarnessSourcePath, isDeepseekHarnessWebReady, startDeepseekHarness, stopDeepseekHarness } from './deepseek-harness'
 
 const execFile = promisify(execFileCallback)
 const children = new Map<AppId, ChildProcess>()
@@ -160,7 +160,7 @@ function commandFor(appId: AppId, config: LauncherConfig): CommandSpec | null {
     return command ? { command, args: [], cwd: root, env: runtimeEnv(config) } : null
   }
   return existsSync(deepseekHarnessLauncherPath())
-    ? { command: deepseekHarnessLauncherPath(), args: [], cwd: dshHomePath(), env: runtimeEnv(config) }
+    ? { command: deepseekHarnessLauncherPath(), args: [], cwd: deepseekHarnessHomePath(), env: runtimeEnv(config) }
     : null
 }
 
@@ -240,7 +240,7 @@ function installedFor(appId: AppId, versions: RuntimeVersions): boolean {
   if (appId === 'hermes') return versions.hermes.available || Boolean(hermesCommand())
   if (appId === 'claude') return versions.claude.available
   if (appId === 'codex') return versions.codex.available
-  return versions.deepseekHarness.available || existsSync(join(dshHomePath(), 'deepseek-harness', 'package.json'))
+  return versions.deepseekHarness.available || existsSync(join(deepseekHarnessSourcePath(), 'package.json'))
 }
 
 function phaseMessage(appId: AppId, phase: AppRuntimeStatus['phase'], installed: boolean, webReady: boolean): string {
@@ -378,7 +378,7 @@ export async function updateApp(appId: AppId, config: LauncherConfig): Promise<v
       await runCommand('git', ['pull', '--ff-only'], source)
       await runCommand(pythonCommand(), ['-m', 'pip', 'install', '-e', '.'], source)
     } else {
-      const source = join(dshHomePath(), 'deepseek-harness')
+      const source = deepseekHarnessSourcePath()
       await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['install'], source)
       await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['run', 'build'], source)
     }

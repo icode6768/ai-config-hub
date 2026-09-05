@@ -2,7 +2,7 @@ import { get as httpGet } from 'node:http'
 import { existsSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
-import { dshHomePath } from '../src/shared/paths'
+import { dshHomePath, rootPath } from '../src/shared/paths'
 
 export const DEEPSEEK_HARNESS_PORT = 3080
 
@@ -10,11 +10,28 @@ export function deepseekHarnessUrl(port = DEEPSEEK_HARNESS_PORT): string {
   return `http://127.0.0.1:${port}`
 }
 
+function launcherFileName(platform: NodeJS.Platform): string {
+  return platform === 'win32' ? 'launch-deepseek-harness-windows.bat' : 'launch-deepseek-harness-macos.command'
+}
+
+function deepseekHarnessHomes(): string[] {
+  return [dshHomePath(), join(rootPath(), 'dsh')]
+}
+
+export function deepseekHarnessHomePath(platform: NodeJS.Platform = process.platform): string {
+  const launcher = launcherFileName(platform)
+  return deepseekHarnessHomes().find(home => existsSync(join(home, launcher))) ?? dshHomePath()
+}
+
 export function deepseekHarnessLauncherPath(platform: NodeJS.Platform = process.platform): string {
-  return join(
-    dshHomePath(),
-    platform === 'win32' ? 'launch-deepseek-harness-windows.bat' : 'launch-deepseek-harness-macos.command',
-  )
+  return join(deepseekHarnessHomePath(platform), launcherFileName(platform))
+}
+
+export function deepseekHarnessSourcePath(): string {
+  const source = deepseekHarnessHomes()
+    .map(home => join(home, 'deepseek-harness'))
+    .find(path => existsSync(join(path, 'package.json')) || existsSync(join(path, 'apps', 'cli', 'package.json')))
+  return source ?? join(dshHomePath(), 'deepseek-harness')
 }
 
 export function isDeepseekHarnessWebReady(port = DEEPSEEK_HARNESS_PORT): Promise<boolean> {
@@ -59,9 +76,10 @@ export async function startDeepseekHarness(): Promise<ChildProcess | null> {
     return null
   }
 
+  const home = deepseekHarnessHomePath()
   const env = {
     ...process.env,
-    DSH_HOME: dshHomePath(),
+    DSH_HOME: home,
     DSH_WEB_PORT: String(DEEPSEEK_HARNESS_PORT),
     DC_PANEL_AUTOSTART: '1',
     ...(process.platform === 'win32' ? {
@@ -71,15 +89,15 @@ export async function startDeepseekHarness(): Promise<ChildProcess | null> {
     } : {}),
   }
   const child = process.platform === 'win32'
-    ? spawn('cmd.exe', ['/d', '/c', 'call', launcher], {
-        cwd: dshHomePath(),
+      ? spawn('cmd.exe', ['/d', '/c', 'call', launcher], {
+        cwd: home,
         env,
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       })
     : spawn('zsh', [launcher], {
-        cwd: dshHomePath(),
+        cwd: home,
         env,
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],

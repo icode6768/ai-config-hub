@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import JSON5 from 'json5'
-import { parseVersionOutput, versionFromJson, versionFromToml } from '../src/shared/runtime'
+import { detectRuntimeVersions, parseVersionOutput, versionFromJson, versionFromToml } from '../src/shared/runtime'
 import { defaultLauncherConfig, loadGlobalConfig, saveGlobalConfig, syncAppPayload } from '../src/shared/config'
 import { migrateLegacyDshConfig } from '../src/shared/dsh'
 import { migrateLegacyWechatConnections, resetWechatConnections, persistHermesConnection, restoreOpenclawWechatConnection } from './openclaw-wechat'
@@ -16,6 +16,7 @@ import { runtimePlatformDir, runtimeStartEnvPath } from '../src/shared/paths'
 import { applyBashProfile, applyWindowsPath, resolveWindowsRuntimePathEntries, resolveWindowsPathSyncScopes } from '../src/shared/system-path'
 import { buildMacosInstaller, buildPowerShellInstaller } from './software-update'
 import { deepseekPackageManagerCommand } from './deepseek-wechat'
+import { deepseekHarnessHomePath, deepseekHarnessLauncherPath, deepseekHarnessSourcePath } from './deepseek-harness'
 
 assert.equal(parseVersionOutput('node v24.18.0\r\n'), 'v24.18.0')
 assert.equal(parseVersionOutput('Python 3.11.9\r\n'), '3.11.9')
@@ -113,6 +114,27 @@ assert.deepEqual(terminalArgs('openclaw', ['gateway', 'run']), [])
 assert.deepEqual(terminalArgs('codex', ['exec']), ['exec'])
 assert.equal(resolveEditorDraft('{"model":"draft"}', '{"model":"disk"}', false), '{"model":"draft"}')
 assert.equal(resolveEditorDraft('{"model":"draft"}', '{"model":"disk"}', true), '{"model":"disk"}')
+
+const dshFallbackRoot = await mkdtemp(join(tmpdir(), 'usb-lobster-dsh-fallback-'))
+const previousDshFallbackRoot = process.env.USB_LOBSTER_ROOT
+process.env.USB_LOBSTER_ROOT = dshFallbackRoot
+try {
+  const fallbackHome = join(dshFallbackRoot, 'dsh')
+  const fallbackSource = join(fallbackHome, 'deepseek-harness')
+  const fallbackLauncher = join(fallbackHome, 'launch-deepseek-harness-windows.bat')
+  await mkdir(join(fallbackSource, 'apps', 'cli'), { recursive: true })
+  await writeFile(join(fallbackSource, 'apps', 'cli', 'package.json'), '{"version":"0.1.2-alpha.1"}\n', 'utf8')
+  await writeFile(fallbackLauncher, '@echo off\r\n', 'utf8')
+
+  assert.equal(deepseekHarnessHomePath('win32'), fallbackHome)
+  assert.equal(deepseekHarnessLauncherPath('win32'), fallbackLauncher)
+  assert.equal(deepseekHarnessSourcePath(), fallbackSource)
+  assert.deepEqual((await detectRuntimeVersions()).deepseekHarness, { version: '0.1.2-alpha.1', available: true })
+} finally {
+  if (previousDshFallbackRoot === undefined) delete process.env.USB_LOBSTER_ROOT
+  else process.env.USB_LOBSTER_ROOT = previousDshFallbackRoot
+  await rm(dshFallbackRoot, { recursive: true, force: true })
+}
 
 const testDir = await mkdtemp(join(tmpdir(), 'usb-lobster-dsh-'))
 const legacyPath = join(testDir, 'legacy', 'settings.yaml')
