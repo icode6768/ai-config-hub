@@ -5,7 +5,14 @@ title DeepSeek Harness Web
 set "DSH_HOME=%~dp0"
 set "DSH_WEB_PORT=3080"
 set "PROJECT_DIR=%~dp0deepseek-harness"
-set "LAUNCHER=%PROJECT_DIR%\scripts\launch-dsh-web.ps1"
+set "LAUNCHER=%PROJECT_DIR%\apps\cli\lib\bin.js"
+set "NODE_EXE="
+for /d %%D in ("%~dp0..\runtime\windows\node\versions\*") do if exist "%%~fD\node.exe" set "NODE_EXE=%%~fD\node.exe"
+if not defined NODE_EXE (
+  echo [ERROR] Portable Windows Node.js not found.
+  exit /b 1
+)
+for %%N in ("%NODE_EXE%") do set "PATH=%%~dpN;%~dp0..\runtime\windows\npm-global;%PATH%"
 
 echo.
 echo Starting DeepSeek Harness Web...
@@ -21,7 +28,8 @@ if not exist "%LAUNCHER%" (
   exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LAUNCHER%" %*
+cd /d "%PROJECT_DIR%"
+"%NODE_EXE%" "%LAUNCHER%" web --port "%DSH_WEB_PORT%" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 echo.
 if "%EXIT_CODE%"=="0" (

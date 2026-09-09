@@ -5,6 +5,23 @@ import { join } from 'node:path'
 import { dshHomePath, rootPath } from '../src/shared/paths'
 
 export const DEEPSEEK_HARNESS_PORT = 3080
+let authenticatedLaunchUrl: string | null = null
+
+export function parseDeepseekLaunchUrl(line: string): string | null {
+  const match = /dsh web: (http:\/\/[^\s]+)/.exec(line)
+  if (!match) return null
+  try {
+    const url = new URL(match[1])
+    return url.origin === deepseekHarnessUrl() && url.searchParams.has('token') ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+export function deepseekHarnessEntryUrl(target: string): string {
+  return authenticatedLaunchUrl && new URL(target).origin === deepseekHarnessUrl()
+    ? authenticatedLaunchUrl : target
+}
 
 export function deepseekHarnessUrl(port = DEEPSEEK_HARNESS_PORT): string {
   return `http://127.0.0.1:${port}`
@@ -56,10 +73,22 @@ export function isDeepseekHarnessWebReady(port = DEEPSEEK_HARNESS_PORT): Promise
 }
 
 function pipeOutput(child: ChildProcess): void {
-  child.stdout?.on('data', chunk => process.stdout.write(`[DeepSeek Harness] ${chunk}`))
+  let pending = ''
+  child.stdout?.setEncoding('utf8')
+  child.stdout?.on('data', chunk => {
+    pending += chunk
+    const lines = pending.split(/\r?\n/)
+    pending = lines.pop() ?? ''
+    for (const line of lines) {
+      authenticatedLaunchUrl = parseDeepseekLaunchUrl(line) ?? authenticatedLaunchUrl
+      process.stdout.write(`[DeepSeek Harness] ${line.replace(/([?&]token=)[^\s&)]+/g, '$1[redacted]')}\n`)
+    }
+    if (pending.length > 65536) pending = ''
+  })
   child.stderr?.on('data', chunk => process.stderr.write(`[DeepSeek Harness] ${chunk}`))
   child.on('error', error => console.error(`[DeepSeek Harness] failed to start: ${error.message}`))
   child.on('exit', (code, signal) => {
+    authenticatedLaunchUrl = null
     if (code !== 0 && signal === null) console.error(`[DeepSeek Harness] exited with code ${code}`)
   })
 }

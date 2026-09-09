@@ -38,6 +38,8 @@ bower_components
 build/Release
 
 # Dependency directories
+/webui-apps/
+node_modules.windows-backup-*/
 node_modules
 node_modules/
 jspm_packages/

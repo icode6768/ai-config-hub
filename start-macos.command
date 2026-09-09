@@ -27,17 +27,5 @@ fi
 
 source "$ROOT_DIR/runtime/macos/scripts/activate.sh"
 
-if [[ ! -x "$WEBUI_DIR/node_modules/.bin/tsx" ]]; then
-  npm --prefix "$WEBUI_DIR" install --no-audit --no-fund
-fi
-if [[ ! -f "$WEBUI_DIR/dist/index.html" ]]; then
-  npm --prefix "$WEBUI_DIR" run build
-fi
-
-if command -v npm >/dev/null 2>&1; then
-  npm --prefix "$WEBUI_DIR" run dev
-else
-  cd "$WEBUI_DIR"
-  node --import tsx server/index.ts
-fi
+node "$WEBUI_DIR/scripts/launch-portable.mjs"
 # 注意：不能用 `exec` —— 会替换当前 shell 进程，trap 不会触发，.npmrc 还原失败

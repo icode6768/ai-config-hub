@@ -5,6 +5,7 @@ import JSON5 from 'json5'
 import type { AppId, LauncherConfig } from '../src/shared/types'
 import { APP_FILE_BINDINGS, rootPath } from '../src/shared/paths'
 import { readTextIfExists, saveAppFile, syncAppPayload } from '../src/shared/config'
+import { deepseekHarnessEntryUrl } from './deepseek-harness'
 
 export function openclawGatewayTokenPath(): string {
   return join(rootPath(), '.openclaw', 'state', 'gateway-token')
@@ -55,6 +56,7 @@ export async function ensureOpenclawGatewayConfig(config: LauncherConfig): Promi
 }
 
 export async function buildAppEntryUrl(appId: AppId, target: string): Promise<string> {
+  if (appId === 'deepseek-harness') return deepseekHarnessEntryUrl(target)
   if (appId !== 'openclaw') return target
   const token = await ensureOpenclawGatewayToken()
   const parsed = new URL(target)

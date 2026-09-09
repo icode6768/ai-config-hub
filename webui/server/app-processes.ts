@@ -83,6 +83,7 @@ function npmCommand(): string {
 }
 
 function portableNodeCommand(): string | null {
+  if (process.platform === 'darwin') return firstExisting([join(runtimeBinPath(), 'node')])
   const nodeDirectory = latestRuntimeNodeDirectory()
   if (!nodeDirectory) return null
   return firstExisting([
@@ -123,6 +124,8 @@ function packageCommand(name: 'openclaw' | 'claude' | 'codex'): string | null {
 function hermesCommand(): CommandSpec | null {
   const root = rootPath()
   const source = join(root, '.hermes', 'hermes-agent')
+  const launcher = join(root, 'webui', 'scripts', 'launch-hermes.mjs')
+  if (existsSync(launcher)) return { command: process.execPath, args: [launcher, 'desktop'], cwd: source }
   const direct = firstExisting([
     join(source, 'venv', process.platform === 'win32' ? 'Scripts/hermes.exe' : 'bin/hermes'),
     join(source, '.venv', process.platform === 'win32' ? 'Scripts/hermes.exe' : 'bin/hermes'),
@@ -140,7 +143,9 @@ function commandFor(appId: AppId, config: LauncherConfig): CommandSpec | null {
   const root = rootPath()
   if (appId === 'openclaw') {
     const node = portableNodeCommand()
-    const entrypoint = join(runtimeNpmGlobalPath(), 'node_modules', 'openclaw', 'openclaw.mjs')
+    const entrypoint = process.platform === 'darwin'
+      ? join(runtimeNpmGlobalPath(), 'lib', 'node_modules', 'openclaw', 'openclaw.mjs')
+      : join(runtimeNpmGlobalPath(), 'node_modules', 'openclaw', 'openclaw.mjs')
     if (node && existsSync(entrypoint)) {
       return { command: node, args: [entrypoint, 'gateway', 'run'], cwd: root, env: runtimeEnv(config) }
     }
@@ -408,7 +413,7 @@ export function terminalArgs(appId: AppId, args: string[]): string[] {
   return appId === 'openclaw' ? [] : args
 }
 
-function terminalCommand(appId: AppId, config: LauncherConfig, options: { desktop?: boolean } = {}): string {
+export function terminalCommand(appId: AppId, config: LauncherConfig, options: { desktop?: boolean } = {}): string {
   const spec = commandFor(appId, config)
   if (!spec) return 'echo "未找到该应用的启动命令"'
   const root = rootPath()
@@ -416,17 +421,10 @@ function terminalCommand(appId: AppId, config: LauncherConfig, options: { deskto
   const exports = Object.entries(environment).map(([key, value]) => `export ${key}="${value}"`).join(' && ')
   const activate = join(runtimeScriptsPath('darwin'), 'activate.sh')
 
-  // Hermes 必须跑在它自己的 venv 里（python + hermes_cli 模块都在 venv），
-  // 但 **不要** 叠加 runtime/macos 那一套：用户希望这个终端是 hermes-agent
-  // 独立的 Python 环境，而不是 runtime + venv 双重 PATH 污染。
-  // 只透传 hermes 必需的凭据（API key），其它 env 让 hermes 自己发现。
+  // The Hermes launcher selects Python and reads credentials without shell interpolation.
   if (appId === 'hermes') {
-    const hermesCwd = join(root, '.hermes', 'hermes-agent')
-    const hermesVenvActivate = join(hermesCwd, 'venv', 'bin', 'activate')
-    const hermesCmd = `hermes${options.desktop ? ' desktop' : ''}`
-    const apiKey = config?.global.api.apiKey ?? ''
-    const apiKeyExport = apiKey ? `export DONGCHUANGAI_API_KEY="${apiKey}"` : ''
-    return `cd "${hermesCwd}" && source "${hermesVenvActivate}" && unset DONGCHUANGAI_KEY && ${apiKeyExport} && ${hermesCmd}`
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+    return `${quote(process.execPath)} ${quote(join(root, 'webui', 'scripts', 'launch-hermes.mjs'))}${options.desktop ? ' desktop' : ''}`
   }
 
   const appCommand = appId === 'openclaw'
@@ -446,9 +444,10 @@ function writeWindowsTerminalBatch(appId: AppId, config: LauncherConfig, options
   const lines: string[] = ['@echo off', '']
   // Hermes must run from its own venv so the CLI and desktop dependencies match.
   if (appId === 'hermes') {
-    const hermesActivate = join(root, '.hermes', 'hermes-agent', 'venv', 'Scripts', 'activate.bat')
-    if (!existsSync(hermesActivate)) return null
-    lines.push(`call "${hermesActivate}"`)
+    const batchPath = join(tmpdir(), 'usb-lobster-hermes.cmd')
+    lines.push(`"${process.execPath}" "${join(root, 'webui', 'scripts', 'launch-hermes.mjs')}"${options.desktop ? ' desktop' : ''}`)
+    writeFileSync(batchPath, lines.join('\r\n'), 'utf8')
+    return batchPath
   }
   // 先激活便携运行环境（node/python/npm-global 进 PATH），再运行对应的应用。
   const activate = firstExisting([join(runtimeScriptsPath('win32'), 'activate.cmd')])

@@ -4,8 +4,9 @@
   "version": "1.0.2",
   "type": "module",
   "scripts": {
-    "dev": "tsx server/index.ts",
-    "start": "tsx server/index.ts",
+    "dev": "node scripts/launch-portable.mjs",
+    "start": "node scripts/launch-portable.mjs",
+    "prepare:portable": "node scripts/launch-portable.mjs --prepare",
     "test:runtime": "tsx server/runtime.test.ts",
     "build": "vite build",
     "check": "tsc --noEmit"

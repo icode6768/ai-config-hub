@@ -121,7 +121,7 @@ async function main(): Promise<void> {
   await initializeAppProcesses()
 
   const vite = await createViteServer({
-    root: join(rootPath(), 'webui'),
+    root: process.env.WEBUI_RUNTIME_DIR || join(rootPath(), 'webui'),
     appType: 'spa',
     server: {
       middlewareMode: true,
