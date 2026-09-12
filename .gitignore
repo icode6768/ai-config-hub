@@ -171,6 +171,11 @@ docs
 !.dsh/prepare-portable-packages.mjs
 !.dsh/deepseek-harness
 !.dsh/deepseek-harness/**
+# Dependencies are rebuilt from the vendored source; never commit the install tree.
+.dsh/deepseek-harness/node_modules/
+.dsh/deepseek-harness-repaired/
+.dsh/legacy-program-*/
+.dsh/legacy-dsh-*/
 
 # .openclaw 目录:整体忽略,但保留 state/openclaw.json 与 skills(及其子文件)
 .openclaw/*
