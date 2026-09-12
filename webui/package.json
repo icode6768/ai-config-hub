@@ -1,7 +1,7 @@
 {
   "name": "东创AI-聚合龙虾",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "scripts": {
     "dev": "node scripts/launch-portable.mjs",
