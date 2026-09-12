@@ -3,10 +3,10 @@ global:
   api:
     provider: dongchuangai
     baseUrl: https://api.dongchuangai.com/v1
-    apiKey: sk-f44ddd933d221b13d4d5c48362b778bb8694cac4452bf939
+    apiKey: sk-1f7b6c851c3377fe750014dab3e514a7026ef3219fbbe333
     model: gpt-5.5
     authSource: dongchuangai-oauth
-    authAccountName: 李春锃
+    authAccountName: 演示账号
     authAccountPhone: ""
   launch:
     openclawConfigPath: D:\myworks\便携式u盘\.openclaw\state\openclaw.json

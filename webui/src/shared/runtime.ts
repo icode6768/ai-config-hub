@@ -1,10 +1,10 @@
 import { execFile as execFileCallback } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 import { readFile, readdir } from 'node:fs/promises'
 import { parse as parseToml } from '@iarna/toml'
-import { rootPath, runtimeBinPath, runtimeNodeVersionsPath, runtimeNpmGlobalPath, runtimePythonPath } from './paths'
+import { dshHomePath, rootPath, runtimeBinPath, runtimeNodeVersionsPath, runtimeNpmGlobalPath, runtimePythonPath } from './paths'
 
 const execFile = promisify(execFileCallback)
 
@@ -127,6 +127,23 @@ async function packageVersion(relativePaths: string[], fallbackCommand?: string)
   return fallbackCommand ? versionFromCommand(fallbackCommand) : unavailable()
 }
 
+async function deepseekHarnessVersion(): Promise<RuntimeVersion> {
+  const metadata = await packageVersion([
+    '.dsh/deepseek-harness/apps/cli/package.json',
+    '.dsh/deepseek-harness/package.json',
+  ])
+  if (metadata.available) return metadata
+
+  const launcher = process.platform === 'win32'
+    ? 'launch-deepseek-harness-windows.bat' : 'launch-deepseek-harness-macos.command'
+  const files = [join(dshHomePath(), launcher), join(dshHomePath(), 'deepseek-harness', 'apps', 'cli', 'lib', 'bin.js')]
+  // Portable builds may omit metadata. Presence is separate from startup health.
+  if (files.every(file => statSync(file, { throwIfNoEntry: false })?.isFile())) {
+    return { version: '未知（便携版）', available: true }
+  }
+  return versionFromCommand(process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'dsh.cmd') : 'dsh')
+}
+
 export async function detectRuntimeVersions(): Promise<RuntimeVersions> {
   const root = rootPath()
   const node = await nodeRuntimeVersion()
@@ -145,14 +162,7 @@ export async function detectRuntimeVersions(): Promise<RuntimeVersions> {
       'node_modules/@openai/codex/package.json',
     ], process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'codex.cmd') : 'codex'),
     versionFromMetadata(join(root, '.hermes', 'hermes-agent', 'pyproject.toml'), versionFromToml),
-    packageVersion([
-      '.dsh/deepseek-harness/apps/cli/package.json',
-      '.dsh/deepseek-harness/package.json',
-      'dsh/deepseek-harness/apps/cli/package.json',
-      'dsh/deepseek-harness/package.json',
-      'deepseek-harness/deepseek-harness/apps/cli/package.json',
-      'deepseek-harness/deepseek-harness/package.json',
-    ], process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'dsh.cmd') : 'dsh'),
+    deepseekHarnessVersion(),
   ])
   return { node, python, openclaw, claude, codex, hermes, deepseekHarness }
 }

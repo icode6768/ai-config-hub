@@ -167,6 +167,8 @@ docs
 !.dsh/settings.yaml
 !.dsh/launch-deepseek-harness-macos.command
 !.dsh/launch-deepseek-harness-windows.bat
+!.dsh/PORTABLE.md
+!.dsh/prepare-portable-packages.mjs
 !.dsh/deepseek-harness
 !.dsh/deepseek-harness/**
 

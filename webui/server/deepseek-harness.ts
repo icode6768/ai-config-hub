@@ -2,7 +2,7 @@ import { get as httpGet } from 'node:http'
 import { existsSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
-import { dshHomePath, rootPath } from '../src/shared/paths'
+import { dshHomePath } from '../src/shared/paths'
 
 export const DEEPSEEK_HARNESS_PORT = 3080
 let authenticatedLaunchUrl: string | null = null
@@ -31,13 +31,8 @@ function launcherFileName(platform: NodeJS.Platform): string {
   return platform === 'win32' ? 'launch-deepseek-harness-windows.bat' : 'launch-deepseek-harness-macos.command'
 }
 
-function deepseekHarnessHomes(): string[] {
-  return [dshHomePath(), join(rootPath(), 'dsh')]
-}
-
-export function deepseekHarnessHomePath(platform: NodeJS.Platform = process.platform): string {
-  const launcher = launcherFileName(platform)
-  return deepseekHarnessHomes().find(home => existsSync(join(home, launcher))) ?? dshHomePath()
+export function deepseekHarnessHomePath(_platform: NodeJS.Platform = process.platform): string {
+  return dshHomePath()
 }
 
 export function deepseekHarnessLauncherPath(platform: NodeJS.Platform = process.platform): string {
@@ -45,10 +40,7 @@ export function deepseekHarnessLauncherPath(platform: NodeJS.Platform = process.
 }
 
 export function deepseekHarnessSourcePath(): string {
-  const source = deepseekHarnessHomes()
-    .map(home => join(home, 'deepseek-harness'))
-    .find(path => existsSync(join(path, 'package.json')) || existsSync(join(path, 'apps', 'cli', 'package.json')))
-  return source ?? join(dshHomePath(), 'deepseek-harness')
+  return join(dshHomePath(), 'deepseek-harness')
 }
 
 export function isDeepseekHarnessWebReady(port = DEEPSEEK_HARNESS_PORT): Promise<boolean> {

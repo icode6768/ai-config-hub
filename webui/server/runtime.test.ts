@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import JSON5 from 'json5'
 import { detectRuntimeVersions, parseVersionOutput, versionFromJson, versionFromToml } from '../src/shared/runtime'
 import { defaultLauncherConfig, loadGlobalConfig, saveGlobalConfig, syncAppPayload } from '../src/shared/config'
-import { migrateLegacyDshConfig } from '../src/shared/dsh'
+import { ensureDshHome, migrateLegacyDshConfig } from '../src/shared/dsh'
 import { migrateLegacyWechatConnections, resetWechatConnections, persistHermesConnection, restoreOpenclawWechatConnection } from './openclaw-wechat'
 import { buildAppEntryUrl } from './openclaw-auth'
 import { appSkillDirectories, parseSkillDocument } from './skill-store'
@@ -126,9 +126,13 @@ try {
   await writeFile(join(fallbackSource, 'apps', 'cli', 'package.json'), '{"version":"0.1.2-alpha.1"}\n', 'utf8')
   await writeFile(fallbackLauncher, '@echo off\r\n', 'utf8')
 
-  assert.equal(deepseekHarnessHomePath('win32'), fallbackHome)
-  assert.equal(deepseekHarnessLauncherPath('win32'), fallbackLauncher)
-  assert.equal(deepseekHarnessSourcePath(), fallbackSource)
+  await ensureDshHome()
+  const mergedHome = join(dshFallbackRoot, '.dsh')
+  assert.equal(existsSync(fallbackHome), false)
+  assert.equal(deepseekHarnessHomePath('win32'), mergedHome)
+  assert.equal(deepseekHarnessHomePath('darwin'), mergedHome)
+  assert.equal(deepseekHarnessLauncherPath('win32'), join(mergedHome, 'launch-deepseek-harness-windows.bat'))
+  assert.equal(deepseekHarnessSourcePath(), join(mergedHome, 'deepseek-harness'))
   assert.deepEqual((await detectRuntimeVersions()).deepseekHarness, { version: '0.1.2-alpha.1', available: true })
 } finally {
   if (previousDshFallbackRoot === undefined) delete process.env.USB_LOBSTER_ROOT
