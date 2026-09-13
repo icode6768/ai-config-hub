@@ -42,7 +42,11 @@ export type SkillRecord = {
 
 export type SkillMarketplace = {
   skills: SkillRecord[]
-  tags: Array<{ id: string; label: string }>
+  tags: Array<{ id: string; categoryId: number; label: string }>
+  page: number
+  per_page: number
+  total: number
+  total_pages: number
 }
 
 export function parseSkillDocument(raw: string): { name: string; description: string; license?: string } {
@@ -145,13 +149,27 @@ export async function listInstalledSkills(): Promise<SkillRecord[]> {
   return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export async function fetchMarketplace(config: LauncherConfig): Promise<SkillMarketplace> {
+export async function fetchMarketplace(config: LauncherConfig, params = new URLSearchParams()): Promise<SkillMarketplace> {
   const marketplaceUrl = new URL(dongchuangPlatformUrl(config.global.api.baseUrl, 'skill-store/marketplace'))
-  marketplaceUrl.searchParams.set('page', '1')
-  marketplaceUrl.searchParams.set('per_page', '50')
+  const positiveInteger = (value: string | null, fallback: number) => {
+    const parsed = Number(value)
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
+  }
+  marketplaceUrl.searchParams.set('page', String(positiveInteger(params.get('page'), 1)))
+  marketplaceUrl.searchParams.set('per_page', String(Math.min(positiveInteger(params.get('per_page'), 50), 100)))
+  const categoryId = positiveInteger(params.get('category_id'), 0)
+  if (categoryId) marketplaceUrl.searchParams.set('category_id', String(categoryId))
+  const search = params.get('search')?.trim()
+  if (search) marketplaceUrl.searchParams.set('search', search)
   const response = await fetch(marketplaceUrl)
   if (!response.ok) throw new Error(`技能市场请求失败：${response.status}`)
-  const payload = await response.json() as { data?: { value?: { marketplace?: unknown[]; marketTags?: unknown[] } } }
+  const payload = await response.json() as { code?: number; data?: { value?: { marketplace?: unknown[]; page: number; per_page: number; total: number; total_pages: number } } }
+  const value = payload.data?.value
+  if (payload.code !== 200 || !value || !Array.isArray(value.marketplace)) throw new Error('技能市场返回数据无效')
+  const categoriesResponse = await fetch(dongchuangPlatformUrl(config.global.api.baseUrl, 'skill-store/categories'))
+  if (!categoriesResponse.ok) throw new Error(`技能分类请求失败：${categoriesResponse.status}`)
+  const categories = await categoriesResponse.json() as { status?: number; data?: { categories?: Array<{ id: number; code: string; name: string }> } }
+  if (categories.status !== 1 || !Array.isArray(categories.data?.categories)) throw new Error('技能分类返回数据无效')
   const installed = new Map((await listInstalledSkills()).map(skill => [skill.id, skill]))
   const rawSkills = payload.data?.value?.marketplace ?? []
   const skills = rawSkills
@@ -160,11 +178,10 @@ export async function fetchMarketplace(config: LauncherConfig): Promise<SkillMar
       const current = installed.get(String(raw.id ?? raw.name))
       return marketplaceRecord(raw, Boolean(current), current?.enabled ?? false, current?.targets)
     })
-  const tags = (payload.data?.value?.marketTags ?? [])
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    .map(tag => ({ id: String(tag.id ?? ''), label: String(tag.zh ?? tag.en ?? tag.id ?? '') }))
-    .filter(tag => tag.id && tag.label)
-  return { skills, tags }
+  const tags = categories.data.categories
+    .filter(tag => Number.isSafeInteger(tag.id) && tag.id > 0 && tag.code && tag.code !== 'all')
+    .map(tag => ({ id: tag.code, categoryId: tag.id, label: tag.name || tag.code }))
+  return { skills, tags, page: value.page, per_page: value.per_page, total: value.total, total_pages: value.total_pages }
 }
 
 export async function setSkillEnabled(id: string, enabled: boolean): Promise<SkillRecord[]> {

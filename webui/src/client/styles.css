@@ -917,6 +917,24 @@ button:disabled {
 
 .skillToggle.on { background: #ff6b14; }
 .skillToggle.on::after { transform: translateX(23px); }
+.skillPagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.skillPagination button {
+  padding: 8px 12px;
+}
+
+.skillPagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .skillEmpty {
   min-height: 180px;
   display: flex;

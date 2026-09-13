@@ -240,7 +240,7 @@ async function main(): Promise<void> {
 
       if (url.pathname === '/api/skills/marketplace' && req.method === 'GET') {
         currentConfig = await loadGlobalConfig()
-        sendJson(res, await fetchMarketplace(currentConfig))
+        sendJson(res, await fetchMarketplace(currentConfig, url.searchParams))
         return
       }
 

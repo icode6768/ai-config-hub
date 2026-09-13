@@ -76,7 +76,11 @@ type SkillRecord = {
 
 type SkillMarketplace = {
   skills: SkillRecord[]
-  tags: Array<{ id: string; label: string }>
+  tags: Array<{ id: string; categoryId: number; label: string }>
+  page: number
+  per_page: number
+  total: number
+  total_pages: number
 }
 
 type WechatLogin = {
@@ -350,7 +354,10 @@ export default function App(): React.ReactElement {
   const [skillTab, setSkillTab] = useState<'installed' | 'marketplace'>('marketplace')
   const [skillSearch, setSkillSearch] = useState('')
   const [skillCategory, setSkillCategory] = useState('all')
-  const [marketplace, setMarketplace] = useState<SkillMarketplace>({ skills: [], tags: [] })
+  const [marketplace, setMarketplace] = useState<SkillMarketplace>({ skills: [], tags: [], page: 1, per_page: 50, total: 0, total_pages: 0 })
+  const [marketQuery, setMarketQuery] = useState({ page: 1, categoryId: 0, search: '', revision: 0 })
+  const [marketLoading, setMarketLoading] = useState(false)
+  const [marketError, setMarketError] = useState('')
   const [skillsBusy, setSkillsBusy] = useState<Partial<Record<string, boolean>>>({})
   const [dongchuangAuth, setDongchuangAuth] = useState<DongchuangAIAuth | null>(null)
   const [dongchuangAuthBusy, setDongchuangAuthBusy] = useState(false)
@@ -503,12 +510,33 @@ export default function App(): React.ReactElement {
   }, [dongchuangAuth?.sessionKey, dongchuangAuth?.phase])
 
   useEffect(() => {
-    if (activeStep !== 'skills') return
-    void fetch('/api/skills/marketplace')
+    const timer = window.setTimeout(() => {
+      setMarketQuery(previous => previous.search === skillSearch.trim() ? previous : { ...previous, page: 1, search: skillSearch.trim() })
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [skillSearch])
+
+  useEffect(() => {
+    if (activeStep !== 'skills' || skillTab !== 'marketplace') return
+    const controller = new AbortController()
+    const params = new URLSearchParams({ page: String(marketQuery.page), per_page: '50' })
+    if (marketQuery.categoryId) params.set('category_id', String(marketQuery.categoryId))
+    if (marketQuery.search) params.set('search', marketQuery.search)
+    setMarketLoading(true)
+    setMarketError('')
+    setMarketplace(previous => ({ ...previous, skills: [] }))
+    void fetch(`/api/skills/marketplace?${params}`, { signal: controller.signal })
       .then(response => response.ok ? response.json() as Promise<SkillMarketplace> : Promise.reject(new Error(`技能市场返回 ${response.status}`)))
-      .then(data => setMarketplace(data))
-      .catch(error => setStatus(error instanceof Error ? error.message : '读取技能市场失败'))
-  }, [activeStep])
+      .then(data => { if (!controller.signal.aborted) setMarketplace(data) })
+      .catch(error => { if (!controller.signal.aborted) setMarketError(error instanceof Error ? error.message : '读取技能市场失败') })
+      .finally(() => { if (!controller.signal.aborted) setMarketLoading(false) })
+    return () => controller.abort()
+  }, [activeStep, skillTab, marketQuery])
+
+  function selectSkillCategory(id: string, categoryId = 0): void {
+    setSkillCategory(id)
+    setMarketQuery(previous => ({ ...previous, categoryId, page: 1, revision: previous.revision + 1 }))
+  }
 
   const stepMap = useMemo(() => {
     const map = new Map<string, StepStatus>()
@@ -776,6 +804,7 @@ export default function App(): React.ReactElement {
   const currentFile = bootstrap.appFiles[activeApp]
   const skillItems = skillTab === 'installed' ? bootstrap.skills : marketplace.skills
   const filteredSkills = skillItems.filter(skill => {
+    if (skillTab === 'marketplace') return true
     const queryText = skillSearch.trim().toLowerCase()
     const matchesSearch = !queryText || `${skill.name} ${skill.description}`.toLowerCase().includes(queryText)
     const matchesCategory = skillCategory === 'all' || skill.tags.includes(skillCategory)
@@ -1082,22 +1111,14 @@ export default function App(): React.ReactElement {
                 </button>
               </div>
               <div className="skillCategories">
-                <button type="button" className={skillCategory === 'all' ? 'active' : ''} onClick={() => setSkillCategory('all')}>全部</button>
-                {(marketplace.tags.length ? marketplace.tags : [
-                  { id: 'lifestyle', label: '生活' },
-                  { id: 'document', label: '文档' },
-                  { id: 'utility', label: '效率工具' },
-                  { id: 'media', label: '图像与视频' },
-                  { id: 'system', label: '系统' },
-                  { id: 'marketing', label: '营销' },
-                  { id: 'finance', label: '金融' },
-                  { id: 'academic', label: '学术' },
-                  { id: 'development', label: '开发' },
-                ]).map(tag => (
-                  <button key={tag.id} type="button" className={skillCategory === tag.id ? 'active' : ''} onClick={() => setSkillCategory(tag.id)}>{tag.label}</button>
+                <button type="button" className={skillCategory === 'all' ? 'active' : ''} onClick={() => selectSkillCategory('all')}>全部</button>
+                {marketplace.tags.map(tag => (
+                  <button key={tag.id} type="button" className={skillCategory === tag.id ? 'active' : ''} onClick={() => selectSkillCategory(tag.id, tag.categoryId)}>{tag.label}</button>
                 ))}
               </div>
-              {skillTab === 'marketplace' && !marketplace.skills.length ? (
+              {skillTab === 'marketplace' && marketError ? (
+                <div className="skillEmpty" role="alert">{marketError}<button type="button" onClick={() => setMarketQuery(previous => ({ ...previous, revision: previous.revision + 1 }))}><RefreshCcw size={16} /> 重试</button></div>
+              ) : skillTab === 'marketplace' && marketLoading ? (
                 <div className="skillEmpty"><Store size={22} /> 正在读取技能市场...</div>
               ) : filteredSkills.length ? (
                 <div className="skillGrid">
@@ -1131,6 +1152,13 @@ export default function App(): React.ReactElement {
                 </div>
               ) : (
                 <div className="skillEmpty"><Puzzle size={22} /> 没有匹配的技能</div>
+              )}
+              {skillTab === 'marketplace' && !marketLoading && !marketError && (
+                <div className="skillPagination" aria-label="技能市场分页">
+                  <span>共 {marketplace.total} 条 · {marketplace.total_pages ? marketplace.page : 0} / {marketplace.total_pages} 页</span>
+                  <button type="button" disabled={marketplace.page <= 1} onClick={() => setMarketQuery(previous => ({ ...previous, page: previous.page - 1 }))}>上一页</button>
+                  <button type="button" disabled={marketplace.page >= marketplace.total_pages} onClick={() => setMarketQuery(previous => ({ ...previous, page: previous.page + 1 }))}>下一页</button>
+                </div>
               )}
             </div>
           )}
