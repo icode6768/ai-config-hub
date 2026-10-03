@@ -1,4 +1,4 @@
-# 东创AI-聚合龙虾 / DongchuangAI Claw Hub
+# 东创AI-聚合工作台 / DongchuangAI Claw Hub
 
 > **便携式 AI Agent 聚合面板** —— 一个开箱即用、可装进 U 盘的本地 Web 控制台,
 > 在统一界面下调度五个 AI Agent 框架。
@@ -137,7 +137,7 @@
 │   ├── src/client/             ← React 前端
 │   ├── src/shared/             ← 共享 TS 模块(配置加载、路径等)
 │   ├── server/                 ← tsx HTTP 服务,Agent 进程管理
-│   ├── package.json            ← name: 东创AI-聚合龙虾, version: 1.0.2
+│   ├── package.json            ← name: 东创AI-聚合工作台, version: 1.0.2
 │   └── vite.config.ts
 │
 ├── runtime/                    ← 便携运行时(脚本纳入版本控制;二进制被 .gitignore 排除)

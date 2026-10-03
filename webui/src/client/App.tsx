@@ -788,7 +788,7 @@ export default function App(): React.ReactElement {
         <div className="brand">
           <img className="brandLogo" src={dongchuangaiLogo} alt="东创AI" draggable={false} />
           <div className="brandText">
-            <div className="brandTitle">聚合龙虾</div>
+            <div className="brandTitle">聚合工作台</div>
             <div className="brandSub">本地网页引导安装</div>
           </div>
           {softwareUpdate && (

@@ -1,4 +1,4 @@
-model = "gpt-5.5"
+model = "gpt-6-astra"
 model_provider = "dongchuangai"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
