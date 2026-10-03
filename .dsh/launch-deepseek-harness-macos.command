@@ -7,6 +7,7 @@ export DSH_WEB_PORT="${DSH_WEB_PORT:-3080}"
 project="$root/deepseek-harness"
 launcher="$project/apps/cli/lib/bin.js"
 runtime="$(cd "$root/.." && pwd)/runtime/macos"
+node_bin="$runtime/bin/node"
 export PATH="$runtime/bin:$runtime/nvm/npm-global/bin:$PATH"
 
 # 兜底注入凭据（双击本脚本时绕过 dev server 链路，
@@ -25,4 +26,35 @@ if [[ ! -f "$launcher" ]]; then
 fi
 
 cd "$project" || exit 1
-exec "$runtime/bin/node" "$launcher" web --port "$DSH_WEB_PORT" "$@"
+
+if [[ ! -f "$project/node_modules/@deepseek-ai/dsh-app-boot/package.json" ]]; then
+  print "[DeepSeek Harness] dependencies missing; installing..."
+  workspace_file="$project/pnpm-workspace.yaml"
+  created_workspace=0
+  if [[ ! -f "$workspace_file" ]]; then
+    print -r -- 'packages:' > "$workspace_file"
+    print -r -- '  - "vendor/*"' >> "$workspace_file"
+    print -r -- '  - "packages/*/*"' >> "$workspace_file"
+    print -r -- '  - "native/landlock-run"' >> "$workspace_file"
+    print -r -- '  - "native/landlock-run/packages/*"' >> "$workspace_file"
+    print -r -- '  - "apps/*"' >> "$workspace_file"
+    print -r -- '  - "website"' >> "$workspace_file"
+    created_workspace=1
+  fi
+  install_ok=0
+  if command -v pnpm >/dev/null 2>&1; then
+    pnpm install --prod --frozen-lockfile=false && install_ok=1
+  elif command -v corepack >/dev/null 2>&1; then
+    corepack pnpm install --prod --frozen-lockfile=false && install_ok=1
+  fi
+  (( created_workspace )) && rm -f "$workspace_file"
+  if (( ! install_ok )); then
+    print -u2 '[ERROR] Failed to install DeepSeek Harness dependencies (pnpm/corepack unavailable or install failed).'
+    exit 1
+  fi
+fi
+if [[ ! -f "$project/node_modules/@deepseek-ai/dsh-app-boot/package.json" ]]; then
+  print -u2 '[ERROR] DeepSeek Harness dependencies are still incomplete after installation.'
+  exit 1
+fi
+exec "$node_bin" "$launcher" web --port "$DSH_WEB_PORT" "$@"

@@ -29,6 +29,20 @@ if not exist "%LAUNCHER%" (
 )
 
 cd /d "%PROJECT_DIR%"
+if not exist "%PROJECT_DIR%\node_modules\@deepseek-ai\dsh-app-boot\package.json" (
+  echo [DeepSeek Harness] Dependencies missing; installing...
+  where pnpm >nul 2>&1
+  if not errorlevel 1 (
+    pnpm install
+  ) else (
+    "%NODE_EXE%" "%~dp0..\runtime\windows\node\node_modules\npm\bin\npm-cli.js" install
+  )
+  if errorlevel 1 (
+    echo [ERROR] Failed to install DeepSeek Harness dependencies.
+    pause
+    exit /b 1
+  )
+)
 "%NODE_EXE%" "%LAUNCHER%" web --port "%DSH_WEB_PORT%" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 echo.

@@ -1,7 +1,13 @@
 {
+<<<<<<< HEAD
   "last_report_path": "D:\\myworks\\便携式u盘\\.hermes\\logs\\curator\\20260921-054613",
   "last_run_at": "2026-09-21T05:46:13.144152+00:00",
   "last_run_duration_seconds": 1.169542,
+=======
+  "last_report_path": "/Users/apple/Desktop/myworks/codes/claw-panels/.hermes/logs/curator/20260912-093924",
+  "last_run_at": "2026-09-12T09:39:24.787725+00:00",
+  "last_run_duration_seconds": 12.443065,
+>>>>>>> a9bef5d4de631aea905ac3bf3693e16c9276cc25
   "last_run_summary": "auto: no changes; llm: skipped (consolidation off)",
   "last_run_summary_shown_at": null,
   "paused": false,
