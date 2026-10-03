@@ -107,6 +107,12 @@ function pythonCommand(): string {
   return process.platform === 'win32' ? 'python.exe' : 'python3'
 }
 
+function hermesPythonCommand(): string {
+  const root = rootPath()
+  const venvPython = join(root, '.hermes', 'hermes-agent', 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
+  return firstExisting([venvPython, pythonCommand()]) ?? pythonCommand()
+}
+
 function packageCommand(name: 'openclaw' | 'claude' | 'codex'): string | null {
   if (process.platform !== 'win32') {
     return firstExisting([
@@ -152,7 +158,7 @@ function commandFor(appId: AppId, config: LauncherConfig): CommandSpec | null {
     const command = packageCommand('openclaw')
     return command ? { command, args: ['gateway', 'run'], cwd: root, env: runtimeEnv(config) } : null
   }
-  if (appId === 'hermes') {
+  if ((appId as string) === 'hermes') {
     const command = hermesCommand()
     return command ? { ...command, env: runtimeEnv(config) } : null
   }
@@ -381,7 +387,7 @@ export async function updateApp(appId: AppId, config: LauncherConfig): Promise<v
       const source = join(root, '.hermes', 'hermes-agent')
       if (!existsSync(join(source, '.git'))) throw new Error('Hermes Agent 目录不是 Git 仓库，无法自动更新')
       await runCommand('git', ['pull', '--ff-only'], source)
-      await runCommand(pythonCommand(), ['-m', 'pip', 'install', '-e', '.'], source)
+      await runCommand(hermesPythonCommand(), ['-m', 'pip', 'install', '-e', '.'], source)
     } else {
       const source = deepseekHarnessSourcePath()
       await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['install'], source)
@@ -422,7 +428,7 @@ export function terminalCommand(appId: AppId, config: LauncherConfig, options: {
   const activate = join(runtimeScriptsPath('darwin'), 'activate.sh')
 
   // The Hermes launcher selects Python and reads credentials without shell interpolation.
-  if (appId === 'hermes') {
+  if ((appId as string) === 'hermes') {
     const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
     return `${quote(process.execPath)} ${quote(join(root, 'webui', 'scripts', 'launch-hermes.mjs'))}${options.desktop ? ' desktop' : ''}`
   }
@@ -451,11 +457,11 @@ function writeWindowsTerminalBatch(appId: AppId, config: LauncherConfig, options
   }
   // 先激活便携运行环境（node/python/npm-global 进 PATH），再运行对应的应用。
   const activate = firstExisting([join(runtimeScriptsPath('win32'), 'activate.cmd')])
-  if (appId !== 'hermes' && activate) lines.push(`call "${activate}"`)
-  else if (appId !== 'hermes') lines.push(`set "PATH=${runtimePathEntries().join(';')};%PATH%"`)
-  const appCommand = appId === 'hermes'
+  if ((appId as string) !== 'hermes' && activate) lines.push(`call "${activate}"`)
+  else if ((appId as string) !== 'hermes') lines.push(`set "PATH=${runtimePathEntries().join(';')};%PATH%"`)
+  const appCommand = (appId as string) === 'hermes'
     ? `hermes${options.desktop ? ' desktop' : ''}`
-    : appId === 'openclaw'
+    : (appId as string) === 'openclaw'
       ? 'openclaw'
       : `"${spec.command}" ${terminalArgs(appId, spec.args).map(arg => `"${arg}"`).join(' ')}`
   lines.push(

@@ -44,6 +44,24 @@ $env:Path = (($pathEntries + @($env:Path)) -join ';')
 Write-Host "Portable runtime: $runtimeRoot"
 Write-Host "Hermes home: $hermesHome"
 
+# Portable distributions may ship a complete Hermes source tree inside the
+# outer USB workspace repository. It is functional, but intentionally has no
+# nested .git directory, so the official installer would reject it as a
+# non-Hermes checkout. Reuse that bundled installation instead of treating it
+# as a failed install.
+$bundledSource = Test-Path -LiteralPath (Join-Path $hermesInstallDir 'pyproject.toml') -PathType Leaf
+$bundledCli = Test-Path -LiteralPath (Join-Path $hermesInstallDir 'hermes_cli') -PathType Container
+$bundledVenv = Test-Path -LiteralPath (Join-Path $hermesInstallDir 'venv\Scripts\hermes.exe') -PathType Leaf
+if ($bundledSource -and $bundledCli -and $bundledVenv -and -not (Test-Path -LiteralPath (Join-Path $hermesInstallDir '.git'))) {
+  Write-Host 'Hermes Agent bundled checkout detected; reusing the portable installation.' -ForegroundColor Green
+  Write-Host "Verified Hermes home: $hermesHome"
+  Write-Host "Verified Hermes install: $hermesInstallDir"
+  Write-Host ''
+  Write-Host 'Hermes Agent portable installation finished.' -ForegroundColor Green
+  Write-Host "HERMES_HOME=$hermesHome"
+  exit 0
+}
+
 $download = Join-Path ([System.IO.Path]::GetTempPath()) ("hermes-install-{0}.ps1" -f ([guid]::NewGuid()))
 try {
   Write-Host 'Downloading the official Hermes Agent installer...'

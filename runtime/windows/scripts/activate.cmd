@@ -21,6 +21,7 @@ set "NODE_BASE=%PORTABLE_RUNTIME_DIR%\node"
 set "PYTHON_BASE=%PORTABLE_RUNTIME_DIR%\python"
 set "NPM_GLOBAL_DIR=%PORTABLE_RUNTIME_DIR%\npm-global"
 set "BIN_DIR=%PORTABLE_RUNTIME_DIR%\bin"
+set "HERMES_HOME=%PORTABLE_RUNTIME_DIR%\..\..\.hermes"
 
 :: --- npm 全局安装目录重定向到 runtime ---
 set "NPM_CONFIG_PREFIX=%NPM_GLOBAL_DIR%"

@@ -292,7 +292,7 @@ mcp_servers:
 
   filesystem:
     command: "npx"
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 
   github:
     command: "npx"

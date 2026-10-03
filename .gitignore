@@ -147,6 +147,8 @@ vite.config.ts.timestamp-*
 
 # Runtime files — 逐项忽略二进制/数据目录,scripts 子目录不在列表中即默认跟踪
 runtime/windows/bin
+!runtime/windows/bin/
+!runtime/windows/bin/hermes.cmd
 runtime/windows/node
 runtime/windows/npm-global
 runtime/windows/python

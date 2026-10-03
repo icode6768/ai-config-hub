@@ -19,6 +19,8 @@ $NODE_BASE = Join-Path $PORTABLE_RUNTIME_DIR "node"
 $PYTHON_BASE = Join-Path $PORTABLE_RUNTIME_DIR "python"
 $NPM_GLOBAL_DIR = Join-Path $PORTABLE_RUNTIME_DIR "npm-global"
 $BIN_DIR = Join-Path $PORTABLE_RUNTIME_DIR "bin"
+$PROJECT_ROOT = Split-Path -Parent (Split-Path -Parent $PORTABLE_RUNTIME_DIR)
+$env:HERMES_HOME = Join-Path $PROJECT_ROOT ".hermes"
 
 # --- 环境变量 ---
 $env:PORTABLE_RUNTIME_DIR = $PORTABLE_RUNTIME_DIR
@@ -97,5 +99,6 @@ Show-Version "npm"    "npm"
 Show-Version "pnpm"   "pnpm"
 Show-Version "python" "python"
 Show-Version "pip"    "pip"
+Show-Version "hermes" "hermes"
 
 Write-Host ""
