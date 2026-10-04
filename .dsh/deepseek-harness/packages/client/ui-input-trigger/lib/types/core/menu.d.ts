@@ -8,7 +8,10 @@
  * reducer cannot invent groups. Opening from a closed state, the shell seeds
  * the roster with {@link seedGroups} and then dispatches `hit`; a `hit`
  * while open (query refinement) resets the existing groups to pending under
- * a new generation. Auto-close and explicit close drop the groups.
+ * a new generation while keeping their items on screen until the new fetch
+ * settles (stale-while-revalidate — the render layer shows skeletons only
+ * for a pending group with no items). Auto-close and explicit close drop
+ * the groups.
  */
 import type { InputTriggerSource } from '../types.ts';
 import type { ExactMatch, MenuReduce, MenuState } from './contract.ts';

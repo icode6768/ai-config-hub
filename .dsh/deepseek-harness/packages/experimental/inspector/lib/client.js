@@ -5,6 +5,21 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let _deepseek_ai_cordis = require("@deepseek-ai/cordis");
+		//#region lib/types/shared/identity.js
+		/** Shared branded-identifier construction without assigning protocol ownership. */
+		/**
+		* Validate and brand a non-empty identifier received from or sent across a runtime boundary.
+		* @param value - Untrusted identifier text.
+		* @param label - Field name used in validation errors.
+		* @returns The role-branded identifier.
+		*/
+		function inspectorId(value, label) {
+			if (value.length === 0 || value.length > 256) throw new Error(`inspector protocol: ${label} must contain 1 to 256 characters`);
+			return value;
+		}
+		/** Document-relative browser route for the authenticated source bootstrap. */
+		const INSPECTOR_BOOTSTRAP_ROUTE = "/api/experimental-inspector/bootstrap".slice(1);
+		//#endregion
 		//#region lib/types/shared/json.js
 		/** JSON values admitted by every Inspector cross-realm message. */
 		/**
@@ -53,19 +68,6 @@ window.__ModuleLoader__.load({
 			} finally {
 				ancestors.delete(value);
 			}
-		}
-		//#endregion
-		//#region lib/types/shared/identity.js
-		/** Shared branded-identifier construction without assigning protocol ownership. */
-		/**
-		* Validate and brand a non-empty identifier received from or sent across a runtime boundary.
-		* @param value - Untrusted identifier text.
-		* @param label - Field name used in validation errors.
-		* @returns The role-branded identifier.
-		*/
-		function inspectorId(value, label) {
-			if (value.length === 0 || value.length > 256) throw new Error(`inspector protocol: ${label} must contain 1 to 256 characters`);
-			return value;
 		}
 		//#endregion
 		//#region lib/types/shared/validation.js
@@ -405,7 +407,7 @@ window.__ModuleLoader__.load({
 		//#region lib/types/shared/cordis/collector.js
 		/** Shared Host/Client projection from live Cordis objects to a bounded semantic tree. */
 		const SHADOW = Symbol.for("cordis.shadow");
-		/** Realm-local collector with a current live-object table. */
+		/** Realm-local collector retaining Contexts without Cordis service-call shadow wrappers. */
 		var CordisTreeCollector = class {
 			root;
 			limits;
@@ -437,7 +439,7 @@ window.__ModuleLoader__.load({
 						objectHandle: objects.retain(info.value).handle,
 						children: []
 					};
-					for (const child of info.children) if (child.fiber !== void 0 && child.fiber.ctx === child.value) {
+					for (const child of info.children) if (child.fiber !== void 0 && unwrapContext(child.fiber.ctx) === child.value) {
 						const projected = fiberNode(child.fiber, child);
 						if (projected !== void 0) node.children.push(projected);
 					} else {
@@ -2242,8 +2244,9 @@ window.__ModuleLoader__.load({
 				entry.sourceBytes ??= this.source(entry, maxContentBytes).then((source) => new TextEncoder().encode(source));
 				return entry.sourceBytes;
 			}
-			sourceMapBytes(entry, maxContentBytes) {
-				if (entry.asset.loadSourceMap === void 0) return Promise.resolve(void 0);
+			async sourceMapBytes(entry, maxContentBytes) {
+				if (entry.asset.loadSourceMap === void 0) return void 0;
+				await this.source(entry, maxContentBytes);
 				entry.sourceMapBytes ??= entry.asset.loadSourceMap().then((value) => value === void 0 ? void 0 : new TextEncoder().encode(value)).catch((error) => {
 					throw new ClientSourceCatalogError("load-failed", `Cannot load Client source map: ${renderError$2(error)}`);
 				});
@@ -2254,7 +2257,7 @@ window.__ModuleLoader__.load({
 			}
 		};
 		/**
-		* Discover this package's bundle URL from the Host-injected web boot graph.
+		* Discover this package's bundle URL from the Host-injected web boot graph and its map from the loaded script trailer.
 		* @returns A lazy catalog, or `undefined` outside the assembled web application.
 		*/
 		function discoverInspectorClientSourceCatalog() {
@@ -2267,19 +2270,25 @@ window.__ModuleLoader__.load({
 				return Reflect.get(value, "id") === PACKAGE_ID;
 			});
 			if (row === void 0 || typeof row.url !== "string" || typeof row.rev !== "string") return void 0;
-			const base = browserLocation();
+			const base = documentBase();
 			if (base === void 0) return void 0;
 			const sourceUrl = new URL(row.url, base);
-			const sourceMapUrl = new URL(sourceUrl.href);
-			sourceMapUrl.pathname = `${sourceMapUrl.pathname}.map`;
+			let sourceMapUrl;
 			return new ClientSourceCatalog([{
 				scriptKey: CLIENT_SCRIPT_KEY,
 				url: sourceUrl.href,
 				hash: row.rev,
-				sourceMapUrl: sourceMapUrl.href,
+				get sourceMapUrl() {
+					return sourceMapUrl;
+				},
 				isModule: false,
-				loadSource: async () => fetchText(sourceUrl.href),
-				loadSourceMap: async () => fetchText(sourceMapUrl.href)
+				loadSource: async () => {
+					const source = await fetchText(sourceUrl.href);
+					const reference = /\/\/#\s*sourceMappingURL=(\S+)\s*$/u.exec(source)?.[1];
+					if (reference !== void 0) sourceMapUrl = new URL(reference, sourceUrl).href;
+					return source;
+				},
+				loadSourceMap: async () => sourceMapUrl === void 0 ? void 0 : fetchText(sourceMapUrl)
 			}]);
 		}
 		async function fetchText(url) {
@@ -2287,7 +2296,16 @@ window.__ModuleLoader__.load({
 			if (!response.ok) throw new Error(`${String(response.status)} ${response.statusText}`);
 			return response.text();
 		}
-		function browserLocation() {
+		/**
+		* Base every app-owned route reference resolves against: the document's
+		* `baseURI`, else the location URL, else undefined outside a browser.
+		*/
+		function documentBase() {
+			const document = Reflect.get(globalThis, "document");
+			if (typeof document === "object" && document !== null) {
+				const baseURI = Reflect.get(document, "baseURI");
+				if (typeof baseURI === "string" && baseURI !== "") return baseURI;
+			}
 			const location = Reflect.get(globalThis, "location");
 			if (typeof location !== "object" || location === null) return void 0;
 			const href = Reflect.get(location, "href");
@@ -2303,7 +2321,7 @@ window.__ModuleLoader__.load({
 		}
 		function normalizedUrl(value) {
 			try {
-				const url = new URL(value, browserLocation());
+				const url = new URL(value, documentBase());
 				url.hash = "";
 				return url.href;
 			} catch {
@@ -2471,6 +2489,10 @@ window.__ModuleLoader__.load({
 			close() {
 				if (this.closed) return;
 				this.closed = true;
+				this.cancelReconnect();
+			}
+			/** Cancel a scheduled attempt while the page is outside its active lifetime. */
+			cancelReconnect() {
 				if (this.reconnectTimer !== void 0) clearTimeout(this.reconnectTimer);
 				this.reconnectTimer = void 0;
 			}
@@ -3087,11 +3109,26 @@ window.__ModuleLoader__.load({
 			generation;
 			accepted = false;
 			closed = false;
+			suspended = false;
 			runtime;
 			runtimeRequests = /* @__PURE__ */ new Map();
 			console;
 			queries;
 			lifecycle;
+			/** Claimed page identity, unchanged across transport reconnects. */
+			get sourceId() {
+				return this.realmSource.sourceId;
+			}
+			onPageHide = () => {
+				this.suspended = true;
+				this.lifecycle.cancelReconnect();
+				this.disconnect("Client page hidden");
+			};
+			onPageShow = () => {
+				if (!this.suspended || this.closed) return;
+				this.suspended = false;
+				this.connect();
+			};
 			constructor(bootstrap, label = document.title || "Client", sourceCatalog = discoverInspectorClientSourceCatalog(), realmSource = new ClientRealmSource(label)) {
 				super();
 				this.bootstrap = bootstrap;
@@ -3132,21 +3169,43 @@ window.__ModuleLoader__.load({
 					maxFrameBytes: bootstrap.maxFrameBytes
 				});
 				this.connect();
+				if (typeof window !== "undefined") {
+					window.addEventListener("pagehide", this.onPageHide);
+					window.addEventListener("pageshow", this.onPageShow);
+				}
 			}
 			/** Permanently stop reconnecting and close the active source generation. */
 			close() {
 				if (this.closed) return;
 				this.closed = true;
-				this.console.close();
-				this.cancelRuntimeRequests();
-				this.runtime.reset();
-				this.queries.close("Inspector Client source closed");
+				if (typeof window !== "undefined") {
+					window.removeEventListener("pagehide", this.onPageHide);
+					window.removeEventListener("pageshow", this.onPageShow);
+				}
 				this.lifecycle.close();
-				this.publisher.close();
+				try {
+					this.disconnect("Client source closed");
+				} finally {
+					this.console.close();
+					this.queries.close("Inspector Client source closed");
+					this.publisher.close();
+					this.realmSource.close();
+				}
+			}
+			disconnect(reason) {
 				const socket = this.socket;
 				const generation = this.generation;
+				const accepted = this.accepted;
+				this.socket = void 0;
+				this.generation = void 0;
+				this.accepted = false;
+				this.console.reset();
+				this.cancelRuntimeRequests();
+				this.runtime.reset();
+				this.queries.disconnect(reason);
+				if (socket !== void 0) this.publisher.disconnect(socket);
 				try {
-					if (socket?.readyState === WebSocket.OPEN && generation !== void 0) {
+					if (socket?.readyState === WebSocket.OPEN && generation !== void 0 && accepted) {
 						const frame = {
 							v: 0,
 							t: "source/close",
@@ -3154,15 +3213,13 @@ window.__ModuleLoader__.load({
 							generation
 						};
 						socket.send(JSON.stringify(frame));
-						socket.close(1e3, "Client source closed");
-					} else socket?.close();
+					}
 				} finally {
-					this.socket = void 0;
-					this.realmSource.close();
+					socket?.close(1e3, reason);
 				}
 			}
 			connect() {
-				if (this.closed) return;
+				if (this.closed || this.suspended) return;
 				this.console.reset();
 				this.cancelRuntimeRequests();
 				this.runtime.reset();
@@ -3363,6 +3420,26 @@ window.__ModuleLoader__.load({
 			}
 		}
 		//#endregion
+		//#region lib/types/shared/dispose.js
+		/** Ordered release of Inspector registrations before their source transport closes. */
+		/**
+		* Join every registration disposer in reverse order, then close the source even after failures.
+		* @param disposers - Registrations in acquisition order.
+		* @param close - Final transport teardown.
+		* @param message - Aggregate failure diagnostic owned by the Host or Client caller.
+		* @returns Completion after all cleanup actions have settled.
+		* @throws AggregateError containing every failed cleanup action in release order.
+		*/
+		async function disposeInspectorResources(disposers, close, message) {
+			const failures = [];
+			for (const dispose of [...disposers].reverse().concat(close)) try {
+				await dispose();
+			} catch (error) {
+				failures.push(error);
+			}
+			if (failures.length > 0) throw new AggregateError(failures, message);
+		}
+		//#endregion
 		//#region lib/types/client/plugin.js
 		/** Client Cordis plugin that publishes browser observations directly to the Inspector Worker. */
 		/** Cordis plugin name shared with the Host face. */
@@ -3370,49 +3447,120 @@ window.__ModuleLoader__.load({
 		/** This transport root has no Client service dependencies. */
 		const inject = [];
 		/**
-		* Mount the Client source and shared `ctx.inspector` publishing API.
+		* Mount the Client source, including when the plugin activates after the page loads.
 		* @param ctx - Client Cordis context whose page identity and lifecycle own the source.
+		* @throws Invalid bootstrap data or a failed service registration; transport setup failures retain reconnect recovery.
 		*/
 		async function apply(ctx) {
+			const session = new InspectorClientSession(ctx);
+			ctx.effect(() => () => session.dispose(), "experimental-inspector: Client lifetime");
+			ctx.on("connection/reset", () => {
+				session.refresh().catch((error) => {
+					ctx.logger.warn("experimental-inspector: Client connection failed; reconnect or reload the page to retry", error);
+				});
+			});
 			const injected = globalThis.__DSH_INSPECTOR__;
-			if (injected === void 0) throw new Error("experimental inspector: Host bootstrap is missing");
-			const bootstrap = parseInspectorClientBootstrap(injected);
-			await ctx.effect(async () => {
-				const source = await startInspectorClient(bootstrap);
-				const disposers = [];
+			if (injected !== void 0) await session.connect(parseInspectorClientBootstrap(injected));
+			else await session.refresh();
+		}
+		/**
+		* Owns each source and its tree publisher until replacement or the outer lifetime effect disposes it.
+		* Cordis owns service/listener effects; transport setup failures retain the reset listener for retry.
+		* Invalid bootstrap data and registration errors reject startup after rollback.
+		*/
+		var InspectorClientSession = class {
+			ctx;
+			lifetime = new AbortController();
+			pending = Promise.resolve();
+			bootstrap;
+			release;
+			constructor(ctx) {
+				this.ctx = ctx;
+			}
+			refresh() {
+				return this.enqueue(() => this.readBootstrap());
+			}
+			connect(bootstrap) {
+				return this.enqueue(() => this.replace(bootstrap));
+			}
+			async readBootstrap() {
+				let response;
 				try {
-					disposers.push(publishCordisTree(ctx, source, {
+					response = await fetch(INSPECTOR_BOOTSTRAP_ROUTE, { signal: this.lifetime.signal });
+				} catch (error) {
+					this.connectionFailed(error);
+					return;
+				}
+				if (!response.ok) {
+					this.connectionFailed(/* @__PURE__ */ new Error(`Inspector bootstrap failed: HTTP ${response.status}`));
+					return;
+				}
+				const value = await response.json();
+				await this.replace(parseInspectorClientBootstrap(value));
+			}
+			connectionFailed(error) {
+				if (this.lifetime.signal.aborted) return;
+				this.ctx.logger.warn("experimental-inspector: Client connection failed; reconnect or reload the page to retry", error);
+			}
+			enqueue(task) {
+				const pending = this.pending.then(() => {
+					this.lifetime.signal.throwIfAborted();
+					return task();
+				});
+				this.pending = pending.catch((error) => {});
+				return pending;
+			}
+			async replace(bootstrap) {
+				this.lifetime.signal.throwIfAborted();
+				if (this.bootstrap?.endpoint === bootstrap.endpoint && this.bootstrap.protocol === bootstrap.protocol) return;
+				await this.release?.();
+				this.release = void 0;
+				this.bootstrap = void 0;
+				let source;
+				try {
+					source = await startInspectorClient(bootstrap);
+				} catch (error) {
+					this.connectionFailed(error);
+					return;
+				}
+				const disposers = [];
+				const dispose = () => disposeInspectorResources(disposers, () => {
+					source.close();
+				}, "experimental-inspector: Client disposal failed");
+				try {
+					this.lifetime.signal.throwIfAborted();
+					disposers.push(publishCordisTree(this.ctx, source, {
 						maxNodes: bootstrap.maxCordisNodes,
 						maxBytes: bootstrap.maxFrameBytes - 4096
 					}));
-					disposers.push(ctx.provide("inspector", createInspectorService(source)));
+					disposers.push(this.ctx.provide("inspector", createInspectorService(source)));
+					const panel = this.ctx.inject([
+						"slots",
+						"shortcuts",
+						"locale"
+					], async (ctx) => {
+						const { registerInspectorPage } = await require.async("./client.page.js");
+						registerInspectorPage(ctx, source.sourceId);
+					});
+					disposers.push(() => panel.dispose());
 				} catch (error) {
 					try {
-						disposeInspectorClient(source, disposers);
+						await dispose();
 					} catch (cleanupError) {
-						ctx.logger.error("experimental-inspector: Client initialization rollback failed", cleanupError);
+						this.ctx.logger.error("experimental-inspector: Client initialization rollback failed", cleanupError);
 					}
 					throw error;
 				}
-				return () => {
-					disposeInspectorClient(source, disposers);
-				};
-			}, "experimental-inspector: Client source");
-		}
-		function disposeInspectorClient(source, disposers) {
-			const failures = [];
-			for (const dispose of [...disposers].reverse()) try {
-				dispose();
-			} catch (error) {
-				failures.push(error);
+				this.bootstrap = bootstrap;
+				this.release = dispose;
 			}
-			try {
-				source.close();
-			} catch (error) {
-				failures.push(error);
+			async dispose() {
+				this.lifetime.abort();
+				await this.pending;
+				await this.release?.();
+				this.release = void 0;
 			}
-			if (failures.length > 0) throw new AggregateError(failures, "experimental-inspector: Client disposal failed");
-		}
+		};
 		//#endregion
 		exports.apply = apply;
 		exports.inject = inject;

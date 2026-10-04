@@ -5,6 +5,8 @@
  * state tables and the load/materialize machinery.
  */
 import { stripClientSuffix } from "./manifest.js";
+import { ClientEntries } from "./entries.js";
+import { removeOwnedStyles } from "./entry-lifecycle.js";
 /** Default bundle-load hook: same-origin external classic script. */
 const defaultLoadBundle = (url) => new Promise((resolve, reject) => {
     const el = document.createElement('script');
@@ -27,16 +29,43 @@ function atRevision(url, rev) {
     }
     return url.replace(/([?&]rev=)[^&#]*/, `$1${encodeURIComponent(rev)}`);
 }
+const CLIENT_CHUNK = /^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$/;
+/** The message of a thrown value: an Error's message, anything else stringified. */
+function describeError(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+/** Internal module-table key for one package-local chunk. */
+function chunkId(ownerId, fileName) {
+    return `${ownerId}/${fileName}`;
+}
+/** Resolve a sibling chunk against the package's one-resource URL and current revision. */
+function chunkUrl(row, fileName, rev) {
+    const url = atRevision(row.url, rev);
+    const marker = '/??';
+    const resourceStart = url.indexOf(marker);
+    const revisionStart = url.indexOf('&rev=', resourceStart + marker.length);
+    const resource = resourceStart < 0 || revisionStart < 0
+        ? undefined
+        : url.slice(resourceStart + marker.length, revisionStart);
+    if (resource !== `${row.id}/client.js`) {
+        throw new Error(`client-modules: cannot resolve chunk ${JSON.stringify(fileName)} from bundle URL ${url}`);
+    }
+    return `${url.slice(0, resourceStart)}/${row.id}/${fileName}?${url.slice(revisionStart + 1)}`;
+}
+/** Untagged <style> elements present before a factory runs; the factory must not claim them. */
+const untaggedStyles = () => typeof document === 'undefined' ? new Set() : new Set(document.querySelectorAll('style:not([data-plugin])'));
 /**
  * Claim and inventory the <style> tags a factory injected during
  * materialization: preset-emitted tags arrive pre-tagged with data-plugin;
- * any untagged tag is claimed for the materializing plugin (HMR bookkeeping).
+ * an untagged tag that was absent from `before` is claimed for the
+ * materializing plugin (HMR bookkeeping).
  */
-const claimStyles = (id) => {
+const claimStyles = (id, before) => {
     if (typeof document === 'undefined')
         return [];
-    for (const el of document.querySelectorAll('style:not([data-plugin])')) {
-        el.setAttribute('data-plugin', id);
+    for (const el of untaggedStyles()) {
+        if (!before.has(el))
+            el.setAttribute('data-plugin', id);
     }
     const owned = [];
     for (const el of document.querySelectorAll(`style[data-plugin=${JSON.stringify(id)}]`)) {
@@ -54,29 +83,45 @@ const claimStyles = (id) => {
 export class ClientModuleSystem {
     version = 'client';
     manifest;
+    entries;
     loadCache = new Map();
     seed;
     factories = new Map();
     bootstrapIds = new Set();
     /** In-flight script transport per URL; every row in one batch shares it. */
     pendingArrival = new Map();
+    /** Owner generation captured by in-flight chunk requests and advanced on invalidation. */
+    generations = new Map();
     /** Single-resource combo URL selected by HMR after invalidating one row. */
-    reloadUrls = new Map();
+    reloadTargets = new Map();
     /** Materialization re-entrancy guard: factory-form CJS cannot deliver partial exports, so a cycle is fatal. */
     materializing = new Set();
     graphRows = new Map();
     loadBundle;
+    /** Last import or prefetch failure per graph row, cleared by a later success or invalidation. */
+    importErrors = new Map();
+    /** Batch URLs whose transport or execution already failed; rows still missing from them go straight to their one-resource URL. */
+    failedBundleUrls = new Set();
+    /** Every URL whose script has executed once; a batch among them is never requested again. */
+    executedBundleUrls = new Set();
     /**
      * Build the module system over the parsed boot rows.
      * @param options - Parsed graph, platform seed, bootstrap module, registration facade, and transport.
      */
     constructor(options) {
         this.manifest = options.manifest;
+        this.entries = new ClientEntries(this, {
+            update: (manifest, managed) => { this.updateManifest(manifest, managed); },
+            invalidateForReplacement: (id, rev) => {
+                if (this.bootstrapIds.has(id))
+                    throw new Error(`client-modules: replacing bootstrap module ${id} requires a page reload`);
+                this.invalidate(id, rev);
+            },
+            prune: (roots) => { this.prune(roots); },
+        });
         this.seed = new Map(Object.entries(options.staticModules));
         this.loadBundle = options.loadBundle ?? defaultLoadBundle;
         for (const row of options.manifest.modules) {
-            if (this.graphRows.has(row.id))
-                throw new Error(`client-modules: duplicate graph entry "${row.id}"`);
             this.graphRows.set(row.id, row);
         }
         const bootstrapId = stripClientSuffix(options.bootstrapModule.id);
@@ -101,32 +146,96 @@ export class ClientModuleSystem {
     }
     /** Register one bundle factory, rejecting a script that executes twice without invalidation. */
     register(registration) {
-        const id = stripClientSuffix(registration.id);
-        if (this.bootstrapIds.has(id) || this.factories.has(id)) {
-            throw new Error(`client-modules: duplicate factory registration for "${registration.id}" (bundle executed twice without invalidate?)`);
+        const ownerId = stripClientSuffix(registration.id);
+        if (registration.chunk !== undefined && !CLIENT_CHUNK.test(registration.chunk)) {
+            throw new Error(`client-modules: invalid package-local chunk ${JSON.stringify(registration.chunk)}`);
         }
-        this.factories.set(id, registration.factory);
+        const id = registration.chunk === undefined ? ownerId : chunkId(ownerId, registration.chunk);
+        if (this.bootstrapIds.has(id) || this.factories.has(id)) {
+            const registrationName = registration.chunk === undefined ? registration.id : id;
+            throw new Error(`client-modules: duplicate factory registration for "${registrationName}" (bundle executed twice without invalidate?)`);
+        }
+        this.factories.set(id, {
+            factory: registration.factory,
+            rev: this.reloadTargets.get(ownerId)?.rev ?? this.graphRows.get(ownerId)?.rev,
+        });
     }
-    /** Load one graph row so its factory is registered (idempotent per in-flight arrival). */
-    arrive(row) {
-        const { id } = row;
-        if (this.loadCache.has(id) || this.factories.has(id))
-            return Promise.resolve();
-        const reloadUrl = this.reloadUrls.get(id);
-        const url = reloadUrl ?? row.initialUrl;
+    /** Run one bundle transport per URL; every row waiting on the same URL shares the in-flight request. */
+    loadShared(url) {
         let transport = this.pendingArrival.get(url);
         if (transport === undefined) {
-            transport = this.loadBundle(url).finally(() => { this.pendingArrival.delete(url); });
+            transport = this.loadBundle(url)
+                .then(() => { this.executedBundleUrls.add(url); })
+                .finally(() => { this.pendingArrival.delete(url); });
             this.pendingArrival.set(url, transport);
         }
-        return transport.then(() => {
-            if (!this.factories.has(id)) {
-                throw new Error(`client-modules: bundle ${url} loaded without registering "${id}" via __ModuleLoader__.load`);
+        return transport;
+    }
+    /**
+     * Load one graph row so its factory is registered (idempotent per in-flight
+     * arrival). A batch script is one classic script that registers every
+     * package in sequence, and {@link register} rejects a second registration,
+     * so the two failure kinds differ: a transport failure (`error` event, nothing
+     * executed) is retried once on the same URL; a script that loaded without
+     * registering this row (a parse error registered nothing, or a runtime throw
+     * stopped it after registering others) is never re-executed, because a replay
+     * would stop again at the first duplicate registration; that holds even when
+     * the row that first imports from the batch is one it did register, because
+     * every executed batch URL is remembered. Either way the row then falls back
+     * to its own one-resource URL, which the Host serves for every package, so one
+     * failed batch costs at most three requests per missing row and never fails
+     * the rows that were registered.
+     */
+    async arrive(row) {
+        const { id } = row;
+        if (this.loadCache.has(id) || this.factories.has(id))
+            return;
+        const reload = this.reloadTargets.get(id);
+        const preferred = reload?.url ?? row.initialUrl;
+        const fallback = reload === undefined && row.url !== preferred ? row.url : undefined;
+        const failures = [];
+        const attempt = async (url) => {
+            try {
+                await this.loadShared(url);
             }
-            if (reloadUrl !== undefined && this.reloadUrls.get(id) === reloadUrl) {
-                this.reloadUrls.delete(id);
+            catch (error) {
+                failures.push(`${url}: ${describeError(error)}`);
+                return 'transport-failed';
             }
-        });
+            if (this.factories.has(id))
+                return 'registered';
+            failures.push(`${url}: loaded without registering "${id}" via __ModuleLoader__.load`);
+            return 'not-registered';
+        };
+        let outcome = 'transport-failed';
+        if (this.failedBundleUrls.has(preferred)) {
+            failures.push(`${preferred}: skipped after an earlier failure of this bundle`);
+        }
+        else if (fallback !== undefined && this.executedBundleUrls.has(preferred)) {
+            // The batch already ran (an earlier importer was a row it did register)
+            // and this row is still missing: a replay would stop at the first
+            // duplicate registration.
+            failures.push(`${preferred}: already executed without registering "${id}"`);
+            outcome = 'not-registered';
+            this.failedBundleUrls.add(preferred);
+        }
+        else {
+            outcome = await attempt(preferred);
+            if (outcome === 'transport-failed')
+                outcome = await attempt(preferred);
+            // Only a batch URL is remembered: a one-resource URL has no fallback and
+            // stays retryable on the next import, as before.
+            if (outcome !== 'registered' && fallback !== undefined)
+                this.failedBundleUrls.add(preferred);
+        }
+        if (outcome !== 'registered' && fallback !== undefined)
+            outcome = await attempt(fallback);
+        if (outcome !== 'registered') {
+            throw new Error(`client-modules: could not load "${id}": ${failures.join('; ')}`);
+        }
+        if (reload !== undefined && this.reloadTargets.get(id) === reload) {
+            this.reloadTargets.delete(id);
+        }
     }
     /** Register each injected package and unresolved dynamic request before its consumer. */
     async arriveGraphRow(row, open = [], visited = new Set()) {
@@ -145,17 +254,26 @@ export class ClientModuleSystem {
                 continue;
             const dependency = this.graphRows.get(id);
             if (dependency !== undefined)
-                await this.arriveGraphRow(dependency, next, visited);
+                await this.arriveDependency(row.id, dependency, next, visited);
         }
         for (const packageName of row.inject) {
             const dependency = this.graphRows.get(packageName);
             if (dependency !== undefined)
-                await this.arriveGraphRow(dependency, [], visited);
+                await this.arriveDependency(row.id, dependency, [], visited);
         }
         await this.arrive(row);
     }
+    /** Arrive one dependency, naming the consumer it failed for so a cascade reads as a chain, not as 44 unrelated failures. */
+    async arriveDependency(consumerId, dependency, open, visited) {
+        try {
+            await this.arriveGraphRow(dependency, open, visited);
+        }
+        catch (error) {
+            throw new Error(`client-modules: "${consumerId}" not loaded because dependency "${dependency.id}" failed: ${describeError(error)}`, { cause: error });
+        }
+    }
     /** Materialize a registered factory (synchronous; memoized in loadCache). */
-    materialize(id) {
+    materialize(id, ownerId = id) {
         const existing = this.loadCache.get(id);
         if (existing !== undefined)
             return existing;
@@ -167,25 +285,26 @@ export class ClientModuleSystem {
             throw new Error(`client-modules: require cycle through "${id}" (factory-form CJS cannot deliver partial exports)`);
         }
         this.materializing.add(id);
+        const before = untaggedStyles();
         try {
             const edges = new Set();
-            const exports = registered(this.makeRequire(edges));
-            const record = { id, exports, styles: claimStyles(id), edges };
+            const exports = registered.factory(this.makeRequire(ownerId, edges));
+            const record = { id, exports, styles: claimStyles(ownerId, before), edges };
             this.loadCache.set(id, record);
             return record;
+        }
+        catch (error) {
+            claimStyles(ownerId, before);
+            removeOwnedStyles(ownerId);
+            throw error;
         }
         finally {
             this.materializing.delete(id);
         }
     }
-    /**
-     * The synchronous require answered to factories: seed → memoized record →
-     * registered factory. Fetching is async and therefore unreachable
-     * from here; an external dynamic package must have arrived before its
-     * consumer materializes.
-     */
-    makeRequire(edges) {
-        return (spec) => {
+    /** Build the synchronous module-table require and its asynchronous chunk operation. */
+    makeRequire(ownerId, edges) {
+        const require = (spec) => {
             edges.add(spec);
             if (this.seed.has(spec))
                 return this.seed.get(spec);
@@ -198,6 +317,48 @@ export class ClientModuleSystem {
             throw new Error(`client-modules: require("${spec}") missed the module table — not a platform seed word, not a materialized module, `
                 + 'and no registered package factory (a build-time externals drift, or a dynamic dependency that did not arrive)');
         };
+        require.async = async (spec) => {
+            edges.add(spec);
+            if (!spec.startsWith('./'))
+                return await this.import(spec);
+            const fileName = spec.slice(2);
+            if (!CLIENT_CHUNK.test(fileName)) {
+                throw new Error(`client-modules: invalid relative chunk request ${JSON.stringify(spec)}`);
+            }
+            return await this.importChunk(ownerId, fileName);
+        };
+        return require;
+    }
+    /** Load, register, and materialize one package-local dynamic chunk. */
+    async importChunk(ownerId, fileName) {
+        const id = chunkId(ownerId, fileName);
+        const existing = this.loadCache.get(id);
+        if (existing !== undefined)
+            return existing.exports;
+        if (!this.factories.has(id)) {
+            const generation = this.generations.get(ownerId) ?? 0;
+            const row = this.graphRows.get(ownerId);
+            if (row === undefined)
+                throw new Error(`client-modules: chunk owner "${ownerId}" is not a boot graph entry`);
+            /* v8 ignore next -- the final fallback needs an impossible graph-owned factory with no recorded revision. */
+            const revision = this.factories.get(ownerId)?.rev ?? this.reloadTargets.get(ownerId)?.rev ?? row.rev;
+            const url = chunkUrl(row, fileName, revision);
+            let transport = this.pendingArrival.get(url);
+            if (transport === undefined) {
+                transport = this.loadBundle(url).finally(() => { this.pendingArrival.delete(url); });
+                this.pendingArrival.set(url, transport);
+            }
+            await transport;
+            if ((this.generations.get(ownerId) ?? 0) !== generation) {
+                this.factories.delete(id);
+                this.loadCache.delete(id);
+                return await this.importChunk(ownerId, fileName);
+            }
+            if (!this.factories.has(id)) {
+                throw new Error(`client-modules: bundle ${url} loaded without registering "${id}" via __ModuleLoader__.load`);
+            }
+        }
+        return this.materialize(id, ownerId).exports;
     }
     async import(specifier) {
         if (this.seed.has(specifier))
@@ -207,14 +368,16 @@ export class ClientModuleSystem {
         if (existing !== undefined)
             return existing.exports;
         const row = this.graphRows.get(id);
-        if (row !== undefined) {
-            await this.arriveGraphRow(row);
-        }
-        else if (!this.factories.has(id)) {
+        if (row === undefined) {
+            if (this.factories.has(id))
+                return this.materialize(id).exports;
             throw new Error(`client-modules: cannot resolve "${specifier}" — not a seed word, not a materialized module, `
                 + 'and not a row in the boot graph (the runtime mirror of the bundle purity gate)');
         }
-        return this.materialize(id).exports;
+        return this.recordingImportError(id, async () => {
+            await this.arriveGraphRow(row);
+            return this.materialize(id).exports;
+        });
     }
     async prefetch(id) {
         const normalized = stripClientSuffix(id);
@@ -223,19 +386,92 @@ export class ClientModuleSystem {
         const row = this.graphRows.get(normalized);
         if (row === undefined)
             throw new Error(`client-modules: prefetch("${id}") — not a graph entry`);
-        await this.arriveGraphRow(row);
+        await this.recordingImportError(normalized, () => this.arriveGraphRow(row));
+    }
+    importError(id) {
+        return this.importErrors.get(stripClientSuffix(id));
+    }
+    /**
+     * Run one graph-row operation, recording its failure for the boot audit and
+     * clearing the record on success. Arrival and materialization both run in
+     * here, so a factory that throws is recorded as well as a bundle that never
+     * arrived; the Loader only sees a missing fiber either way.
+     */
+    async recordingImportError(id, operation) {
+        try {
+            const result = await operation();
+            this.importErrors.delete(id);
+            return result;
+        }
+        catch (error) {
+            this.importErrors.set(id, error instanceof Error ? error : new Error(describeError(error)));
+            throw error;
+        }
+    }
+    /** Refresh descriptors and unowned factory revisions before any entry imports its dependencies. */
+    updateManifest(manifest, managed) {
+        for (const id of this.bootstrapIds) {
+            if (this.manifest.modules.some(row => row.id === id) && !manifest.modules.some(row => row.id === id)) {
+                throw new Error(`client-modules: removing bootstrap module ${id} requires a page reload`);
+            }
+        }
+        const owned = new Set(managed);
+        for (const row of manifest.modules) {
+            this.graphRows.set(row.id, { ...row, initialUrl: row.url });
+            const cachedRevision = this.factories.get(row.id)?.rev ?? this.reloadTargets.get(row.id)?.rev;
+            if (!owned.has(row.id) && cachedRevision !== undefined && cachedRevision !== row.rev) {
+                this.invalidate(row.id, row.rev);
+                removeOwnedStyles(row.id);
+            }
+        }
+        this.manifest = manifest;
+    }
+    /** Retain live Loader modules and their transitive requests before evicting unreferenced graph records. */
+    prune(roots) {
+        const retained = new Set(this.bootstrapIds);
+        const visit = (specifier) => {
+            const id = stripClientSuffix(specifier);
+            if (retained.has(id))
+                return;
+            retained.add(id);
+            const row = this.graphRows.get(id);
+            for (const request of [...row?.external ?? [], ...row?.inject ?? [], ...this.loadCache.get(id)?.edges ?? []]) {
+                visit(request);
+            }
+        };
+        for (const row of this.manifest.modules)
+            visit(row.id);
+        for (const id of roots)
+            visit(id);
+        for (const id of this.graphRows.keys()) {
+            if (retained.has(id))
+                continue;
+            this.graphRows.delete(id);
+            this.invalidate(id);
+            removeOwnedStyles(id);
+        }
     }
     invalidate(id, rev) {
         const normalized = stripClientSuffix(id);
         if (this.bootstrapIds.has(normalized))
             return;
+        this.importErrors.delete(normalized);
+        this.generations.set(normalized, (this.generations.get(normalized) ?? 0) + 1);
         const row = this.graphRows.get(normalized);
-        if (row !== undefined)
-            this.reloadUrls.set(normalized, atRevision(row.url, rev ?? row.rev));
+        if (row !== undefined) {
+            const revision = rev ?? row.rev;
+            this.reloadTargets.set(normalized, { url: atRevision(row.url, revision), rev: revision });
+        }
         else
-            this.reloadUrls.delete(normalized);
-        this.factories.delete(normalized);
-        this.loadCache.delete(normalized);
+            this.reloadTargets.delete(normalized);
+        for (const key of this.factories.keys()) {
+            if (key === normalized || key.startsWith(`${normalized}/client.`))
+                this.factories.delete(key);
+        }
+        for (const key of this.loadCache.keys()) {
+            if (key === normalized || key.startsWith(`${normalized}/client.`))
+                this.loadCache.delete(key);
+        }
     }
 }
 //# sourceMappingURL=system.js.map

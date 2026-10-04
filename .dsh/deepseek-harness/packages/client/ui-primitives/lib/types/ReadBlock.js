@@ -1,9 +1,12 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import clsx from 'clsx';
 import { FoldToggle } from "./FoldToggle.js";
 import { writeClipboard } from "./clipboard.js";
+import { CodeToolbar } from "./CodeToolbar.js";
+import cardCss from './CodeCard.module.css';
 import { grammarLoadCount, highlightLines, subscribeGrammarLoaded, } from "./markdown/highlight.js";
+import { useViewportHighlighting } from "./markdown/useViewportHighlighting.js";
 import css from './ReadBlock.module.css';
 /**
  * Content lines shown before the height cap collapses the middle. Matches
@@ -21,6 +24,8 @@ function renderSpans(spans) {
  * @returns the read block element.
  */
 export function ReadBlock({ label, labels, lines, totalLines, lang, maxLines = DEFAULT_READ_MAX_LINES, className, }) {
+    const rootRef = useRef(null);
+    const highlighting = useViewportHighlighting(rootRef, lang);
     // Whole-window highlighting preserves multiline grammar context; copy uses
     // the same text without gutter or banner chrome.
     const raw = useMemo(() => lines.map(line => line.text).join('\n'), [lines]);
@@ -28,9 +33,10 @@ export function ReadBlock({ label, labels, lines, totalLines, lang, maxLines = D
     // plain text while its language's grammar imported picks up highlighting. The
     // snapshot value is opaque; only its change across renders drives the memo.
     const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount);
-    const highlighted = useMemo(() => highlightLines(raw, lang), [raw, lang, loaded]);
+    const highlighted = useMemo(() => highlighting ? highlightLines(raw, lang) : undefined, [highlighting, raw, lang, loaded]);
     const [expanded, setExpanded] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [wrapped, setWrapped] = useState(false);
     const onCopy = useCallback(() => {
         if (copied)
             return;
@@ -50,7 +56,11 @@ export function ReadBlock({ label, labels, lines, totalLines, lang, maxLines = D
     // the note states that so a reader is not misled that the file ends here.
     const windowed = lines.length < totalLines;
     const rows = (slice) => slice.map(([line, spans]) => (_jsxs("div", { className: css.line, children: [_jsx("span", { className: css.gutter, "aria-hidden": true, children: line.number }), _jsx("span", { className: css.content, children: spans === undefined ? line.text : renderSpans(spans) })] }, line.number)));
+    const gutterDigits = lines.reduce((digits, line) => Math.max(digits, String(line.number).length), 3);
+    const gutterStyle = { '--dsl-read-gutter': `${gutterDigits}ch` };
     const paired = lines.map((line, index) => [line, highlighted?.[index]]);
-    return (_jsxs("div", { className: clsx(css.block, className), "data-read": "", children: [_jsxs("div", { className: css.banner, children: [_jsx("div", { className: css.label, children: label ?? '' }), _jsxs("div", { className: css.action, children: [windowed && (_jsx("span", { className: css.count, children: labels.window(lines.length, totalLines) })), _jsx("span", { className: css.lang, children: lang ?? '' }), lines.length > 0 && (_jsx("button", { type: "button", className: css.copyButton, onClick: onCopy, children: copied ? labels.copied : labels.copy }))] })] }), _jsxs("div", { className: css.body, children: [rows(capped ? paired.slice(0, headLines) : paired), hidden > 0 && (_jsx(FoldToggle, { className: css.expand, expanded: expanded, hidden: hidden, labels: labels, onToggle: onToggle })), capped && rows(paired.slice(paired.length - tailLines))] })] }));
+    return (_jsxs("div", { ref: rootRef, className: clsx(cardCss.card, css.block, className), "data-read": "", "data-code-wrap": wrapped, style: gutterStyle, children: [_jsx(CodeToolbar, { lang: lang, title: label, status: windowed ? labels.window(lines.length, totalLines) : undefined, labels: labels, copyLabel: labels.copy, copiedLabel: labels.copied, copied: copied, wrapped: wrapped, 
+                // Empty files must not replace the clipboard with empty text.
+                onCopy: lines.length > 0 ? onCopy : undefined, onWrap: () => { setWrapped(value => !value); } }), _jsxs("div", { className: cardCss.body, children: [rows(capped ? paired.slice(0, headLines) : paired), hidden > 0 && (_jsx(FoldToggle, { className: css.expand, expanded: expanded, hidden: hidden, labels: labels, onToggle: onToggle })), capped && rows(paired.slice(paired.length - tailLines))] })] }));
 }
 //# sourceMappingURL=ReadBlock.js.map

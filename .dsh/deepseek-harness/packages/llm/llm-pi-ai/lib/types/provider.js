@@ -18,11 +18,11 @@
  *
  * @module dsh-llm-pi-ai/provider
  */
-import { createProvider } from '@earendil-works/pi-ai';
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
-import { catalogProvider } from "./catalog.js";
+import { catalogProvider, PiAiCatalogError } from "./catalog.js";
+import { createProvider } from "./models.js";
 /**
  * Wire protocols a configured route may name, mapped to pi-ai's lazily loaded
  * implementations. Each entry is the factory that pi-ai's matching provider
@@ -148,7 +148,7 @@ export function buildProvider(spec) {
     // replaces each catalog model's own. So the route has a single API.
     const factory = spec.api === undefined ? undefined : PROTOCOLS[spec.api];
     if (factory === undefined) {
-        throw new Error(`llm-pi-ai: provider "${spec.provider}" names api "${spec.api}", which this build cannot serve;`
+        throw new PiAiCatalogError(`llm-pi-ai: provider "${spec.provider}" names api "${spec.api}", which this build cannot serve;`
             + ` supported protocols are ${supportedProtocols().join(', ')}`);
     }
     return createProvider({

@@ -64,10 +64,10 @@ export declare function resolveChildAgentOptions(parent: Agent, requested: Agent
  * child never had.
  * @param parent - the delegating parent agent.
  * @param childDepth - the resolved delegation depth to persist.
- * @param lineageSeedLength - how many leading events came from the parent's log.
+ * @param isSeeded - whether this child inherits a parent-log prefix, including an explicitly empty one.
  * @returns the `meta` for `ctx.agents.create()`.
  */
-export declare function childSessionMeta(parent: Agent, childDepth: number, lineageSeedLength: number): NonNullable<CreateAgentOptions['meta']>;
+export declare function childSessionMeta(parent: Agent, childDepth: number, isSeeded: boolean): NonNullable<CreateAgentOptions['meta']>;
 /** The scoped composition a child agent's creation window applies. */
 export interface ChildComposition {
     /** Per-child persona shadowing the deployment persona. */
@@ -106,6 +106,11 @@ export declare const SUBAGENT_DELEGATION_CONTEXT: string;
 export declare function applyChildComposition(childCtx: Context, parent: Agent, composition: ChildComposition): void;
 /** Policy seeded onto a child session's log at the delegation boundary. */
 export interface DelegatedPolicyOverrides {
+    /**
+     * The parent's current preset identity when it runs in Auto or Full access;
+     * the child keeps it under the pinned `never` approval policy.
+     */
+    readonly permissionPreset: 'auto' | 'danger-full-access' | undefined;
     /** The parent session's explicit sandbox-mode override, or `undefined` without one. */
     readonly sandboxMode: SandboxMode | undefined;
     /**
@@ -116,12 +121,13 @@ export interface DelegatedPolicyOverrides {
     readonly approvalPolicy: 'never' | undefined;
 }
 /**
- * Capture the policy to seed into one delegation. Call synchronously before
+ * Capture the permission state to seed into one delegation. Call synchronously before
  * the child start's first await: a later parent switch belongs to the
- * parent's future, not to this child. Only the parent session's explicit
- * sandbox override is captured — never deployment defaults or one-shot
- * grants — and the approval policy is pinned to `'never'` regardless of the
- * parent's own policy.
+ * parent's future, not to this child. Auto and Full access identities are
+ * inherited only through the in-process DSH path so either can replace a stale
+ * same-bundle fork value. Only the parent session's explicit sandbox override
+ * is captured — never deployment defaults or one-shot grants — and the approval
+ * policy is pinned to `'never'` regardless of the parent's own policy.
  * @param parent - the delegating parent agent.
  * @returns the sandbox override (or `undefined` without one) and the approval pin.
  */

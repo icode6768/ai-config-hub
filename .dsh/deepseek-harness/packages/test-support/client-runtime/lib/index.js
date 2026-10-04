@@ -5,9 +5,11 @@ import { SlotRegistry } from "@deepseek-ai/dsh-client-ui-renderer/client";
 import { bindSnapshotSelector as bindSnapshotSelector$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts";
 import { createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx";
 import { apply, inject } from "@deepseek-ai/dsh-client-ui-session/client";
-import { afterEach, beforeEach, expect, vi } from "vitest";
-import { MutableSessionEventSource, SESSION_SEARCH_RESULT_LIMIT, createScope, scopeOf } from "@deepseek-ai/dsh-api-session-controller/client";
 import { createSnapshotStore } from "@deepseek-ai/dsh-client-store";
+import { afterEach, beforeEach, expect, vi } from "vitest";
+import { RemoteError } from "@deepseek-ai/dsh-typert-protocol";
+import { MutableSessionEventSource, SESSION_SEARCH_RESULT_LIMIT, createScope, scopeOf } from "@deepseek-ai/dsh-api-session-controller/client";
+import { scopeIdentityOf } from "@deepseek-ai/dsh-api-session-controller/src/client/scope.ts";
 import { EMPTY_CONVERSATION_SNAPSHOT } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import { EMPTY_CHAT_SNAPSHOT } from "@deepseek-ai/dsh-client-ui-chat/client";
 //#region lib/types/snapshot.js
@@ -86,6 +88,96 @@ function registerDomSnapshotSerializer() {
 	expect.addSnapshotSerializer(domSnapshotSerializer);
 }
 //#endregion
+//#region lib/types/remote.js
+/**
+* Remote service test double for the forwarded-event path. Feature specs need
+* `ctx.remote.$on` to exist (their plugins inject `remote`) and need forwarded
+* Host events to reach those subscribers, but not the wire — so this double
+* implements subscription plus an explicit `emit` driver available only on the
+* concrete test object. A spec that also calls one namespace scripts it through
+* the constructor rather than reaching the real Client Remote service.
+*
+* `$mount` rejects: a spec that needs a real generated contribution installed —
+* codecs, descriptors, and the wire — has outgrown this double and needs the
+* real Client Remote service.
+*
+* One deliberate asymmetry with production: a throwing listener propagates out
+* of the emit instead of being contained and logged, so a spec cannot lean on
+* this double for the containment guarantee `$on` documents — assert that
+* against the real service.
+*/
+var TestRemote = class {
+	ctx;
+	subscriptions = /* @__PURE__ */ new Map();
+	/**
+	* Fixed Host facts mirrored from the production `ctx.remote.$host`. Plain
+	* mutable field: a spec assigns it to script a non-loopback or homed Host.
+	*/
+	$host = {
+		home: void 0,
+		isLoopback: true
+	};
+	/**
+	* Register the double as `ctx.remote`, plus one service per scripted
+	* namespace so a plugin injecting `remote.<name>` also unparks.
+	* @param ctx - the spec's root Context.
+	* @param namespaces - scripted namespace faces reached as `ctx.remote.<name>`.
+	*/
+	constructor(ctx, namespaces = {}) {
+		this.ctx = ctx;
+		this.validateNamespaces(namespaces);
+		ctx.provide("remote", this);
+		this.installNamespaces(namespaces);
+	}
+	/**
+	* Add scripted namespace faces to this Remote service.
+	* @param namespaces - scripted namespace faces reached as `ctx.remote.<name>`.
+	*/
+	provideNamespaces(namespaces) {
+		this.validateNamespaces(namespaces);
+		this.installNamespaces(namespaces);
+	}
+	validateNamespaces(namespaces) {
+		for (const name of Object.keys(namespaces)) if (name in this) throw new TypeError(`TestRemote: scripted namespace "${name}" would shadow the double's own member`);
+	}
+	installNamespaces(namespaces) {
+		Object.assign(this, namespaces);
+		for (const [name, face] of Object.entries(namespaces)) this.ctx.provide(`remote.${name}`, face);
+	}
+	/**
+	* Deliver one forwarded host event to its subscribers, standing in for the
+	* carrier that owns the frame sink.
+	* @param event - forwarded host event name.
+	* @param args - the Host argument list, verbatim.
+	*/
+	emit(event, args) {
+		const listeners = this.subscriptions.get(event);
+		if (listeners === void 0) return;
+		for (const listener of [...listeners]) listener(...args);
+	}
+	/**
+	* Subscribe to one forwarded host event.
+	* @param event - forwarded host event name.
+	* @param listener - receives the Host argument list verbatim.
+	* @returns disposer removing this subscription.
+	*/
+	$on(event, listener) {
+		const listeners = this.subscriptions.get(event) ?? /* @__PURE__ */ new Set();
+		this.subscriptions.set(event, listeners);
+		listeners.add(listener);
+		return () => {
+			listeners.delete(listener);
+		};
+	}
+	/**
+	* Generated-namespace mount, unsupported by this double.
+	* @returns never; always rejects.
+	*/
+	$mount() {
+		return Promise.reject(/* @__PURE__ */ new Error("TestRemote: $mount needs the real Client Remote service"));
+	}
+};
+//#endregion
 //#region lib/types/fixtures.js
 /**
 * A complete quiescent Session Controller snapshot.
@@ -95,7 +187,6 @@ function registerDomSnapshotSerializer() {
 function sessionSnapshot(sessionId) {
 	return {
 		sessionId,
-		queue: [],
 		pendingSubmissions: [],
 		running: false,
 		subagent: null,
@@ -141,6 +232,7 @@ function workspaceSnapshot() {
 	return {
 		items: [],
 		archivedSessionIds: [],
+		pinnedSessionIds: [],
 		state: "idle",
 		phase: "ready",
 		error: null
@@ -271,6 +363,13 @@ var FixtureSession = class {
 		throw new Error(`test session "${this.sessionId}": loadOlder is not stubbed — supply it on the fixture's session face`);
 	}
 	/**
+	* Fail-loud stub; supply `loadThrough` on the fixture's session face to exercise it.
+	* @returns never — always throws.
+	*/
+	loadThrough() {
+		throw new Error(`test session "${this.sessionId}": loadThrough is not stubbed — supply it on the fixture's session face`);
+	}
+	/**
 	* Fail-loud stub; supply `rename` on the fixture's session face to exercise it.
 	* @returns never — always throws.
 	*/
@@ -278,23 +377,94 @@ var FixtureSession = class {
 		throw new Error(`test session "${this.sessionId}": rename is not stubbed — supply it on the fixture's session face`);
 	}
 };
+function freezeRetainedBy(counts) {
+	Object.setPrototypeOf(counts, null);
+	return Object.freeze(counts);
+}
+const EMPTY_RETAIN_INFO = Object.freeze({
+	referenceCount: 0,
+	retainedBy: freezeRetainedBy({})
+});
+async function waitForOpen(opening, signal) {
+	/* v8 ignore next -- TestSessionReference always supplies its release-composed signal. */
+	if (signal === void 0) return opening;
+	const aborted = Promise.withResolvers();
+	const onAbort = () => {
+		aborted.reject(signal.reason);
+	};
+	signal.addEventListener("abort", onAbort, { once: true });
+	try {
+		if (signal.aborted) onAbort();
+		await Promise.race([opening, aborted.promise]);
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
+}
+var TestSessionReference = class {
+	sessionId;
+	generation;
+	releaseReference;
+	released = new AbortController();
+	readiness = Promise.withResolvers();
+	ready = this.readiness.promise;
+	constructor(sessionId, generation, releaseReference) {
+		this.sessionId = sessionId;
+		this.generation = generation;
+		this.releaseReference = releaseReference;
+		this.ready.catch(() => {});
+	}
+	get binding() {
+		if (this.generation === void 0 || !this.generation.live) throw new Error(`Session reference "${this.sessionId}" is released`);
+		return this.generation.binding;
+	}
+	attachOpening(opening, signal) {
+		const waitSignal = signal === void 0 ? this.released.signal : AbortSignal.any([this.released.signal, signal]);
+		waitForOpen(opening, waitSignal).then(() => {
+			try {
+				waitSignal.throwIfAborted();
+				this.readiness.resolve(this.binding);
+			} catch (error) {
+				this.readiness.reject(error);
+			}
+		}, (error) => {
+			this.readiness.reject(error);
+		});
+	}
+	release() {
+		const reason = /* @__PURE__ */ new Error(`Session reference "${this.sessionId}" is released`);
+		const release = this.releaseReference;
+		this.released.abort(reason);
+		this.readiness.reject(reason);
+		this.generation = void 0;
+		this.releaseReference = void 0;
+		release?.();
+	}
+	[Symbol.dispose]() {
+		this.release();
+	}
+};
 /**
 * Sessions test double behind the renderer host and feature injects: owns the
-* list/current observable, scope minting through the production `createScope`,
+* catalog observable, scope minting through the production `createScope`,
 * stable Controller bindings, and the session behavior face supplied per
 * fixture. `ui-session` owns standard-source materialization.
 *
 * Implements the same ISessions face features receive as `ctx.sessions`, so
 * a production face change breaks this double at compile time; the extra
-* members (add/updateSessionSnapshot/event-window drivers/setCurrent/remove/
+* members (add/updateSessionSnapshot/event-window drivers/remove/
 * behavior/calls/stubs) are bench-only surface.
 */
 var TestSessions = class {
 	stabilize;
 	rootCtx;
-	/** The useSessions standard feed (list rows + current selection). */
+	/** The useSessions catalog feed, independent of view ownership. */
 	list;
 	records = /* @__PURE__ */ new Map();
+	generations = /* @__PURE__ */ new Map();
+	addresses = /* @__PURE__ */ new Map();
+	retentionStores = /* @__PURE__ */ new Map();
+	pendingDrops = /* @__PURE__ */ new Set();
+	closed = false;
 	/** Calls observed on the service-level face, newest last. */
 	calls = [];
 	/** The wire schema's `session.search` result bound (production parity). */
@@ -312,20 +482,27 @@ var TestSessions = class {
 		this.list = createSnapshotStore({
 			ids: [],
 			byId: {},
-			current: void 0,
 			phase: "ready",
-			subagentsByParent: {},
-			jobsBySession: {},
-			currentAddress: void 0
+			projectionsBySession: {}
 		});
+		rootCtx.effect(() => async () => {
+			this.closed = true;
+			for (const [id, generation] of this.generations) {
+				generation.live = false;
+				generation.retention = EMPTY_RETAIN_INFO;
+				generation.lifetime.abort(/* @__PURE__ */ new Error("test Session Controller is disposed"));
+				this.publishRetention(id);
+			}
+			this.generations.clear();
+			await this.drainDrops();
+		}, "test sessions: Client generations");
 	}
 	/**
-	* Add a session from a fixture and (by default) make it current.
+	* Add a Session fixture to the catalog without retaining a generation.
 	* @param fixture - identity + snapshot/summary overrides + behavior face.
-	* @param opts - pass `current: false` to add without selecting.
 	* @returns the stable session id (branded view of `fixture.id`).
 	*/
-	async add(fixture, opts) {
+	async add(fixture) {
 		const id = fixture.id;
 		if (this.records.has(id)) throw new Error(`test session "${id}" already added`);
 		const summary = {
@@ -334,7 +511,8 @@ var TestSessions = class {
 			running: false,
 			blank: false,
 			updatedAt: this.records.size + 1,
-			...fixture.summary
+			...fixture.summary,
+			retainedBy: this.retentionSnapshot(id).retainedBy
 		};
 		const snapshot = createSnapshotStore({
 			...sessionSnapshot(id),
@@ -346,15 +524,14 @@ var TestSessions = class {
 			summary,
 			snapshot,
 			session,
-			scope: void 0,
-			scopeFiber: void 0,
-			binding: void 0
+			overrides: fixture.session ?? {},
+			projections: /* @__PURE__ */ new Map(),
+			initialOpen: fixture.initialOpen
 		});
 		await this.stabilize(() => {
 			this.list.update((draft) => {
 				draft.ids.push(id);
 				draft.byId[id] = summary;
-				if (opts?.current !== false) draft.current = id;
 			});
 		});
 		return id;
@@ -368,6 +545,21 @@ var TestSessions = class {
 		const record = this.require(id);
 		await this.stabilize(() => {
 			record.snapshot.update(mutate);
+			this.generations.get(id)?.snapshot.set(record.snapshot.getSnapshot());
+		});
+	}
+	/**
+	* Publish one complete projection value through the fixture Session face.
+	* @param id - session id.
+	* @param key - registered projection key.
+	* @param value - complete value for that key.
+	*/
+	async setProjection(id, key, value) {
+		const record = this.require(id);
+		record.projections.set(key, value);
+		await this.stabilize(() => {
+			record.session.projections.set(key, value);
+			this.generations.get(id)?.session.projections.set(key, value);
 		});
 	}
 	/**
@@ -379,6 +571,7 @@ var TestSessions = class {
 	async replaceEvents(id, entries, hasMore = false) {
 		await this.stabilize(() => {
 			this.require(id).session.eventSource.replace(entries, hasMore);
+			this.generations.get(id)?.session.eventSource.replace(entries, hasMore);
 		});
 	}
 	/**
@@ -390,6 +583,7 @@ var TestSessions = class {
 	async prependEvents(id, entries, hasMore = false) {
 		await this.stabilize(() => {
 			this.require(id).session.eventSource.prepend(entries, hasMore);
+			this.generations.get(id)?.session.eventSource.prepend(entries, hasMore);
 		});
 	}
 	/**
@@ -400,6 +594,7 @@ var TestSessions = class {
 	async appendEvent(id, entry) {
 		await this.stabilize(() => {
 			this.require(id).session.eventSource.append(entry);
+			this.generations.get(id)?.session.eventSource.append(entry);
 		});
 	}
 	/**
@@ -412,7 +607,8 @@ var TestSessions = class {
 		const record = this.require(id);
 		record.summary = {
 			...record.summary,
-			...patch
+			...patch,
+			retainedBy: this.retentionSnapshot(id).retainedBy
 		};
 		await this.stabilize(() => {
 			this.list.update((draft) => {
@@ -421,63 +617,89 @@ var TestSessions = class {
 		});
 	}
 	/**
-	* Switch the current selection (undefined = the no-session empty state).
-	* @param id - session id to select, or undefined to clear.
-	*/
-	async setCurrent(id) {
-		if (id !== void 0) this.require(id);
-		await this.stabilize(() => {
-			this.list.update((draft) => {
-				draft.current = id;
-			});
-		});
-	}
-	/**
-	* Remove a session: list row, scope fiber, and per-session store instances
-	* (with persisted state) die together — the same single lifecycle axis the
-	* production Client Sessions service drives on session death, minus staging.
+	* Remove a catalog row and mark its retained Session removed without releasing owners.
 	* @param id - session id.
 	*/
 	async remove(id) {
-		const record = this.require(id);
+		this.require(id);
 		this.records.delete(id);
-		await this.stabilize(async () => {
+		await this.stabilize(() => {
 			this.list.update((draft) => {
 				draft.ids = draft.ids.filter((existing) => existing !== id);
 				const { [id]: _dead, ...rest } = draft.byId;
 				draft.byId = rest;
-				if (draft.current === id) draft.current = void 0;
 			});
-			if (record.scopeFiber !== void 0) await record.scopeFiber.dispose();
+			this.generations.get(id)?.snapshot.update((draft) => {
+				draft.removed = true;
+			});
 		});
 	}
 	/**
-	* Resolve (mint on first touch) the session-scoped Cordis context through
-	* the production `createScope`, so real `scopeOf`/scope-addressed services
-	* resolve it.
+	* Borrow the already-retained session-scoped Cordis context.
 	* @param id - session id.
-	* @returns the scoped context, or undefined for unknown sessions.
+	* @returns the scoped context, or undefined without a live reference.
 	*/
 	scope(id) {
-		const record = this.records.get(id);
-		if (record === void 0) return void 0;
-		if (record.scope === void 0) {
-			const handle = createScope(this.rootCtx, id);
-			record.scope = handle.ctx;
-			record.scopeFiber = handle.fiber;
-		}
-		return record.scope;
+		return this.generations.get(id)?.binding.ctx;
 	}
 	/**
 	* Session assembly binding (inject factories and provide resolvers receive it).
 	* @param id - session id.
-	* @returns sessionId + behavior face + scoped ctx, or undefined when unknown.
+	* @returns the live generation's binding, or undefined without a reference.
 	*/
 	binding(id) {
-		const record = this.records.get(id);
-		if (record === void 0) return void 0;
-		record.binding ??= this.bindingOf(id, record);
-		return record.binding;
+		return this.generations.get(id)?.binding;
+	}
+	retain(target, options = { source: "testFixture" }) {
+		const { source, signal } = options;
+		signal?.throwIfAborted();
+		if (this.closed) throw new Error("test Session Controller is disposed");
+		const id = this.resolveTarget(target);
+		const generation = this.generations.get(id) ?? this.materialize(id, this.require(id));
+		const reference = this.retainGeneration(id, generation, source);
+		try {
+			reference.attachOpening(generation.opening, signal);
+			return reference;
+		} catch (error) {
+			reference.release();
+			throw error;
+		}
+	}
+	async using(target, options, operation) {
+		const reference = this.retain(target, options);
+		try {
+			await reference.ready;
+			return await operation(reference);
+		} finally {
+			reference.release();
+		}
+	}
+	retainInfo(id) {
+		let store = this.retentionStores.get(id);
+		if (store === void 0) {
+			store = createSnapshotStore(this.retentionSnapshot(id));
+			this.retentionStores.set(id, store);
+		}
+		return store;
+	}
+	/**
+	* Retain one fixture Session until the supplied Cordis owner stops.
+	* @param ownerCtx - context whose disposal releases the reference.
+	* @param target - fixture Session identity or subagent address.
+	* @param options - reference source and optional readiness cancellation.
+	* @returns the owned reference immediately.
+	*/
+	retainFor(ownerCtx, target, options = { source: "testFixture" }) {
+		const reference = this.retain(target, options);
+		try {
+			ownerCtx.effect(() => () => {
+				reference.release();
+			}, "test sessions: owned reference");
+			return reference;
+		} catch (error) {
+			reference.release();
+			throw error;
+		}
 	}
 	/**
 	* Read the session scope tag off a context (service-method boundary mirror).
@@ -496,7 +718,8 @@ var TestSessions = class {
 	sessionOf(ctx) {
 		const id = scopeOf(ctx);
 		if (id === void 0) return void 0;
-		return this.records.get(id)?.session;
+		const generation = this.generations.get(id);
+		return generation !== void 0 && scopeIdentityOf(generation.binding.ctx) === scopeIdentityOf(ctx) ? generation.session : void 0;
 	}
 	/**
 	* Install Session creation behavior for navigation tests.
@@ -505,7 +728,7 @@ var TestSessions = class {
 	stubCreate(impl) {
 		this.createStub = impl;
 	}
-	/** Create through the installed test behavior and require an addressable binding. */
+	/** Create through the installed test behavior and require a catalogued fixture. */
 	async create(opts) {
 		this.calls.push({
 			method: "create",
@@ -516,65 +739,26 @@ var TestSessions = class {
 		this.require(id);
 		return id;
 	}
-	/**
-	* Service-level selection call (recorded, then applied to the list store
-	* synchronously — inject callbacks call this outside any act window; the
-	* store notify is microtask-batched so the next stabilized step observes it).
-	* @param id - session id.
-	*/
-	open(id) {
-		this.calls.push({
-			method: "open",
-			args: [id]
-		});
-		this.require(id);
-		this.list.update((draft) => {
-			draft.current = id;
-			draft.currentAddress = void 0;
-		});
-	}
-	/** Open an existing fixture through its catalog address. */
-	openSubagent(address) {
-		this.calls.push({
-			method: "openSubagent",
-			args: [address]
-		});
-		this.require(address.childSessionId);
-		this.list.update((draft) => {
-			draft.current = address.childSessionId;
-			draft.currentAddress = address;
-		});
-	}
-	/** Resolve the current fixture's retained catalog address. */
+	/** Resolve a retained or catalog-derived address independently of a view. */
 	subagentAddress(id) {
-		const address = this.list.getSnapshot().currentAddress;
-		return address?.childSessionId === id ? address : void 0;
+		const retained = this.addresses.get(id);
+		if (retained !== void 0) return retained;
+		for (const [parentSessionId, projections] of Object.entries(this.list.getSnapshot().projectionsBySession)) {
+			const child = projections.values.subagentCatalog?.find((entry) => entry.id === id);
+			if (child !== void 0) return {
+				parentSessionId,
+				childSessionId: id,
+				mode: child.mode
+			};
+		}
 	}
-	/** Record catalog consumption; fixture callers drive snapshots explicitly. */
-	setSubagentCatalogOpen(parentSessionId, open) {
+	/** Record a projection refresh; fixture callers drive snapshots explicitly. */
+	refreshProjections(sessionId) {
 		this.calls.push({
-			method: "setSubagentCatalogOpen",
-			args: [parentSessionId, open]
-		});
-	}
-	/** Record a catalog refresh; fixture callers drive snapshots explicitly. */
-	refreshSubagents(parentSessionId) {
-		this.calls.push({
-			method: "refreshSubagents",
-			args: [parentSessionId]
+			method: "refreshProjections",
+			args: [sessionId]
 		});
 		return Promise.resolve();
-	}
-	/** Clear the current selection (recorded; the production no-session flow). */
-	clear() {
-		this.calls.push({
-			method: "clear",
-			args: []
-		});
-		this.list.update((draft) => {
-			draft.current = void 0;
-			draft.currentAddress = void 0;
-		});
 	}
 	/** Record a list refresh; fixture callers publish list state explicitly. */
 	refresh() {
@@ -632,28 +816,138 @@ var TestSessions = class {
 	* @returns the FixtureSession carried by the Controller binding.
 	*/
 	behavior(id) {
-		return this.require(id).session;
+		return this.generations.get(id)?.session ?? this.require(id).session;
 	}
 	/** Dispose minted scope fibers (runtime dispose path). */
 	async disposeScopes() {
-		for (const record of this.records.values()) if (record.scopeFiber !== void 0) {
-			await record.scopeFiber.dispose();
-			record.scope = void 0;
-			record.scopeFiber = void 0;
-			record.binding = void 0;
+		this.closed = true;
+		for (const [id, generation] of this.generations) this.drop(id, generation);
+		await this.drainDrops();
+	}
+	resolveTarget(target) {
+		const id = typeof target === "string" ? target : target.childSessionId;
+		if (typeof target !== "string") this.addresses.set(id, target);
+		this.require(id);
+		return id;
+	}
+	retainGeneration(id, generation, source) {
+		const previous = generation.retention;
+		generation.retention = Object.freeze({
+			referenceCount: previous.referenceCount + 1,
+			retainedBy: freezeRetainedBy({
+				...previous.retainedBy,
+				[source]: (previous.retainedBy[source] ?? 0) + 1
+			})
+		});
+		const reference = new TestSessionReference(id, generation, () => {
+			if (!generation.live) return;
+			const count = generation.retention.referenceCount - 1;
+			const { [source]: sourceCount = 0, ...otherSources } = generation.retention.retainedBy;
+			const retainedBy = sourceCount > 1 ? {
+				...otherSources,
+				[source]: sourceCount - 1
+			} : otherSources;
+			generation.retention = count === 0 ? EMPTY_RETAIN_INFO : Object.freeze({
+				referenceCount: count,
+				retainedBy: freezeRetainedBy(retainedBy)
+			});
+			if (count === 0) this.drop(id, generation);
+			else this.publishRetention(id);
+		});
+		this.publishRetention(id);
+		return reference;
+	}
+	retentionSnapshot(id) {
+		return this.generations.get(id)?.retention ?? EMPTY_RETAIN_INFO;
+	}
+	publishRetention(id) {
+		const retention = this.retentionSnapshot(id);
+		const store = this.retentionStores.get(id);
+		if (store !== void 0 && store.getSnapshot() !== retention) store.set(retention);
+		const state = this.list.getSnapshot();
+		const row = state.byId[id];
+		if (row === void 0 || row.retainedBy === retention.retainedBy) return;
+		const summary = {
+			...row,
+			retainedBy: retention.retainedBy
+		};
+		const record = this.records.get(id);
+		/* v8 ignore next -- a catalog row and its fixture record are inserted and removed together. */
+		if (record !== void 0) record.summary = summary;
+		this.list.set({
+			...state,
+			byId: {
+				...state.byId,
+				[id]: summary
+			}
+		});
+	}
+	materialize(id, fixture) {
+		const { ctx, fiber } = createScope(this.rootCtx, id);
+		const snapshot = createSnapshotStore(fixture.snapshot.getSnapshot());
+		const session = new FixtureSession(id, snapshot, fixture.overrides);
+		const window = fixture.session.eventSource.getSnapshot();
+		session.eventSource.replace(window.entries, window.hasMore);
+		for (const [key, value] of fixture.projections) session.projections.set(key, value);
+		const opening = Promise.withResolvers();
+		opening.promise.catch(() => {});
+		const lifetime = new AbortController();
+		const generation = {
+			binding: {
+				sessionId: id,
+				session,
+				eventSource: session.eventSource,
+				ctx
+			},
+			snapshot,
+			session,
+			fiber,
+			lifetime,
+			opening: opening.promise,
+			retention: EMPTY_RETAIN_INFO,
+			live: true
+		};
+		this.generations.set(id, generation);
+		ctx.effect(() => async () => {
+			if (generation.live) {
+				generation.live = false;
+				generation.retention = EMPTY_RETAIN_INFO;
+				if (this.generations.get(id) === generation) this.generations.delete(id);
+				this.publishRetention(id);
+			}
+			lifetime.abort(/* @__PURE__ */ new Error(`test Session generation "${id}" is disposed`));
+			await Promise.allSettled([generation.opening]);
+		}, "test sessions: exact generation");
+		this.startOpening(fixture.initialOpen, lifetime.signal, opening);
+		return generation;
+	}
+	startOpening(initialOpen, signal, opening) {
+		try {
+			Promise.resolve(initialOpen?.(signal)).then(opening.resolve, opening.reject);
+		} catch (error) {
+			opening.reject(error);
 		}
 	}
-	bindingOf(id, record) {
-		const ctx = this.scope(id);
-		/* v8 ignore next 2 -- bindingOf only runs for a live record, whose scope
-		* always resolves; kept so a future caller cannot mint a ctx-less binding. */
-		if (ctx === void 0) throw new Error(`test session "${id}" resolved no scope`);
-		return {
-			sessionId: id,
-			session: record.session,
-			eventSource: record.session.eventSource,
-			ctx
-		};
+	drop(id, generation) {
+		/* v8 ignore next -- only the live generation's retained callback can enter drop. */
+		if (!generation.live) return;
+		generation.live = false;
+		generation.retention = EMPTY_RETAIN_INFO;
+		/* v8 ignore next -- this synchronous path drops only the generation currently stored for id. */
+		if (this.generations.get(id) === generation) this.generations.delete(id);
+		generation.lifetime.abort(/* @__PURE__ */ new Error(`test Session generation "${id}" is released`));
+		this.publishRetention(id);
+		const disposal = generation.fiber.dispose();
+		this.pendingDrops.add(disposal);
+		disposal.then(() => {
+			this.pendingDrops.delete(disposal);
+		}, (error) => {
+			this.pendingDrops.delete(disposal);
+			this.rootCtx.logger.warn("test Session scope disposal failed:", error);
+		});
+	}
+	async drainDrops() {
+		while (this.pendingDrops.size !== 0) await Promise.all([...this.pendingDrops]);
 	}
 	require(id) {
 		const record = this.records.get(id);
@@ -722,6 +1016,18 @@ var TestWorkspaces = class {
 			path: input.path,
 			sessionIds: []
 		};
+	}
+	/**
+	* Initialize the default Workspace through a test stub; defaults to an ineligible first use.
+	* @param signal - caller lifetime.
+	* @returns the stubbed Workspace, or undefined when initialization is ineligible.
+	*/
+	async initializeDefault(signal) {
+		this.calls.push({
+			method: "initializeDefault",
+			args: [signal]
+		});
+		return await this.stubs.get("initializeDefault")?.(signal);
 	}
 	/**
 	* Rename a Workspace (recorded). The default echoes a minimal view.
@@ -810,16 +1116,73 @@ var TestWorkspaces = class {
 			draft.archivedSessionIds = [...draft.archivedSessionIds, sessionId];
 		});
 	}
+	/**
+	* Unarchive a session (recorded). The default mirrors the production face's
+	* observable effect: the id leaves the list state's archive set.
+	* @param sessionId - session to unarchive.
+	*/
+	async unarchiveSession(sessionId) {
+		this.calls.push({
+			method: "unarchiveSession",
+			args: [sessionId]
+		});
+		const stub = this.stubs.get("unarchiveSession");
+		if (stub !== void 0) {
+			await stub(sessionId);
+			return;
+		}
+		await this.update((draft) => {
+			draft.archivedSessionIds = draft.archivedSessionIds.filter((id) => id !== sessionId);
+		});
+	}
+	/**
+	* Pin a session (recorded). The default mirrors the production face's
+	* observable effect: the id leads the list state's pin set.
+	* @param sessionId - session to pin.
+	*/
+	async pinSession(sessionId) {
+		this.calls.push({
+			method: "pinSession",
+			args: [sessionId]
+		});
+		const stub = this.stubs.get("pinSession");
+		if (stub !== void 0) {
+			await stub(sessionId);
+			return;
+		}
+		await this.update((draft) => {
+			draft.pinnedSessionIds = [sessionId, ...draft.pinnedSessionIds.filter((id) => id !== sessionId)];
+		});
+	}
+	/**
+	* Unpin a session (recorded). The default mirrors the production face's
+	* observable effect: the id leaves the list state's pin set.
+	* @param sessionId - session to unpin.
+	*/
+	async unpinSession(sessionId) {
+		this.calls.push({
+			method: "unpinSession",
+			args: [sessionId]
+		});
+		const stub = this.stubs.get("unpinSession");
+		if (stub !== void 0) {
+			await stub(sessionId);
+			return;
+		}
+		await this.update((draft) => {
+			draft.pinnedSessionIds = draft.pinnedSessionIds.filter((id) => id !== sessionId);
+		});
+	}
 };
 //#endregion
-//#region lib/types/settings-scope.js
-/** Test double for the client settings-scope seam. */
+//#region lib/types/config-form.js
+/** Test doubles for settings transport. */
 /**
 * Build an in-memory settings scope for service specs: starts in the host
 * loading state, records writes, and lets the test publish Host acceptances.
 * @returns the stub handle.
 */
-function stubSettingsScope() {
+function stubConfigForm() {
 	let snapshot = {
 		status: "loading",
 		value: void 0,
@@ -830,9 +1193,9 @@ function stubSettingsScope() {
 		mode: "host"
 	};
 	const listeners = /* @__PURE__ */ new Set();
-	const set = vi.fn(() => Promise.resolve());
-	const mutate = vi.fn(() => Promise.resolve());
-	const unset = vi.fn(() => Promise.resolve());
+	const set = vi.fn(() => Promise.resolve(true));
+	const mutate = vi.fn(() => Promise.resolve(true));
+	const unset = vi.fn(() => Promise.resolve(true));
 	return {
 		scope: {
 			getSnapshot: () => snapshot,
@@ -859,127 +1222,6 @@ function stubSettingsScope() {
 		}
 	};
 }
-//#endregion
-//#region lib/types/settings-remote.js
-/** Test double for the `settings` Remote namespace a bench's plugins inject. */
-/**
-* Build a scripted `settings` Remote namespace for a bench. Each write answers
-* with the addressed namespace unchanged, so a bench that only needs its
-* plugins to activate scripts nothing; one asserting a write reads the
-* corresponding spy or replaces the face.
-* @param namespaces - namespace views the first describe answers with.
-* @param options - deployment facts the describe answer reports.
-* @returns the face and its controls.
-*/
-function scriptedSettingsRemote(namespaces = [], options = {}) {
-	let served = namespaces;
-	const writable = options.writable ?? true;
-	const hasDocument = options.hasDocument ?? false;
-	const answer = (ns) => {
-		const view = served.find((candidate) => candidate.ns === ns);
-		return Promise.resolve(view === void 0 ? {
-			ok: false,
-			error: {
-				code: "settings-rejected",
-				message: `no scripted namespace "${ns}"`,
-				details: { ns }
-			}
-		} : {
-			ok: true,
-			value: view
-		});
-	};
-	const update = vi.fn((ns, _patch, _expectedRevision) => answer(ns));
-	const replace = vi.fn((ns, _section, _expectedRevision) => answer(ns));
-	const mutate = vi.fn((ns, _ops, _expectedRevision) => answer(ns));
-	return {
-		settings: {
-			describe: () => Promise.resolve({
-				ok: true,
-				value: {
-					writable,
-					hasDocument,
-					namespaces: served
-				}
-			}),
-			update: (ns, patch, expectedRevision) => update(ns, patch, expectedRevision),
-			replace: (ns, section, expectedRevision) => replace(ns, section, expectedRevision),
-			mutate: (ns, ops, expectedRevision) => mutate(ns, ops, expectedRevision)
-		},
-		update,
-		replace,
-		mutate,
-		publish(next) {
-			served = next;
-		}
-	};
-}
-//#endregion
-//#region lib/types/remote.js
-/**
-* Remote service test double for the forwarded-event path. Feature specs need
-* `ctx.remote.$on` to exist (their plugins inject `remote`) and need forwarded
-* Host events to reach those subscribers, but not the wire — so this double
-* implements subscription plus an explicit `emit` driver available only on the
-* concrete test object. A spec that also calls one namespace scripts it through
-* the constructor rather than reaching the real Client Remote service.
-*
-* `$mount` rejects: a spec that needs a real generated contribution installed —
-* codecs, descriptors, and the wire — has outgrown this double and needs the
-* real Client Remote service.
-*
-* One deliberate asymmetry with production: a throwing listener propagates out
-* of the emit instead of being contained and logged, so a spec cannot lean on
-* this double for the containment guarantee `$on` documents — assert that
-* against the real service.
-*/
-var TestRemote = class TestRemote {
-	subscriptions = /* @__PURE__ */ new Map();
-	/**
-	* Register the double as `ctx.remote`, plus one service per scripted
-	* namespace so a plugin injecting `remote.<name>` also unparks.
-	* @param ctx - the spec's root Context.
-	* @param namespaces - scripted namespace faces reached as `ctx.remote.<name>`.
-	*/
-	constructor(ctx, namespaces = {}) {
-		for (const name of Object.keys(namespaces)) if (name in TestRemote.prototype || name === "subscriptions") throw new TypeError(`TestRemote: scripted namespace "${name}" would shadow the double's own member`);
-		Object.assign(this, namespaces);
-		ctx.provide("remote", this);
-		for (const [name, face] of Object.entries(namespaces)) ctx.provide(`remote.${name}`, face);
-	}
-	/**
-	* Deliver one forwarded host event to its subscribers, standing in for the
-	* carrier that owns the frame sink.
-	* @param event - forwarded host event name.
-	* @param args - the Host argument list, verbatim.
-	*/
-	emit(event, args) {
-		const listeners = this.subscriptions.get(event);
-		if (listeners === void 0) return;
-		for (const listener of [...listeners]) listener(...args);
-	}
-	/**
-	* Subscribe to one forwarded host event.
-	* @param event - forwarded host event name.
-	* @param listener - receives the Host argument list verbatim.
-	* @returns disposer removing this subscription.
-	*/
-	$on(event, listener) {
-		const listeners = this.subscriptions.get(event) ?? /* @__PURE__ */ new Set();
-		this.subscriptions.set(event, listeners);
-		listeners.add(listener);
-		return () => {
-			listeners.delete(listener);
-		};
-	}
-	/**
-	* Generated-namespace mount, unsupported by this double.
-	* @returns never; always rejects.
-	*/
-	$mount() {
-		return Promise.reject(/* @__PURE__ */ new Error("TestRemote: $mount needs the real Client Remote service"));
-	}
-};
 //#endregion
 //#region lib/types/translate.js
 /**
@@ -1048,7 +1290,7 @@ function usePinnedBrowserLanguages(primary, ...rest) {
 /**
 * jsdom slot test runtime: a real small runtime — Cordis `Context`, the
 * renderer-owned `SlotRegistry`, the `ui-session` adapter, and the UI renderer — assembled around
-* test-owned session/workspace doubles, so feature specs exercise
+* test-owned session/workspace doubles and a fail-loud file-upload stub, so feature specs exercise
 * declaration, registration, scope, store, inject, rendering, updates, and
 * disposal without hand-building the machinery per suite.
 *
@@ -1099,9 +1341,13 @@ var OwnerPropsCell = class {
 	* caller wraps in act).
 	* @param key - slot key.
 	* @param owner - owner props share.
+	* @param opts - explicit keyed or list selection for the render site.
 	*/
-	set(key, owner) {
-		this.owners.set(key, owner);
+	set(key, owner, opts) {
+		this.owners.set(key, {
+			owner,
+			opts
+		});
 		this.version += 1;
 		for (const fn of [...this.listeners]) fn();
 	}
@@ -1162,10 +1408,16 @@ var SlotTestRuntime = class SlotTestRuntime {
 	slots;
 	/** The test-owned 'root' occupant. */
 	root;
-	/** Sessions double (list/current observable, cells, scopes, behavior faces). */
+	/** Fixture catalog, explicit references, scoped contexts, and behavior faces. */
 	sessions;
+	/** One Remote double shared by every feature mounted in this runtime. */
+	remote;
 	/** Workspaces double (list observable, recorded intent actions). */
 	workspaces;
+	/** Test-owned panel selection used by the framework's usePanelInfo hook. */
+	panelInfo = createSnapshotStore({ activePanelId: null });
+	/** Mutable file-upload stub; replace `upload` in suites that exercise the capability. */
+	fileUpload;
 	stabilizer = async (fn) => {
 		await act(async () => {
 			await fn();
@@ -1180,15 +1432,20 @@ var SlotTestRuntime = class SlotTestRuntime {
 	autoDeclared = /* @__PURE__ */ new Set();
 	autoRootView;
 	disposeWorkspaceSource;
+	disposePanelInfoSource;
 	constructor(ctx, slots) {
 		this.ctx = ctx;
 		this.slots = slots;
 		this.root = new TestRoot(slots, this.stabilizer);
 		this.sessions = new TestSessions(this.stabilizer, ctx);
+		this.remote = new TestRemote(ctx);
 		this.workspaces = new TestWorkspaces(this.stabilizer);
+		this.fileUpload = { upload: () => Promise.reject(/* @__PURE__ */ new Error("client test runtime: file upload is not stubbed")) };
 		ctx.provide("sessions", this.sessions);
 		ctx.provide("workspaces", this.workspaces);
+		ctx.provide("fileUpload", this.fileUpload);
 		this.disposeWorkspaceSource = slots.provideRoot({ hooks: { workspaces: this.workspaces.list } });
+		this.disposePanelInfoSource = slots.provideRoot({ hooks: { panelInfo: this.panelInfo } });
 		const renderer = createSlotRenderer();
 		slots.install({ renderRoot: (host, ownerProps) => {
 			this.host = host;
@@ -1241,6 +1498,10 @@ var SlotTestRuntime = class SlotTestRuntime {
 	releaseWorkspaceSource() {
 		this.disposeWorkspaceSource();
 	}
+	/** Release the default panel hook before mounting the production Layout owner. */
+	releasePanelInfoSource() {
+		this.disposePanelInfoSource();
+	}
 	/**
 	* Render the root slot tree through the ctx-level entry (the shell's own
 	* entry point): `ctx.slots.renderSlot('root', {})` under Testing Library.
@@ -1266,7 +1527,17 @@ var SlotTestRuntime = class SlotTestRuntime {
 		const cell = this.ownerCell;
 		const AutoFrame = (props) => {
 			useSyncExternalStore(cell.subscribe, cell.getVersion);
-			return createElement(Fragment, null, cell.entries().map(([key, owner]) => createElement(Fragment, { key }, props.renderSlot(key, owner))));
+			return createElement(Fragment, null, cell.entries().map(([key, { owner, opts }]) => {
+				const body = props.renderSlot(key, owner, opts);
+				const spec = children[key];
+				if (spec.scope === "root") return createElement(Fragment, { key }, body);
+				return createElement(props.SessionProvider, {
+					key,
+					session: opts?.session,
+					children: body,
+					...spec.scope === "session-maybe" ? { empty: () => body } : {}
+				});
+			}));
 		};
 		await this.root.declare(children, AutoFrame);
 	}
@@ -1278,13 +1549,16 @@ var SlotTestRuntime = class SlotTestRuntime {
 	* slot of the same tree.
 	* @param key - a key declared through {@link SlotTestRuntime.declare}.
 	* @param owner - owner props share for the render site.
+	* @param opts - explicit entry selection and borrowed Session reference; retained by view updates.
 	* @returns the slot-local view (snapshot container, scoped queries, owner updates).
 	*/
-	renderSlot(key, owner) {
+	renderSlot(key, owner, opts) {
 		if (!this.autoDeclared.has(key)) throw new Error(`renderSlot('${key}') without declare() — declare the key first (or use root.declare for a custom frame)`);
-		const install = (next) => {
+		let options = opts;
+		const install = (next, nextOptions = options) => {
+			options = nextOptions;
 			act(() => {
-				this.ownerCell.set(key, next);
+				this.ownerCell.set(key, next, options);
 			});
 		};
 		install(owner);
@@ -1303,18 +1577,31 @@ var SlotTestRuntime = class SlotTestRuntime {
 	* {@link SlotTestRuntime.renderRoot} — the host face exists only inside the
 	* installed renderer, exactly as in production.
 	* @param key - slot key whose first entry declares the store.
-	* @param scopeKey - session id for session-scope slots; omit for root scope.
+	* @param session - retained Session reference for session-scope slots; omit for root scope.
 	* @returns the live store instance.
 	*/
-	storeOf(key, scopeKey) {
+	storeOf(key, session) {
 		if (this.host === void 0) throw new Error("storeOf before renderRoot() — the host face exists only inside the installed renderer");
 		const entry = this.host.entriesOf(key)[0];
 		if (entry === void 0) throw new Error(`storeOf('${key}'): no registration on the ledger`);
-		const scopeBinding = scopeKey === void 0 ? void 0 : this.host.scope("session")?.resolve(scopeKey);
-		if (scopeKey !== void 0 && scopeBinding === void 0) throw new Error(`storeOf('${key}'): no live Session binding for '${scopeKey}'`);
+		const adapter = session === void 0 ? void 0 : this.host.scope("session");
+		const resolved = session === void 0 ? void 0 : adapter?.bindingSource(session).getSnapshot();
+		const scopeBinding = resolved?.key === void 0 ? void 0 : resolved;
+		if (session !== void 0 && scopeBinding === void 0) throw new Error(`storeOf('${key}'): no live Session binding for '${session.sessionId}'`);
 		const instance = this.host.storeOf(entry, scopeBinding);
 		if (instance === void 0) throw new Error(`storeOf('${key}'): the entry declares no store`);
 		return instance;
+	}
+	/**
+	* Read one registered Factory definition for direct contract assertions.
+	* @param name - registered Factory name.
+	* @returns the live Factory definition.
+	*/
+	factoryOf(name) {
+		if (this.host === void 0) throw new Error("factoryOf before renderRoot()");
+		const definition = this.host.factoryOf(name);
+		if (definition === void 0) throw new Error(`factoryOf('${name}'): no definition`);
+		return definition;
 	}
 	/**
 	* Flush pending ledger/store notifications inside act — for mutations made
@@ -1326,7 +1613,7 @@ var SlotTestRuntime = class SlotTestRuntime {
 	}
 	/**
 	* Tear down: unmount React trees first, then dispose feature fibers, the
-	* root registration, minted session scopes, and persisted test state.
+	* root registration and standard sources, minted session scopes, and persisted test state.
 	* Idempotent.
 	* @returns completion of the teardown.
 	*/
@@ -1337,9 +1624,12 @@ var SlotTestRuntime = class SlotTestRuntime {
 		for (const view of this.views.splice(0)) view.unmount();
 		for (const handle of this.handles.splice(0)) await handle.dispose();
 		this.root.release();
+		this.disposeWorkspaceSource();
+		this.disposePanelInfoSource();
 		await this.sessions.disposeScopes();
+		await this.stabilizer(() => this.ctx.fiber.dispose());
 		localStorage.clear();
 	}
 };
 //#endregion
-export { FixtureSession, SlotTestRuntime, TestRemote, TestRoot, TestSessions, TestWorkspaces, bindSnapshotSelector, chatSnapshot, conversationSnapshot, createSlotRenderer, domSnapshotSerializer, makeTranslate, registerDomSnapshotSerializer, scriptedSettingsRemote, sessionSnapshot, stubSettingsScope, usePinnedBrowserLanguages, workspaceSnapshot };
+export { FixtureSession, RemoteError, SlotTestRuntime, TestRemote, TestRoot, TestSessions, TestWorkspaces, bindSnapshotSelector, chatSnapshot, conversationSnapshot, createSlotRenderer, domSnapshotSerializer, makeTranslate, registerDomSnapshotSerializer, sessionSnapshot, stubConfigForm, usePinnedBrowserLanguages, workspaceSnapshot };

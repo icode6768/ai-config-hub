@@ -1,8 +1,10 @@
 import z from "@deepseek-ai/schemastery";
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { Readable } from "node:stream";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { credentialKey } from "@deepseek-ai/dsh-credentials";
 import { Service } from "@deepseek-ai/cordis";
 import { z as z$1 } from "zod";
+import { createScope } from "@deepseek-ai/dsh-scope";
 //#region lib/types/api-path.js
 /**
 * The /api URL prefix — single source for both halves of the web transport.
@@ -23,61 +25,86 @@ const API_PATH = "/api";
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 300 * 1024 * 1024;
 /**
 * Bridge one node:http request to the fetch-shaped handler (client close
-* aborts; response bodies stream out chunk by chunk).
-* @param req - incoming node:http request (fully read before dispatch).
+* aborts; response writes respect backpressure and stop on disconnect).
+* @param req - incoming node:http request.
 * @param res - node:http response the bridge writes and owns to completion.
 * @param apiHandler - fetch-shaped API carrier the request is dispatched to.
-* @param maxRequestBodyBytes - maximum body bytes buffered before dispatch.
+* @param maxRequestBodyBytes - maximum bytes buffered for a buffered route.
 */
 async function bridge(req, res, apiHandler, maxRequestBodyBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
 	const abort = new AbortController();
 	res.on("close", () => {
 		if (!res.writableEnded) abort.abort();
 	});
-	const declaredLength = req.headers["content-length"];
-	if (declaredLength !== void 0 && Number(declaredLength) > maxRequestBodyBytes) {
-		res.writeHead(413, { connection: "close" });
-		res.end();
-		req.destroy();
-		return;
-	}
-	const chunks = [];
-	let received = 0;
-	for await (const chunk of req) {
-		const buffer = chunk;
-		received += buffer.byteLength;
-		if (received > maxRequestBodyBytes) {
+	/* v8 ignore next 2 -- node:http always sets url/method on server requests. */
+	const url = new URL(req.url ?? "/", "http://dsh.internal");
+	const method = req.method ?? "GET";
+	const headers = Object.fromEntries(Object.entries(req.headers).filter(([, value]) => typeof value === "string"));
+	const bodyMode = apiHandler.requestBodyMode({
+		method,
+		url
+	});
+	let request;
+	if (bodyMode === "buffered") {
+		const declaredLength = req.headers["content-length"];
+		if (declaredLength !== void 0 && Number(declaredLength) > maxRequestBodyBytes) {
 			res.writeHead(413, { connection: "close" });
 			res.end();
 			req.destroy();
 			return;
 		}
-		chunks.push(buffer);
-	}
-	/* v8 ignore next 3 -- `??` arms: node:http always sets url/method on server
-	requests; the fields are only optional on the client-side IncomingMessage type */
-	const request = new Request(new URL(req.url ?? "/", "http://dsh.internal"), {
-		method: req.method ?? "GET",
-		headers: Object.fromEntries(Object.entries(req.headers).filter(([, v]) => typeof v === "string")),
-		...chunks.length > 0 ? { body: Buffer.concat(chunks) } : {},
-		signal: abort.signal
+		const chunks = [];
+		let received = 0;
+		for await (const chunk of req) {
+			const buffer = chunk;
+			received += buffer.byteLength;
+			if (received > maxRequestBodyBytes) {
+				res.writeHead(413, { connection: "close" });
+				res.end();
+				req.destroy();
+				return;
+			}
+			chunks.push(buffer);
+		}
+		request = new Request(url, {
+			method,
+			headers,
+			...chunks.length > 0 ? { body: Buffer.concat(chunks) } : {},
+			signal: abort.signal
+		});
+	} else request = new Request(url, {
+		method,
+		headers,
+		body: Readable.toWeb(req),
+		signal: abort.signal,
+		duplex: "half"
 	});
 	const response = await apiHandler.fetch(request);
-	res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+	const requestUnread = bodyMode === "streaming" && !req.readableEnded;
+	const responseHeaders = Object.fromEntries(response.headers.entries());
+	res.writeHead(response.status, requestUnread ? {
+		...responseHeaders,
+		connection: "close"
+	} : responseHeaders);
 	if (response.body === null) {
 		res.end();
+		if (requestUnread) req.destroy();
 		return;
 	}
-	for await (const chunk of response.body) if (!res.write(chunk)) await new Promise((resolve) => {
-		const done = () => {
-			res.off("drain", done);
-			res.off("close", done);
-			resolve();
-		};
-		res.once("drain", done);
-		res.once("close", done);
-	});
+	for await (const chunk of response.body) {
+		if (abort.signal.aborted) continue;
+		if (!res.write(chunk) && !res.destroyed) await new Promise((resolve) => {
+			const done = () => {
+				res.off("drain", done);
+				res.off("close", done);
+				resolve();
+			};
+			res.once("drain", done);
+			res.once("close", done);
+		});
+	}
 	res.end();
+	if (requestUnread) req.destroy();
 }
 //#endregion
 //#region lib/types/loopback-hostname.js
@@ -340,22 +367,20 @@ var BrowserAuth = class BrowserAuth {
 		return new BrowserAuth(processOwner, await initializeSecret(credentials), maxAgeDays);
 	}
 	/**
-	* Add this process's launch token to the ordinary application root URL.
-	* @param baseUrl - canonical browser origin without credentials.
-	* @returns root URL carrying the process token as its sole authentication input.
+	* Add this process's launch token to the caller's application URL.
+	* @param baseUrl - clean browser URL whose authority and mount are preserved.
+	* @returns the same URL carrying the process token as its sole authentication input.
 	*/
 	authenticatedUrl(baseUrl) {
 		const url = new URL(baseUrl);
-		url.pathname = "/";
-		url.search = "";
-		url.hash = "";
 		url.searchParams.set(TOKEN_QUERY, this.launchToken);
 		return url.href;
 	}
 	/**
 	* Authenticate an index request. A valid root query token mints the cookie
-	* and redirects to clean `/`; a valid cookie lets the caller serve the
-	* index; every other request receives the same minimal 401 response.
+	* and redirects to the directory-relative clean `./`; a valid cookie lets
+	* the caller serve the index; every other request receives the same minimal
+	* 401 response.
 	* @param req - incoming root or configured-index request.
 	* @param res - response owned when this method returns false.
 	* @returns true only when the caller may serve index.html.
@@ -377,7 +402,7 @@ var BrowserAuth = class BrowserAuth {
 				}, this.secret);
 				res.writeHead(303, {
 					"cache-control": "no-store",
-					"location": "/",
+					"location": "./",
 					"referrer-policy": "no-referrer",
 					"set-cookie": sessionCookie(cookieName(authority), value, expiresAt, Math.floor(this.maxAgeMilliseconds / 1e3))
 				});
@@ -387,7 +412,7 @@ var BrowserAuth = class BrowserAuth {
 			if (req.method === "GET" && url.pathname === "/" && this.isAuthenticated(req)) {
 				res.writeHead(303, {
 					"cache-control": "no-store",
-					"location": "/",
+					"location": "./",
 					"referrer-policy": "no-referrer"
 				});
 				res.end();
@@ -444,7 +469,7 @@ function transportError(error) {
 	return {
 		ok: false,
 		error: {
-			code: "internal",
+			code: "gateway/internal",
 			message: error instanceof Error ? error.message : String(error),
 			details: {}
 		}
@@ -491,6 +516,33 @@ const serverResponseSchema = z$1.object({
 /** Either Connection RPC envelope direction. */
 const rpcMessageSchema = z$1.discriminatedUnion("type", [clientRequestSchema, serverResponseSchema]);
 //#endregion
+//#region lib/types/operator-peer.js
+/**
+* The operator Peer: the one party this Host answers to. Connection owns it
+* for its own lifetime, admits every request as it, and hands it to each
+* Remote call as `invocation.peer`.
+* @module @deepseek-ai/dsh-client-connection/src/operator-peer
+*/
+/**
+* The operator's scope. The instance is its own scope key, so `scopeOf(peer.ctx)`
+* returns it and events dispatched with `scopeTarget(subject, peer)` reach
+* listeners registered through `peer.ctx` and nobody else.
+*/
+var OperatorPeer = class {
+	id = randomUUID();
+	ctx;
+	scope;
+	/** @param owner - Connection plugin context the scope fiber hangs under. */
+	constructor(owner) {
+		this.scope = createScope(owner, this);
+		this.ctx = this.scope.ctx;
+	}
+	/** Tear down every connection-lifetime registration; racing calls share one completion. */
+	dispose() {
+		return this.scope.dispose();
+	}
+};
+//#endregion
 //#region lib/types/rpc-host.js
 /** Host registry and HTTP adapter for generic Connection RPC channels. */
 const INVALID_REQUEST_RPC_ID = RpcId("invalid-request");
@@ -500,6 +552,8 @@ const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/;
 var HostConnectionService = class extends Service {
 	trustedHosts;
 	browserAuth;
+	/** The operator Peer every admitted request speaks for. */
+	operator;
 	interceptors = /* @__PURE__ */ new Map();
 	fetchRoutes = /* @__PURE__ */ new Map();
 	/**
@@ -512,6 +566,8 @@ var HostConnectionService = class extends Service {
 		super(ctx, "connection");
 		this.trustedHosts = trustedHosts;
 		this.browserAuth = browserAuth;
+		this.operator = new OperatorPeer(ctx);
+		ctx.effect(() => () => this.operator.dispose(), "client-connection: operator Peer");
 	}
 	/** Generic channel registry scoped to the Context reading this service. */
 	get rpc() {
@@ -531,6 +587,11 @@ var HostConnectionService = class extends Service {
 		if (!isTrustedApiRequest(request, this.trustedHosts)) return 403;
 		return this.browserAuth.isAuthenticated(request) ? void 0 : 401;
 	}
+	/** A request that passes the fence and authentication speaks for the operator. */
+	admit(request) {
+		const rejection = this.requestRejection(request);
+		return rejection === void 0 ? { peer: this.operator } : { rejection };
+	}
 	/** Authenticate an index request through the process-token exchange or cookie. */
 	authorizeIndex(request, response) {
 		return this.browserAuth.authorizeIndex(request, response);
@@ -545,20 +606,27 @@ var HostConnectionService = class extends Service {
 	* @returns Fetch handler that selects one owner or returns 404.
 	*/
 	createSharedFetchHandler(channel) {
-		return { fetch: (request) => {
-			const pathname = new URL(request.url).pathname;
-			const route = this.fetchRoutes.get(pathname);
-			if (route?.methods.has(request.method) === true) return route.fetch(request);
-			const endpoint = endpointFromPath(channel, pathname);
-			const interceptor = this.interceptors.get(channel);
-			if (endpoint === void 0 || interceptor === void 0 || !interceptor.matches(endpoint)) return Promise.resolve(new Response("not found", { status: 404 }));
-			return interceptor.fetchHandler.fetch(request);
-		} };
+		return {
+			requestBodyMode: ({ method, url }) => {
+				const route = this.fetchRoutes.get(url.pathname);
+				return route?.methods.has(method) === true ? route.requestBody : "buffered";
+			},
+			fetch: (request) => {
+				const pathname = new URL(request.url).pathname;
+				const route = this.fetchRoutes.get(pathname);
+				if (route?.methods.has(request.method) === true) return route.fetch(request);
+				const endpoint = endpointFromPath(channel, pathname);
+				const interceptor = this.interceptors.get(channel);
+				if (endpoint === void 0 || interceptor === void 0 || !interceptor.matches(endpoint)) return Promise.resolve(new Response("not found", { status: 404 }));
+				return interceptor.fetchHandler.fetch(request);
+			}
+		};
 	}
 	registerFetchRoute(owner, route) {
 		assertFetchRoute(route);
 		const registered = {
 			methods: new Set(route.methods),
+			requestBody: route.requestBody,
 			fetch: route.fetch
 		};
 		return owner.effect(() => {
@@ -571,15 +639,15 @@ var HostConnectionService = class extends Service {
 	}
 	register(owner, channel, handler) {
 		assertChannel(channel);
-		const fetchHandler = rpcFetchHandler(channel, handler);
+		const fetchHandler = rpcFetchHandler(channel, handler, this.operator);
 		const route = {
 			kind: "prefix",
 			path: channel,
 			handler: async (req, res) => {
-				const rejection = this.requestRejection(req);
-				if (rejection !== void 0) {
-					res.writeHead(rejection);
-					res.end(rejection === 401 ? "unauthorized" : "forbidden");
+				const admission = this.admit(req);
+				if ("rejection" in admission) {
+					res.writeHead(admission.rejection);
+					res.end(admission.rejection === 401 ? "unauthorized" : "forbidden");
 					return;
 				}
 				await bridge(req, res, fetchHandler);
@@ -591,7 +659,7 @@ var HostConnectionService = class extends Service {
 		if (channel !== "/api") throw new Error(`connection: invalid shared RPC channel ${JSON.stringify(channel)}`);
 		const interceptor = {
 			matches,
-			fetchHandler: rpcFetchHandler(channel, handler)
+			fetchHandler: rpcFetchHandler(channel, handler, this.operator)
 		};
 		return owner.effect(() => {
 			if (this.interceptors.has(channel)) throw new Error(`connection: shared RPC channel ${JSON.stringify(channel)} already has an interceptor`);
@@ -602,37 +670,40 @@ var HostConnectionService = class extends Service {
 		}, `client-connection: ${channel} rpc interceptor`);
 	}
 };
-function rpcFetchHandler(channel, handler) {
-	return { async fetch(request) {
-		const endpoint = endpointFromPath(channel, new URL(request.url).pathname);
-		if (request.method !== "POST" || endpoint === void 0) return new Response("not found", { status: 404 });
-		if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") return new Response("content type must be application/json", { status: 415 });
-		let body;
-		try {
-			body = await request.json();
-		} catch {
-			return new Response("body is not JSON", { status: 400 });
+function rpcFetchHandler(channel, handler, peer) {
+	return {
+		requestBodyMode: () => "buffered",
+		async fetch(request) {
+			const endpoint = endpointFromPath(channel, new URL(request.url).pathname);
+			if (request.method !== "POST" || endpoint === void 0) return new Response("not found", { status: 404 });
+			if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") return new Response("content type must be application/json", { status: 415 });
+			let body;
+			try {
+				body = await request.json();
+			} catch {
+				return new Response("body is not JSON", { status: 400 });
+			}
+			const envelope = clientRequestSchema.safeParse(body);
+			if (!envelope.success) return invalidEnvelopeResponse(body, envelope.error.issues);
+			const message = envelope.data;
+			if (message.method !== endpoint) return errorResponse(message.rpcId, {
+				code: "gateway/bad-request",
+				message: `method ${JSON.stringify(message.method)} does not match endpoint ${JSON.stringify(endpoint)}`,
+				details: { issues: [] }
+			});
+			try {
+				const result = await handler(endpoint, message.payload, request.signal, peer);
+				return fullResponse(message.rpcId, result);
+			} catch (error) {
+				return new Response(`handler failure: ${String(error)}`, { status: 500 });
+			}
 		}
-		const envelope = clientRequestSchema.safeParse(body);
-		if (!envelope.success) return invalidEnvelopeResponse(body, envelope.error.issues);
-		const message = envelope.data;
-		if (message.method !== endpoint) return errorResponse(message.rpcId, {
-			code: "bad-request",
-			message: `method ${JSON.stringify(message.method)} does not match endpoint ${JSON.stringify(endpoint)}`,
-			details: { issues: [] }
-		});
-		try {
-			const result = await handler(endpoint, message.payload, request.signal);
-			return fullResponse(message.rpcId, result);
-		} catch (error) {
-			return new Response(`handler failure: ${String(error)}`, { status: 500 });
-		}
-	} };
+	};
 }
 function invalidEnvelopeResponse(body, issues) {
 	const rawId = body?.rpcId;
 	return errorResponse(typeof rawId === "string" ? RpcId(rawId) : INVALID_REQUEST_RPC_ID, {
-		code: "bad-request",
+		code: "gateway/bad-request",
 		message: "invalid client-request message",
 		details: { issues }
 	});
@@ -650,12 +721,36 @@ function errorResponse(rpcId, error) {
 	});
 }
 function fullResponse(rpcId, result) {
+	if (!result.ok) {
+		const body = {
+			type: "server-response",
+			rpcId,
+			result
+		};
+		return Response.json(body);
+	}
+	const { attachments, ...success } = result;
 	const body = {
 		type: "server-response",
 		rpcId,
-		result
+		result: success
 	};
-	return Response.json(body);
+	if (attachments === void 0 || attachments.length === 0) return Response.json(body);
+	const parts = new FormData();
+	const attachmentMetadata = attachments.map((attachment, index) => {
+		const part = `bytes-${index}`;
+		parts.set(part, new Blob([new Uint8Array(attachment.bytes)]));
+		return {
+			path: [...attachment.path],
+			codec: "bytes",
+			part
+		};
+	});
+	parts.set("metadata", JSON.stringify({
+		...body,
+		attachments: attachmentMetadata
+	}));
+	return new Response(parts);
 }
 function assertChannel(channel) {
 	if (!CHANNEL_PATTERN.test(channel) || channel === "/api") throw new Error(`connection: invalid or reserved RPC channel ${JSON.stringify(channel)}`);
@@ -664,6 +759,28 @@ function assertFetchRoute(route) {
 	if (endpointFromPath("/api", route.path) === void 0) throw new Error(`connection: invalid exact Fetch route ${JSON.stringify(route.path)}`);
 	if (route.methods.length === 0) throw new Error(`connection: exact Fetch route ${JSON.stringify(route.path)} declares no methods`);
 	if (new Set(route.methods).size !== route.methods.length) throw new Error(`connection: exact Fetch route ${JSON.stringify(route.path)} repeats a method`);
+}
+//#endregion
+//#region lib/types/recovery-config.js
+/** Shared validation for Host-configured and browser-local connection recovery. */
+const MAX_TIMER_MS = 2147483647;
+/** Schema shared by the Host plugin and the Client's recovery input parser. */
+const ConnectionRecoveryConfigSchema = z.object({
+	backoffBaseMs: z.natural().min(1).max(MAX_TIMER_MS).default(500),
+	backoffFactor: z.number().min(1).max(Number.MAX_VALUE).default(2),
+	backoffMaxMs: z.natural().min(1).max(MAX_TIMER_MS).default(1e4),
+	generationReadyWarnMs: z.natural().min(1).max(MAX_TIMER_MS).default(3e3),
+	generationReadyTimeoutMs: z.natural().min(1).max(MAX_TIMER_MS).default(15e3)
+});
+/**
+* Validate recovery input and supply every timing default before starting work.
+* @param config - Host configuration, page bootstrap data, or direct loop options.
+* @returns validated, complete recovery timing.
+*/
+function resolveConnectionConfig(config = {}) {
+	const resolved = ConnectionRecoveryConfigSchema(config);
+	if (!Number.isFinite(resolved.backoffFactor)) throw new RangeError("connection recovery backoffFactor must be finite");
+	return resolved;
 }
 //#endregion
 //#region lib/types/index.js
@@ -678,44 +795,56 @@ function assertImageBodyCapacity(ctx, maxRequestBodyBytes) {
 	if (maxRequestBodyBytes < requiredImageBodyBytes) throw new Error(`client-connection maxRequestBodyBytes (${String(maxRequestBodyBytes)}) must be at least ${String(requiredImageBodyBytes)} for the configured aggregate image limit`);
 }
 /** Services required before providing Connection. */
-const inject = ["webServer", "credentials"];
+const inject = ["credentials"];
 const Config = z.object({
+	recovery: ConnectionRecoveryConfigSchema.default({}),
 	trustedHosts: z.array(String).default([]),
 	cookieMaxAgeDays: z.natural().min(1).default(30),
 	maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES)
 });
 /**
-* Mounts the API gateway under the browser transport prefix. Every request on
-* the prefix passes the Host/Origin browser-trust fence and persistent browser
-* authentication before dispatch.
+* Provides carrier-neutral RPC and Fetch registries. When `webServer` is
+* present, the plugin also mounts the `/api` browser transport with Host/Origin
+* checks and persistent browser authentication.
 * @param ctx - Host plugin context.
 * @param config - resolved plugin config (schema defaults applied).
 */
 async function apply(ctx, config) {
+	const recovery = resolveConnectionConfig(config?.recovery);
 	const trustedHosts = config?.trustedHosts ?? [];
 	const cookieMaxAgeDays = config?.cookieMaxAgeDays ?? 30;
 	const maxRequestBodyBytes = config?.maxRequestBodyBytes ?? 314572800;
 	for (const entry of trustedHosts) assertTrustedAuthority(entry);
 	assertImageBodyCapacity(ctx, maxRequestBodyBytes);
 	const connection = new HostConnectionService(ctx, trustedHosts, await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays));
-	const fetchHandler = connection.createSharedFetchHandler(API_PATH);
-	const route = {
-		kind: "prefix",
-		path: API_PATH,
-		handler: async (req, res) => {
-			const rejection = connection.requestRejection(req);
-			if (rejection !== void 0) {
-				res.writeHead(rejection);
-				res.end(rejection === 401 ? "unauthorized" : "forbidden");
-				return;
+	ctx.inject(["webServer"], (webCtx) => {
+		assertImageBodyCapacity(webCtx, maxRequestBodyBytes);
+		webCtx.on("webserver/index-inject", (table) => {
+			table.push({
+				kind: "global",
+				name: "__DSH_CONNECTION_RECOVERY__",
+				value: recovery
+			});
+		});
+		const fetchHandler = connection.createSharedFetchHandler(API_PATH);
+		const route = {
+			kind: "prefix",
+			path: API_PATH,
+			handler: async (req, res) => {
+				const admission = connection.admit(req);
+				if ("rejection" in admission) {
+					res.writeHead(admission.rejection);
+					res.end(admission.rejection === 401 ? "unauthorized" : "forbidden");
+					return;
+				}
+				await webCtx.waterfall("connection/request", req, res, () => bridge(req, res, fetchHandler, maxRequestBodyBytes));
 			}
-			await bridge(req, res, fetchHandler, maxRequestBodyBytes);
-		}
-	};
-	ctx.effect(() => ctx.webServer.register(route), "client-connection: /api route");
+		};
+		webCtx.effect(() => webCtx.webServer.register(route), "client-connection: /api route");
+	});
 	ctx.inject(["attachments"], (attachmentCtx) => {
 		assertImageBodyCapacity(attachmentCtx, maxRequestBodyBytes);
 	});
 }
 //#endregion
-export { API_PATH, Config, HostConnectionService, RpcId, apply, clientRequestSchema, inject, name, rpcErrorSchema, rpcIdSchema, rpcMessageSchema, rpcResultSchema, serverResponseSchema, transportError };
+export { API_PATH, Config, HostConnectionService, OperatorPeer, RpcId, apply, clientRequestSchema, inject, name, rpcErrorSchema, rpcIdSchema, rpcMessageSchema, rpcResultSchema, serverResponseSchema, transportError };

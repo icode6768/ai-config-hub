@@ -16,6 +16,7 @@ window.__ModuleLoader__.load({
 			remote;
 			items = [];
 			archivedSessionIds = [];
+			pinnedSessionIds = [];
 			state = "loading";
 			phase = "pending";
 			error = null;
@@ -25,6 +26,10 @@ window.__ModuleLoader__.load({
 			orderFrameGeneration = 0;
 			/** Last complete order accepted from a baseline, increment, or current unary echo. */
 			committedOrder = [];
+			/** Latest archive-set request; a later request or a pushed set supersedes it. */
+			archiveRequestSeq = 0;
+			/** Latest pin-set request; a later request or a pushed set supersedes it. */
+			pinRequestSeq = 0;
 			/** Host Workspace ids are never reused, so delayed data cannot resurrect a removed row. */
 			removedIds = /* @__PURE__ */ new Set();
 			listeners = /* @__PURE__ */ new Set();
@@ -44,13 +49,18 @@ window.__ModuleLoader__.load({
 			* @returns generated Remote result.
 			*/
 			async create(input) {
-				let result;
-				try {
-					result = await this.remote.create(input);
-				} catch (error) {
-					result = failureResult(error);
-				}
+				const result = await this.remote.create(input);
 				if (result.ok) this.upsert(result.value.workspace);
+				return result;
+			}
+			/**
+			* Initialize the default Workspace and merge its authoritative row.
+			* @param signal - caller lifetime.
+			* @returns generated Remote result.
+			*/
+			async initializeDefault(signal) {
+				const result = await this.remote.initializeDefault(signal);
+				if (result.ok && result.value !== void 0) this.upsert(result.value.workspace);
 				return result;
 			}
 			/**
@@ -88,16 +98,10 @@ window.__ModuleLoader__.load({
 				const frameGeneration = this.orderFrameGeneration;
 				const localOrder = this.items.map((workspace) => workspace.workspaceId);
 				this.installOrder(insertIdBefore(localOrder, workspaceId, beforeWorkspaceId));
-				let result;
-				try {
-					result = await this.remote.insertBefore({
-						workspaceId,
-						...beforeWorkspaceId === void 0 ? {} : { beforeWorkspaceId }
-					});
-				} catch (error) {
-					if (requestGeneration === this.orderRequestGeneration && frameGeneration === this.orderFrameGeneration) this.installOrder(this.committedOrder);
-					throw error;
-				}
+				const result = await this.remote.insertBefore({
+					workspaceId,
+					...beforeWorkspaceId === void 0 ? {} : { beforeWorkspaceId }
+				});
 				if (requestGeneration === this.orderRequestGeneration && frameGeneration === this.orderFrameGeneration) this.installOrder(result.ok ? result.value.workspaceIds : this.committedOrder, result.ok);
 				return result;
 			}
@@ -119,12 +123,57 @@ window.__ModuleLoader__.load({
 			}
 			/**
 			* Archive one Session and install the returned complete archive set.
+			* A reply superseded by a later archive request or a pushed set installs nothing.
 			* @param sessionId - Session to archive.
+			* @param options - Whether the Host stops the Session's running work instead of refusing.
 			* @returns generated Remote result.
 			*/
-			async archiveSession(sessionId) {
-				const result = await this.remote.archiveSession({ sessionId });
-				if (result.ok) this.installArchived(result.value.archivedSessionIds);
+			async archiveSession(sessionId, options = {}) {
+				const requestSeq = ++this.archiveRequestSeq;
+				const result = await this.remote.archiveSession({
+					sessionId,
+					...options.stopActivity === true ? { stopActivity: true } : {}
+				});
+				if (result.ok && requestSeq === this.archiveRequestSeq) {
+					this.installArchived(result.value.archivedSessionIds);
+					this.installPinned(this.pinnedSessionIds.filter((id) => id !== sessionId));
+				}
+				return result;
+			}
+			/**
+			* Unarchive one Session and install the returned complete archive set.
+			* A reply superseded by a later archive request or a pushed set installs nothing.
+			* @param sessionId - Session to unarchive.
+			* @returns generated Remote result.
+			*/
+			async unarchiveSession(sessionId) {
+				const requestSeq = ++this.archiveRequestSeq;
+				const result = await this.remote.unarchiveSession({ sessionId });
+				if (result.ok && requestSeq === this.archiveRequestSeq) this.installArchived(result.value.archivedSessionIds);
+				return result;
+			}
+			/**
+			* Pin one Session and install the returned complete pin set.
+			* A reply superseded by a later pin request or a pushed set installs nothing.
+			* @param sessionId - Session to pin.
+			* @returns generated Remote result.
+			*/
+			async pinSession(sessionId) {
+				const requestSeq = ++this.pinRequestSeq;
+				const result = await this.remote.pinSession({ sessionId });
+				if (result.ok && requestSeq === this.pinRequestSeq) this.installPinned(result.value.pinnedSessionIds);
+				return result;
+			}
+			/**
+			* Unpin one Session and install the returned complete pin set.
+			* A reply superseded by a later pin request or a pushed set installs nothing.
+			* @param sessionId - Session to unpin.
+			* @returns generated Remote result.
+			*/
+			async unpinSession(sessionId) {
+				const requestSeq = ++this.pinRequestSeq;
+				const result = await this.remote.unpinSession({ sessionId });
+				if (result.ok && requestSeq === this.pinRequestSeq) this.installPinned(result.value.pinnedSessionIds);
 				return result;
 			}
 			/**
@@ -133,8 +182,11 @@ window.__ModuleLoader__.load({
 			*/
 			replaceBaseline(baseline) {
 				this.orderFrameGeneration++;
+				this.archiveRequestSeq++;
+				this.pinRequestSeq++;
 				this.installViews(baseline.items);
 				this.installArchived(baseline.archivedSessionIds);
+				this.installPinned(baseline.pinnedSessionIds);
 				this.state = "idle";
 				this.phase = "ready";
 				this.error = null;
@@ -158,7 +210,16 @@ window.__ModuleLoader__.load({
 			* @param archivedSessionIds - complete Host-confirmed archive set.
 			*/
 			replaceArchived(archivedSessionIds) {
+				this.archiveRequestSeq++;
 				this.installArchived(archivedSessionIds);
+			}
+			/**
+			* Replace the pinned Session set from the current follow generation.
+			* @param pinnedSessionIds - complete Host-confirmed pin set, most recently pinned first.
+			*/
+			replacePinned(pinnedSessionIds) {
+				this.pinRequestSeq++;
+				this.installPinned(pinnedSessionIds);
 			}
 			/** Keep the last complete projection visible while a lost carrier reconnects. */
 			handleCarrierFailure() {
@@ -171,8 +232,9 @@ window.__ModuleLoader__.load({
 			* @param error - terminal stream failure.
 			*/
 			handleStreamFailure(error) {
+				if (!(0, _deepseek_ai_dsh_api_gateway_client.isRemoteFailure)(error)) throw error;
 				this.state = "error";
-				this.error = failureOf(error);
+				this.error = error;
 				this.invalidate();
 			}
 			/**
@@ -198,6 +260,7 @@ window.__ModuleLoader__.load({
 				return {
 					items: this.items,
 					archivedSessionIds: this.archivedSessionIds,
+					pinnedSessionIds: this.pinnedSessionIds,
 					state: this.state,
 					phase: this.phase,
 					error: this.error
@@ -206,6 +269,11 @@ window.__ModuleLoader__.load({
 			installArchived(archivedSessionIds) {
 				if (archivedSessionIds.length === this.archivedSessionIds.length && archivedSessionIds.every((id, index) => id === this.archivedSessionIds[index])) return;
 				this.archivedSessionIds = [...archivedSessionIds];
+				this.invalidate();
+			}
+			installPinned(pinnedSessionIds) {
+				if (pinnedSessionIds.length === this.pinnedSessionIds.length && pinnedSessionIds.every((id, index) => id === this.pinnedSessionIds[index])) return;
+				this.pinnedSessionIds = [...pinnedSessionIds];
 				this.invalidate();
 			}
 			installOrder(workspaceIds, committed = false) {
@@ -282,19 +350,6 @@ window.__ModuleLoader__.load({
 				...without.slice(at)
 			];
 		}
-		function failureResult(error) {
-			return {
-				ok: false,
-				error: failureOf(error)
-			};
-		}
-		function failureOf(error) {
-			return {
-				code: "internal",
-				message: error instanceof Error ? error.message : String(error),
-				details: {}
-			};
-		}
 		//#endregion
 		//#region lib/types/client/service.js
 		/** React-free Client Workspace service and command facade. */
@@ -302,9 +357,23 @@ window.__ModuleLoader__.load({
 		var WorkspaceCreateError = class extends Error {
 			rpcError;
 			name = "WorkspaceCreateError";
-			/** @param rpcError - Host business or folded transport failure. */
+			/** @param rpcError - Host business or folded carrier failure. */
 			constructor(rpcError) {
 				super(`workspace create failed: ${rpcError.code}: ${rpcError.message}`);
+				this.rpcError = rpcError;
+			}
+		};
+		/**
+		* Archive failed on the Host. `rpcError.code` distinguishes the active-session
+		* refusal (`workspace/session-active`, whose details name what still runs)
+		* from a missing session or a carrier fault.
+		*/
+		var WorkspaceArchiveError = class extends Error {
+			rpcError;
+			name = "WorkspaceArchiveError";
+			/** @param rpcError - Host business or folded carrier failure. */
+			constructor(rpcError) {
+				super(`workspace session archive failed: ${rpcError.code}: ${rpcError.message}`);
 				this.rpcError = rpcError;
 			}
 		};
@@ -326,6 +395,11 @@ window.__ModuleLoader__.load({
 				if (!result.ok) throw new WorkspaceCreateError(result.error);
 				return result.value.workspace;
 			}
+			async initializeDefault(signal) {
+				const result = await this.model.initializeDefault(signal);
+				if (!result.ok) throw new WorkspaceCreateError(result.error);
+				return result.value?.workspace;
+			}
 			async rename(workspaceId, title) {
 				const result = await this.model.rename(workspaceId, title);
 				if (!result.ok) throw commandError("rename", result.error);
@@ -339,9 +413,21 @@ window.__ModuleLoader__.load({
 				const result = await this.model.insertBefore(workspaceId, beforeWorkspaceId);
 				if (!result.ok) throw commandError("reorder", result.error);
 			}
-			async archiveSession(sessionId) {
-				const result = await this.model.archiveSession(sessionId);
-				if (!result.ok) throw commandError("session archive", result.error);
+			async archiveSession(sessionId, options = {}) {
+				const result = await this.model.archiveSession(sessionId, options);
+				if (!result.ok) throw new WorkspaceArchiveError(result.error);
+			}
+			async unarchiveSession(sessionId) {
+				const result = await this.model.unarchiveSession(sessionId);
+				if (!result.ok) throw commandError("session unarchive", result.error);
+			}
+			async pinSession(sessionId) {
+				const result = await this.model.pinSession(sessionId);
+				if (!result.ok) throw commandError("session pin", result.error);
+			}
+			async unpinSession(sessionId) {
+				const result = await this.model.unpinSession(sessionId);
+				if (!result.ok) throw commandError("session unpin", result.error);
 			}
 			async insertSessionBefore(workspaceId, sessionId, beforeSessionId) {
 				const result = await this.model.insertSessionBefore(workspaceId, sessionId, beforeSessionId);
@@ -362,10 +448,9 @@ window.__ModuleLoader__.load({
 		* @param ctx - Client root Context.
 		*/
 		function apply(ctx) {
-			const remote = ctx.remote;
-			const model = new ClientWorkspaceModel(remote.workspace);
+			const model = new ClientWorkspaceModel(ctx.remote.workspace);
 			new WorkspaceController(ctx, model);
-			const control = createWorkspaceStateStream(remote, {
+			const control = createWorkspaceStateStream(ctx.remote, {
 				accept: model,
 				carrierFailed: () => {
 					model.handleCarrierFailure();
@@ -381,7 +466,7 @@ window.__ModuleLoader__.load({
 		}
 		/**
 		* Create the reconnecting Workspace state stream.
-		* @param remote - generated Workspace namespace and Gateway stream factory.
+		* @param remote - Client Remote face carrying the Workspace namespace and the stream factory.
 		* @param options - Workspace state destinations.
 		* @returns an unstarted stream owned by the Client Workspace runtime.
 		*/
@@ -417,6 +502,9 @@ window.__ModuleLoader__.load({
 				case "archived":
 					accept.replaceArchived(frame.archivedSessionIds);
 					return;
+				case "pinned":
+					accept.replacePinned(frame.pinnedSessionIds);
+					return;
 				/* v8 ignore next -- the generated Remote codec validates this closed union */
 				default: return assertNever(frame);
 			}
@@ -427,6 +515,7 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		exports.ClientWorkspaceModel = ClientWorkspaceModel;
+		exports.WorkspaceArchiveError = WorkspaceArchiveError;
 		exports.WorkspaceController = WorkspaceController;
 		exports.WorkspaceCreateError = WorkspaceCreateError;
 		exports.apply = apply;

@@ -23,8 +23,8 @@ window.__ModuleLoader__.load({
 			return n;
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-attachment\src\AttachmentRail.module.css.mjs
-		const css$4 = ".BBgFbq_root{min-width:0;position:relative}.BBgFbq_rail{scrollbar-width:none;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);gap:10px;display:flex;overflow:auto hidden}.BBgFbq_rail::-webkit-scrollbar{display:none}.BBgFbq_item{flex:0 0 64px;width:64px;height:64px;position:relative}.BBgFbq_thumbnail{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in;border-radius:16px;width:64px;height:64px;padding:0;overflow:hidden}.BBgFbq_thumbnail img{object-fit:cover;width:100%;height:100%;display:block}.BBgFbq_remove{z-index:1;background:var(--dsw-alias-button-contrast-fill);width:18px;height:18px;color:var(--dsw-alias-label-primary-inverted);cursor:pointer;opacity:0;border:none;border-radius:50%;place-items:center;padding:0;transition:opacity .2s ease-in-out;display:grid;position:absolute;top:4px;right:4px}.BBgFbq_item:hover .BBgFbq_remove,.BBgFbq_remove:focus-visible{opacity:1}@media (pointer:coarse){.BBgFbq_remove{opacity:1}}@media (prefers-reduced-motion:reduce){.BBgFbq_remove{transition:none}}.BBgFbq_arrow{z-index:2;border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-specific-input-major);width:24px;height:24px;color:var(--dsw-alias-label-secondary);box-shadow:var(--dsw-shadow-lv2);cursor:pointer;border-radius:999px;place-items:center;padding:0;display:grid;position:absolute;top:50%;transform:translateY(-50%)}.BBgFbq_arrow:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}.BBgFbq_arrowLeft{left:4px}.BBgFbq_arrowRight{right:4px}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-attachment\src\AttachmentRail.module.css.mjs
+		const css$4 = "._5e5o7G_root{min-width:0;position:relative}._5e5o7G_rail{scrollbar-width:none;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);align-items:stretch;gap:10px;display:flex;overflow:auto hidden}._5e5o7G_rail::-webkit-scrollbar{display:none}._5e5o7G_item{flex:none;height:64px}._5e5o7G_thumbnail{border:.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in;width:64px;height:64px;padding:0;overflow:hidden}._5e5o7G_thumbnail img{object-fit:cover;width:100%;height:100%;display:block}._5e5o7G_remove{z-index:1;corner-shape:round;background:var(--dsw-alias-button-contrast-fill);width:18px;height:18px;color:var(--dsw-alias-label-primary-inverted);cursor:pointer;opacity:0;border:none;border-radius:50%;place-items:center;padding:0;transition:opacity .2s ease-in-out;display:grid;position:absolute;top:4px;right:4px}._5e5o7G_item:hover ._5e5o7G_remove,._5e5o7G_remove:focus-visible{opacity:1}@media (pointer:coarse){._5e5o7G_remove{opacity:1}}@media (prefers-reduced-motion:reduce){._5e5o7G_remove{transition:none}}._5e5o7G_arrow{z-index:2;--dsw-elevation-stroke-color:var(--dsw-alias-border-l2-darkmode-thin);corner-shape:round;background:var(--dsw-specific-input-major);width:24px;height:24px;color:var(--dsw-alias-label-secondary);box-shadow:var(--dsw-elevation-panel);cursor:pointer;border:0;border-radius:999px;place-items:center;padding:0;display:grid;position:absolute;top:50%;transform:translateY(-50%)}._5e5o7G_arrow:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}._5e5o7G_arrowLeft{left:4px}._5e5o7G_arrowRight{right:4px}";
 		const tagId$4 = "@deepseek-ai/dsh-client-ui-attachment/AttachmentRail.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$4) + "]") === null) {
 			const tag = document.createElement("style");
@@ -34,28 +34,28 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var AttachmentRail_module_css_default = {
-			"arrow": "BBgFbq_arrow",
-			"arrowLeft": "BBgFbq_arrowLeft",
-			"arrowRight": "BBgFbq_arrowRight",
-			"item": "BBgFbq_item",
-			"rail": "BBgFbq_rail",
-			"remove": "BBgFbq_remove",
-			"root": "BBgFbq_root",
-			"thumbnail": "BBgFbq_thumbnail"
+			"arrow": "_5e5o7G_arrow",
+			"arrowLeft": "_5e5o7G_arrowLeft",
+			"arrowRight": "_5e5o7G_arrowRight",
+			"item": "_5e5o7G_item",
+			"rail": "_5e5o7G_rail",
+			"remove": "_5e5o7G_remove",
+			"root": "_5e5o7G_root",
+			"thumbnail": "_5e5o7G_thumbnail"
 		};
 		//#endregion
 		//#region lib/types/AttachmentRail.js
-		/** Draft-attachment thumbnail rail: scrollbar-less horizontal overflow paged
-		* by edge arrows, hover-revealed per-item remove, single-click open. */
+		/** Draft-attachment rail: scrollbar-less horizontal overflow paged by edge arrows. */
 		/** Approximate pixels per wheel step for `deltaMode` LINE deltas (Firefox
 		* notch wheels report lines, not pixels). */
 		const WHEEL_LINE_PX = 16;
 		/** Smooth paging unless the user asked for reduced motion. */
 		function pageBehavior() {
-			return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+			const matchMedia = window.matchMedia;
+			return matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 		}
 		/**
-		* Horizontal thumbnail rail over the caller's draft attachments.
+		* Horizontal rail over the caller's ordered draft attachments.
 		*
 		* The rail scrolls with its scrollbar hidden; overflow is announced by edge
 		* arrows recomputed from scroll geometry on scroll, item-count changes, and
@@ -63,18 +63,15 @@ window.__ModuleLoader__.load({
 		* panel resizes count, not only window resizes). A vertical wheel pans the
 		* rail horizontally and is consumed exclusively (non-passive listener), a
 		* newly added item is revealed at the rail's end while a rail that mounts
-		* over an existing draft keeps its start position, and each thumbnail opens
-		* on a single click while its remove control sits inside the card and
-		* reveals on hover or focus. The owner decides mounting; it renders the rail
-		* only while items exist.
+		* over an existing draft keeps its start position. The owner renders each
+		* item and decides mounting; it renders the rail only while items exist.
 		*
-		* @param props.items - resolved thumbnails in draft order.
-		* @param props.labels - rail-level strings (group name, open tooltip, arrows).
-		* @param props.onOpen - single-click open of one item's original image.
-		* @param props.onRemove - remove one item from the draft.
+		* @param props.items - attachments in draft order.
+		* @param props.labels - rail-level strings (group name and paging arrows).
+		* @param props.renderItem - render one attachment card in draft order.
 		* @returns the rail group with its paging arrows.
 		*/
-		function AttachmentRail({ items, labels, onOpen, onRemove }) {
+		function AttachmentRail({ items, labels, renderItem }) {
 			const railRef = (0, react.useRef)(null);
 			const countRef = (0, react.useRef)(null);
 			const [edges, setEdges] = (0, react.useState)({
@@ -147,7 +144,7 @@ window.__ModuleLoader__.load({
 						onClick: () => {
 							page(-1);
 						},
-						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronLeftOutline14, {})
+						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, {})
 					}),
 					(0, react_jsx_runtime.jsx)("div", {
 						ref: railRef,
@@ -155,28 +152,9 @@ window.__ModuleLoader__.load({
 						role: "group",
 						"aria-label": labels.group,
 						onScroll: updateEdges,
-						children: items.map((item) => (0, react_jsx_runtime.jsxs)("div", {
+						children: items.map((item) => (0, react_jsx_runtime.jsx)("div", {
 							className: AttachmentRail_module_css_default.item,
-							children: [(0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								className: AttachmentRail_module_css_default.thumbnail,
-								title: labels.open,
-								onClick: () => {
-									onOpen(item);
-								},
-								children: (0, react_jsx_runtime.jsx)("img", {
-									src: item.previewUrl,
-									alt: item.alt
-								})
-							}), (0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								className: AttachmentRail_module_css_default.remove,
-								"aria-label": item.removeLabel,
-								onClick: () => {
-									onRemove(item);
-								},
-								children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseFill14, { size: 12 })
-							})]
+							children: renderItem(item)
 						}, item.id))
 					}),
 					edges.right && (0, react_jsx_runtime.jsx)("button", {
@@ -186,14 +164,14 @@ window.__ModuleLoader__.load({
 						onClick: () => {
 							page(1);
 						},
-						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {})
+						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {})
 					})
 				]
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-attachment\src\DropOverlay.module.css.mjs
-		const css$3 = ".qZzfna_mask{z-index:1000;pointer-events:none;background-color:var(--dsw-alias-bg-mask-drop);backdrop-filter:blur(10px);justify-content:center;align-items:center;animation:.16s ease-out qZzfna_fade-in;display:flex;position:fixed;inset:0}@keyframes qZzfna_fade-in{0%{opacity:0}to{opacity:1}}@media (prefers-reduced-motion:reduce){.qZzfna_mask{animation:none}}.qZzfna_wrap{color:var(--dsw-alias-label-primary);text-align:center;flex-direction:column;align-items:center;margin-top:-3%;padding:0 40px;display:flex}.qZzfna_illustration{width:115px;height:84px}.qZzfna_title{font:var(--dsw-font-l-20);margin-top:16px}.qZzfna_desc{font:var(--dsw-font-s-14);color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;margin-top:16px}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-attachment\src\DropOverlay.module.css.mjs
+		const css$3 = ".XPZS9W_mask{z-index:1000;pointer-events:none;background-color:var(--dsw-alias-bg-mask-drop);backdrop-filter:blur(10px);justify-content:center;align-items:center;animation:.16s ease-out XPZS9W_fade-in;display:flex;position:fixed;inset:0}@keyframes XPZS9W_fade-in{0%{opacity:0}to{opacity:1}}@media (prefers-reduced-motion:reduce){.XPZS9W_mask{animation:none}}.XPZS9W_wrap{color:var(--dsw-alias-label-primary);text-align:center;flex-direction:column;align-items:center;margin-top:-3%;padding:0 40px;display:flex}.XPZS9W_illustration{width:115px;height:84px}.XPZS9W_title{font:var(--dsw-font-l-20);margin-top:16px}.XPZS9W_desc{font:var(--dsw-font-s-14);color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;margin-top:16px}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-attachment/DropOverlay.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -203,12 +181,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var DropOverlay_module_css_default = {
-			"desc": "qZzfna_desc",
-			"fade-in": "qZzfna_fade-in",
-			"illustration": "qZzfna_illustration",
-			"mask": "qZzfna_mask",
-			"title": "qZzfna_title",
-			"wrap": "qZzfna_wrap"
+			"desc": "XPZS9W_desc",
+			"fade-in": "XPZS9W_fade-in",
+			"illustration": "XPZS9W_illustration",
+			"mask": "XPZS9W_mask",
+			"title": "XPZS9W_title",
+			"wrap": "XPZS9W_wrap"
 		};
 		//#endregion
 		//#region lib/types/DropOverlay.js
@@ -378,9 +356,9 @@ window.__ModuleLoader__.load({
 			]
 		});
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-attachment\src\ImageLightbox.module.css.mjs
-		const css$2 = ".jagPYW_backdrop{z-index:1000;place-items:center;padding:40px;display:grid;position:fixed;inset:0}.jagPYW_mask{background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur);position:absolute;inset:0}.jagPYW_image{object-fit:contain;background:var(--dsw-specific-input-major);max-width:min(100%,1600px);max-height:calc(100vh - 80px);box-shadow:var(--dsw-shadow-lv3);border-radius:12px;position:relative}.jagPYW_close{z-index:1;border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-specific-input-major);width:36px;height:36px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:999px;place-items:center;display:grid;position:fixed;top:20px;right:20px}";
-		const tagId$2 = "@deepseek-ai/dsh-client-ui-attachment/ImageLightbox.module.css";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-attachment\src\FileCard.module.css.mjs
+		const css$2 = ".tei0Bq_card{border:.5px solid var(--dsw-alias-border-l2,#0000001f);border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-input-major,transparent);box-sizing:border-box;text-align:left;align-items:center;gap:10px;width:240px;height:64px;padding:0 12px;display:inline-flex;position:relative}.tei0Bq_failed{border-color:var(--dsw-alias-state-error-primary,#d54941)}.tei0Bq_icon{flex:none;justify-content:center;align-items:center;width:28px;height:28px;display:inline-flex}.tei0Bq_spinner{corner-shape:round;border:2px solid;border-top-color:#0000;border-radius:50%;width:20px;height:20px;animation:.8s linear infinite tei0Bq_file-card-spin}@keyframes tei0Bq_file-card-spin{to{transform:rotate(360deg)}}.tei0Bq_body{flex-direction:column;flex:1;min-width:0;padding:8px 0;display:flex}.tei0Bq_retry{color:inherit;font:inherit;text-align:left;cursor:pointer;background:0 0;border:0;padding:0}.tei0Bq_name{white-space:nowrap;text-overflow:ellipsis;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px;overflow:hidden}.tei0Bq_meta{white-space:nowrap;text-overflow:ellipsis;color:var(--dsw-alias-label-tertiary,#00000073);font-size:12px;line-height:15px;overflow:hidden}.tei0Bq_metaFailed{color:var(--dsw-alias-state-error-primary,#d54941)}.tei0Bq_remove{corner-shape:round;background:var(--dsw-alias-button-contrast-fill,#000000b8);width:18px;height:18px;color:var(--dsw-alias-label-primary-inverted,#fff);opacity:0;cursor:pointer;border:none;border-radius:50%;justify-content:center;align-items:center;padding:0;transition:opacity .2s ease-in-out;display:inline-flex;position:absolute;top:6px;right:6px}.tei0Bq_card:hover .tei0Bq_remove,.tei0Bq_remove:focus-visible{opacity:1}@media (pointer:coarse){.tei0Bq_remove{opacity:1}}@media (prefers-reduced-motion:reduce){.tei0Bq_remove{transition:none}}.tei0Bq_card:hover .tei0Bq_name,.tei0Bq_card:focus-within .tei0Bq_name{padding-right:18px}.tei0Bq_removeFailed{background:var(--dsw-alias-state-error-primary,#d54941);color:#fff;opacity:1}.tei0Bq_progressTrack{background:var(--dsw-alias-fill-tertiary,#00000014);border-radius:1px;height:2px;position:absolute;bottom:5px;left:12px;right:12px;overflow:hidden}.tei0Bq_progressBar{border-radius:inherit;background:var(--dsw-alias-brand-primary,#4d6bfe);width:35%;height:100%;animation:1.2s ease-in-out infinite alternate tei0Bq_file-card-progress;display:block}.tei0Bq_progressBar[style]{animation:none}@keyframes tei0Bq_file-card-progress{0%{transform:translate(-70%)}to{transform:translate(220%)}}@media (pointer:coarse){.tei0Bq_remove{opacity:1}}";
+		const tagId$2 = "@deepseek-ai/dsh-client-ui-attachment/FileCard.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
 			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-attachment";
@@ -388,68 +366,79 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$2;
 			document.head.appendChild(tag);
 		}
-		var ImageLightbox_module_css_default = {
-			"backdrop": "jagPYW_backdrop",
-			"close": "jagPYW_close",
-			"image": "jagPYW_image",
-			"mask": "jagPYW_mask"
+		var FileCard_module_css_default = {
+			"body": "tei0Bq_body",
+			"card": "tei0Bq_card",
+			"failed": "tei0Bq_failed",
+			"file-card-progress": "tei0Bq_file-card-progress",
+			"file-card-spin": "tei0Bq_file-card-spin",
+			"icon": "tei0Bq_icon",
+			"meta": "tei0Bq_meta",
+			"metaFailed": "tei0Bq_metaFailed",
+			"name": "tei0Bq_name",
+			"progressBar": "tei0Bq_progressBar",
+			"progressTrack": "tei0Bq_progressTrack",
+			"remove": "tei0Bq_remove",
+			"removeFailed": "tei0Bq_removeFailed",
+			"retry": "tei0Bq_retry",
+			"spinner": "tei0Bq_spinner"
 		};
 		//#endregion
-		//#region lib/types/ImageLightbox.js
-		/**
-		* Document-level original-image preview opened by clicking a thumbnail.
-		* Closes on Escape, backdrop press, or the close control, and restores focus
-		* to the opener on unmount. Rendered through a body portal: an opener inside
-		* a transformed or filtered ancestor would otherwise trap the fixed backdrop
-		* in that ancestor's box instead of covering the viewport.
-		*
-		* @param props.src - the original image URL.
-		* @param props.alt - the image's alt text.
-		* @param props.labels - dialog and close-control strings.
-		* @param props.onClose - dismiss callback owned by the opener.
-		* @returns the modal preview dialog.
-		*/
-		function ImageLightbox({ src, alt, labels, onClose }) {
-			const closeRef = (0, react.useRef)(null);
-			const restoreRef = (0, react.useRef)(null);
-			(0, react.useEffect)(() => {
-				restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-				closeRef.current?.focus();
-				const onKeyDown = (event) => {
-					if (event.key === "Escape") onClose();
-				};
-				window.addEventListener("keydown", onKeyDown);
-				return () => {
-					window.removeEventListener("keydown", onKeyDown);
-					restoreRef.current?.focus();
-				};
-			}, [onClose]);
-			return (0, react_dom.createPortal)((0, react_jsx_runtime.jsxs)("div", {
-				className: ImageLightbox_module_css_default.backdrop,
-				role: "dialog",
-				"aria-modal": "true",
-				"aria-label": labels.dialog,
+		//#region lib/types/FileCard.js
+		/** One pending file card: type glyph, name, size or upload status, remove, retry. */
+		function FileCard({ name, bytes, state, progress, labels, onRemove, onRetry }) {
+			const extension = (0, _deepseek_ai_dsh_client_ui_primitives.fileExtension)(name).toUpperCase().slice(0, 8);
+			const meta = state === "uploading" ? labels.uploading : state === "error" ? labels.failed : [extension, (0, _deepseek_ai_dsh_client_ui_primitives.fileSizeText)(bytes)].filter((part) => part !== "").join(" ");
+			const retryable = state === "error";
+			return (0, react_jsx_runtime.jsxs)("div", {
+				className: `${FileCard_module_css_default.card}${retryable ? ` ${FileCard_module_css_default.failed}` : ""}`,
+				title: name,
 				children: [
-					(0, react_jsx_runtime.jsx)("div", {
-						className: ImageLightbox_module_css_default.mask,
-						"aria-hidden": "true",
-						onMouseDown: onClose
+					(0, react_jsx_runtime.jsx)("span", {
+						className: FileCard_module_css_default.icon,
+						"aria-hidden": true,
+						children: state === "uploading" ? (0, react_jsx_runtime.jsx)("span", { className: FileCard_module_css_default.spinner }) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.FileTypeIcon, { path: name })
 					}),
-					(0, react_jsx_runtime.jsx)("img", {
-						className: ImageLightbox_module_css_default.image,
-						src,
-						alt
+					retryable ? (0, react_jsx_runtime.jsxs)("button", {
+						type: "button",
+						className: `${FileCard_module_css_default.body} ${FileCard_module_css_default.retry}`,
+						"aria-label": labels.retry,
+						onClick: onRetry,
+						children: [(0, react_jsx_runtime.jsx)("span", {
+							className: FileCard_module_css_default.name,
+							children: name
+						}), (0, react_jsx_runtime.jsx)("span", {
+							className: `${FileCard_module_css_default.meta} ${FileCard_module_css_default.metaFailed}`,
+							children: meta
+						})]
+					}) : (0, react_jsx_runtime.jsxs)("span", {
+						className: FileCard_module_css_default.body,
+						"aria-label": labels.label,
+						children: [(0, react_jsx_runtime.jsx)("span", {
+							className: FileCard_module_css_default.name,
+							children: name
+						}), (0, react_jsx_runtime.jsx)("span", {
+							className: FileCard_module_css_default.meta,
+							children: meta
+						})]
 					}),
 					(0, react_jsx_runtime.jsx)("button", {
-						ref: closeRef,
 						type: "button",
-						className: ImageLightbox_module_css_default.close,
-						"aria-label": labels.close,
-						onClick: onClose,
-						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseOutline16, { size: 16 })
+						className: retryable ? `${FileCard_module_css_default.remove} ${FileCard_module_css_default.removeFailed}` : FileCard_module_css_default.remove,
+						"aria-label": labels.remove,
+						onClick: onRemove,
+						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseFillRegular, { size: 12 })
+					}),
+					state === "uploading" && (0, react_jsx_runtime.jsx)("span", {
+						className: FileCard_module_css_default.progressTrack,
+						"aria-hidden": true,
+						children: (0, react_jsx_runtime.jsx)("span", {
+							className: FileCard_module_css_default.progressBar,
+							style: progress === void 0 ? void 0 : { width: `${String(Math.min(1, Math.max(0, progress)) * 100)}%` }
+						})
 					})
 				]
-			}), document.body);
+			});
 		}
 		//#endregion
 		//#region lib/types/client/labels.js
@@ -487,28 +476,121 @@ window.__ModuleLoader__.load({
 		* @returns translated drop-overlay labels.
 		*/
 		function dropOverlayLabels(t, accepting, limits) {
-			if (!accepting) return { title: t("image.dropBlocked") };
+			if (!accepting) return { title: t("attachment.dropBlocked") };
 			return {
-				title: t("image.dropTitle"),
-				desc: limits === void 0 ? void 0 : t("image.dropDesc", limits)
+				title: t("attachment.dropTitle"),
+				desc: limits === void 0 ? void 0 : t("attachment.dropDesc", limits)
 			};
 		}
 		/**
-		* Resolve draft-image rail strings from the conversation namespace.
+		* Resolve pending-file card strings from the conversation namespace.
+		* @param t - conversation namespace translator.
+		* @param name - browser file name interpolated into remove/retry labels.
+		* @returns translated file-card labels.
+		*/
+		function fileCardLabels(t, name) {
+			return {
+				label: t("file.pending"),
+				remove: t("file.remove", { name }),
+				uploading: t("file.uploading"),
+				failed: t("file.uploadFailed"),
+				retry: t("file.retry", { name })
+			};
+		}
+		/**
+		* Resolve the mixed draft-attachment rail strings from the conversation namespace.
 		* @param t - conversation namespace translator.
 		* @returns translated attachment-rail labels.
 		*/
 		function attachmentRailLabels(t) {
 			return {
-				group: t("image.pending"),
-				open: t("image.openOriginal"),
-				scrollLeft: t("image.scrollLeft"),
-				scrollRight: t("image.scrollRight")
+				group: t("attachment.pending"),
+				scrollLeft: t("attachment.scrollLeft"),
+				scrollRight: t("attachment.scrollRight")
 			};
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-attachment\src\client\ComposerAttachments.module.css.mjs
-		const css$1 = ".B1qoOq_rail{min-width:0;padding:4px 12px 0}";
+		//#region lib/types/client/drop-events.js
+		/**
+		* Members of a drop that are directories. The `File` a directory drop yields
+		* is indistinguishable from an empty file, so the entry API is the only
+		* source of that fact; browsers without it report no directories.
+		*/
+		function droppedDirectories(dataTransfer, files) {
+			const directories = /* @__PURE__ */ new Set();
+			let fileIndex = 0;
+			for (const item of dataTransfer.items) {
+				if (item.kind !== "file") continue;
+				const file = files[fileIndex++];
+				if (typeof item.webkitGetAsEntry !== "function") continue;
+				if (item.webkitGetAsEntry()?.isDirectory !== true) continue;
+				if (file !== void 0) directories.add(file);
+			}
+			return directories;
+		}
+		/**
+		* Install one attachment view's file-drop listeners.
+		* @param canAcceptDrop - whether this view accepts the dropped files.
+		* @param onAddFiles - attachment intake callback.
+		* @param dragDepth - the view's retained nested-drag counter.
+		* @param setDragActive - publish whether a file drag is active.
+		* @returns cleanup for exactly these listeners.
+		*/
+		function installDocumentDropEvents(canAcceptDrop, onAddFiles, dragDepth, setDragActive) {
+			const fileTransfer = (event) => {
+				const dataTransfer = event.dataTransfer;
+				if (dataTransfer === null || !dataTransfer.types.includes("Files")) return null;
+				return dataTransfer;
+			};
+			const reset = () => {
+				dragDepth.current = 0;
+				setDragActive(false);
+			};
+			const onDragEnter = (event) => {
+				if (fileTransfer(event) === null) return;
+				event.preventDefault();
+				dragDepth.current += 1;
+				setDragActive(true);
+			};
+			const onDragOver = (event) => {
+				const dataTransfer = fileTransfer(event);
+				if (dataTransfer === null) return;
+				event.preventDefault();
+				dataTransfer.dropEffect = canAcceptDrop ? "copy" : "none";
+			};
+			const onDragLeave = (event) => {
+				if (fileTransfer(event) === null) return;
+				dragDepth.current = Math.max(0, dragDepth.current - 1);
+				if (dragDepth.current === 0) setDragActive(false);
+				const leftViewport = event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
+				if ((event.target === document.documentElement || event.target === document.body) && leftViewport) reset();
+			};
+			const onDrop = (event) => {
+				const dataTransfer = fileTransfer(event);
+				if (dataTransfer === null) return;
+				event.preventDefault();
+				reset();
+				if (canAcceptDrop) {
+					const files = [...dataTransfer.files];
+					onAddFiles(files, droppedDirectories(dataTransfer, files));
+				}
+			};
+			document.addEventListener("dragenter", onDragEnter);
+			document.addEventListener("dragover", onDragOver);
+			document.addEventListener("dragleave", onDragLeave);
+			document.addEventListener("drop", onDrop);
+			window.addEventListener("dragend", reset);
+			return () => {
+				document.removeEventListener("dragenter", onDragEnter);
+				document.removeEventListener("dragover", onDragOver);
+				document.removeEventListener("dragleave", onDragLeave);
+				document.removeEventListener("drop", onDrop);
+				window.removeEventListener("dragend", reset);
+			};
+		}
+		//#endregion
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-attachment\src\client\ComposerAttachments.module.css.mjs
+		const css$1 = ".iNMrPW_rail{min-width:0;margin-bottom:-6px;padding:2px 10px 0}.iNMrPW_imageItem{width:64px;height:64px;position:relative}.iNMrPW_thumbnail{border:.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in;width:64px;height:64px;padding:0;overflow:hidden}.iNMrPW_thumbnail img{object-fit:cover;width:100%;height:100%;display:block}.iNMrPW_remove{z-index:1;corner-shape:round;background:var(--dsw-alias-button-contrast-fill);width:18px;height:18px;color:var(--dsw-alias-label-primary-inverted);cursor:pointer;opacity:0;border:none;border-radius:50%;place-items:center;padding:0;transition:opacity .2s ease-in-out;display:grid;position:absolute;top:4px;right:4px}.iNMrPW_imageItem:hover .iNMrPW_remove,.iNMrPW_remove:focus-visible{opacity:1}@media (pointer:coarse){.iNMrPW_remove{opacity:1}}@media (prefers-reduced-motion:reduce){.iNMrPW_remove{transition:none}}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-attachment/ComposerAttachments.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -517,11 +599,16 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$1;
 			document.head.appendChild(tag);
 		}
-		var ComposerAttachments_module_css_default = { "rail": "B1qoOq_rail" };
+		var ComposerAttachments_module_css_default = {
+			"imageItem": "iNMrPW_imageItem",
+			"rail": "iNMrPW_rail",
+			"remove": "iNMrPW_remove",
+			"thumbnail": "iNMrPW_thumbnail"
+		};
 		//#endregion
 		//#region lib/types/client/ComposerAttachments.js
-		/** Draft-image rail, document drop target, and original-image preview slot entry. */
-		function ComposerAttachments({ attachments, canAcceptDrop, onAddImages, onRemoveImage, dropLimits, t }) {
+		/** Draft image previews, pending-file cards, drop target, and original-image preview. */
+		function ComposerAttachments({ attachments, canAcceptDrop, onAddFiles, onRemoveAttachment, uploads, onRetryFile, dropLimits, t }) {
 			const [preview, setPreview] = (0, react.useState)(null);
 			const [dragActive, setDragActive] = (0, react.useState)(false);
 			const dragDepth = (0, react.useRef)(0);
@@ -532,61 +619,12 @@ window.__ModuleLoader__.load({
 				if (preview !== null && !attachments.some((attachment) => attachment.id === preview.id)) setPreview(null);
 			}, [attachments, preview]);
 			(0, react.useEffect)(() => {
-				const fileTransfer = (event) => {
-					const dataTransfer = event.dataTransfer;
-					if (dataTransfer === null || !dataTransfer.types.includes("Files")) return null;
-					return dataTransfer;
-				};
-				const reset = () => {
-					dragDepth.current = 0;
-					setDragActive(false);
-				};
-				const onDragEnter = (event) => {
-					if (fileTransfer(event) === null) return;
-					event.preventDefault();
-					dragDepth.current += 1;
-					setDragActive(true);
-				};
-				const onDragOver = (event) => {
-					const dataTransfer = fileTransfer(event);
-					if (dataTransfer === null) return;
-					event.preventDefault();
-					dataTransfer.dropEffect = canAcceptDrop ? "copy" : "none";
-				};
-				const onDragLeave = (event) => {
-					if (fileTransfer(event) === null) return;
-					dragDepth.current = Math.max(0, dragDepth.current - 1);
-					if (dragDepth.current === 0) setDragActive(false);
-					const leftViewport = event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
-					if ((event.target === document.documentElement || event.target === document.body) && leftViewport) reset();
-				};
-				const onDrop = (event) => {
-					const dataTransfer = fileTransfer(event);
-					if (dataTransfer === null) return;
-					event.preventDefault();
-					reset();
-					if (canAcceptDrop) onAddImages([...dataTransfer.files]);
-				};
-				document.addEventListener("dragenter", onDragEnter);
-				document.addEventListener("dragover", onDragOver);
-				document.addEventListener("dragleave", onDragLeave);
-				document.addEventListener("drop", onDrop);
-				window.addEventListener("dragend", reset);
-				return () => {
-					document.removeEventListener("dragenter", onDragEnter);
-					document.removeEventListener("dragover", onDragOver);
-					document.removeEventListener("dragleave", onDragLeave);
-					document.removeEventListener("drop", onDrop);
-					window.removeEventListener("dragend", reset);
-				};
-			}, [canAcceptDrop, onAddImages]);
+				return installDocumentDropEvents(canAcceptDrop, onAddFiles, dragDepth, setDragActive);
+			}, [canAcceptDrop, onAddFiles]);
 			const railItems = (0, react.useMemo)(() => attachments.map((attachment) => ({
 				id: attachment.id,
-				previewUrl: attachment.previewUrl,
-				alt: attachment.file.name || t("image.pending"),
-				removeLabel: t("image.remove", { name: attachment.file.name }),
 				attachment
-			})), [attachments, t]);
+			})), [attachments]);
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
 				dragActive && (0, react_jsx_runtime.jsx)(DropOverlay, {
 					disabled: !canAcceptDrop,
@@ -597,15 +635,51 @@ window.__ModuleLoader__.load({
 					children: (0, react_jsx_runtime.jsx)(AttachmentRail, {
 						items: railItems,
 						labels: attachmentRailLabels(t),
-						onOpen: (item) => {
-							setPreview(item.attachment);
-						},
-						onRemove: (item) => {
-							onRemoveImage(item.attachment.id);
+						renderItem: (item) => {
+							const attachment = item.attachment;
+							if (attachment.kind === "file") {
+								const upload = uploads[attachment.id];
+								return (0, react_jsx_runtime.jsx)(FileCard, {
+									name: attachment.file.name || t("file.label"),
+									bytes: attachment.file.size,
+									state: upload === void 0 || upload.status === "uploading" ? "uploading" : upload.status === "ready" ? "ready" : "error",
+									...upload?.status === "uploading" && upload.total !== void 0 && upload.total > 0 ? { progress: upload.loaded / upload.total } : {},
+									labels: fileCardLabels(t, attachment.file.name),
+									onRemove: () => {
+										onRemoveAttachment(attachment.id);
+									},
+									onRetry: () => {
+										onRetryFile(attachment.id);
+									}
+								});
+							}
+							return (0, react_jsx_runtime.jsxs)("div", {
+								className: ComposerAttachments_module_css_default.imageItem,
+								children: [(0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: ComposerAttachments_module_css_default.thumbnail,
+									title: t("image.openOriginal"),
+									onClick: () => {
+										setPreview(attachment);
+									},
+									children: (0, react_jsx_runtime.jsx)("img", {
+										src: attachment.previewUrl,
+										alt: attachment.file.name || t("image.pending")
+									})
+								}), (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: ComposerAttachments_module_css_default.remove,
+									"aria-label": t("image.remove", { name: attachment.file.name }),
+									onClick: () => {
+										onRemoveAttachment(attachment.id);
+									},
+									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseFillRegular, { size: 12 })
+								})]
+							});
 						}
 					})
 				}),
-				preview !== null && (0, react_jsx_runtime.jsx)(ImageLightbox, {
+				preview !== null && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.ImageLightbox, {
 					src: preview.previewUrl,
 					alt: preview.file.name || t("image.original"),
 					labels: lightboxLabels(t),
@@ -614,8 +688,8 @@ window.__ModuleLoader__.load({
 			] });
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-attachment\src\MessageImage.module.css.mjs
-		const css = ".gMgnBW_gallery{flex-wrap:wrap;gap:10px;max-width:100%;display:flex}.gMgnBW_gallery[data-align=end]{justify-content:flex-end;align-self:flex-end}.gMgnBW_gallery[data-align=start]{justify-content:flex-start;align-self:flex-start}.gMgnBW_frame{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in;border-radius:16px;flex:none;place-items:center;min-width:44px;min-height:44px;padding:0;display:grid;overflow:hidden}.gMgnBW_frame[data-variant=tile]{width:64px;min-width:64px;height:64px;min-height:64px}.gMgnBW_frame img{object-fit:cover;width:100%;height:100%;display:block}.gMgnBW_loading,.gMgnBW_error{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.gMgnBW_error{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-alias-interactive-bg-hover-danger);cursor:pointer;border-radius:10px;max-width:240px;padding:10px 12px}.gMgnBW_error[data-variant=tile]{border-radius:16px;width:64px;height:64px;padding:4px;overflow:hidden}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-attachment\src\MessageImage.module.css.mjs
+		const css = ".uotw4G_gallery{flex-wrap:wrap;gap:10px;max-width:100%;display:flex}.uotw4G_gallery[data-align=end]{justify-content:flex-end;align-self:flex-end}.uotw4G_gallery[data-align=start]{justify-content:flex-start;align-self:flex-start}.uotw4G_frame{border:.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in;flex:none;place-items:center;min-width:44px;min-height:44px;padding:0;display:grid;overflow:hidden}.uotw4G_frame[data-variant=tile]{width:64px;min-width:64px;height:64px;min-height:64px}.uotw4G_frame img{object-fit:cover;width:100%;height:100%;display:block}.uotw4G_loading,.uotw4G_error{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.uotw4G_error{border:.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-danger);cursor:pointer;max-width:240px;padding:10px 12px}.uotw4G_error[data-variant=tile]{border-radius:var(--dsw-radius-xl);width:64px;height:64px;padding:4px;overflow:hidden}.uotw4G_frame[data-variant=thumbnail],.uotw4G_error[data-variant=thumbnail]{box-sizing:border-box;border-radius:var(--dsw-radius-lg);place-items:center;width:48px;min-width:48px;height:48px;min-height:48px;padding:2px;display:grid;overflow:hidden}.uotw4G_frame[data-variant=thumbnail] img{object-fit:contain}.uotw4G_spinner{animation:.9s linear infinite uotw4G_spinner-rotate}@keyframes uotw4G_spinner-rotate{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.uotw4G_spinner{animation:none}}.uotw4G_frame:focus-visible,.uotw4G_error:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}";
 		const tagId = "@deepseek-ai/dsh-client-ui-attachment/MessageImage.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -625,10 +699,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var MessageImage_module_css_default = {
-			"error": "gMgnBW_error",
-			"frame": "gMgnBW_frame",
-			"gallery": "gMgnBW_gallery",
-			"loading": "gMgnBW_loading"
+			"error": "uotw4G_error",
+			"frame": "uotw4G_frame",
+			"gallery": "uotw4G_gallery",
+			"loading": "uotw4G_loading",
+			"spinner": "uotw4G_spinner",
+			"spinner-rotate": "uotw4G_spinner-rotate"
 		};
 		//#endregion
 		//#region lib/types/MessageImage.js
@@ -667,10 +743,11 @@ window.__ModuleLoader__.load({
 		* preview. A lone image renders at its `singleFit` size; an image among
 		* several renders as a fixed 64px square tile. The preview arm displays its
 		* local URL directly — no loader round-trip, no failure/retry surface.
+		* List thumbnails use status icons with localized tooltips and accessible names.
 		*
 		* @param props.image - the durable reference to load, or the local preview to display.
 		* @param props.load - session-authorized URL loader for the durable arm.
-		* @param props.variant - `single` for a message's lone image, `tile` otherwise.
+		* @param props.variant - lone image, cropped gallery tile, or uncropped list thumbnail.
 		* @param props.labels - resolved strings (tooltip, loading, retry, lightbox).
 		* @returns the bounded thumbnail button, or the retry control on failure.
 		*/
@@ -715,13 +792,19 @@ window.__ModuleLoader__.load({
 				attempt
 			]);
 			const src = preview?.url ?? loaded;
-			const label = preview?.name ?? attachment?.name ?? labels.image;
+			const label = ("attachment" in image ? image.label : void 0) ?? preview?.name ?? attachment?.name ?? labels.image;
+			const loadingThumbnail = variant === "thumbnail" && src === null;
 			if (error) return (0, react_jsx_runtime.jsx)("button", {
 				type: "button",
 				className: MessageImage_module_css_default.error,
 				"data-variant": variant,
+				title: variant === "thumbnail" ? labels.loadFailed : void 0,
+				"aria-label": variant === "thumbnail" ? labels.loadFailed : void 0,
 				onClick: request,
-				children: labels.loadFailed
+				children: variant === "thumbnail" ? (0, react_jsx_runtime.jsx)("span", {
+					"aria-hidden": "true",
+					children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconRefreshOutlineRegular, {})
+				}) : labels.loadFailed
 			});
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)("button", {
 				type: "button",
@@ -731,20 +814,22 @@ window.__ModuleLoader__.load({
 					width: fit.width,
 					height: fit.height
 				},
-				title: labels.open,
-				"aria-label": labels.openNamed(label),
+				title: loadingThumbnail ? labels.loading : labels.open,
+				"aria-label": loadingThumbnail ? labels.loading : labels.openNamed(label),
+				"aria-busy": loadingThumbnail || void 0,
 				onClick: () => {
 					if (src !== null) setOpen(true);
 				},
 				children: src === null ? (0, react_jsx_runtime.jsx)("span", {
 					className: MessageImage_module_css_default.loading,
-					children: labels.loading
+					"aria-hidden": loadingThumbnail || void 0,
+					children: loadingThumbnail ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconLoadingOutlineRegular, { className: MessageImage_module_css_default.spinner }) : labels.loading
 				}) : (0, react_jsx_runtime.jsx)("img", {
 					src,
 					alt: label,
 					style: fit === void 0 ? void 0 : { objectPosition: fit.objectPosition }
 				})
-			}), open && src !== null && (0, react_jsx_runtime.jsx)(ImageLightbox, {
+			}), open && src !== null && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.ImageLightbox, {
 				src,
 				alt: label,
 				labels: labels.lightbox,
@@ -752,10 +837,10 @@ window.__ModuleLoader__.load({
 			})] });
 		}
 		/** Wrapping image group shared by user and assistant history: a lone image
-		* renders large, several render as 64px square tiles (DeepSeek Chat rule). */
-		function ImageGallery({ images, load, align, labels }) {
+		* renders large unless its owner requests compact tiles or contained list thumbnails. */
+		function ImageGallery({ images, load, align, compact = false, thumbnail = false, labels }) {
 			if (images.length === 0) return null;
-			const variant = images.length === 1 ? "single" : "tile";
+			const variant = thumbnail ? "thumbnail" : compact || images.length > 1 ? "tile" : "single";
 			return (0, react_jsx_runtime.jsx)("div", {
 				className: MessageImage_module_css_default.gallery,
 				"data-align": align,
@@ -770,11 +855,13 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/MessageImages.js
 		/** Historical message-image slot entry. */
-		function MessageImages({ images, loadImage, align, t }) {
+		function MessageImages({ images, loadImage, align, compact = false, thumbnail = false, t }) {
 			return (0, react_jsx_runtime.jsx)(ImageGallery, {
 				images,
 				load: loadImage,
 				align,
+				compact,
+				thumbnail,
 				labels: messageImageLabels(t)
 			});
 		}
@@ -794,6 +881,10 @@ window.__ModuleLoader__.load({
 			}, MessageImages));
 			ctx.slots.inject("conversation.trajectory.images", () => ctx.slots.register({
 				name: "conversation.trajectory.images",
+				locale: "conversation"
+			}, MessageImages));
+			ctx.slots.inject("tool.call.images", () => ctx.slots.register({
+				name: "tool.call.images",
 				locale: "conversation"
 			}, MessageImages));
 		}

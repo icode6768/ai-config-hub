@@ -1,3 +1,4 @@
+import { parseLocaleBootstrap } from "./bootstrap.js";
 import { LOCALE_ID_PATTERN, LOCALE_IDS, LOCALE_PREFERENCE_FIELD, LOCALE_SETTINGS_NAMESPACE, } from "../locale-settings.js";
 import { en, zh } from "../locales/index.js";
 import { en as settingsEn, zh as settingsZh, } from "../locales/settings.js";
@@ -48,7 +49,9 @@ function syncDocumentLanguage(snapshot) {
     // Non-browser runs (node boots of the client tree) have no document.
     if (typeof document === 'undefined')
         return;
-    document.documentElement.lang = snapshot.active === 'zh' ? 'zh-CN' : snapshot.active;
+    const language = snapshot.active === 'zh' ? 'zh-CN' : snapshot.active;
+    if (document.documentElement.lang !== language)
+        document.documentElement.lang = language;
 }
 /**
  * Dictionary registry plus locale preference. Lookup walks the active
@@ -61,6 +64,7 @@ function syncDocumentLanguage(snapshot) {
  * `ctx.slots.installLocale`.
  */
 export class LocaleRuntime {
+    bootstrap;
     dicts = new Map();
     bound = new Map();
     catalog = new Map();
@@ -78,15 +82,18 @@ export class LocaleRuntime {
      * listener is released through ctx.effect on dispose).
      * @param host - durable preference scope owned by the providing plugin;
      * absent compositions (standalone dictionary registries) stay process-local.
+     * @param bootstrap - native initialization; absent in ordinary browsers.
      */
-    constructor(ctx, host) {
+    constructor(ctx, host, bootstrap) {
+        this.bootstrap = bootstrap;
         this.ctx = ctx;
         this.host = host;
         for (const locale of BUILT_IN_LOCALES)
             this.catalog.set(localeKey(locale.id), locale);
         const locales = this.localeList();
-        this.provisional = resolveInitialLocale(locales);
-        this.snapshot = Object.freeze({ active: this.provisional, locales, revision: 0 });
+        this.provisional = resolveInitialLocale(locales, bootstrap?.languages);
+        this.preference = bootstrap?.preference ?? undefined;
+        this.snapshot = Object.freeze({ active: this.resolveActive(), locales, revision: 0 });
         if (host !== undefined) {
             ctx.effect(() => host.subscribe(() => { this.adopt(host); }), 'locale: settings scope adoption');
             this.adopt(host);
@@ -98,6 +105,17 @@ export class LocaleRuntime {
      */
     getLocale() {
         return this.snapshot;
+    }
+    /**
+     * Resolve package text through the active language's declared fallback chain.
+     * Plain strings stay verbatim; maps do not consult registered dictionaries.
+     * @param text - package text whose locale keys are lowercase and include English.
+     * @returns the first available translation, including an empty string.
+     */
+    resolveText(text) {
+        if (typeof text === 'string')
+            return text;
+        return this.fallbackChain(this.snapshot.active).reduceRight((resolved, locale) => text[localeKey(locale)] ?? resolved, text.en);
     }
     /**
      * LocaleFace getSnapshot: the current snapshot (carries `revision`; stable
@@ -196,7 +214,7 @@ export class LocaleRuntime {
     publishCatalog() {
         this.fallbackChains.clear();
         const locales = this.localeList();
-        this.provisional = resolveInitialLocale(locales);
+        this.provisional = resolveInitialLocale(locales, this.bootstrap?.languages);
         const active = this.resolveActive();
         this.publish(active, active !== this.snapshot.active, locales);
     }
@@ -355,8 +373,8 @@ export class LocaleRuntime {
  * The browser's own language wins over {@link FALLBACK_LOCALE}; an explicit
  * Host preference may replace this provisional value after plugin activation.
  */
-function resolveInitialLocale(locales) {
-    return detectBrowserLocale(locales) ?? FALLBACK_LOCALE;
+function resolveInitialLocale(locales, languages) {
+    return detectBrowserLocale(locales, languages) ?? FALLBACK_LOCALE;
 }
 /**
  * The first registered locale the browser asks for. Each browser tag first
@@ -367,14 +385,18 @@ function resolveInitialLocale(locales) {
  * locale for non-browser runs. `navigator.language` trails the ordered
  * `languages` list and covers hosts exposing only the single tag.
  * @param locales - definitions currently available to the browser.
+ * @param languages - native system language order, when supplied by a shell.
  * @returns the first matching locale id, or undefined.
  */
-function detectBrowserLocale(locales) {
-    if (typeof window === 'undefined')
-        return undefined;
-    // Embedders and older WebViews may omit the DOM-typed `languages` property.
-    const languages = navigator.languages;
-    for (const tag of [...(languages ?? []), navigator.language]) {
+function detectBrowserLocale(locales, languages) {
+    if (languages === undefined) {
+        if (typeof window === 'undefined')
+            return undefined;
+        // Embedders and older WebViews may omit the DOM-typed `languages` property.
+        const browserLanguages = navigator.languages;
+        languages = [...(browserLanguages ?? []), navigator.language];
+    }
+    for (const tag of languages) {
         const requested = localeKey(tag);
         const exact = locales.find(locale => localeKey(locale.id) === requested);
         if (exact !== undefined)
@@ -387,19 +409,40 @@ function detectBrowserLocale(locales) {
     return undefined;
 }
 /** Required services: slot registration plus the settings transport. */
-export const inject = ['slots', 'connection', 'remote', 'settingsScope'];
+export const inject = ['slots', 'remote', 'configForms'];
 /**
  * Client plugin body: provide the locale service with base dictionaries and
  * register the feature-owned Language preference row into the General
  * section's item slot (a feature owns its settings surface).
  * @param ctx - client cordis context.
+ * @returns resolves after native language initialization and plugin registration.
  */
-export function apply(ctx) {
-    const host = ctx.settingsScope.bind({ namespace: LOCALE_SETTINGS_NAMESPACE });
-    const locale = new LocaleRuntime(ctx, host);
+export async function apply(ctx) {
+    const bridge = globalThis.__DSH_LOCALE__;
+    let bootstrap;
+    if (bridge !== undefined) {
+        let value;
+        try {
+            value = await bridge.read();
+        }
+        catch (error) {
+            if (ctx.fiber.uid === null)
+                return;
+            throw error;
+        }
+        if (ctx.fiber.uid === null)
+            return;
+        bootstrap = parseLocaleBootstrap(value);
+    }
+    const host = ctx.configForms.get(LOCALE_SETTINGS_NAMESPACE);
+    const locale = new LocaleRuntime(ctx, host, bootstrap);
     locale.register(COMMON_NS, { zh, en });
     locale.register(SETTINGS_NS, { zh: settingsZh, en: settingsEn });
     ctx.provide('locale', locale);
+    if (bridge !== undefined) {
+        ctx.on('locale/change', (snapshot) => { bridge.onChange(snapshot.active); });
+        bridge.onChange(locale.getSnapshot().active);
+    }
     // The service IS the LocaleFace (bind + getSnapshot/subscribe): install it
     // so the render machinery can synthesize the `t` standard seat.
     ctx.slots.installLocale(locale);

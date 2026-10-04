@@ -26,6 +26,7 @@ const encodingOf = (options) => {
         return options;
     return options.encoding ?? undefined;
 };
+const numericMode = (mode) => typeof mode === 'string' ? Number.parseInt(mode, 8) : mode;
 const bytesOf = (path) => vfs().readFileSync(path);
 /** Share the VFS bytes rather than copying them. */
 const asBuffer = (bytes) => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -159,7 +160,7 @@ export function stat(path, optionsOrCallback, maybeCallback) {
  * @param mode - new permission bits (`0o777` mask), numeric or Node's octal string form.
  */
 export function chmodSync(path, mode) {
-    vfs().chmodSync(asPath(path), typeof mode === 'string' ? Number.parseInt(mode, 8) : mode);
+    vfs().chmodSync(asPath(path), numericMode(mode));
 }
 /**
  * Stat a path without following symlinks (the image has none).
@@ -187,6 +188,25 @@ export function lstat(path, optionsOrCallback, maybeCallback) {
 export function realpathSync(path) {
     return vfs().realpathSync(asPath(path));
 }
+/**
+ * Resolve a UTF-8 path through Node's callback form and its native alias.
+ * @param path - Path in the symlink-free VFS.
+ * @param callback - Asynchronous completion with the canonical path or filesystem error.
+ */
+export function realpath(path, callback) {
+    queueMicrotask(() => {
+        let result;
+        try {
+            result = realpathSync(path);
+        }
+        catch (error) {
+            callback(error);
+            return;
+        }
+        callback(null, result);
+    });
+}
+realpath.native = realpath;
 /**
  * List a directory.
  * @param path - directory path.
@@ -366,7 +386,17 @@ export function openHandleSync(path, flags = 'r', mode) {
             bytesRead: readSync(fd, buffer, offset, length, position),
             buffer,
         }),
-        stat: async () => directory ? statSync(target) : descriptor('fstat').file.stat(),
+        chmod: async (mode) => {
+            if (directory)
+                chmodSync(target, mode);
+            else
+                descriptor('fchmod').file.chmod(numericMode(mode));
+        },
+        stat: async (options) => directory
+            ? statSync(target, options)
+            : options?.bigint === true
+                ? descriptor('fstat').file.statBigInt()
+                : descriptor('fstat').file.stat(),
         truncate: async (length = 0) => {
             if (directory)
                 writeFileSync(target, new Uint8Array(length));
@@ -673,7 +703,7 @@ export const __esModule = true;
 /** CommonJS default export: the members `require()` hands a caller of this module. */
 export default {
     constants, promises, Dirent, FSWatcher, StatWatcher, ReadStream, WriteStream,
-    readFileSync, writeFileSync, appendFileSync, existsSync, statSync, stat, lstatSync, lstat, realpathSync, chmodSync,
+    readFileSync, writeFileSync, appendFileSync, existsSync, statSync, stat, lstatSync, lstat, realpathSync, realpath, chmodSync,
     readdirSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, renameSync, accessSync, opendirSync,
     openHandleSync, linkSync,
     openSync, readSync, writeSync, closeSync, watch, watchFile, unwatchFile,

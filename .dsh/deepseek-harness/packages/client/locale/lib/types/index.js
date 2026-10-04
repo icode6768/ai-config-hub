@@ -1,14 +1,15 @@
-/** Host registration for the browser locale preference. */
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
-import { LOCALE_SETTINGS_NAMESPACE, LocaleSettingsSchema } from "./locale-settings.js";
+import z from '@deepseek-ai/schemastery';
+import { LOCALE_PREFERENCE_FIELD } from "./locale-settings.js";
+import { LocaleSettingsFields } from "./locale-settings.js";
 export { LOCALE_IDS, LOCALE_PREFERENCE_FIELD, LOCALE_SETTINGS_NAMESPACE, } from "./locale-settings.js";
-/**
- * Register the durable locale section when a settings provider exists.
- * @param ctx - Host context whose optional settings service owns the section.
+/** Live preferences projected to the browser. */
+export const Config = z.object({
+    [LOCALE_PREFERENCE_FIELD]: LocaleSettingsFields[LOCALE_PREFERENCE_FIELD].volatile(),
+});
+/** Host preferences are consumed through the configuration form projection.
+ * @param ctx Plugin context used for optional settings presentation.
  */
 export function apply(ctx) {
-    ctx.inject(['settings'], (settingsCtx) => {
-        settingsCtx.settings.register(settingsNamespace(LOCALE_SETTINGS_NAMESPACE), LocaleSettingsSchema);
-    });
+    ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)); });
 }
 //# sourceMappingURL=index.js.map

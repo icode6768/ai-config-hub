@@ -5,11 +5,11 @@ import { NO_START_CAPABILITIES, assertPositiveFinite, resolveChildCwd, settleRun
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { SessionId } from "@deepseek-ai/dsh-session";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { JsonRpcLineTransport } from "@deepseek-ai/dsh-sdk-protocol";
 //#region lib/types/wire.js
 /**
-* Minimal Codex app-server 0.149.1 protocol adapter. The shared JSON-RPC
+* Minimal Codex app-server 0.153.4 protocol adapter. The shared JSON-RPC
 * transport owns framing and request correlation; this module owns only the
 * product methods, current thread/turn association, unattended approval
 * responses, and terminal-answer selection.
@@ -521,7 +521,7 @@ var CodexAppServerWire = class {
 /**
 * One-shot Codex child lifecycle: spawn the real app-server through the
 * subprocess seam, publish only after initialization and ephemeral thread
-* creation, flatten post-publication failures, and dispose to whole-tree
+* creation, flatten post-publication failures, and dispose to whole-range
 * quiescence.
 *
 * @module @deepseek-ai/dsh-subagent-codex/run
@@ -602,37 +602,31 @@ function textTask(prompt) {
 	return texts;
 }
 /**
-* Close the private wire, terminate the managed process tree, and wait for the
-* subprocess owner to prove it is gone.
+* Close the private wire, terminate the managed range, and wait for the
+* subprocess owner to prove it is quiescent.
 * @param wire - private app-server protocol connection.
-* @param child - shared-service handle that owns the process tree.
+* @param child - shared-service handle that owns the managed range.
 */
 async function disposeCodexChild(wire, child) {
 	wire.close();
-	if (child.pid > 0) {
-		let outcome;
-		child.done.then(
-			(value) => {
-				outcome = value;
-			},
-			/* v8 ignore next -- a positive pid excludes spawn-level done rejection. */
-			() => {}
-		);
-		try {
-			child.stdin?.end();
-		} catch {}
-		child.terminate();
-		try {
-			await child.waitForExit();
-		} catch (error) {
-			throw new CodexRunFailure({
-				stage: "teardown",
-				category: "unknown",
-				outcome
-			}, thrown(error));
-		}
-		await child.done;
-	} else await child.done.catch(() => {});
+	let outcome;
+	child.done.then((value) => {
+		outcome = value;
+	}, () => {});
+	try {
+		child.stdin?.end();
+	} catch {}
+	child.terminate();
+	try {
+		await child.waitForExit();
+	} catch (error) {
+		throw new CodexRunFailure({
+			stage: "teardown",
+			category: "unknown",
+			outcome
+		}, thrown(error));
+	}
+	await child.done.catch(() => {});
 }
 /**
 * Start the real `codex app-server --stdio` child and publish its one-shot run.
@@ -795,7 +789,7 @@ async function startCodexRun(request, spec) {
 		onAbort
 	});
 	return subprocessRunHandle({
-		id: SessionId(randomUUID()),
+		id: brandString(randomUUID()),
 		result,
 		signal: request.signal,
 		onAbort,

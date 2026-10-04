@@ -1,9 +1,10 @@
 import { Service } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import { AnonymousEntries, NamedEntries, ScopedLayers, scopeOf, scopeTarget } from "@deepseek-ai/dsh-scope";
-import { HarnessError, ToolCallId, assertNever, createUserMessage, deepFreeze } from "@deepseek-ai/dsh-llm";
-import { isJsonValue, snapshotJsonValue } from "@deepseek-ai/dsh-session";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
+import { HarnessError, createUserMessage } from "@deepseek-ai/dsh-llm";
+import { assertNever, deepFreeze, isJsonValue, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
+import { brandString } from "@deepseek-ai/dsh-brand";
+import { ESCALATION_TARGETS, approveEscalation, validateEscalationArgs } from "@deepseek-ai/dsh-sandbox";
 //#region lib/types/json-schema.js
 /**
 * Enforced JSON Schema subset shared by tool outputs, generated PTC mode
@@ -837,6 +838,7 @@ function validateArgs(spec, args) {
 function defineTool(options) {
 	const userExecute = options.execute;
 	const userFinalizeContent = options.finalizeContent;
+	const userProjectContent = options.projectContent;
 	const userRender = options.output.render;
 	const userPresentationMeta = options.output.presentationMeta;
 	const userPresentCall = options.presentCall;
@@ -859,6 +861,7 @@ function defineTool(options) {
 				return userPresentationMeta(args, value);
 			} } : {}
 		},
+		...options.deferLoading === true ? { deferLoading: options.deferLoading } : {},
 		...options.timeoutMs !== void 0 ? { timeoutMs: options.timeoutMs } : {},
 		async execute(args, exec) {
 			const violations = validate(args);
@@ -866,6 +869,7 @@ function defineTool(options) {
 			return userExecute(args, exec);
 		}
 	};
+	if (userProjectContent) tool.projectContent = (exec, result) => userProjectContent(exec, result);
 	if (userFinalizeContent) tool.finalizeContent = (exec, result) => userFinalizeContent(exec, result);
 	if (userPresentCall) tool.presentCall = (args) => {
 		if (validate(args).length > 0) return void 0;
@@ -892,8 +896,6 @@ function defineTool(options) {
 */
 /** The model-facing name of the PTC mode tool. */
 const RUN_CODE_NAME = "run_code";
-/** The `tools:sdk` section order, after per-tool guidance sections. */
-const SDK_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.TOOLS_SDK;
 /**
 * The TypeScript flavor: the fallback for a schema read with no runtime
 * mounted ({@link resolveFlavor} owns which readers reach that). A real
@@ -901,14 +903,14 @@ const SDK_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.TOOLS_SDK;
 * fallback outside its own language.
 */
 const TYPESCRIPT_FLAVOR = {
-	description: "Execute a TypeScript program against the available tools. Takes two required arguments: `code`, the BODY of an async function (erasable syntax only; top-level `await` and `return` work), and `description`, a short summary of what the program does. Call tools as `await tools.name(args)` per the declarations in the system prompt. Only what you print or return is program output — curate it. Image-bearing subtool results are attached after the run.",
+	description: "Execute a TypeScript program against the available tools. Takes two required arguments: `description`, a short summary of what the program does, and `code`, the BODY of an async function (erasable syntax only; top-level `await` and `return` work). Call tools as `await tools.name(args)` per the declarations in the system prompt. Only what you print or return is program output — curate it. Image-bearing subtool results are attached after the run.",
 	codeDescription: "The program: the body of an async TypeScript function."
 };
-/** Per-language `run_code` schema flavors (see {@link RunCodeFlavor}); one entry per {@link CodeSdkLanguage}. */
+/** Per-language `run_code` schema flavors (see {@link RunCodeFlavor}); one entry per {@link PtcSdkLanguage}. */
 const RUN_CODE_FLAVORS = {
 	typescript: TYPESCRIPT_FLAVOR,
 	python: {
-		description: "Execute a Python program against the available tools. Takes two required arguments: `code`, the BODY of an async function (top-level `await` and `return` work), and `description`, a short summary of what the program does. Call tools as `await tools.name(args)` per the declarations in the system prompt. Use `print(...)` and/or `return <value>` for program output — curate it. Image-bearing subtool results are attached after the run.",
+		description: "Execute a Python program against the available tools. Takes two required arguments: `description`, a short summary of what the program does, and `code`, the BODY of an async function (top-level `await` and `return` work). Call tools as `await tools.name(args)` per the declarations in the system prompt. Use `print(...)` and/or `return <value>` for program output — curate it. Image-bearing subtool results are attached after the run.",
 		codeDescription: "The program: the body of an async Python function."
 	}
 };
@@ -918,18 +920,49 @@ const RUN_CODE_FLAVORS = {
 * static spec and the language-aware `parameters` getter so the two emissions
 * can never drift.
 */
-const RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION = "Clear, concise description of what this program does in active voice, 5-10 words (shown in the UI). Examples: \"Count TODO markers across packages\"; \"Read failing test and its fixture\"; \"Rename config key in every cordis.yml\".";
+const RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION = "Clear, concise description of what this program does in active voice, 5-10 words (shown in the UI). Provide `description` before `code` in the arguments. Examples: \"Count TODO markers across packages\"; \"Read failing test and its fixture\"; \"Rename config key in every cordis.yml\".";
+const RUN_CODE_CONTROLS = {
+	timeoutMs: {
+		type: "number",
+		description: "Positive elapsed-time budget in milliseconds, capped by the deployment maximum."
+	},
+	sandbox_permissions: {
+		type: "string",
+		enum: [...ESCALATION_TARGETS],
+		description: "Wider sandbox mode for this complete program execution; requires justification and approval."
+	},
+	justification: {
+		type: "string",
+		description: "Reason this complete program needs wider access, shown to the user for approval. Use the language of the user’s current request."
+	}
+};
+function controlParameters(runtime) {
+	if (runtime === void 0) return RUN_CODE_CONTROLS;
+	return {
+		...runtime.timeout === void 0 ? {} : { timeoutMs: {
+			...RUN_CODE_CONTROLS.timeoutMs,
+			description: `Positive elapsed-time budget in milliseconds, including nested tool and approval waits. Default ${runtime.timeout.defaultMs}; capped at ${runtime.timeout.maxMs}. Zero does not disable the deadline.`
+		} },
+		...runtime.sandboxMode === void 0 ? {} : {
+			sandbox_permissions: RUN_CODE_CONTROLS.sandbox_permissions,
+			justification: RUN_CODE_CONTROLS.justification
+		}
+	};
+}
+function escalationGuidance(runtime) {
+	return runtime?.sandboxMode === void 0 ? "" : " A sandbox escalation approves this complete program for one execution only. Nested tools retain their own policies and approvals. Request wider access only after evidence of a denial. Earlier effects may already have completed: inspect them before explicitly retrying. Programs are never replayed automatically.";
+}
 /**
 * Resolve the {@link RunCodeFlavor} for the loaded runtime's language, read at
 * schema-emission time so the model-visible `run_code` schema always matches
 * the SDK section's language. `peekRuntime` returns `undefined` only when no
 * runtime is mounted, which reaches this function through definition readers
 * and `schemas()` — the doc-catalog harvest is the only shipped one, and none
-* of them feeds a model, because `wireSchemas` calls `requireCodeRuntime`
+* of them feeds a model, because `wireSchemas` calls `requirePtcRuntime`
 * before projecting — so that path degrades to {@link TYPESCRIPT_FLAVOR}. A
 * mounted runtime whose language has no flavor entry fails loud, exactly as
-* `requireCodeRuntime` rejects it at assembly. Keeping this table in step with
-* `SDK_RENDERERS` is the compiler's job ({@link CodeSdkLanguage}); what this
+* `requirePtcRuntime` rejects it at assembly. Keeping this table in step with
+* `SDK_RENDERERS` is the compiler's job ({@link PtcSdkLanguage}); what this
 * guard owns is the runtime-supplied language neither table knows, which never
 * yields a wrong-language schema for a real runtime.
 */
@@ -1073,8 +1106,8 @@ function renderValue(value) {
 	return typeof value === "string" ? value : renderJsonValue(value);
 }
 /**
-* Build the `run_code` {@link ToolDefinition}: required `code` and
-* `description` parameters, executed through the dispatch bridge described
+* Build the `run_code` {@link ToolDefinition}: required `description` and
+* `code` parameters, executed through the dispatch bridge described
 * above. The
 * registry reserves it as presentation infrastructure under non-native modes,
 * outside the filterable global/scoped capability layers.
@@ -1089,16 +1122,17 @@ function createRunCodeTool(registry, options) {
 		name: RUN_CODE_NAME,
 		description: TYPESCRIPT_FLAVOR.description,
 		parameters: {
+			description: {
+				type: "string",
+				required: true,
+				description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION
+			},
 			code: {
 				type: "string",
 				required: true,
 				description: TYPESCRIPT_FLAVOR.codeDescription
 			},
-			description: {
-				type: "string",
-				required: true,
-				description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION
-			}
+			...RUN_CODE_CONTROLS
 		},
 		output: {
 			schema: {
@@ -1110,12 +1144,37 @@ function createRunCodeTool(registry, options) {
 						required: true,
 						items: { type: "string" }
 					},
-					result: { type: "json" }
+					result: { type: "json" },
+					sandbox: {
+						type: "object",
+						additionalProperties: false,
+						properties: {
+							mode: {
+								type: "string",
+								required: true,
+								enum: [
+									"read-only",
+									"workspace-write",
+									"danger-full-access"
+								]
+							},
+							denied: {
+								type: "boolean",
+								required: true
+							},
+							enforcement: {
+								type: "string",
+								enum: ["full", "partial"]
+							}
+						}
+					}
 				}
 			},
 			render: (_args, value) => {
 				const rendered = value.result === void 0 ? "" : renderValue(value.result);
 				const parts = [value.logs.join("\n"), rendered].filter((part) => part.length > 0);
+				if (value.sandbox?.enforcement === "partial") parts.push("File sandbox enforcement is partial on this host.");
+				if (value.sandbox?.denied) parts.push(`The ${value.sandbox.mode} file sandbox denied an operation.${escalationGuidance(peekRuntime())}`);
 				return [{
 					type: "text",
 					text: parts.length > 0 ? parts.join("\n") : "(run_code completed with no output)"
@@ -1125,6 +1184,31 @@ function createRunCodeTool(registry, options) {
 		async execute(args, exec) {
 			if (args.description.trim().length === 0) throw new Error("invalid description: expected a non-empty string");
 			const runtime = requireRuntime();
+			validateEscalationArgs(args.sandbox_permissions, args.justification);
+			if (args.timeoutMs !== void 0 && runtime.timeout === void 0) throw new Error("timeoutMs is not available for this PTC runtime");
+			if (args.timeoutMs !== void 0 && (!Number.isFinite(args.timeoutMs) || args.timeoutMs <= 0)) throw new Error("invalid timeoutMs: expected a positive finite number");
+			const standingPolicy = runtime.sandboxMode === void 0 ? void 0 : options.resolveSandboxPolicy(exec);
+			let policy = standingPolicy;
+			if (args.sandbox_permissions !== void 0 && args.justification !== void 0) {
+				if (standingPolicy === void 0) throw new Error("sandbox_permissions is not available for this PTC runtime");
+				const approvedMode = await approveEscalation({
+					requestedMode: args.sandbox_permissions,
+					justification: args.justification,
+					effectiveMode: standingPolicy.mode,
+					subject: "program"
+				}, {
+					approver: options.peekApprover(),
+					agent: exec.agent,
+					callId: exec.callId,
+					toolName: RUN_CODE_NAME,
+					signal: exec.signal
+				});
+				policy = {
+					...standingPolicy,
+					mode: approvedMode
+				};
+			}
+			exec.signal.throwIfAborted();
 			const runController = new AbortController();
 			const onOuterAbort = () => {
 				runController.abort(exec.signal.reason);
@@ -1206,15 +1290,17 @@ function createRunCodeTool(registry, options) {
 				while (logWork.size > 0) await Promise.allSettled([...logWork]);
 			};
 			const runOver = () => runController.signal.aborted;
-			const binding = (name) => async (rawArgs) => {
+			const binding = (schema) => async (rawArgs) => {
+				const { name } = schema;
 				if (runOver()) throw new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} not dispatched`);
 				const normalized = jsonNormalizeArgs(rawArgs);
 				const n = ++dispatches;
-				const subCallId = ToolCallId(`${String(exec.callId)}:code:${n}`);
+				const subCallId = brandString(`${String(exec.callId)}:ptc:${n}`);
 				const input = {
 					callId: subCallId,
 					rootCallId: exec.rootCallId,
 					name,
+					schema,
 					arguments: normalized.dispatched,
 					...exec.agent ? { agent: exec.agent } : {},
 					parent: exec.token,
@@ -1242,13 +1328,14 @@ function createRunCodeTool(registry, options) {
 								isError: result.isError,
 								content: result.content
 							});
-							agent.session.append("tool/code-dispatch", {
+							agent.session.append("tool/ptc-dispatch", {
 								rootCallId: exec.rootCallId,
 								parentCallId: exec.callId,
 								subCallId,
 								name,
 								arguments: normalized.logged,
 								isError: result.isError,
+								...result.error?.info === void 0 ? {} : { error: result.error.info },
 								content: logged
 							});
 						})().finally(() => {
@@ -1264,7 +1351,7 @@ function createRunCodeTool(registry, options) {
 							reject(/* @__PURE__ */ new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} tool call abandoned`));
 						},
 						async start() {
-							exec.agent?.session.append("tool/code-dispatch-start", {
+							exec.agent?.session.append("tool/ptc-dispatch-start", {
 								rootCallId: exec.rootCallId,
 								parentCallId: exec.callId,
 								subCallId,
@@ -1296,10 +1383,7 @@ function createRunCodeTool(registry, options) {
 							const result = parked.kind === "post-result" ? await scheduler.finalize(parked.exec, parked.result) : scheduler.finish(parked.exec, parked.result);
 							if (!result.isError && result.content.some((block) => block.type === "image")) exec.deferContext(createUserMessage({
 								content: result.content,
-								source: {
-									kind: "plugin",
-									plugin: "tools-code-mode"
-								}
+								source: { kind: "ptc-mode" }
 							}));
 							for (const context of result.additionalContexts ?? []) exec.deferContext(context);
 							if (result.concludesTurn) exec.concludeTurn();
@@ -1319,13 +1403,13 @@ function createRunCodeTool(registry, options) {
 				if (schema.name === "run_code") continue;
 				Object.defineProperty(functions, schema.name, {
 					enumerable: true,
-					value: binding(schema.name)
+					value: binding(deepFreeze(schema))
 				});
 			}
 			try {
 				let result;
 				try {
-					result = await runtime.run({
+					result = await runtime.run(runtime.resolve({
 						program: args.code,
 						bindings: [{
 							global: "tools",
@@ -1335,18 +1419,23 @@ function createRunCodeTool(registry, options) {
 								memberNameProperty: "toolName"
 							}
 						}],
-						signal: runController.signal
-					});
+						signal: runController.signal,
+						...exec.agent?.session.header.cwd !== void 0 ? { cwd: exec.agent.session.header.cwd } : {},
+						...policy !== void 0 ? { sandboxPolicy: policy } : {},
+						...args.timeoutMs !== void 0 ? { timeoutMs: args.timeoutMs } : {}
+					}));
 				} finally {
 					runController.abort("run_code settled");
 					await drainDispatches();
 				}
 				if (result.error) {
 					const logsText = result.logs.length > 0 ? `\nCaptured output:\n${result.logs.join("\n")}` : "";
-					throw new CodeRunFailedError(`code run failed (${result.error.kind}): ${result.error.message}${logsText}`);
+					const sandboxText = result.sandbox === void 0 ? "" : `\nFile sandbox: ${result.sandbox.mode}${result.sandbox.enforcement === void 0 ? "" : `; enforcement: ${result.sandbox.enforcement}`}${result.sandbox.denied ? "; operation denied" : ""}.`;
+					throw new CodeRunFailedError(`code run failed (${result.error.kind}): ${result.error.message}${logsText}${sandboxText}${result.sandbox?.denied ? escalationGuidance(runtime) : ""}`);
 				}
 				return {
 					logs: result.logs,
+					...result.sandbox === void 0 ? {} : { sandbox: result.sandbox },
 					...result.value !== void 0 ? { result: result.value } : {}
 				};
 			} finally {
@@ -1362,21 +1451,26 @@ function createRunCodeTool(registry, options) {
 	});
 	Object.defineProperty(definition, "description", {
 		enumerable: true,
-		get: () => resolveFlavor(peekRuntime).description
+		get: () => {
+			const runtime = peekRuntime();
+			const instructions = runtime?.executionInstructions;
+			return resolveFlavor(peekRuntime).description + (instructions ? ` ${instructions}` : "") + (runtime === void 0 ? "" : " The working directory is the Session's current directory.") + escalationGuidance(runtime);
+		}
 	});
 	Object.defineProperty(definition, "parameters", {
 		enumerable: true,
 		get: () => parameterSchemaSpecToJsonSchema({
+			description: {
+				type: "string",
+				required: true,
+				description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION
+			},
 			code: {
 				type: "string",
 				required: true,
 				description: resolveFlavor(peekRuntime).codeDescription
 			},
-			description: {
-				type: "string",
-				required: true,
-				description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION
-			}
+			...controlParameters(peekRuntime())
 		})
 	});
 	return definition;
@@ -1594,7 +1688,7 @@ function jsonSchemaToTs(schema, indent = 0) {
 /** The fixed model-facing usage contract rendered above the declarations (see the PTC mode Agent Note's "What the model sees"). */
 const SDK_INSTRUCTIONS$1 = `## Writing code for run_code
 
-\`run_code\` takes two required arguments: \`code\` — the body of an async TypeScript function (erasable syntax only — no \`enum\` or namespaces; type annotations are advisory, the code runs type-stripped) — and \`description\`, a short summary of what the program does. The declarations below are SDK bindings for this program. A declaration does not make its name a directly callable tool; only names supplied as separate tool schemas may be called directly.`;
+\`run_code\` takes two required arguments: \`description\`, a short summary of what the program does, and \`code\` — the body of an async TypeScript function (erasable syntax only — no \`enum\` or namespaces; type annotations are advisory, the code runs type-stripped). The declarations below are SDK bindings for this program. A declaration does not make its name a directly callable tool; only names supplied as separate tool schemas may be called directly.`;
 const SDK_PROGRAM_INSTRUCTIONS = `Inside the program:
 
 - Call tools as \`await tools.name(args)\` — quoted access for exotic names: \`tools["my-tool"](args)\`. Every call resolves to the tool's typed canonical JSON value. Tool arguments must be lossless JSON.
@@ -1618,7 +1712,7 @@ function renderBashExample(schemas) {
 	if (!acceptsExampleString(parameters.properties?.command, "pwd")) return "";
 	const needsDescription = required.includes("description");
 	if (needsDescription && !acceptsExampleString(parameters.properties?.description, "Show current directory")) return "";
-	return ` When no separate \`bash\` schema is supplied, invoke a declared \`bash\` binding inside \`run_code\`:\n\n\`run_code({ code: "return await tools.bash({ command: 'pwd'${needsDescription ? ", description: 'Show current directory'" : ""} })", description: "Show current directory" })\``;
+	return ` When no separate \`bash\` schema is supplied, invoke a declared \`bash\` binding inside \`run_code\`:\n\n\`run_code({ description: "Show current directory", code: "return await tools.bash({ ${needsDescription ? "description: 'Show current directory', " : ""}command: 'pwd' })" })\``;
 }
 /**
 * Render the full `tools:sdk` prompt section: the fixed usage instructions
@@ -1665,7 +1759,7 @@ function renderToolsSdk(schemas) {
 * PTC mode codegen — Python flavor. The pure projection from registered tool schemas to the
 * Python SDK text the model programs against under `runtime.language === 'python'`. Sibling of
 * {@link ./ts-types.ts | ts-types.ts}; the two files are two projections of the same registry
-* store, keyed by the loaded {@link @deepseek-ai/dsh-code-runtime#CodeRuntime.language | code
+* store, keyed by the loaded {@link @deepseek-ai/dsh-ptc-runtime#PtcRuntime.language | PTC
 * runtime's language}.
 *
 * Under `mode: 'ptc'` the native tool schemas are omitted from the request, so this generated
@@ -2309,7 +2403,7 @@ function jsonSchemaToPy(schema) {
 /** The fixed model-facing usage contract rendered above the declarations. */
 const SDK_INSTRUCTIONS = `## Writing code for run_code
 
-\`run_code\` takes two required arguments: \`code\` — the body of an async Python function (top-level \`await\` and \`return\` both work) — and \`description\`, a short summary of what the program does. At run time exactly two of the names declared below are bound: \`tools\` and \`ToolCallError\`. Everything else is a STATIC STUB describing argument and return types — in particular the \`TypedDict\` classes do NOT exist at run time, so build arguments as plain \`dict\`/\`list\` JSON values: \`await tools.name({"field": 1})\`, never \`FooArgs(field=1)\`, which raises \`NameError\`. Inside the program:
+\`run_code\` takes two required arguments: \`description\`, a short summary of what the program does, and \`code\` — the body of an async Python function (top-level \`await\` and \`return\` both work). At run time exactly two of the names declared below are bound: \`tools\` and \`ToolCallError\`. Everything else is a STATIC STUB describing argument and return types — in particular the \`TypedDict\` classes do NOT exist at run time, so build arguments as plain \`dict\`/\`list\` JSON values: \`await tools.name({"field": 1})\`, never \`FooArgs(field=1)\`, which raises \`NameError\`. Inside the program:
 
 - Call tools as \`await tools.name(args)\` — subscript access for exotic, reserved, or underscore-leading names: \`await tools["my-tool"](args)\`. Every call resolves to the tool's typed canonical JSON value (each method's return type below). Tool arguments must be lossless JSON.
 - A FAILED tool call raises \`ToolCallError\`, whose \`toolName\` identifies the failed tool and whose message is human-readable — wrap in \`try/except\` to handle and continue.
@@ -2401,26 +2495,20 @@ function defineContentToolFixture(options) {
 */
 /**
 * Language → SDK-section renderer. The registry looks up the loaded
-* `ctx.codeRuntime.language` in this table when assembling the `tools:sdk`
+* `ctx.ptcRuntime.language` in this table when assembling the `tools:sdk`
 * section under a non-native mode; a runtime whose language is not a key
 * fails the assembly loudly (same idiom as `toolOrder` violations). Adding a
-* new backend language is three parallel edits — a {@link CodeSdkLanguage}
+* new backend language is three parallel edits — a {@link PtcSdkLanguage}
 * member, an entry here, and a `RUN_CODE_FLAVORS` entry in `ptc.ts` for
 * its `run_code` schema strings — plus the renderer function this table points
 * at. The `satisfies` clause pins this table's key set to that union, which
 * the flavor table is checked against too, so any of the three left out is a
 * typecheck failure. What no check reaches is the prose that names the values
-* instead of deriving them: the seam's `dsh-code-runtime` README pair, its
-* `CodeRuntime.language` JSDoc, and `docs/subsystems/code-runtime.md`
+* instead of deriving them: the seam's `dsh-ptc-runtime` README pair, its
+* `PtcRuntime.language` JSDoc, and `docs/subsystems/ptc-runtime.md`
 * with its zh pair, plus this package's own README pair and the
 * {@link Config.mode} JSDoc.
 */
-/**
-* Prompt order of the `ptc` collapse statement: after the persona and before
-* per-tool guidance, so the model reads which tools it may call before it
-* reads what each one is for.
-*/
-const COLLAPSE_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.PTC_ONLY;
 /**
 * The model-facing statement of the `ptc` collapse. Names the consequence
 * (the call fails) and the route (inside the program), because a rule the
@@ -2597,6 +2685,8 @@ var ToolRuntime = class extends Service {
 	cancellationStates = /* @__PURE__ */ new WeakMap();
 	/** Definition-owned final content transform snapshotted before policy begins. */
 	contentFinalizers = /* @__PURE__ */ new WeakMap();
+	/** Execution-prepared content installed before post-execute policy. */
+	contentProjectors = /* @__PURE__ */ new WeakMap();
 	layers = new ScopedLayers((scope) => new ToolLayer(scope), () => {
 		this.ctx.emit("tools/change");
 	});
@@ -2629,8 +2719,8 @@ var ToolRuntime = class extends Service {
 	* Without this the model reads a catalog of tools it is told to use and no
 	* statement that only `run_code` may be called, so it emits a native call,
 	* receives `UNKNOWN_TOOL` for a tool the prompt just declared, and concludes
-	* the deployment is inconsistent. {@link COLLAPSE_SECTION_ORDER} places the rule
-	* before that guidance rather than after it.
+	* the deployment is inconsistent. Its order places the rule before that
+	* guidance rather than after it.
 	*
 	* `both` renders empty: native calls do execute there, so the rule is false.
 	* @returns the section registration.
@@ -2638,7 +2728,7 @@ var ToolRuntime = class extends Service {
 	collapseSection() {
 		return {
 			name: "tools:ptc-only",
-			order: COLLAPSE_SECTION_ORDER,
+			order: this.ctx.systemPrompt.getSectionOrder("PTC_ONLY"),
 			text: (context) => this.modeFor(context.scope) === "ptc" ? PTC_ONLY_INSTRUCTION : ""
 		};
 	}
@@ -2655,13 +2745,14 @@ var ToolRuntime = class extends Service {
 	sdkSection() {
 		return {
 			name: "tools:sdk",
-			order: SDK_SECTION_ORDER,
+			order: this.ctx.systemPrompt.getSectionOrder("TOOLS_SDK"),
+			interpolate: false,
 			text: (context) => {
 				const mode = this.modeFor(context.scope);
 				if (mode === "native") return "";
-				const runtime = this.requireCodeRuntime(mode);
+				const runtime = this.requirePtcRuntime(mode);
 				const render = SDK_RENDERERS[runtime.language];
-				/* v8 ignore next -- requireCodeRuntime rejects an unknown language before this runs. */
+				/* v8 ignore next -- requirePtcRuntime rejects an unknown language before this runs. */
 				if (render === void 0) throw new Error(`dsh-tools: no SDK renderer for ${runtime.language}`);
 				return render(this.sdkSchemas(context.scope));
 			}
@@ -2690,10 +2781,16 @@ var ToolRuntime = class extends Service {
 	* and only for scopes whose mode actually presents it.
 	* @returns the shared transport definition.
 	*/
-	requireCodeTransport() {
+	requirePtcTransport() {
 		this.ptcTransport ??= createRunCodeTool(this, {
-			requireRuntime: () => this.requireCodeRuntime(this.defaultMode),
-			peekRuntime: () => this.ctx.get("codeRuntime"),
+			requireRuntime: () => this.requirePtcRuntime(this.defaultMode),
+			peekApprover: () => this.ctx.get("approval"),
+			resolveSandboxPolicy: (exec) => {
+				const policy = this.ctx.get("sandboxPolicy");
+				if (policy === void 0) throw new Error("dsh-tools: confined PTC runtime requires sandboxPolicy");
+				return policy.resolve(exec.agent === void 0 ? {} : { session: exec.agent.session });
+			},
+			peekRuntime: () => this.ctx.get("ptcRuntime"),
 			maxParallel: this.maxParallelSubCalls,
 			shapeDispatchLog: (dispatch) => this.shapeDispatchLog(dispatch)
 		});
@@ -2738,7 +2835,7 @@ var ToolRuntime = class extends Service {
 			schemas: [...view.visible.values()].map((definition) => this.schemaOf(definition, false)),
 			knownNames: [...view.knownNames]
 		};
-		this.requireCodeRuntime(mode);
+		this.requirePtcRuntime(mode);
 		const schemas = [...view.visible.values()].map((definition) => this.schemaOf(definition, false));
 		if (mode === "ptc") return {
 			schemas: schemas.filter((schema) => schema.name === RUN_CODE_NAME),
@@ -2750,10 +2847,10 @@ var ToolRuntime = class extends Service {
 		};
 	}
 	/**
-	* Resolve the code runtime or throw the actionable misconfiguration error.
+	* Resolve the PTC runtime or throw the actionable misconfiguration error.
 	* Read at use time (assembly / run_code execution), NOT via static
 	* `inject`: an inject entry would hold `ctx.tools` — and every tool plugin
-	* behind it — hostage to a code runtime existing even under `mode:
+	* behind it — hostage to a PTC runtime existing even under `mode:
 	* 'native'`.
 	*
 	* Assembly and `run_code` execution read separately, so the language is not
@@ -2761,12 +2858,11 @@ var ToolRuntime = class extends Service {
 	* reads return the same flavor — but a reload that swapped in a second
 	* language between them would hand a program written against one SDK to the
 	* other. Binding it is deferred until a second backend ships (the first
-	* point it is testable); rationale in the
-	* [language-dispatch note](../../../../.agents/notes/implemented/feature/2026-07-31-ptc-language-dispatch.md).
+	* point it is testable).
 	*/
-	requireCodeRuntime(mode) {
-		const runtime = this.ctx.get("codeRuntime");
-		if (!runtime) throw new Error(`dsh-tools: mode "${mode}" requires a code runtime — load a ctx.codeRuntime implementation (e.g. @deepseek-ai/dsh-code-runtime-worker-thread) or set tools mode to "native"`);
+	requirePtcRuntime(mode) {
+		const runtime = this.ctx.get("ptcRuntime");
+		if (!runtime) throw new Error(`dsh-tools: mode "${mode}" requires a PTC runtime — load a ctx.ptcRuntime implementation (e.g. @deepseek-ai/dsh-ptc-runtime-node) or set tools mode to "native"`);
 		if (!Object.hasOwn(SDK_RENDERERS, runtime.language)) {
 			const known = Object.keys(SDK_RENDERERS).map((name) => JSON.stringify(name)).join(", ");
 			throw new Error(`dsh-tools: no SDK renderer registered for runtime language ${JSON.stringify(runtime.language)} (known: ${known})`);
@@ -2848,9 +2944,9 @@ var ToolRuntime = class extends Service {
 	* A restriction filters what a scope inherits — the global layer and every
 	* ancestor layer on its chain — and never what its OWN layer registers.
 	* That exemption is what a per-child capability filter has to keep intact:
-	* the delegation runtime registers a child's reporting and structured-output
-	* tools into the child's own layer, and a filter naming the capabilities the
-	* child may use must not strip the machinery it answers through.
+	* the delegation runtime registers a child's structured-output tool into the
+	* child's own layer, and a filter naming the capabilities the child may use
+	* must not strip the machinery it answers through.
 	*
 	* Reading the exempt set as "the global layer" instead of "not mine" held
 	* only while every model-facing tool sat in the host composition. Once
@@ -2880,7 +2976,7 @@ var ToolRuntime = class extends Service {
 			knownNames.add(name);
 			visible.set(name, definition);
 		}
-		if (this.modeFor(scope) !== "native") visible.set(RUN_CODE_NAME, this.requireCodeTransport());
+		if (this.modeFor(scope) !== "native") visible.set(RUN_CODE_NAME, this.requirePtcTransport());
 		return {
 			visible,
 			knownNames,
@@ -2941,13 +3037,14 @@ var ToolRuntime = class extends Service {
 	}
 	/** Project one definition onto the model-facing schema fields. */
 	schemaOf(definition, detachParameters) {
-		const { name, description, parameters } = definition;
+		const { name, description, parameters, deferLoading } = definition;
 		const detached = detachParameters ? snapshotJsonValue(parameters) : parameters;
 		if (detached === void 0) throw new Error(`tool "${name}" parameters must be lossless JSON before schema projection`);
 		return {
 			name,
 			description,
-			parameters: detached
+			parameters: detached,
+			...deferLoading === true ? { deferLoading } : {}
 		};
 	}
 	/**
@@ -2968,7 +3065,7 @@ var ToolRuntime = class extends Service {
 	}
 	/**
 	* Run the `tools/ptc-dispatch-log` waterfall over one settled sub-dispatch
-	* and return the content the bridge should log on `tool/code-dispatch`.
+	* and return the content the bridge should log on `tool/ptc-dispatch`.
 	* Contained: when a listener throws, the method logs the original settled
 	* content; that failure must not fail the dispatch or omit the settle event. Private:
 	* the ONE consumer is the `run_code` bridge this registry constructs, which
@@ -3051,6 +3148,7 @@ var ToolRuntime = class extends Service {
 			signal,
 			...agent !== void 0 ? { agent } : {},
 			...parent !== void 0 ? { parent } : {},
+			...exec.schema !== void 0 ? { schema: exec.schema } : {},
 			deferContext(context) {
 				deferredContexts.push(context);
 			},
@@ -3059,6 +3157,7 @@ var ToolRuntime = class extends Service {
 			}
 		};
 		const capturedFinalizer = visible?.finalizeContent?.bind(visible);
+		const capturedProjector = visible?.projectContent?.bind(visible);
 		const finalizerFor = () => collapsed && !signal.aborted ? void 0 : capturedFinalizer;
 		try {
 			const detached = snapshotJsonValue(exec.arguments);
@@ -3069,6 +3168,7 @@ var ToolRuntime = class extends Service {
 			};
 			this.deferredContexts.set(execution, deferredContexts);
 			this.contentFinalizers.set(execution, finalizerFor());
+			if (!collapsed) this.contentProjectors.set(execution, capturedProjector);
 			this.cancellationStates.set(execution, {
 				callerSignal: signal,
 				bodyInvoked: false
@@ -3133,7 +3233,13 @@ var ToolRuntime = class extends Service {
 				exec,
 				result: toolAbortedBeforeDispatchResult()
 			});
+			if (decision.kind === "cancel") return await next({
+				kind: "post-result",
+				exec,
+				result: toolAbortedBeforeDispatchResult()
+			});
 			const denialReason = decision.kind === "allow" ? this.guardReason(exec) : decision.reason;
+			const denialInfo = decision.kind === "deny" ? decision.info : void 0;
 			if (denialReason !== void 0) return await next({
 				kind: "post-result",
 				exec,
@@ -3143,7 +3249,10 @@ var ToolRuntime = class extends Service {
 						text: `Error: ${denialReason}`
 					}],
 					isError: true,
-					error: { message: denialReason }
+					error: {
+						message: denialReason,
+						...denialInfo === void 0 ? {} : { info: denialInfo }
+					}
 				})
 			});
 			if (this.callerCancelled(exec)) return await next({
@@ -3249,7 +3358,14 @@ var ToolRuntime = class extends Service {
 	*/
 	async finalizeScheduledExecution(exec, result) {
 		try {
-			const postResult = await this.postExecute(exec, result);
+			const project = this.contentProjectors.get(exec);
+			this.contentProjectors.delete(exec);
+			const content = project?.(exec, result);
+			const projected = content === void 0 ? result : this.markCanonical(exec, this.materializeFinalResult({
+				...result,
+				content
+			}));
+			const postResult = await this.postExecute(exec, projected);
 			return this.finishScheduledExecution(exec, this.callerCancelled(exec) && !postResult.isError ? this.cancellationResult(exec, postResult) : postResult);
 		} catch (error) {
 			return this.finishScheduledExecution(exec, toolErrorResult(error));
@@ -3341,6 +3457,7 @@ var ToolRuntime = class extends Service {
 			toolName: exec.name,
 			callId: exec.callId,
 			...ask.reason !== void 0 ? { reason: ask.reason } : {},
+			...ask.displayReason !== void 0 ? { displayReason: ask.displayReason } : {},
 			signal: exec.signal
 		});
 		switch (outcome) {

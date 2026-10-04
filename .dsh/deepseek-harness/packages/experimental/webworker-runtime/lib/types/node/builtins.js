@@ -21,6 +21,7 @@
  * other import. Deferring a shim's own start-up cost therefore belongs inside
  * that shim, on the path that first needs it.
  */
+import * as nodeAssertStrict from "./builtin_modules/implemented/assert/strict.js";
 import * as nodeAsyncHooks from "./builtin_modules/implemented/async_hooks.js";
 import * as nodeBuffer from "./builtin_modules/implemented/buffer.js";
 import * as nodeCrypto from "./builtin_modules/implemented/crypto.js";
@@ -34,6 +35,7 @@ import * as nodeOs from "./builtin_modules/implemented/os.js";
 import * as nodePath from "./builtin_modules/implemented/path.js";
 import * as nodePerfHooks from "./builtin_modules/implemented/perf_hooks.js";
 import * as nodeStream from "./builtin_modules/implemented/stream.js";
+import * as nodeStreamPromises from "./builtin_modules/implemented/stream/promises.js";
 import * as nodeTimersPromises from "./builtin_modules/implemented/timers/promises.js";
 import * as nodeTty from "./builtin_modules/implemented/tty.js";
 import * as nodeUrl from "./builtin_modules/implemented/url.js";
@@ -45,8 +47,12 @@ import * as nodeNet from "./builtin_modules/mock/net.js";
 import * as nodeSqlite from "./builtin_modules/mock/sqlite.js";
 import * as nodeVm from "./builtin_modules/mock/vm.js";
 import * as nodeWorkerThreads from "./builtin_modules/mock/worker_threads.js";
+import * as systemFlock from "./external_packages/node-addon-system-flock.js";
 import * as koffi from "./external_packages/koffi.js";
+import * as libreofficeKit from "./external_packages/libreoffice-kit.js";
 import * as nodePty from "./external_packages/node-pty.js";
+import * as execa from "./external_packages/execa.js";
+import * as got from "./external_packages/got.js";
 import * as piAi from "./external_packages/pi-ai.js";
 import * as ripgrep from "./external_packages/ripgrep.js";
 import * as sharp from "./external_packages/sharp.js";
@@ -54,6 +60,7 @@ import * as ws from "./external_packages/ws.js";
 import { REPLACED_EXTERNAL_PACKAGES } from "./external_packages/replaced-externals.js";
 /** Builtin modules, keyed with and without the `node:` prefix. */
 const BUILTINS = {
+    'assert/strict': () => nodeAssertStrict,
     async_hooks: () => nodeAsyncHooks,
     buffer: () => nodeBuffer,
     child_process: () => nodeChildProcess,
@@ -71,6 +78,7 @@ const BUILTINS = {
     perf_hooks: () => nodePerfHooks,
     sqlite: () => nodeSqlite,
     stream: () => nodeStream,
+    'stream/promises': () => nodeStreamPromises,
     'timers/promises': () => nodeTimersPromises,
     tty: () => nodeTty,
     url: () => nodeUrl,
@@ -80,11 +88,15 @@ const BUILTINS = {
     worker_threads: () => nodeWorkerThreads,
     zlib: () => nodeZlib,
 };
-/** External npm packages replaced wholesale (structural not-implemented stubs and fakes). */
+/** Exact package or subpath specifiers served by worker stubs and fakes. */
 const EXTERNALS = {
+    '@deepseek-ai/libreoffice-kit': () => libreofficeKit,
+    '@deepseek-ai/node-addon-system/flock': () => systemFlock,
     'koffi': () => koffi,
     'sharp': () => sharp,
     'node-pty': () => nodePty,
+    'execa': () => execa,
+    'got': () => got,
     'ws': () => ws,
     '@vscode/ripgrep': () => ripgrep,
     '@earendil-works/pi-ai': () => piAi,

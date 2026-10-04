@@ -1,8 +1,10 @@
 /** Virtual executable registry used by the Worker process launcher. */
 import { basename } from "../../module-system/posix-path.js";
 import { LANDLOCK_EXECUTABLE } from "./landlock.js";
+import { XDG_OPEN_EXECUTABLE } from "./xdg-open.js";
 const EXECUTABLES = new Map([
     [LANDLOCK_EXECUTABLE.name, LANDLOCK_EXECUTABLE],
+    [XDG_OPEN_EXECUTABLE.name, XDG_OPEN_EXECUTABLE],
 ]);
 /**
  * Resolve a Worker platform executable by logical name.

@@ -1,15 +1,40 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Fragment, memo, useMemo } from 'react';
+import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path';
 import { JsonBlock, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives';
 import { markdownLabels } from "../markdown-labels.js";
 import { ReasoningRow } from "./ReasoningRow.js";
 import { useSearchableHidden } from "./searchable-hidden.js";
 import css from './AssistantMarkdown.module.css';
+/**
+ * Standalone fallback for image destinations (query/fragment suffixes are ignored).
+ * Chat fileImages resolves decoded file references against cwd; pathImages also
+ * serves this component outside that provider and accepts legacy image URL suffixes.
+ * Resolve an authored absolute image path against the document's file API.
+ * @param base - canonical `document.baseURI` at render time.
+ * @param value - authored Markdown destination; URL escapes are decoded once.
+ * @returns an absolute Web or Desktop file-API URL, or undefined for unsupported
+ * protocols and non-local paths.
+ */
+export function localPathMediaUrl(base, value) {
+    let path;
+    try {
+        path = decodeURIComponent(value.split(/[?#]/u)[0] ?? '');
+    }
+    catch {
+        return undefined;
+    } // Malformed URL escapes cannot identify a file.
+    return fileMediaUrl(base, path);
+}
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
-export const AssistantMarkdown = memo(function AssistantMarkdown({ blocks, streaming, interrupted, renderMessageImages, reasoningHidden = false, revealProcess, mentions, t, }) {
+export const AssistantMarkdown = memo(function AssistantMarkdown({ blocks, streaming, interrupted, renderMessageImages, groupPart, useDisclosure, reasoningHidden = false, usePresentation, revealProcess, mentions, t, }) {
     // Stable per locale revision (t identity changes on switch): a fresh object
     // per render would rebuild MarkdownText's component table every chunk.
     const labels = useMemo(() => markdownLabels(t), [t]);
+    // MarkdownText memoizes its vocabulary; keep its identity stable across renders.
+    const pathImages = useMemo(() => {
+        return { resolve: value => localPathMediaUrl(document.baseURI, value) };
+    }, []);
     const last = blocks.length - 1;
     // Tool-call heads render as tool rows in the chat view's grouping pass, so
     // a node that is only those heads (or empty) would paint an empty root
@@ -24,12 +49,16 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({ blocks, strea
         const block = blocks[i];
         if (block === undefined)
             continue;
+        if (groupPart === 'reasoning' && block.kind !== 'reasoning')
+            continue;
+        if (groupPart === 'response' && block.kind === 'reasoning')
+            continue;
         switch (block.kind) {
             case 'text':
-                rendered.push(_jsx(MarkdownText, { text: block.text, streaming: streaming, labels: labels, fileMentions: mentions }, i));
+                rendered.push(_jsx(MarkdownText, { text: block.text, streaming: streaming, labels: labels, fileMentions: mentions, pathImages: pathImages }, i));
                 break;
             case 'reasoning':
-                rendered.push(_jsx(ProcessReasoning, { hidden: reasoningHidden, reveal: revealProcess, children: _jsx(ReasoningRow, { text: block.text, running: streaming && i === last, t: t }) }, i));
+                rendered.push(_jsx(ProcessReasoning, { hidden: reasoningHidden, reveal: revealProcess, children: _jsx(ReasoningRow, { text: block.text, running: streaming && i === last, usePresentation: usePresentation, useDisclosure: useDisclosure, t: t }) }, i));
                 break;
             case 'image': {
                 // Consecutive image blocks share one gallery so several images tile
@@ -59,7 +88,9 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({ blocks, strea
                 rendered.push(_jsx(JsonBlock, { label: t('message.unknownBlock'), payload: block.block, truncatedLabel: total => t('json.truncated', { total }) }, i));
         }
     }
-    return (_jsx("div", { className: css.root, "data-streaming": streaming || undefined, children: _jsxs("div", { className: css.body, children: [rendered, interrupted && _jsx("span", { className: css.stopped, children: t('message.stopped') })] }) }));
+    return (_jsx("div", { className: css.root, "data-streaming": streaming || undefined, children: _jsxs("div", { className: css.body, children: [rendered, interrupted && (groupPart === undefined || groupPart === 'response'
+                    || !blocks.some(block => block.kind !== 'reasoning' && block.kind !== 'tool-call'))
+                    && _jsx("span", { className: css.stopped, children: t('message.stopped') })] }) }));
 });
 function ProcessReasoning({ hidden, reveal, children }) {
     const ref = useSearchableHidden(hidden, reveal ?? NOOP);

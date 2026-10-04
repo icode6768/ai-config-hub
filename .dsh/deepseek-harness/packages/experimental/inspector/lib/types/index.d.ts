@@ -32,7 +32,7 @@ declare module '@deepseek-ai/cordis' {
 }
 /** Cordis plugin name shared with the Client face. */
 export declare const name = "experimental-inspector";
-/** Host service required to inject the Client connection bootstrap into index.html. */
+/** Web Host and authenticated browser bootstrap transport. */
 export declare const inject: string[];
 /** Host plugin configuration. Fetch capture is enabled by default. */
 export interface Config extends Omit<InspectorOptions, 'clientOrigins'> {
@@ -42,7 +42,7 @@ export interface Config extends Omit<InspectorOptions, 'clientOrigins'> {
 /** Runtime validation for {@link Config}. */
 export declare const Config: z<Config>;
 /**
- * Apply the Host implementation from the repository-standard package entry.
+ * Start inspection when enabled; the hidden --inspect flag also opens the Host debugging window.
  * @param ctx - Host Cordis plugin context.
  * @param config - Validated Inspector configuration.
  */

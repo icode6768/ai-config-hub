@@ -2,18 +2,30 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
 /** Loads at most one model catalog for the current Host generation. */
 export class ModelCatalogDirectory {
-    session;
+    ctx;
     /** Current shared catalog value and load lifecycle. */
     store = createSnapshotStore({
         value: null,
         status: 'idle',
         error: null,
     });
+    reasoning = new Map();
+    /**
+     * Read the last advertised reasoning metadata, including unavailable models.
+     * @param selection - provider and model whose effort is displayed.
+     * @returns reasoning metadata observed during this Host generation.
+     */
+    reasoningFor(selection) {
+        return this.reasoning.get(JSON.stringify([selection.provider, selection.model]));
+    }
     generation = 0;
     inflight;
-    /** @param session - Session Remote namespace carrying the Host-generation catalog. */
-    constructor(session) {
-        this.session = session;
+    /**
+     * @param ctx - the providing plugin's context, whose `remote.session`
+     * namespace carries the Host-generation catalog.
+     */
+    constructor(ctx) {
+        this.ctx = ctx;
     }
     /**
      * Return the current generation's catalog, sharing its one in-flight load.
@@ -30,11 +42,16 @@ export class ModelCatalogDirectory {
             draft.status = 'loading';
             draft.error = null;
         });
-        const operation = this.session.modelCatalog().then((response) => {
+        const operation = this.ctx.remote.session.modelCatalog().then((response) => {
             if (!response.ok) {
                 throw new Error(`${response.error.code}: ${response.error.message}`);
             }
             if (generation === this.generation) {
+                for (const group of response.value.groups) {
+                    for (const model of group.models) {
+                        this.reasoning.set(JSON.stringify([group.id, model.id]), model.reasoning);
+                    }
+                }
                 this.store.set({ value: response.value, status: 'ready', error: null });
             }
             return response.value;
@@ -70,6 +87,7 @@ export class ModelCatalogDirectory {
     }
     /** Clear Host-specific values and load the replacement Host generation. */
     resetGeneration() {
+        this.reasoning.clear();
         this.invalidate(true);
         void this.load().catch(() => { });
     }

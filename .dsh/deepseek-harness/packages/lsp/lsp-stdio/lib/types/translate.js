@@ -5,7 +5,7 @@
  * @module @deepseek-ai/dsh-lsp-stdio/translate
  */
 import { LspError } from '@deepseek-ai/dsh-lsp';
-import { assertNever } from '@deepseek-ai/dsh-llm';
+import { assertNever } from '@deepseek-ai/dsh-util-values';
 /**
  * The `textDocument/*` request method for each LSP operation.
  * @param operation - the LSP operation to map.

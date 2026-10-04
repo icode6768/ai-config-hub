@@ -1,35 +1,48 @@
 /** Cross-plugin panel-action face (ctx.layout). */
 export class LayoutController {
-    #panels;
+    panels;
+    hasMainPanel;
+    panelInfo;
+    navigation = new AbortController();
     /**
-     * Adopt the root entry's bound store actions. Called from the root
-     * registration's inject hook (a sanctioned assembly side effect), so the
-     * face is live from the entry's first render; on entry re-register the
-     * fresh actions overwrite the stale set.
-     * @param actions - bound actions of the entry's layout store instance.
+     * @param panels - actions of the instance shared with the root entry.
+     * @param hasMainPanel - checks the live main-slot registry for a panel id.
+     * @param panelInfo - root store's shared central-panel selection source.
      */
-    attachPanels(actions) {
-        this.#panels = actions;
+    constructor(panels, hasMainPanel, panelInfo) {
+        this.panels = panels;
+        this.hasMainPanel = hasMainPanel;
+        this.panelInfo = panelInfo;
+    }
+    /** Select a global panel or return to the Conversation. */
+    selectPanel(panelId) {
+        if (panelId !== null && !this.hasMainPanel(panelId)) {
+            throw new Error(`layout.selectPanel: main panel "${panelId}" is not registered`);
+        }
+        this.navigation.abort();
+        this.panels.selectPanel(panelId);
+    }
+    /** @returns the new pending navigation's cancellation signal. */
+    beginNavigation() {
+        this.navigation.abort();
+        this.navigation = new AbortController();
+        return this.navigation.signal;
+    }
+    /** Invalidate pending navigations when the layout owner is unloaded. */
+    dispose() {
+        this.navigation.abort();
     }
     /** Toggle the sidebar panel (closed ⟷ contract default width). */
     toggleSidebar() {
-        this.#require().toggleSidebar();
+        this.panels.toggleSidebar();
     }
-    /** Open the details panel (no-op when already open). */
-    openDetails() {
-        this.#require().openDetails();
+    /** Report the right panel's track and fullscreen presentation. */
+    openRightbar(track, fullscreen) {
+        this.panels.openRightbar(track, fullscreen);
     }
-    /** Close the details panel. */
-    closeDetails() {
-        this.#require().closeDetails();
-    }
-    #require() {
-        // Callers are UI gestures, which cannot fire before the root entry
-        // rendered (the inject hook runs in its first render) — reaching this
-        // unwired is a boot-order bug, not a race to tolerate.
-        if (this.#panels === undefined)
-            throw new Error('layout: panel actions not wired (root entry not mounted)');
-        return this.#panels;
+    /** Report the right panel as hidden: no track, no handle. */
+    closeRightbar() {
+        this.panels.closeRightbar();
     }
 }
 //# sourceMappingURL=service.js.map

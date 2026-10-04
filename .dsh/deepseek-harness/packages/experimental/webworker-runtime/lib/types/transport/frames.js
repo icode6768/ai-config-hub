@@ -28,6 +28,10 @@ export function parseInboundFrame(data) {
     }
     if (frame.t === 'abort')
         return { t: 'abort', id };
+    if (frame.t === 'stream-uplink-end')
+        return { t: 'stream-uplink-end', id };
+    if (frame.t === 'stream-uplink-item')
+        return { t: 'stream-uplink-item', id, value: frame.value };
     if (frame.t === 'stream-open') {
         if (typeof frame.endpoint !== 'string' || frame.endpoint.length === 0) {
             throw new Error(`webworker tunnel: stream ${String(id)} needs a non-empty endpoint`);
@@ -48,8 +52,11 @@ export function parseInboundFrame(data) {
             headers[key.toLowerCase()] = value;
     }
     const body = frame.body;
-    if (body !== undefined && !(body instanceof ArrayBuffer)) {
-        throw new Error(`webworker tunnel: request ${String(id)} body must be an ArrayBuffer`);
+    if (body !== undefined
+        && !(body instanceof ArrayBuffer)
+        && !(body instanceof Blob)
+        && !(body instanceof ReadableStream)) {
+        throw new Error(`webworker tunnel: request ${String(id)} body must be an ArrayBuffer, Blob, or ReadableStream`);
     }
     return { t: 'req', id, method: frame.method, url: frame.url, headers, body };
 }

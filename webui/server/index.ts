@@ -16,6 +16,7 @@ import { cancelDongchuangAIAuth, getDongchuangAIAuthStatus, startDongchuangAIAut
 import { buildAppEntryUrl, ensureOpenclawGatewayConfig, ensureOpenclawGatewayToken } from './openclaw-auth'
 import { fetchMarketplace, installSkill, listInstalledSkills, setSkillEnabled, syncSkill, uninstallSkill } from './skill-store'
 import { checkSoftwareUpdate, prepareSoftwareUpdate } from './software-update'
+import { getWorkBuddyInfo, openWorkBuddy, openWorkBuddyInstaller, uninstallWorkBuddy, workBuddySkillsCandidates } from './workbuddy'
 
 type Json = Record<string, unknown>
 
@@ -177,6 +178,7 @@ async function main(): Promise<void> {
             versions: runtimeVersions,
           },
           appStatuses,
+          workbuddy: await getWorkBuddyInfo(),
         })
         return
       }
@@ -241,6 +243,33 @@ async function main(): Promise<void> {
       if (url.pathname === '/api/skills/marketplace' && req.method === 'GET') {
         currentConfig = await loadGlobalConfig()
         sendJson(res, await fetchMarketplace(currentConfig, url.searchParams))
+        return
+      }
+
+      if (url.pathname === '/api/workbuddy' && req.method === 'GET') {
+        sendJson(res, await getWorkBuddyInfo())
+        return
+      }
+      if (url.pathname === '/api/workbuddy/install' && req.method === 'POST') {
+        sendJson(res, { ok: true, ...(await openWorkBuddyInstaller()) })
+        return
+      }
+      if (url.pathname === '/api/workbuddy/open' && req.method === 'POST') {
+        await openWorkBuddy()
+        sendJson(res, { ok: true, workbuddy: await getWorkBuddyInfo() })
+        return
+      }
+      if (url.pathname === '/api/workbuddy/update' && req.method === 'POST') {
+        sendJson(res, { ok: true, ...(await openWorkBuddyInstaller()) })
+        return
+      }
+      if (url.pathname === '/api/workbuddy/uninstall' && req.method === 'POST') {
+        await uninstallWorkBuddy()
+        sendJson(res, { ok: true, workbuddy: await getWorkBuddyInfo() })
+        return
+      }
+      if (url.pathname === '/api/workbuddy/skills-path' && req.method === 'GET') {
+        sendJson(res, { candidates: workBuddySkillsCandidates() })
         return
       }
 

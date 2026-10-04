@@ -54,8 +54,8 @@ window.__ModuleLoader__.load({
 			if (!LEGAL_API_KEY.test(value)) return "keyIllegalCharacters";
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-settings-models\src\client\ModelsSection.module.css.mjs
-		const css$3 = "._5oQfua_section{max-width:720px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}._5oQfua_title{color:var(--dsw-alias-label-primary);margin:0;font-size:16px;font-weight:500;line-height:24px}._5oQfua_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:14px;line-height:22px}._5oQfua_notice{color:var(--dsw-alias-state-warn-label);margin:0;font-size:12px;line-height:18px}._5oQfua_savedNotice{color:var(--dsw-alias-state-success-primary);margin:0;font-size:12px;line-height:18px}._5oQfua_rows{flex-direction:column;gap:8px;margin:12px 0 0;padding:0;list-style:none;display:flex}._5oQfua_rowCard{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:12px;padding:12px 14px;display:flex}._5oQfua_rowHead{align-items:center;gap:10px;display:flex}._5oQfua_rowIdentity{align-items:center;gap:6px;min-width:0;display:inline-flex}._5oQfua_rowName{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}._5oQfua_rowTag{border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);border-radius:4px;flex:none;padding:1px 6px;font-size:11px;line-height:16px}._5oQfua_credentialDot{box-sizing:border-box;border-radius:50%;flex:none;width:8px;height:8px;display:inline-block}._5oQfua_credentialDotConfigured{background:var(--dsw-alias-state-success-primary)}._5oQfua_credentialDotMissing{background:var(--dsw-alias-state-error-primary)}._5oQfua_rowActions{align-items:center;gap:4px;margin-left:auto;display:inline-flex}._5oQfua_primaryButton,._5oQfua_secondaryButton,._5oQfua_addButton{box-sizing:border-box;height:36px;font:inherit;cursor:pointer;border:none;border-radius:18px;justify-content:center;align-items:center;gap:4px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}._5oQfua_primaryButton{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}._5oQfua_primaryButton:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}._5oQfua_secondaryButton,._5oQfua_addButton{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);background:0 0}._5oQfua_secondaryButton:hover:not(:disabled),._5oQfua_addButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._5oQfua_secondaryButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}._5oQfua_dangerButton{box-sizing:border-box;height:36px;color:var(--dsw-alias-state-error-primary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:18px;justify-content:center;align-items:center;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}._5oQfua_dangerButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}._5oQfua_rowActions ._5oQfua_secondaryButton,._5oQfua_rowActions ._5oQfua_dangerButton{border-radius:14px;height:28px;padding:0 10px;font-size:12px;line-height:18px}._5oQfua_primaryButton:disabled,._5oQfua_secondaryButton:disabled,._5oQfua_dangerButton:disabled,._5oQfua_addButton:disabled,._5oQfua_linkButton:disabled,._5oQfua_addModelButton:disabled{opacity:.4;cursor:default}._5oQfua_primaryButton:focus-visible,._5oQfua_secondaryButton:focus-visible,._5oQfua_dangerButton:focus-visible,._5oQfua_addButton:focus-visible,._5oQfua_linkButton:focus-visible,._5oQfua_addModelButton:focus-visible,._5oQfua_iconButton:focus-visible,._5oQfua_customizedSummary:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}._5oQfua_editor{background:var(--dsw-alias-bg-module-platform);border-radius:12px;flex-direction:column;gap:14px;padding:14px 16px;display:flex}._5oQfua_editorHeader{align-items:baseline;gap:8px;display:flex}._5oQfua_editorTitle{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}._5oQfua_editorRoute{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}._5oQfua_field{flex-direction:column;gap:6px;display:flex}._5oQfua_fieldLabel{color:var(--dsw-alias-label-secondary);align-items:center;gap:10px;font-size:12px;font-weight:500;line-height:18px;display:inline-flex}._5oQfua_linkButton{box-sizing:border-box;height:28px;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:14px;align-items:center;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}._5oQfua_linkButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}._5oQfua_advancedHint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}._5oQfua_editorActions{justify-content:flex-end;gap:8px;display:flex}._5oQfua_addBlock{flex-direction:column;gap:12px;display:flex}._5oQfua_addActions{flex-wrap:wrap;gap:10px;display:flex}._5oQfua_addButton{border:1px dashed var(--dsw-alias-border-l3);border-radius:12px;flex:1 1 0;gap:6px;min-width:180px;height:44px}._5oQfua_addCard,._5oQfua_setupCard{background:var(--dsw-alias-bg-module-platform);border-radius:12px;flex-direction:column;gap:14px;padding:14px 16px;list-style:none;display:flex}._5oQfua_addCard ._5oQfua_editor,._5oQfua_setupCard ._5oQfua_editor{background:0 0;padding:0}._5oQfua_customized{border-top:1px solid var(--dsw-alias-border-l2);padding-top:10px}._5oQfua_customizedSummary{cursor:pointer;width:fit-content;color:var(--dsw-alias-label-secondary);border-radius:6px;align-items:center;gap:6px;margin-left:-4px;padding:2px 4px;font-size:12px;font-weight:500;line-height:18px;list-style:none;display:flex}._5oQfua_customizedSummary::-webkit-details-marker{display:none}._5oQfua_customizedSummary:before{content:\"\";border-bottom:1.5px solid;border-right:1.5px solid;width:5px;height:5px;transition:transform .12s;transform:rotate(-45deg)translate(-1px,-1px)}._5oQfua_customized[open]>._5oQfua_customizedSummary:before{transform:rotate(45deg)translate(-1px,-1px)}._5oQfua_customizedSummary:hover{color:var(--dsw-alias-label-primary)}._5oQfua_customizedBody{flex-direction:column;gap:12px;padding-top:12px;display:flex}._5oQfua_modelCatalog{border-top:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:10px;padding-top:12px;display:flex}._5oQfua_modelCatalogHeading{flex-direction:column;gap:2px;display:flex}._5oQfua_modelCatalogTitle{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}._5oQfua_modelCatalogMeta,._5oQfua_modelEmpty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}._5oQfua_modelList{flex-direction:column;gap:8px;display:flex}._5oQfua_modelListHead{justify-content:space-between;align-items:flex-start;gap:12px;display:flex}._5oQfua_modelEntry{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px}._5oQfua_modelRow{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto auto;align-items:center;gap:6px;display:grid}._5oQfua_iconButton{box-sizing:border-box;width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:6px;justify-content:center;align-items:center;display:inline-flex}._5oQfua_iconButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._5oQfua_iconButton:disabled{cursor:default;opacity:.4}._5oQfua_iconButtonDanger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}._5oQfua_modelAdvanced{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;padding:8px 4px 2px;display:grid}._5oQfua_modelField{flex-direction:column;gap:4px;display:flex}._5oQfua_modelFieldLabel{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}._5oQfua_modelEmpty{border:1px dashed var(--dsw-alias-border-l3);text-align:center;border-radius:8px;padding:12px}._5oQfua_addModelButton{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);height:28px;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer;background:0 0;border-radius:14px;align-self:flex-start;align-items:center;gap:4px;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}._5oQfua_addModelButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._5oQfua_input{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);width:100%;height:32px;font:inherit;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 10px;font-size:14px;line-height:22px}select._5oQfua_input{cursor:pointer;max-width:240px}._5oQfua_input:focus{border-color:var(--dsw-alias-brand-primary);outline:none}._5oQfua_input::placeholder{color:var(--dsw-alias-label-dimmed)}._5oQfua_input:disabled{opacity:.6;cursor:default}._5oQfua_selectInput{appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-position:right 12px center;background-repeat:no-repeat;background-size:12px 12px;padding-right:32px}._5oQfua_error{color:var(--dsw-alias-state-error-primary);margin:0;font-size:12px;line-height:18px}._5oQfua_deleteDialog{width:min(480px,100%)}._5oQfua_deleteConfirm:not(:disabled){border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}._5oQfua_deleteConfirm:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}._5oQfua_hiddenLabel{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){._5oQfua_customizedSummary:before,._5oQfua_switchThumb{transition:none}}._5oQfua_fetchDialog{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);max-width:520px}._5oQfua_candidateActions{justify-content:flex-end;margin-bottom:6px;display:flex}._5oQfua_candidateList{flex-direction:column;gap:2px;max-height:320px;margin:0;padding:0;list-style:none;display:flex;overflow-y:auto}._5oQfua_candidate{border-radius:6px}._5oQfua_candidateLabel{cursor:pointer;align-items:center;gap:8px;padding:6px 8px;display:flex}._5oQfua_candidateId{font-family:var(--ds-font-family-code);overflow-wrap:anywhere;flex:auto;font-size:13px}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-models\src\client\ModelsSection.module.css.mjs
+		const css$3 = ".hxsKBa_section{max-width:720px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}.hxsKBa_title{color:var(--dsw-alias-label-primary);margin:0;font-size:16px;font-weight:500;line-height:24px}.hxsKBa_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:14px;line-height:22px}.hxsKBa_notice{color:var(--dsw-alias-state-warn-label);margin:0;font-size:12px;line-height:18px}.hxsKBa_savedNotice{color:var(--dsw-alias-state-success-primary);margin:0;font-size:12px;line-height:18px}.hxsKBa_rows{flex-direction:column;gap:8px;margin:12px 0 0;padding:0;list-style:none;display:flex}.hxsKBa_rowCard{border:.5px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-settings-card-fill);border-radius:var(--dsw-radius-xl);flex-direction:column;gap:12px;padding:12px 14px;display:flex}.hxsKBa_rowHead{align-items:center;gap:10px;display:flex}.hxsKBa_rowIdentity{align-items:center;gap:6px;min-width:0;display:inline-flex}.hxsKBa_rowName{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}.hxsKBa_rowTag{border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-xs);color:var(--dsw-alias-label-secondary);flex:none;padding:1px 6px;font-size:11px;line-height:16px}.hxsKBa_credentialDot{box-sizing:border-box;corner-shape:round;border-radius:50%;flex:none;width:8px;height:8px;display:inline-block}.hxsKBa_credentialDotConfigured{background:var(--dsw-alias-state-success-primary)}.hxsKBa_credentialDotMissing{background:var(--dsw-alias-state-error-primary)}.hxsKBa_rowActions{align-items:center;gap:4px;margin-left:auto;display:inline-flex}.hxsKBa_primaryButton,.hxsKBa_secondaryButton,.hxsKBa_addButton{box-sizing:border-box;border-radius:var(--dsw-radius-md);height:36px;font:inherit;cursor:pointer;border:none;justify-content:center;align-items:center;gap:4px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.hxsKBa_primaryButton{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}.hxsKBa_primaryButton:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}.hxsKBa_secondaryButton,.hxsKBa_addButton{border:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary);background:0 0}.hxsKBa_secondaryButton:hover:not(:disabled),.hxsKBa_addButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.hxsKBa_secondaryButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}.hxsKBa_dangerButton{box-sizing:border-box;border-radius:var(--dsw-radius-md);height:36px;color:var(--dsw-alias-state-error-primary);font:inherit;cursor:pointer;background:0 0;border:none;justify-content:center;align-items:center;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.hxsKBa_dangerButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.hxsKBa_rowActions .hxsKBa_secondaryButton,.hxsKBa_rowActions .hxsKBa_dangerButton{border-radius:var(--dsw-radius-sm);height:28px;padding:0 10px;font-size:12px;line-height:18px}.hxsKBa_primaryButton:disabled,.hxsKBa_secondaryButton:disabled,.hxsKBa_dangerButton:disabled,.hxsKBa_addButton:disabled,.hxsKBa_linkButton:disabled,.hxsKBa_addModelButton:disabled{opacity:.4;cursor:default}.hxsKBa_primaryButton:focus-visible,.hxsKBa_secondaryButton:focus-visible,.hxsKBa_dangerButton:focus-visible,.hxsKBa_addButton:focus-visible,.hxsKBa_linkButton:focus-visible,.hxsKBa_addModelButton:focus-visible,.hxsKBa_iconButton:focus-visible,.hxsKBa_customizedSummary:focus-visible{box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline:none}.hxsKBa_editor{border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-module-platform);flex-direction:column;gap:14px;padding:14px 16px;display:flex}.hxsKBa_editorHeader{align-items:baseline;gap:8px;display:flex}.hxsKBa_editorTitle{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}.hxsKBa_editorRoute{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.hxsKBa_field{flex-direction:column;gap:6px;display:flex}.hxsKBa_fieldLabel{color:var(--dsw-alias-label-secondary);align-items:center;gap:10px;font-size:12px;font-weight:500;line-height:18px;display:inline-flex}.hxsKBa_linkButton{box-sizing:border-box;border-radius:var(--dsw-radius-sm);height:28px;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;align-items:center;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}.hxsKBa_linkButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}.hxsKBa_advancedHint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}.hxsKBa_editorActions{justify-content:flex-end;gap:8px;display:flex}.hxsKBa_addBlock{flex-direction:column;gap:12px;display:flex}.hxsKBa_addActions{display:flex}.hxsKBa_addButton{border:1px dashed var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-lg);flex:1 1 0;gap:6px;min-width:180px;height:44px}.hxsKBa_addModes{flex-direction:column;align-items:flex-start;gap:8px;display:flex}.hxsKBa_addPanel{flex-direction:column;gap:14px;display:flex}.hxsKBa_addPanel[hidden]{display:none}.hxsKBa_addCard,.hxsKBa_setupCard{border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-module-platform);flex-direction:column;gap:14px;padding:14px 16px;list-style:none;display:flex}.hxsKBa_addCard .hxsKBa_editor,.hxsKBa_setupCard .hxsKBa_editor{background:0 0;padding:0}.hxsKBa_customized{border-top:.5px solid var(--dsw-alias-border-l2);padding-top:10px}.hxsKBa_customizedSummary{border-radius:var(--dsw-radius-sm);cursor:pointer;width:fit-content;color:var(--dsw-alias-label-secondary);align-items:center;gap:6px;margin-left:-4px;padding:2px 4px;font-size:12px;font-weight:500;line-height:18px;list-style:none;display:flex}.hxsKBa_customizedSummary::-webkit-details-marker{display:none}.hxsKBa_customizedSummary:before{content:\"\";border-bottom:1.5px solid;border-right:1.5px solid;width:5px;height:5px;transition:transform .12s;transform:rotate(-45deg)translate(-1px,-1px)}.hxsKBa_customized[open]>.hxsKBa_customizedSummary:before{transform:rotate(45deg)translate(-1px,-1px)}.hxsKBa_customizedSummary:hover{color:var(--dsw-alias-label-primary)}.hxsKBa_customizedBody{flex-direction:column;gap:12px;padding-top:12px;display:flex}.hxsKBa_modelCatalog{border-top:.5px solid var(--dsw-alias-border-l2);flex-direction:column;gap:10px;padding-top:12px;display:flex}.hxsKBa_modelCatalogHeading{flex-direction:column;gap:2px;display:flex}.hxsKBa_modelCatalogTitle{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}.hxsKBa_modelCatalogMeta,.hxsKBa_modelEmpty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}.hxsKBa_modelList{flex-direction:column;gap:8px;display:flex}.hxsKBa_modelListHead{justify-content:space-between;align-items:flex-start;gap:12px;display:flex}.hxsKBa_modelEntry{border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);padding:6px}.hxsKBa_modelRow{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto auto;align-items:center;gap:6px;display:grid}.hxsKBa_iconButton{box-sizing:border-box;border-radius:var(--dsw-radius-sm);width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;justify-content:center;align-items:center;display:inline-flex}.hxsKBa_iconButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.hxsKBa_iconButton:disabled{cursor:default;opacity:.4}.hxsKBa_iconButtonDanger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}.hxsKBa_modelAdvanced{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:8px 4px 2px;display:grid}.hxsKBa_modelField{flex-direction:column;gap:4px;min-width:0;display:flex}.hxsKBa_modelInputTypes{border:none;grid-column:1/-1;min-width:0;margin:0;padding:0}.hxsKBa_modelInputTypes legend{margin-bottom:4px;padding:0}.hxsKBa_modelInputChoices{flex-wrap:wrap;align-items:center;gap:16px;min-height:32px;display:flex}.hxsKBa_modelFieldLabel{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.hxsKBa_modelEmpty{border:1px dashed var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-lg);text-align:center;padding:12px}.hxsKBa_addModelButton{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-sm);height:28px;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer;background:0 0;align-self:flex-start;align-items:center;gap:4px;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}.hxsKBa_addModelButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.hxsKBa_input{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);width:100%;height:32px;font:inherit;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);padding:0 10px;font-size:14px;line-height:22px}select.hxsKBa_input{cursor:pointer;max-width:240px}.hxsKBa_input:focus{border-color:var(--dsw-alias-state-business-primary);outline:none}.hxsKBa_input::placeholder{color:var(--dsw-alias-label-dimmed)}.hxsKBa_input:disabled{opacity:.6;cursor:default}.hxsKBa_selectInput{appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-position:right 12px center;background-repeat:no-repeat;background-size:12px 12px;padding-right:32px}.hxsKBa_error{color:var(--dsw-alias-state-error-primary);margin:0;font-size:12px;line-height:18px}.hxsKBa_deleteDialog{width:min(480px,100%)}.hxsKBa_deleteConfirm:not(:disabled){border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}.hxsKBa_deleteConfirm:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.hxsKBa_hiddenLabel{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.hxsKBa_customizedSummary:before,.hxsKBa_switchThumb{transition:none}}.hxsKBa_fetchDialog{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);max-width:520px}.hxsKBa_candidateToolbar{align-items:center;gap:8px;margin-bottom:6px;display:flex}.hxsKBa_candidateSearch{flex:240px;min-width:0}.hxsKBa_candidateList{flex-direction:column;gap:2px;max-height:320px;margin:0;padding:0;list-style:none;display:flex;overflow-y:auto}.hxsKBa_candidate{border-radius:var(--dsw-radius-md)}.hxsKBa_candidateLabel{cursor:pointer;align-items:center;gap:8px;padding:6px 8px;display:flex}.hxsKBa_candidateId{min-width:0;font-family:var(--ds-font-family-code);text-overflow:ellipsis;white-space:nowrap;flex:auto;font-size:13px;overflow:hidden}.hxsKBa_candidateEmpty{color:var(--dsw-alias-label-secondary);text-align:center;margin:24px 0;font-size:13px;line-height:20px}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-settings-models/ModelsSection.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -65,69 +65,75 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ModelsSection_module_css_default = {
-			"addActions": "_5oQfua_addActions",
-			"addBlock": "_5oQfua_addBlock",
-			"addButton": "_5oQfua_addButton",
-			"addCard": "_5oQfua_addCard",
-			"addModelButton": "_5oQfua_addModelButton",
-			"advancedHint": "_5oQfua_advancedHint",
-			"candidate": "_5oQfua_candidate",
-			"candidateActions": "_5oQfua_candidateActions",
-			"candidateId": "_5oQfua_candidateId",
-			"candidateLabel": "_5oQfua_candidateLabel",
-			"candidateList": "_5oQfua_candidateList",
-			"credentialDot": "_5oQfua_credentialDot",
-			"credentialDotConfigured": "_5oQfua_credentialDotConfigured",
-			"credentialDotMissing": "_5oQfua_credentialDotMissing",
-			"customized": "_5oQfua_customized",
-			"customizedBody": "_5oQfua_customizedBody",
-			"customizedSummary": "_5oQfua_customizedSummary",
-			"dangerButton": "_5oQfua_dangerButton",
-			"deleteConfirm": "_5oQfua_deleteConfirm",
-			"deleteDialog": "_5oQfua_deleteDialog",
-			"editor": "_5oQfua_editor",
-			"editorActions": "_5oQfua_editorActions",
-			"editorHeader": "_5oQfua_editorHeader",
-			"editorRoute": "_5oQfua_editorRoute",
-			"editorTitle": "_5oQfua_editorTitle",
-			"error": "_5oQfua_error",
-			"fetchDialog": "_5oQfua_fetchDialog",
-			"field": "_5oQfua_field",
-			"fieldLabel": "_5oQfua_fieldLabel",
-			"hiddenLabel": "_5oQfua_hiddenLabel",
-			"iconButton": "_5oQfua_iconButton",
-			"iconButtonDanger": "_5oQfua_iconButtonDanger",
-			"input": "_5oQfua_input",
-			"intro": "_5oQfua_intro",
-			"linkButton": "_5oQfua_linkButton",
-			"modelAdvanced": "_5oQfua_modelAdvanced",
-			"modelCatalog": "_5oQfua_modelCatalog",
-			"modelCatalogHeading": "_5oQfua_modelCatalogHeading",
-			"modelCatalogMeta": "_5oQfua_modelCatalogMeta",
-			"modelCatalogTitle": "_5oQfua_modelCatalogTitle",
-			"modelEmpty": "_5oQfua_modelEmpty",
-			"modelEntry": "_5oQfua_modelEntry",
-			"modelField": "_5oQfua_modelField",
-			"modelFieldLabel": "_5oQfua_modelFieldLabel",
-			"modelList": "_5oQfua_modelList",
-			"modelListHead": "_5oQfua_modelListHead",
-			"modelRow": "_5oQfua_modelRow",
-			"notice": "_5oQfua_notice",
-			"primaryButton": "_5oQfua_primaryButton",
-			"rowActions": "_5oQfua_rowActions",
-			"rowCard": "_5oQfua_rowCard",
-			"rowHead": "_5oQfua_rowHead",
-			"rowIdentity": "_5oQfua_rowIdentity",
-			"rowName": "_5oQfua_rowName",
-			"rowTag": "_5oQfua_rowTag",
-			"rows": "_5oQfua_rows",
-			"savedNotice": "_5oQfua_savedNotice",
-			"secondaryButton": "_5oQfua_secondaryButton",
-			"section": "_5oQfua_section",
-			"selectInput": "_5oQfua_selectInput",
-			"setupCard": "_5oQfua_setupCard",
-			"switchThumb": "_5oQfua_switchThumb",
-			"title": "_5oQfua_title"
+			"addActions": "hxsKBa_addActions",
+			"addBlock": "hxsKBa_addBlock",
+			"addButton": "hxsKBa_addButton",
+			"addCard": "hxsKBa_addCard",
+			"addModelButton": "hxsKBa_addModelButton",
+			"addModes": "hxsKBa_addModes",
+			"addPanel": "hxsKBa_addPanel",
+			"advancedHint": "hxsKBa_advancedHint",
+			"candidate": "hxsKBa_candidate",
+			"candidateEmpty": "hxsKBa_candidateEmpty",
+			"candidateId": "hxsKBa_candidateId",
+			"candidateLabel": "hxsKBa_candidateLabel",
+			"candidateList": "hxsKBa_candidateList",
+			"candidateSearch": "hxsKBa_candidateSearch",
+			"candidateToolbar": "hxsKBa_candidateToolbar",
+			"credentialDot": "hxsKBa_credentialDot",
+			"credentialDotConfigured": "hxsKBa_credentialDotConfigured",
+			"credentialDotMissing": "hxsKBa_credentialDotMissing",
+			"customized": "hxsKBa_customized",
+			"customizedBody": "hxsKBa_customizedBody",
+			"customizedSummary": "hxsKBa_customizedSummary",
+			"dangerButton": "hxsKBa_dangerButton",
+			"deleteConfirm": "hxsKBa_deleteConfirm",
+			"deleteDialog": "hxsKBa_deleteDialog",
+			"editor": "hxsKBa_editor",
+			"editorActions": "hxsKBa_editorActions",
+			"editorHeader": "hxsKBa_editorHeader",
+			"editorRoute": "hxsKBa_editorRoute",
+			"editorTitle": "hxsKBa_editorTitle",
+			"error": "hxsKBa_error",
+			"fetchDialog": "hxsKBa_fetchDialog",
+			"field": "hxsKBa_field",
+			"fieldLabel": "hxsKBa_fieldLabel",
+			"hiddenLabel": "hxsKBa_hiddenLabel",
+			"iconButton": "hxsKBa_iconButton",
+			"iconButtonDanger": "hxsKBa_iconButtonDanger",
+			"input": "hxsKBa_input",
+			"intro": "hxsKBa_intro",
+			"linkButton": "hxsKBa_linkButton",
+			"modelAdvanced": "hxsKBa_modelAdvanced",
+			"modelCatalog": "hxsKBa_modelCatalog",
+			"modelCatalogHeading": "hxsKBa_modelCatalogHeading",
+			"modelCatalogMeta": "hxsKBa_modelCatalogMeta",
+			"modelCatalogTitle": "hxsKBa_modelCatalogTitle",
+			"modelEmpty": "hxsKBa_modelEmpty",
+			"modelEntry": "hxsKBa_modelEntry",
+			"modelField": "hxsKBa_modelField",
+			"modelFieldLabel": "hxsKBa_modelFieldLabel",
+			"modelInputChoices": "hxsKBa_modelInputChoices",
+			"modelInputTypes": "hxsKBa_modelInputTypes",
+			"modelList": "hxsKBa_modelList",
+			"modelListHead": "hxsKBa_modelListHead",
+			"modelRow": "hxsKBa_modelRow",
+			"notice": "hxsKBa_notice",
+			"primaryButton": "hxsKBa_primaryButton",
+			"rowActions": "hxsKBa_rowActions",
+			"rowCard": "hxsKBa_rowCard",
+			"rowHead": "hxsKBa_rowHead",
+			"rowIdentity": "hxsKBa_rowIdentity",
+			"rowName": "hxsKBa_rowName",
+			"rowTag": "hxsKBa_rowTag",
+			"rows": "hxsKBa_rows",
+			"savedNotice": "hxsKBa_savedNotice",
+			"secondaryButton": "hxsKBa_secondaryButton",
+			"section": "hxsKBa_section",
+			"selectInput": "hxsKBa_selectInput",
+			"setupCard": "hxsKBa_setupCard",
+			"switchThumb": "hxsKBa_switchThumb",
+			"title": "hxsKBa_title"
 		};
 		//#endregion
 		//#region lib/types/client/EditorFooter.js
@@ -153,6 +159,122 @@ window.__ModuleLoader__.load({
 					onClick: props.onSubmit,
 					children: props.busy ? t(props.submitBusyLabelKey) : t(props.submitLabelKey)
 				})]
+			});
+		}
+		//#endregion
+		//#region lib/types/client/ModelInputTypes.js
+		/**
+		* Edit a nonempty set of input types, displaying inherited types before an override exists.
+		* @param props - model declaration and row replacement action.
+		* @returns the labeled text and image checkboxes.
+		*/
+		function ModelInputTypes({ model, field, position, disabled, fallback, t, onChange }) {
+			const modalities = model[field];
+			const selected = Array.isArray(modalities) && modalities.length > 0 ? modalities : fallback ?? ["text"];
+			return (0, react_jsx_runtime.jsxs)("fieldset", {
+				className: ModelsSection_module_css_default["modelInputTypes"],
+				"aria-label": `${t("modelInputTypes")} ${String(position)}`,
+				children: [(0, react_jsx_runtime.jsx)("legend", {
+					className: ModelsSection_module_css_default["modelFieldLabel"],
+					children: t("modelInputTypes")
+				}), (0, react_jsx_runtime.jsx)("div", {
+					className: ModelsSection_module_css_default["modelInputChoices"],
+					children: ["text", "image"].map((modality) => (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Checkbox, {
+						label: t(modality === "text" ? "modelInputText" : "modelInputImage"),
+						checked: selected.includes(modality),
+						disabled: disabled || selected.length === 1 && selected.includes(modality),
+						onChange: (checked) => {
+							const nextSelected = ["text", "image"].filter((value) => value === modality ? checked : selected.includes(value));
+							const next = {
+								...model,
+								[field]: nextSelected
+							};
+							if (field === "inputModalities" && !nextSelected.includes("image")) {
+								Reflect.deleteProperty(next, "imagePixelBudget");
+								Reflect.deleteProperty(next, "imageMaxBytes");
+							}
+							onChange(next);
+						}
+					}, modality))
+				})]
+			});
+		}
+		//#endregion
+		//#region lib/types/client/ModelRow.js
+		/**
+		* Render consistent model identity, capacity, and input-type controls.
+		* @param props - drafted fields and their owning editor's actions.
+		* @returns one expandable model entry.
+		*/
+		function ModelRow(props) {
+			const { model, position, t, disabled } = props;
+			return (0, react_jsx_runtime.jsxs)("div", {
+				className: ModelsSection_module_css_default["modelEntry"],
+				children: [(0, react_jsx_runtime.jsxs)("div", {
+					className: ModelsSection_module_css_default["modelRow"],
+					children: [
+						["id", "name"].map((field) => (0, react_jsx_runtime.jsx)("input", {
+							className: ModelsSection_module_css_default["input"],
+							type: "text",
+							value: typeof model[field] === "string" ? model[field] : "",
+							placeholder: t(field === "id" ? "modelId" : "modelName"),
+							"aria-label": `${t(field === "id" ? "modelId" : "modelName")} ${String(position)}`,
+							disabled,
+							onChange: (event) => {
+								const value = event.target.value;
+								props.onFieldChange(field, field === "name" && value === "" ? void 0 : value);
+							},
+							onBlur: field === "id" ? (event) => props.onIdBlur?.(event.target.value) : void 0
+						}, field)),
+						(0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: ModelsSection_module_css_default["iconButton"],
+							"aria-label": `${t("modelAdvanced")} ${String(position)}`,
+							"aria-expanded": props.expanded,
+							title: t("modelAdvanced"),
+							onClick: props.onToggle,
+							children: props.expanded ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutlineRegular, {}) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {})
+						}),
+						(0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: `${ModelsSection_module_css_default["iconButton"]} ${ModelsSection_module_css_default["iconButtonDanger"]}`,
+							"aria-label": `${t("removeModel")} ${String(position)}`,
+							title: t("removeModel"),
+							disabled,
+							onClick: props.onRemove,
+							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 })
+						})
+					]
+				}), props.expanded ? (0, react_jsx_runtime.jsxs)("div", {
+					className: ModelsSection_module_css_default["modelAdvanced"],
+					children: [["contextWindow", "maxTokens"].map((field) => (0, react_jsx_runtime.jsxs)("label", {
+						className: ModelsSection_module_css_default["modelField"],
+						children: [(0, react_jsx_runtime.jsx)("span", {
+							className: ModelsSection_module_css_default["modelFieldLabel"],
+							children: t(field)
+						}), (0, react_jsx_runtime.jsx)("input", {
+							className: ModelsSection_module_css_default["input"],
+							type: "text",
+							inputMode: "numeric",
+							value: props[field].value,
+							placeholder: props[field].placeholder,
+							"aria-label": `${t(field)} ${String(position)}`,
+							disabled,
+							onChange: (event) => {
+								props[field].onChange(event.target.value);
+							},
+							onBlur: props[field].onBlur
+						})]
+					}, field)), (0, react_jsx_runtime.jsx)(ModelInputTypes, {
+						model,
+						field: props.inputField,
+						position,
+						fallback: props.inputFallback,
+						disabled: disabled || props.inputLoading === true,
+						t,
+						onChange: props.onChange
+					})]
+				}) : null]
 			});
 		}
 		//#endregion
@@ -250,7 +372,7 @@ window.__ModuleLoader__.load({
 		}
 		/**
 		* Render the direct DeepSeek adapter's model catalog: id and display name on
-		* each row, capacities behind the row's own disclosure.
+		* each row, capacities and input types behind the row's own disclosure.
 		* @param props - effective rows plus the array-level override actions.
 		* @returns the catalog editor.
 		*/
@@ -318,29 +440,16 @@ window.__ModuleLoader__.load({
 					return next;
 				});
 			};
-			/** One capacity field of one row, rendered inside the row's disclosure. */
-			const capacityField = (model, index, field, fallback) => (0, react_jsx_runtime.jsxs)("label", {
-				className: ModelsSection_module_css_default["modelField"],
-				children: [(0, react_jsx_runtime.jsx)("span", {
-					className: ModelsSection_module_css_default["modelFieldLabel"],
-					children: props.t(field === "contextWindow" ? "contextWindow" : "maxTokens")
-				}), (0, react_jsx_runtime.jsx)("input", {
-					className: ModelsSection_module_css_default["input"],
-					type: "text",
-					inputMode: "numeric",
-					value: capacityText(model, index, field),
-					placeholder: fallback === void 0 ? props.t(field === "contextWindow" ? "contextWindowPlaceholder" : "maxTokensPlaceholder") : formatCapacity(fallback),
-					"aria-label": `${props.t(field === "contextWindow" ? "contextWindow" : "maxTokens")} ${String(index + 1)}`,
-					disabled: props.disabled,
-					onChange: (event) => {
-						const text = event.target.value;
-						setEditing((current) => new Map(current).set(`${String(index)}:${field}`, text));
-						update(index, field, parseCapacity(text));
-					},
-					onBlur: () => {
-						settleCapacity(index, field);
-					}
-				})]
+			const capacityInput = (model, index, field, fallback) => ({
+				value: capacityText(model, index, field),
+				placeholder: fallback === void 0 ? props.t(field === "contextWindow" ? "contextWindowPlaceholder" : "maxTokensPlaceholder") : formatCapacity(fallback),
+				onChange: (text) => {
+					setEditing((current) => new Map(current).set(`${String(index)}:${field}`, text));
+					update(index, field, parseCapacity(text));
+				},
+				onBlur: () => {
+					settleCapacity(index, field);
+				}
 			});
 			return (0, react_jsx_runtime.jsxs)("section", {
 				className: ModelsSection_module_css_default["modelCatalog"],
@@ -370,64 +479,31 @@ window.__ModuleLoader__.load({
 						children: props.t("modelsEmpty")
 					}) : (0, react_jsx_runtime.jsx)("div", {
 						className: ModelsSection_module_css_default["modelList"],
-						children: props.models.map((model, index) => (0, react_jsx_runtime.jsxs)("div", {
-							className: ModelsSection_module_css_default["modelEntry"],
-							children: [(0, react_jsx_runtime.jsxs)("div", {
-								className: ModelsSection_module_css_default["modelRow"],
-								children: [
-									(0, react_jsx_runtime.jsx)("input", {
-										className: ModelsSection_module_css_default["input"],
-										type: "text",
-										value: typeof model["id"] === "string" ? model["id"] : "",
-										placeholder: props.t("modelId"),
-										"aria-label": `${props.t("modelId")} ${String(index + 1)}`,
-										disabled: props.disabled,
-										onChange: (event) => {
-											update(index, "id", event.target.value);
-										},
-										onBlur: (event) => {
-											const trimmed = event.target.value.trim();
-											if (trimmed !== event.target.value) update(index, "id", trimmed);
-										}
-									}),
-									(0, react_jsx_runtime.jsx)("input", {
-										className: ModelsSection_module_css_default["input"],
-										type: "text",
-										value: typeof model["name"] === "string" ? model["name"] : "",
-										placeholder: props.t("modelName"),
-										"aria-label": `${props.t("modelName")} ${String(index + 1)}`,
-										disabled: props.disabled,
-										onChange: (event) => {
-											update(index, "name", event.target.value === "" ? void 0 : event.target.value);
-										}
-									}),
-									(0, react_jsx_runtime.jsx)("button", {
-										type: "button",
-										className: ModelsSection_module_css_default["iconButton"],
-										"aria-label": `${props.t("modelAdvanced")} ${String(index + 1)}`,
-										"aria-expanded": expanded.has(index),
-										title: props.t("modelAdvanced"),
-										onClick: () => {
-											toggle(index);
-										},
-										children: expanded.has(index) ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, {}) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {})
-									}),
-									(0, react_jsx_runtime.jsx)("button", {
-										type: "button",
-										className: `${ModelsSection_module_css_default["iconButton"]} ${ModelsSection_module_css_default["iconButtonDanger"]}`,
-										"aria-label": `${props.t("removeModel")} ${String(index + 1)}`,
-										title: props.t("removeModel"),
-										disabled: props.disabled,
-										onClick: () => {
-											remove(index);
-										},
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, { size: 14 })
-									})
-								]
-							}), expanded.has(index) ? (0, react_jsx_runtime.jsxs)("div", {
-								className: ModelsSection_module_css_default["modelAdvanced"],
-								children: [capacityField(model, index, "contextWindow", props.defaultContextWindow), capacityField(model, index, "maxTokens", props.defaultMaxTokens)]
-							}) : null]
+						children: props.models.map((model, index) => (0, react_jsx_runtime.jsx)(ModelRow, {
+							model,
+							position: index + 1,
+							inputField: "inputModalities",
+							expanded: expanded.has(index),
+							disabled: props.disabled,
+							t: props.t,
+							contextWindow: capacityInput(model, index, "contextWindow", props.defaultContextWindow),
+							maxTokens: capacityInput(model, index, "maxTokens", props.defaultMaxTokens),
+							onFieldChange: (field, value) => {
+								update(index, field, value);
+							},
+							onIdBlur: (value) => {
+								const trimmed = value.trim();
+								if (trimmed !== value) update(index, "id", trimmed);
+							},
+							onChange: (next) => {
+								props.onChange(props.models.map((row, at) => at === index ? next : row));
+							},
+							onToggle: () => {
+								toggle(index);
+							},
+							onRemove: () => {
+								remove(index);
+							}
 						}, index))
 					}),
 					(0, react_jsx_runtime.jsxs)("button", {
@@ -437,256 +513,10 @@ window.__ModuleLoader__.load({
 						onClick: () => {
 							props.onChange([...props.models.map((model) => ({ ...model })), { id: "" }]);
 						},
-						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutline16, { size: 14 }), props.t("addModel")]
+						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), props.t("addModel")]
 					})
 				]
 			});
-		}
-		//#endregion
-		//#region lib/types/client/store.js
-		/**
-		* Models settings page store: one snapshot joining the configurable-provider
-		* directory (`llm/listProviders` joined with `llm/listConfigurableProviders`),
-		* the settings namespaces (shared settings mirror),
-		* and the referenced credentials (`credentials/describe`). The host stays the
-		* single fact source — every mutation writes through the wire and the page
-		* re-renders from the next describe, pushed or refetched.
-		*/
-		/**
-		* Any route key walks a dict schema to the same profile node, so the lookup
-		* names one that cannot collide with a configured route.
-		*/
-		const PROBE_ROUTE = "\0probe";
-		/**
-		* Join declared configurable providers with the currently registered routes.
-		* @param registered - live provider routes in registration order.
-		* @param directory - declared configurable providers in declaration order.
-		* @returns declared rows followed by live routes with no declaration.
-		*/
-		function joinProviderDirectory(registered, directory) {
-			const active = new Set(registered.map((provider) => provider.id));
-			const declared = new Set(directory.map((entry) => entry.provider));
-			const rows = directory.map((entry) => ({
-				provider: entry.provider,
-				displayName: entry.displayName,
-				settingsNs: entry.settingsNs,
-				settingsPath: [...entry.settingsPath],
-				active: active.has(entry.provider),
-				...entry.declared === void 0 ? {} : { declared: entry.declared }
-			}));
-			for (const provider of registered) {
-				if (declared.has(provider.id)) continue;
-				rows.push({
-					provider: provider.id,
-					displayName: provider.name,
-					settingsNs: "",
-					settingsPath: [],
-					active: true
-				});
-			}
-			return rows;
-		}
-		/**
-		* Human text for a rejected wire call. A transport failure rejects with an
-		* Error; a host or a runtime can reject with anything, and the page still has
-		* to say something.
-		* @param error - the rejection value.
-		* @returns the message to show.
-		*/
-		function messageOf(error) {
-			return error instanceof Error ? error.message : String(error);
-		}
-		/**
-		* Derive the conventional credential reference for a provider route: the v1
-		* page never asks for an environment-variable name, so a typed key stores
-		* under this derived reference and the profile records it as `apiKeyEnv`.
-		* @param provider - provider route id (e.g. `anthropic`, `minimax-cn`).
-		* @returns the derived reference name (e.g. `MINIMAX_CN_API_KEY`).
-		*/
-		function deriveKeyRef(provider) {
-			return `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
-		}
-		/**
-		* The wire protocols a hand-declared route may name, read out of the owning
-		* namespace's own schema. This stays a schema read rather than a wire field so
-		* the choices the page offers cannot drift from the ones the adapter accepts:
-		* both come from the same `Config`.
-		* @param namespace - the namespace view whose schema declares the profile shape.
-		* @param schema - settings schema operations.
-		* @returns the protocol identifiers, or an empty list when the schema has none.
-		*/
-		function protocolChoices(namespace, schema) {
-			if (namespace === void 0) return [];
-			const list = schema.nodeAtPath(schema.rehydrate(namespace.schema), [
-				"providers",
-				PROBE_ROUTE,
-				"api"
-			]);
-			if (list?.type !== "union" || list.list === void 0) return [];
-			return list.list.map((entry) => entry.value).filter((value) => typeof value === "string");
-		}
-		/** The credential reference a resolved profile names (its `apiKeyEnv` field). */
-		function apiKeyEnvOf(namespace, path, schema) {
-			if (namespace === void 0) return void 0;
-			const profile = schema.getPath(namespace.value, path);
-			if (typeof profile !== "object" || profile === null) return void 0;
-			const ref = profile.apiKeyEnv;
-			return typeof ref === "string" && ref.length > 0 ? ref : void 0;
-		}
-		/** The models settings page controller (one per settings surface). */
-		var ModelsSettingsStore = class {
-			api;
-			schema;
-			describeFace;
-			/** The snapshot the section renders from (uSES-safe store). */
-			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
-				status: "idle",
-				error: null,
-				credentialError: null,
-				writable: false,
-				rows: [],
-				namespaces: /* @__PURE__ */ new Map()
-			});
-			/** Latest load wins; an older response never overwrites a newer one. */
-			generation = 0;
-			/**
-			* @param api - the page's credentials Remote and LLM wire faces.
-			* @param describeFace - the shared mirror's describe face (namespace views and writability).
-			*/
-			constructor(api, schema, describeFace) {
-				this.api = api;
-				this.schema = schema;
-				this.describeFace = describeFace;
-			}
-			/**
-			* Refresh the whole page snapshot: the provider directory and the mirror's
-			* settings answer in parallel, then one batched credential describe over
-			* every referenced ref. Provider failure or absence of an initial settings
-			* answer keeps the last good rows and surfaces an error; a failed settings
-			* refresh reuses the mirror's held view.
-			* @returns nothing; the snapshot carries the outcome.
-			*/
-			async load() {
-				const generation = ++this.generation;
-				this.store.update((s) => {
-					s.status = "loading";
-					s.error = null;
-				});
-				let providers;
-				let writable;
-				let views;
-				try {
-					const [registered, declared] = await Promise.all([
-						this.api.llm.listProviders(),
-						this.api.llm.listConfigurableProviders(),
-						this.describeFace.ensure()
-					]);
-					if (!registered.ok) throw new Error(registered.error.message);
-					if (!declared.ok) throw new Error(declared.error.message);
-					const mirrored = this.describeFace.getSnapshot();
-					if (mirrored.view === void 0) throw new Error(mirrored.error ?? "settings are unavailable in this browser");
-					providers = joinProviderDirectory(registered.value, declared.value);
-					writable = mirrored.view.writable;
-					views = mirrored.view.namespaces;
-				} catch (error) {
-					if (generation !== this.generation) return;
-					this.store.update((s) => {
-						s.status = "error";
-						s.error = error instanceof Error ? error.message : String(error);
-					});
-					return;
-				}
-				const namespaces = new Map(views.map((view) => [view.ns, view]));
-				const rows = providers.map((entry) => {
-					const namespace = namespaces.get(entry.settingsNs);
-					return {
-						entry,
-						configured: namespace !== void 0 && (entry.settingsPath.length === 0 || this.schema.getPath(namespace.value, entry.settingsPath) !== void 0),
-						removable: namespace !== void 0 && entry.settingsPath.length > 0 && this.schema.hasPath(namespace.user, entry.settingsPath) && !this.schema.hasPath(namespace.base, entry.settingsPath),
-						apiKeyEnv: apiKeyEnvOf(namespace, entry.settingsPath, this.schema),
-						credential: void 0
-					};
-				});
-				const refs = [...new Set(rows.map((row) => row.apiKeyEnv ?? deriveKeyRef(row.entry.provider)))];
-				let credentials = {};
-				let credentialError = null;
-				if (refs.length > 0) try {
-					const response = await this.api.credentials.describe(refs);
-					if (response.ok) credentials = response.value;
-					else credentialError = response.error.message;
-				} catch (error) {
-					credentialError = messageOf(error);
-				}
-				if (generation !== this.generation) return;
-				this.store.update((s) => {
-					s.status = "ready";
-					s.error = null;
-					s.credentialError = credentialError;
-					s.writable = writable;
-					s.rows = rows.map((row) => {
-						const named = row.apiKeyEnv === void 0 ? void 0 : credentials[row.apiKeyEnv];
-						const derived = row.apiKeyEnv !== void 0 ? void 0 : credentials[deriveKeyRef(row.entry.provider)];
-						return {
-							...row,
-							...named === void 0 ? {} : { credential: named },
-							...derived === void 0 ? {} : { derivedCredential: derived }
-						};
-					});
-					s.namespaces = namespaces;
-				});
-			}
-		};
-		/**
-		* Whether a joined row can serve model requests as it stands: the route is
-		* registered with the adapter registry, and whatever credential its resolved
-		* profile names is stored. A profile naming no reference authenticates through
-		* the provider's own path (the Bedrock chain, Vertex ADC, a gateway that needs
-		* nothing), as does a live route with no settings address at all, so neither
-		* owes this page a key.
-		* @param row - one joined provider row.
-		* @returns whether the user already has this provider to talk to.
-		*/
-		function providerUsable(row) {
-			if (!row.entry.active) return false;
-			if (row.apiKeyEnv === void 0) return true;
-			return row.credential?.configured === true;
-		}
-		/**
-		* Project first-run readiness from the provider/settings/credential join used
-		* by the Models page. The step exists to leave the user with a model to talk
-		* to, so ANY usable provider ends it; only when none exists does the official
-		* DeepSeek route — the one route the prompt can offer a key field for — decide
-		* whether prompting can help. A missing official configurable-provider
-		* declaration means the adapter is not repairable by navigating to Models.
-		* @param state - current shared Models join snapshot.
-		* @returns the onboarding state without reading a parallel fact source.
-		*/
-		function onboardingReadiness(state) {
-			if ((state.status === "idle" || state.status === "loading") && state.rows.length === 0) return { kind: "loading" };
-			if (state.status === "error") return {
-				kind: "unavailable",
-				reason: "load-failed"
-			};
-			if (state.rows.some(providerUsable)) return { kind: "provider-ready" };
-			const row = state.rows.find((candidate) => candidate.entry.provider === "deepseek-official" && candidate.entry.settingsNs === "llm-deepseek" && candidate.entry.settingsPath.length === 0);
-			if (row === void 0) return { kind: "adapter-absent" };
-			if (!row.entry.active) return {
-				kind: "unavailable",
-				reason: "provider-inactive"
-			};
-			if (state.credentialError !== null || row.credential === void 0) return {
-				kind: "unavailable",
-				reason: "credentials-unavailable"
-			};
-			if (!state.writable) return {
-				kind: "unavailable",
-				reason: "settings-read-only"
-			};
-			if (!row.credential.writable) return {
-				kind: "unavailable",
-				reason: "credential-read-only"
-			};
-			return { kind: "credential-missing" };
 		}
 		//#endregion
 		//#region lib/types/client/ModelListEditor.js
@@ -715,44 +545,6 @@ window.__ModuleLoader__.load({
 			const value = model[key];
 			return typeof value === "number" ? value : void 0;
 		}
-		/** Disclosure chevron; rotates to point down while its row is open. */
-		function IconChevron({ open }) {
-			return (0, react_jsx_runtime.jsx)("svg", {
-				width: "14",
-				height: "14",
-				viewBox: "0 0 16 16",
-				fill: "none",
-				"aria-hidden": true,
-				style: {
-					transform: open ? "rotate(90deg)" : void 0,
-					transition: "transform 120ms ease"
-				},
-				children: (0, react_jsx_runtime.jsx)("path", {
-					d: "M6 3.5L10.5 8L6 12.5",
-					stroke: "currentColor",
-					strokeWidth: "1.5",
-					strokeLinecap: "round",
-					strokeLinejoin: "round"
-				})
-			});
-		}
-		/** Removal glyph for one model row. */
-		function IconTrash() {
-			return (0, react_jsx_runtime.jsx)("svg", {
-				width: "14",
-				height: "14",
-				viewBox: "0 0 16 16",
-				fill: "none",
-				"aria-hidden": true,
-				children: (0, react_jsx_runtime.jsx)("path", {
-					d: "M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4",
-					stroke: "currentColor",
-					strokeWidth: "1.3",
-					strokeLinecap: "round",
-					strokeLinejoin: "round"
-				})
-			});
-		}
 		/**
 		* What an empty capacity field is worth, shown as its placeholder so a row left
 		* blank does not read as a model with no capacity at all.
@@ -778,13 +570,14 @@ window.__ModuleLoader__.load({
 		function capacitySpelling(value) {
 			return value === void 0 ? "" : formatCapacity(value);
 		}
-		/** Adopt a candidate, keeping whatever capacities the provider disclosed. */
+		/** Adopt a candidate, preserving disclosed capacities and input types. */
 		function adopt(candidate) {
 			return {
 				id: candidate.id,
 				...candidate.name === void 0 ? {} : { name: candidate.name },
 				...candidate.contextWindow === void 0 ? {} : { contextWindow: candidate.contextWindow },
-				...candidate.maxTokens === void 0 ? {} : { maxTokens: candidate.maxTokens }
+				...candidate.maxTokens === void 0 ? {} : { maxTokens: candidate.maxTokens },
+				...candidate.inputModalities === void 0 ? {} : { input: [...candidate.inputModalities] }
 			};
 		}
 		/**
@@ -793,11 +586,38 @@ window.__ModuleLoader__.load({
 		* @returns the model-list editor.
 		*/
 		function ModelListEditor(props) {
-			const { models, onChange, probe, api, t, disabled } = props;
+			const { models, onChange, probe, operations, t, disabled, onBusyChange } = props;
+			const { catalogProvider } = props;
 			const [busy, setBusy] = (0, react.useState)(false);
+			(0, react.useEffect)(() => {
+				onBusyChange(busy);
+			}, [busy, onBusyChange]);
 			const [failure, setFailure] = (0, react.useState)(void 0);
+			const [inheritedCatalog, setInheritedCatalog] = (0, react.useState)(void 0);
+			(0, react.useEffect)(() => {
+				if (catalogProvider === void 0) return;
+				let current = true;
+				operations.discoverModels(probe.settingsNs, { provider: catalogProvider }).then((answer) => {
+					if (!current) return;
+					setInheritedCatalog({
+						provider: catalogProvider,
+						models: answer.kind === "found" ? answer.models : []
+					});
+					setFailure(answer.kind === "refused" ? answer.message : void 0);
+				});
+				return () => {
+					current = false;
+				};
+			}, [
+				catalogProvider,
+				operations,
+				probe.settingsNs
+			]);
+			const catalog = inheritedCatalog?.provider === catalogProvider ? inheritedCatalog?.models : void 0;
+			const inputDefaults = (0, react.useMemo)(() => new Map(catalog?.map((model) => [model.id, model.inputModalities])), [catalog]);
 			const [candidates, setCandidates] = (0, react.useState)(void 0);
 			const [picked, setPicked] = (0, react.useState)(/* @__PURE__ */ new Set());
+			const [candidateQuery, setCandidateQuery] = (0, react.useState)("");
 			const [expanded, setExpanded] = (0, react.useState)(/* @__PURE__ */ new Set());
 			const [editing, setEditing] = (0, react.useState)(/* @__PURE__ */ new Map());
 			/** Buffer key for one capacity field; the row half moves when rows do. */
@@ -839,26 +659,29 @@ window.__ModuleLoader__.load({
 				setBusy(true);
 				setFailure(void 0);
 				try {
-					const response = await api.llm.discoverModels(probe.settingsNs, {
+					const answer = await operations.discoverModels(probe.settingsNs, {
 						...probe.provider === void 0 ? {} : { provider: probe.provider },
 						...probe.baseURL === void 0 || probe.baseURL.length === 0 ? {} : { baseURL: probe.baseURL },
 						...probe.api === void 0 ? {} : { api: probe.api },
 						...probe.apiKey === void 0 ? {} : { apiKey: probe.apiKey }
 					});
-					if (!response.ok) {
-						setFailure(response.error.message);
+					if (answer.kind === "refused") {
+						setFailure(answer.message);
 						return;
 					}
-					const found = response.value;
+					const found = answer.models;
+					if (catalogProvider !== void 0) setInheritedCatalog({
+						provider: catalogProvider,
+						models: found
+					});
 					if (found.length === 0) {
 						setFailure(t("fetchEmpty"));
 						return;
 					}
 					const known = new Set(models.map((model) => textOf(model, "id")));
+					setCandidateQuery("");
 					setCandidates(found);
 					setPicked(new Set(found.filter((model) => !known.has(model.id)).map((model) => model.id)));
-				} catch (error) {
-					setFailure(messageOf(error));
 				} finally {
 					setBusy(false);
 				}
@@ -866,6 +689,7 @@ window.__ModuleLoader__.load({
 			const closePicker = () => {
 				setCandidates(void 0);
 				setPicked(/* @__PURE__ */ new Set());
+				setCandidateQuery("");
 			};
 			const adoptPicked = () => {
 				/* v8 ignore next -- the dialog only renders with candidates loaded */
@@ -886,10 +710,15 @@ window.__ModuleLoader__.load({
 				});
 			};
 			const activeCandidates = candidates ?? [];
-			const allCandidatesPicked = activeCandidates.length > 0 && activeCandidates.every((candidate) => picked.has(candidate.id));
-			const toggleAllCandidates = () => {
+			const normalizedCandidateQuery = candidateQuery.trim().toLowerCase();
+			const visibleCandidates = normalizedCandidateQuery.length === 0 ? activeCandidates : activeCandidates.filter((candidate) => candidate.id.toLowerCase().includes(normalizedCandidateQuery) || candidate.name?.toLowerCase().includes(normalizedCandidateQuery) === true);
+			const allVisibleCandidatesPicked = visibleCandidates.length > 0 && visibleCandidates.every((candidate) => picked.has(candidate.id));
+			const toggleVisibleCandidates = () => {
 				setPicked((current) => {
-					return activeCandidates.every((candidate) => current.has(candidate.id)) ? /* @__PURE__ */ new Set() : new Set(activeCandidates.map((candidate) => candidate.id));
+					if (visibleCandidates.every((candidate) => current.has(candidate.id))) return /* @__PURE__ */ new Set();
+					const next = new Set(current);
+					for (const candidate of visibleCandidates) next.add(candidate.id);
+					return next;
 				});
 			};
 			const askable = probe.provider !== void 0 || probe.baseURL !== void 0 && probe.baseURL.length > 0;
@@ -933,110 +762,60 @@ window.__ModuleLoader__.load({
 						className: ModelsSection_module_css_default["modelEmpty"],
 						children: t("modelsEmpty")
 					}) : null,
-					models.map((model, index) => (0, react_jsx_runtime.jsxs)("div", {
-						className: ModelsSection_module_css_default["modelEntry"],
-						children: [(0, react_jsx_runtime.jsxs)("div", {
-							className: ModelsSection_module_css_default["modelRow"],
-							children: [
-								(0, react_jsx_runtime.jsx)("input", {
-									className: ModelsSection_module_css_default["input"],
-									type: "text",
-									value: textOf(model, "id"),
-									placeholder: t("modelId"),
-									"aria-label": `${t("modelId")} ${index + 1}`,
-									disabled,
-									onChange: (event) => {
-										patch(index, { id: event.target.value });
-									}
-								}),
-								(0, react_jsx_runtime.jsx)("input", {
-									className: ModelsSection_module_css_default["input"],
-									type: "text",
-									value: textOf(model, "name"),
-									placeholder: t("modelName"),
-									"aria-label": `${t("modelName")} ${index + 1}`,
-									disabled,
-									onChange: (event) => {
-										patch(index, { name: event.target.value === "" ? void 0 : event.target.value });
-									}
-								}),
-								(0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									className: ModelsSection_module_css_default["iconButton"],
-									"aria-label": `${t("modelAdvanced")} ${index + 1}`,
-									"aria-expanded": expanded.has(index),
-									title: t("modelAdvanced"),
-									onClick: () => {
-										toggleExpanded(index);
-									},
-									children: (0, react_jsx_runtime.jsx)(IconChevron, { open: expanded.has(index) })
-								}),
-								(0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									className: `${ModelsSection_module_css_default["iconButton"]} ${ModelsSection_module_css_default["iconButtonDanger"]}`,
-									"aria-label": `${t("removeModel")} ${index + 1}`,
-									title: t("removeModel"),
-									disabled,
-									onClick: () => {
-										onChange(models.filter((_model, at) => at !== index));
-										setExpanded((current) => {
-											const next = /* @__PURE__ */ new Set();
-											for (const at of current) if (at < index) next.add(at);
-											else if (at > index) next.add(at - 1);
-											return next;
-										});
-										setEditing((current) => reindexOnRemove(current, index));
-									},
-									children: (0, react_jsx_runtime.jsx)(IconTrash, {})
-								})
-							]
-						}), expanded.has(index) ? (0, react_jsx_runtime.jsxs)("div", {
-							className: ModelsSection_module_css_default["modelAdvanced"],
-							children: [(0, react_jsx_runtime.jsxs)("label", {
-								className: ModelsSection_module_css_default["modelField"],
-								children: [(0, react_jsx_runtime.jsx)("span", {
-									className: ModelsSection_module_css_default["modelFieldLabel"],
-									children: t("modelContextWindow")
-								}), (0, react_jsx_runtime.jsx)("input", {
-									className: ModelsSection_module_css_default["input"],
-									type: "text",
-									inputMode: "numeric",
-									value: capacityText(model, index, "contextWindow"),
-									placeholder: CAPACITY_HINT.contextWindow,
-									"aria-label": `${t("modelContextWindow")} ${index + 1}`,
-									disabled,
-									onChange: (event) => {
-										editCapacity(index, "contextWindow", event.target.value);
-									}
-								})]
-							}), (0, react_jsx_runtime.jsxs)("label", {
-								className: ModelsSection_module_css_default["modelField"],
-								children: [(0, react_jsx_runtime.jsx)("span", {
-									className: ModelsSection_module_css_default["modelFieldLabel"],
-									children: t("modelMaxTokens")
-								}), (0, react_jsx_runtime.jsx)("input", {
-									className: ModelsSection_module_css_default["input"],
-									type: "text",
-									inputMode: "numeric",
-									value: capacityText(model, index, "maxTokens"),
-									placeholder: CAPACITY_HINT.maxTokens,
-									"aria-label": `${t("modelMaxTokens")} ${index + 1}`,
-									disabled,
-									onChange: (event) => {
-										editCapacity(index, "maxTokens", event.target.value);
-									}
-								})]
-							})]
-						}) : null]
-					}, index)),
-					(0, react_jsx_runtime.jsx)("button", {
+					(0, react_jsx_runtime.jsx)("div", {
+						className: ModelsSection_module_css_default["modelList"],
+						children: models.map((model, index) => (0, react_jsx_runtime.jsx)(ModelRow, {
+							model,
+							position: index + 1,
+							inputField: "input",
+							inputFallback: inputDefaults.get(textOf(model, "id")) ?? props.defaultInput,
+							inputLoading: catalogProvider !== void 0 && catalog === void 0,
+							expanded: expanded.has(index),
+							disabled,
+							t,
+							contextWindow: {
+								value: capacityText(model, index, "contextWindow"),
+								placeholder: CAPACITY_HINT.contextWindow,
+								onChange: (text) => {
+									editCapacity(index, "contextWindow", text);
+								}
+							},
+							maxTokens: {
+								value: capacityText(model, index, "maxTokens"),
+								placeholder: CAPACITY_HINT.maxTokens,
+								onChange: (text) => {
+									editCapacity(index, "maxTokens", text);
+								}
+							},
+							onFieldChange: (field, value) => {
+								patch(index, { [field]: value });
+							},
+							onChange: (next) => {
+								onChange(models.map((row, at) => at === index ? next : row));
+							},
+							onToggle: () => {
+								toggleExpanded(index);
+							},
+							onRemove: () => {
+								onChange(models.filter((_model, at) => at !== index));
+								setExpanded((current) => {
+									const next = /* @__PURE__ */ new Set();
+									for (const at of current) if (at < index) next.add(at);
+									else if (at > index) next.add(at - 1);
+									return next;
+								});
+								setEditing((current) => reindexOnRemove(current, index));
+							}
+						}, index))
+					}),
+					(0, react_jsx_runtime.jsxs)("button", {
 						type: "button",
 						className: ModelsSection_module_css_default["addModelButton"],
 						disabled,
 						onClick: () => {
 							onChange([...models, { id: "" }]);
 						},
-						children: t("addModel")
+						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), t("addModel")]
 					}),
 					failure !== void 0 ? (0, react_jsx_runtime.jsx)("p", {
 						className: ModelsSection_module_css_default["error"],
@@ -1058,17 +837,31 @@ window.__ModuleLoader__.load({
 							onClick: adoptPicked,
 							children: t("fetchAdopt")
 						})] }),
-						children: [(0, react_jsx_runtime.jsx)("div", {
-							className: ModelsSection_module_css_default["candidateActions"],
-							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+						children: [(0, react_jsx_runtime.jsxs)("div", {
+							className: ModelsSection_module_css_default["candidateToolbar"],
+							children: [(0, react_jsx_runtime.jsx)("input", {
+								className: `${ModelsSection_module_css_default["input"]} ${ModelsSection_module_css_default["candidateSearch"]}`,
+								type: "search",
+								value: candidateQuery,
+								placeholder: t("fetchSearch"),
+								"aria-label": t("fetchSearch"),
+								onChange: (event) => {
+									setCandidateQuery(event.target.value);
+								}
+							}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
 								variant: "ghost",
 								size: "sm",
-								onClick: toggleAllCandidates,
-								children: t(allCandidatesPicked ? "fetchDeselectAll" : "fetchSelectAll")
-							})
-						}), (0, react_jsx_runtime.jsx)("ul", {
+								disabled: visibleCandidates.length === 0,
+								onClick: toggleVisibleCandidates,
+								children: t(allVisibleCandidatesPicked ? "fetchDeselectAll" : "fetchSelectAll")
+							})]
+						}), visibleCandidates.length === 0 ? (0, react_jsx_runtime.jsx)("p", {
+							className: ModelsSection_module_css_default["candidateEmpty"],
+							role: "status",
+							children: t("fetchNoMatches")
+						}) : (0, react_jsx_runtime.jsx)("ul", {
 							className: ModelsSection_module_css_default["candidateList"],
-							children: (candidates ?? []).map((candidate) => (0, react_jsx_runtime.jsx)("li", {
+							children: visibleCandidates.map((candidate) => (0, react_jsx_runtime.jsx)("li", {
 								className: ModelsSection_module_css_default["candidate"],
 								children: (0, react_jsx_runtime.jsxs)("label", {
 									className: ModelsSection_module_css_default["candidateLabel"],
@@ -1080,6 +873,7 @@ window.__ModuleLoader__.load({
 										}
 									}), (0, react_jsx_runtime.jsx)("span", {
 										className: ModelsSection_module_css_default["candidateId"],
+										title: candidate.name ?? candidate.id,
 										children: candidate.id
 									})]
 								})
@@ -1090,18 +884,294 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
+		//#region lib/types/client/store.js
+		/**
+		* Models settings page store: one snapshot joining the configurable-provider
+		* directory (`llm/listProviders` joined with `llm/listConfigurableProviders`),
+		* the settings namespaces (shared settings mirror),
+		* and the referenced credentials (`credentials/describe`). The host stays the
+		* single fact source — every mutation writes through the wire and the page
+		* re-renders from the next describe, pushed or refetched.
+		*/
+		/**
+		* Any route key walks a dict schema to the same profile node, so the lookup
+		* names one that cannot collide with a configured route.
+		*/
+		const PROBE_ROUTE = "\0probe";
+		/**
+		* Join declared configurable providers with the currently registered routes.
+		* @param registered - live provider routes in registration order.
+		* @param directory - declared configurable providers in declaration order.
+		* @returns account and official routes first, then other routes in their original order.
+		*/
+		function joinProviderDirectory(registered, directory) {
+			const active = new Set(registered.map((provider) => provider.id));
+			const declared = new Set(directory.map((entry) => entry.provider));
+			const rows = directory.map((entry) => ({
+				provider: entry.provider,
+				displayName: entry.displayName,
+				settingsNs: entry.settingsNs,
+				settingsPath: [...entry.settingsPath],
+				active: active.has(entry.provider),
+				...entry.declared === void 0 ? {} : { declared: entry.declared },
+				...entry.error === void 0 ? {} : { error: entry.error }
+			}));
+			for (const provider of registered) {
+				if (declared.has(provider.id)) continue;
+				rows.push({
+					provider: provider.id,
+					displayName: provider.name,
+					settingsNs: "",
+					settingsPath: [],
+					active: true
+				});
+			}
+			return rows.toSorted((left, right) => (left.provider === "deepseek-account" ? 0 : left.provider === "deepseek-official" ? 1 : 2) - (right.provider === "deepseek-account" ? 0 : right.provider === "deepseek-official" ? 1 : 2));
+		}
+		/**
+		* Derive the conventional credential reference for a provider route: the v1
+		* page never asks for an environment-variable name, so a typed key stores
+		* under this derived reference and the profile records it as `apiKeyEnv`.
+		* @param provider - provider route id (e.g. `anthropic`, `minimax-cn`).
+		* @returns the derived reference name (e.g. `MINIMAX_CN_API_KEY`).
+		*/
+		function deriveKeyRef(provider) {
+			return `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
+		}
+		/**
+		* The wire protocols a hand-declared route may name, read out of the owning
+		* namespace's own schema. This stays a schema read rather than a wire field so
+		* the choices the page offers cannot drift from the ones the adapter accepts:
+		* both come from the same `Config`.
+		* @param namespace - the namespace view whose schema declares the profile shape.
+		* @param schema - settings schema operations.
+		* @returns the protocol identifiers, or an empty list when the schema has none.
+		*/
+		function protocolChoices(namespace, schema) {
+			if (namespace === void 0) return [];
+			const list = schema.nodeAtPath(schema.rehydrate(namespace.schema), [
+				"providers",
+				PROBE_ROUTE,
+				"api"
+			]);
+			if (list?.type !== "union" || list.list === void 0) return [];
+			return list.list.map((entry) => entry.value).filter((value) => typeof value === "string");
+		}
+		/** The credential reference a resolved profile names (its `apiKeyEnv` field). */
+		function apiKeyEnvOf(namespace, path, schema) {
+			if (namespace === void 0) return void 0;
+			const profile = schema.getPath(namespace.value, path);
+			if (typeof profile !== "object" || profile === null) return void 0;
+			const ref = profile.apiKeyEnv;
+			return typeof ref === "string" && ref.length > 0 ? ref : void 0;
+		}
+		/** The models settings page controller (one per settings surface). */
+		var ModelsSettingsStore = class {
+			ctx;
+			schema;
+			describeFace;
+			/** The snapshot the section renders from (uSES-safe store). */
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
+				status: "idle",
+				error: null,
+				credentialError: null,
+				writable: false,
+				rows: [],
+				namespaces: /* @__PURE__ */ new Map()
+			});
+			/** Latest load wins; an older response never overwrites a newer one. */
+			generation = 0;
+			/**
+			* @param ctx - the page plugin's context, whose `remote.llm` and
+			* `remote.credentials` namespaces carry the directory and credential reads.
+			* @param schema - settings-owned schema and immutable path operations.
+			* @param describeFace - the shared mirror's describe face (namespace views and writability).
+			*/
+			constructor(ctx, schema, describeFace) {
+				this.ctx = ctx;
+				this.schema = schema;
+				this.describeFace = describeFace;
+			}
+			/**
+			* Refresh the whole page snapshot: the provider directory and the mirror's
+			* settings answer in parallel, then one batched credential describe over
+			* every referenced ref. Provider failure or absence of an initial settings
+			* answer keeps the last good rows and surfaces an error; a failed settings
+			* refresh reuses the mirror's held view.
+			* @returns nothing; the snapshot carries the outcome.
+			*/
+			async load() {
+				const generation = ++this.generation;
+				this.store.update((s) => {
+					s.status = "loading";
+					s.error = null;
+				});
+				const [registered, declared] = await Promise.all([
+					this.ctx.remote.llm.listProviders(),
+					this.ctx.remote.llm.listConfigurableProviders(),
+					this.describeFace.ensure()
+				]);
+				if (!registered.ok) {
+					this.failLoad(generation, registered.error.message);
+					return;
+				}
+				if (!declared.ok) {
+					this.failLoad(generation, declared.error.message);
+					return;
+				}
+				const mirrored = this.describeFace.getSnapshot();
+				if (mirrored.view === void 0) {
+					this.failLoad(generation, mirrored.error ?? "settings are unavailable in this browser");
+					return;
+				}
+				const providers = joinProviderDirectory(registered.value, declared.value);
+				const writable = mirrored.view.writable;
+				const views = mirrored.view.namespaces;
+				const namespaces = new Map(views.map((view) => [view.ns, view]));
+				const rows = providers.map((entry) => {
+					const namespace = namespaces.get(entry.settingsNs);
+					return {
+						entry,
+						configured: namespace !== void 0 && (entry.settingsPath.length === 0 || this.schema.getPath(namespace.value, entry.settingsPath) !== void 0),
+						removable: namespace !== void 0 && entry.settingsPath.length > 0 && this.schema.hasPath(namespace.user, entry.settingsPath) && !this.schema.hasPath(namespace.base, entry.settingsPath),
+						apiKeyEnv: entry.provider === "deepseek-account" ? void 0 : apiKeyEnvOf(namespace, entry.settingsPath, this.schema),
+						credential: void 0
+					};
+				});
+				if (rows.some((row) => row.entry.provider === "deepseek-account")) {
+					const catalog = await this.ctx.remote.session.modelCatalog();
+					for (const row of rows) if (row.entry.provider === "deepseek-account") row.accountAvailable = catalog.ok && catalog.value.groups.some((group) => group.id === "deepseek-account" && group.models.length > 0);
+				}
+				const refs = [...new Set(rows.filter((row) => row.entry.provider !== "deepseek-account").map((row) => row.apiKeyEnv ?? deriveKeyRef(row.entry.provider)))];
+				let credentials = {};
+				let credentialError = null;
+				if (refs.length > 0) {
+					const response = await this.ctx.remote.credentials.describe(refs);
+					if (response.ok) credentials = response.value;
+					else credentialError = response.error.message;
+				}
+				if (generation !== this.generation) return;
+				this.store.update((s) => {
+					s.status = "ready";
+					s.error = null;
+					s.credentialError = credentialError;
+					s.writable = writable;
+					s.rows = rows.filter((row) => row.entry.provider !== "deepseek-account" || row.accountAvailable === true).map((row) => {
+						if (row.entry.provider === "deepseek-account") return row;
+						const named = row.apiKeyEnv === void 0 ? void 0 : credentials[row.apiKeyEnv];
+						const derived = row.apiKeyEnv !== void 0 ? void 0 : credentials[deriveKeyRef(row.entry.provider)];
+						return {
+							...row,
+							...named === void 0 ? {} : { credential: named },
+							...derived === void 0 ? {} : { derivedCredential: derived }
+						};
+					});
+					s.namespaces = namespaces;
+				});
+			}
+			/** Publish one load's failure text, unless a newer load already took over. */
+			failLoad(generation, message) {
+				if (generation !== this.generation) return;
+				this.store.update((s) => {
+					s.status = "error";
+					s.error = message;
+				});
+			}
+		};
+		/**
+		* Whether a joined row can serve model requests as it stands: the route is
+		* registered with the adapter registry, and whatever credential its resolved
+		* profile names is stored. A profile naming no reference authenticates through
+		* the provider's own path (the Bedrock chain, Vertex ADC, a gateway that needs
+		* nothing), as does a live route with no settings address at all, so neither
+		* owes this page a key.
+		* @param row - one joined provider row.
+		* @returns whether the user already has this provider to talk to.
+		*/
+		function providerUsable(row) {
+			if (!row.entry.active) return false;
+			if (row.entry.provider === "deepseek-account") return row.accountAvailable === true;
+			if (row.apiKeyEnv === void 0) return true;
+			return row.credential?.configured === true;
+		}
+		/**
+		* Project first-run readiness from the provider/settings/credential join used
+		* by the Models page. The step exists to leave the user with a model to talk
+		* to, so ANY usable provider ends it; only when none exists does the official
+		* DeepSeek route — the one route the prompt can offer a key field for — decide
+		* whether prompting can help. A missing official configurable-provider
+		* declaration means the adapter is not repairable by navigating to Models.
+		* @param state - current shared Models join snapshot.
+		* @returns the onboarding state without reading a parallel fact source.
+		*/
+		function onboardingReadiness(state) {
+			if ((state.status === "idle" || state.status === "loading") && state.rows.length === 0) return { kind: "loading" };
+			if (state.status === "error") return {
+				kind: "unavailable",
+				reason: "load-failed"
+			};
+			if (state.rows.some(providerUsable)) return { kind: "provider-ready" };
+			const row = state.rows.find((candidate) => candidate.entry.provider === "deepseek-official" && candidate.entry.settingsNs === "llm-deepseek" && candidate.entry.settingsPath.length === 0);
+			if (row === void 0) return { kind: "adapter-absent" };
+			if (!row.entry.active) return {
+				kind: "unavailable",
+				reason: "provider-inactive"
+			};
+			if (state.credentialError !== null || row.credential === void 0) return {
+				kind: "unavailable",
+				reason: "credentials-unavailable"
+			};
+			if (!state.writable) return {
+				kind: "unavailable",
+				reason: "settings-read-only"
+			};
+			if (!row.credential.writable) return {
+				kind: "unavailable",
+				reason: "credential-read-only"
+			};
+			return { kind: "credential-missing" };
+		}
+		//#endregion
+		//#region lib/types/client/protocol-label.js
+		/**
+		* Product names for the wire protocols a pi-ai route may speak. The pickers
+		* show these instead of the schema identifiers (`openai-completions`), which
+		* are what `settings.yaml` carries and what the option values stay.
+		*/
+		/** The protocols this page names, keyed by their schema identifier. */
+		const PROTOCOL_LABEL_KEYS = {
+			"openai-completions": "protocolOpenAiCompletions",
+			"openai-responses": "protocolOpenAiResponses",
+			"anthropic-messages": "protocolAnthropicMessages"
+		};
+		/**
+		* The picker text for one protocol identifier.
+		* @param t - section copy.
+		* @param protocol - the schema identifier of the protocol.
+		* @returns the product name this page knows the protocol by; a protocol the
+		* adapter adds before this page names it shows its identifier, the spelling
+		* `settings.yaml` needs anyway.
+		*/
+		function protocolLabel(t, protocol) {
+			const key = PROTOCOL_LABEL_KEYS[protocol];
+			return key === void 0 ? protocol : t(key);
+		}
+		//#endregion
 		//#region lib/types/client/CustomProviderCard.js
 		/**
 		* The card that declares a provider pi-ai does not ship — an OpenAI-compatible
 		* gateway, a self-hosted server, or a provider newer than the installed
 		* catalog.
 		*
-		* This is a create, not an edit, which is why it is its own card rather than
+		* This is a create, not an edit, which is why it is its own form rather than
 		* the provider editor with extra fields: the route id is being *chosen* here,
-		* and the settings address does not exist until it is. One `settings.mutate`
-		* sets the whole profile at `providers.<route>`; the key travels separately
-		* through `credentials/set` under the reference the profile records, exactly as
-		* an existing provider's key does.
+		* and the settings address does not exist until it is. It renders as the
+		* custom-API panel of the section's add card; the card's mode switch names it
+		* when both modes are offered, and with the custom mode alone the card shows
+		* this form directly. One `settings.mutate` sets the whole profile at
+		* `providers.<route>`; the key travels separately through `credentials/set`
+		* under the reference the profile records, exactly as an existing provider's
+		* key does.
 		*
 		* The three fields a hand-declared route cannot default — endpoint, protocol,
 		* and at least one model — are required here rather than at load, so the
@@ -1124,13 +1194,21 @@ window.__ModuleLoader__.load({
 		* credential seam with a raw regular expression the user cannot act on.
 		*/
 		const ROUTE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+		function isHttpUrl(value) {
+			try {
+				const protocol = new URL(value).protocol;
+				return protocol === "http:" || protocol === "https:";
+			} catch {
+				return false;
+			}
+		}
 		/**
 		* Render the custom-provider creation card.
 		* @param props - existing routes, protocol choices, wire faces, and copy.
 		* @returns the creation card.
 		*/
 		function CustomProviderCard(props) {
-			const { taken, protocols, api, t } = props;
+			const { taken, protocols, operations, t, onBusyChange } = props;
 			const [openedAt] = (0, react.useState)(() => props.revision);
 			const [route, setRoute] = (0, react.useState)("");
 			const [displayName, setDisplayName] = (0, react.useState)("");
@@ -1139,6 +1217,14 @@ window.__ModuleLoader__.load({
 			const [keyDraft, setKeyDraft] = (0, react.useState)("");
 			const [models, setModels] = (0, react.useState)([]);
 			const [busy, setBusy] = (0, react.useState)(false);
+			const [listBusy, setListBusy] = (0, react.useState)(false);
+			(0, react.useEffect)(() => {
+				onBusyChange?.(busy || listBusy);
+			}, [
+				busy,
+				listBusy,
+				onBusyChange
+			]);
 			const [failure, setFailure] = (0, react.useState)(void 0);
 			/**
 			* The profile write landed. Only the key write can still be outstanding, so
@@ -1151,11 +1237,13 @@ window.__ModuleLoader__.load({
 			const profileDisabled = disabled || committed;
 			const routeInvalid = route.length > 0 && !ROUTE_PATTERN.test(route);
 			const routeTaken = taken.includes(route);
+			const normalizedBaseURL = baseURL.trim();
+			const baseUrlInvalid = baseURL.length > 0 && !isHttpUrl(normalizedBaseURL);
 			const modelFailure = validateDeepSeekModels(models);
 			const keyFailure = apiKeyFailure(keyDraft);
 			const keyValue = keyDraft.trim();
-			const ready = route.length > 0 && !routeInvalid && !routeTaken && baseURL.length > 0 && models.length > 0 && modelFailure === void 0 && keyFailure === void 0;
-			const hint = failure !== void 0 || ready || keyFailure !== void 0 || route.length === 0 || routeInvalid || routeTaken ? void 0 : baseURL.length === 0 ? t("customNeedsBaseUrl") : modelFailure !== void 0 ? `${t("model")} ${String(modelFailure.index + 1)}: ${t(modelFailure.key)}` : t("customNeedsModels");
+			const ready = route.length > 0 && !routeInvalid && !routeTaken && normalizedBaseURL.length > 0 && !baseUrlInvalid && models.length > 0 && modelFailure === void 0 && keyFailure === void 0;
+			const hint = failure !== void 0 || ready || keyFailure !== void 0 || route.length === 0 || routeInvalid || routeTaken || baseUrlInvalid ? void 0 : normalizedBaseURL.length === 0 ? t("customNeedsBaseUrl") : modelFailure !== void 0 ? `${t("model")} ${String(modelFailure.index + 1)}: ${t(modelFailure.key)}` : t("customNeedsModels");
 			/** Perform the create, returning a failure message or undefined. */
 			const createOnce = async () => {
 				const keyRef = deriveKeyRef(route);
@@ -1165,20 +1253,20 @@ window.__ModuleLoader__.load({
 						...displayName.length === 0 ? {} : { displayName },
 						...storesKey ? { apiKeyEnv: keyRef } : {},
 						api: protocol,
-						baseURL,
+						baseURL: normalizedBaseURL,
 						models: models.map((model) => ({ ...model }))
 					};
-					const response = await api.settings.mutate(NS$1, [{
+					const written = await operations.writeSettings(NS$1, [{
 						op: "set",
 						path: ["providers", route],
 						value: profile
 					}], openedAt);
-					if (!response.ok) return response.error.message;
+					if (written.kind !== "written") return written.kind === "conflict" ? t("conflict") : written.message;
 					setCommitted(true);
 				}
 				if (storesKey) {
-					const stored = await api.credentials.set(keyRef, keyValue);
-					if (!stored.ok) return stored.error.message;
+					const stored = await operations.storeCredential(keyRef, keyValue);
+					if (stored !== void 0) return stored;
 				}
 			};
 			const create = async () => {
@@ -1191,8 +1279,6 @@ window.__ModuleLoader__.load({
 						return;
 					}
 					props.onClose(true);
-				} catch (error) {
-					setFailure(messageOf(error));
 				} finally {
 					setBusy(false);
 				}
@@ -1200,13 +1286,6 @@ window.__ModuleLoader__.load({
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: ModelsSection_module_css_default["editor"],
 				children: [
-					(0, react_jsx_runtime.jsx)("div", {
-						className: ModelsSection_module_css_default["editorHeader"],
-						children: (0, react_jsx_runtime.jsx)("span", {
-							className: ModelsSection_module_css_default["editorTitle"],
-							children: t("customTitle")
-						})
-					}),
 					(0, react_jsx_runtime.jsxs)("div", {
 						className: ModelsSection_module_css_default["field"],
 						children: [(0, react_jsx_runtime.jsx)("span", {
@@ -1257,14 +1336,19 @@ window.__ModuleLoader__.load({
 							className: ModelsSection_module_css_default["input"],
 							type: "text",
 							value: baseURL,
-							placeholder: t("customBaseUrlPlaceholder"),
+							placeholder: t(protocol === "anthropic-messages" ? "customAnthropicBaseUrlPlaceholder" : "customBaseUrlPlaceholder"),
 							"aria-label": t("baseUrl"),
+							"aria-invalid": baseUrlInvalid,
 							disabled: profileDisabled,
 							onChange: (event) => {
 								setBaseURL(event.target.value);
 							}
 						})]
 					}),
+					baseUrlInvalid ? (0, react_jsx_runtime.jsx)("p", {
+						className: ModelsSection_module_css_default["error"],
+						children: t("customBaseUrlInvalid")
+					}) : null,
 					(0, react_jsx_runtime.jsxs)("div", {
 						className: ModelsSection_module_css_default["field"],
 						children: [(0, react_jsx_runtime.jsx)("span", {
@@ -1280,7 +1364,7 @@ window.__ModuleLoader__.load({
 							},
 							children: protocols.map((choice) => (0, react_jsx_runtime.jsx)("option", {
 								value: choice,
-								children: choice
+								children: protocolLabel(t, choice)
 							}, choice))
 						})]
 					}),
@@ -1294,7 +1378,7 @@ window.__ModuleLoader__.load({
 							(0, react_jsx_runtime.jsx)("input", {
 								className: ModelsSection_module_css_default["input"],
 								type: "password",
-								autoComplete: "off",
+								autoComplete: "new-password",
 								value: keyDraft,
 								placeholder: t("keyPlaceholder"),
 								"aria-label": t("keyInput"),
@@ -1314,14 +1398,15 @@ window.__ModuleLoader__.load({
 						onChange: setModels,
 						probe: {
 							settingsNs: NS$1,
-							baseURL,
+							baseURL: normalizedBaseURL,
 							api: protocol,
 							...keyValue.length === 0 ? {} : { apiKey: keyValue }
 						},
-						probeBlocked: keyFailure === "keyBlank" ? "keyBlankNew" : keyFailure,
-						api,
+						probeBlocked: baseUrlInvalid ? "customBaseUrlInvalid" : keyFailure === "keyBlank" ? "keyBlankNew" : keyFailure,
+						operations,
 						t,
-						disabled: profileDisabled
+						disabled: profileDisabled,
+						onBusyChange: setListBusy
 					}),
 					failure !== void 0 ? (0, react_jsx_runtime.jsx)("p", {
 						className: ModelsSection_module_css_default["error"],
@@ -1365,14 +1450,12 @@ window.__ModuleLoader__.load({
 		* Reasoning effort is deliberately absent: it is a per-MODEL capability, and
 		* the models under one provider disagree about it, so a provider-scoped
 		* control can only be set to a value some of them reject. The composer's
-		* model picker offers each model its own levels; `settings.yaml` keeps the
+		* model picker offers each model its own levels; `cordis.patch.yml` keeps the
 		* profile field for a deployment that knows its route. Everything else stays
-		* owned by `settings.yaml`. Profile edits land as minimal `settings.mutate`
+		* owned by `cordis.patch.yml`. Profile edits land as minimal `settings.mutate`
 		* path ops against the stored section — the card names only the fields it can
 		* see instead of rebuilding the whole subtree from a partial descriptor.
 		*/
-		/** The public DeepSeek endpoint shown as the deepseek base-URL placeholder. */
-		const DEEPSEEK_PUBLIC_BASE_URL = "https://api.deepseek.com";
 		/** A user-section subtree as a plain draft object (absent → empty). */
 		function draftAt(schema, namespace, path) {
 			const subtree = schema.getPath(namespace.user, path);
@@ -1424,11 +1507,20 @@ window.__ModuleLoader__.load({
 		* @returns the editor card.
 		*/
 		function ProviderEditor(props) {
-			const { namespace, schema, settingsPath, api, t } = props;
+			const { namespace, schema, settingsPath, operations, t } = props;
 			const [draft, setDraft] = (0, react.useState)(() => draftAt(schema, namespace, settingsPath));
 			const [keyDraft, setKeyDraft] = (0, react.useState)("");
 			const [keyState, setKeyState] = (0, react.useState)(void 0);
 			const [busy, setBusy] = (0, react.useState)(false);
+			const [listBusy, setListBusy] = (0, react.useState)(false);
+			const { onBusyChange } = props;
+			(0, react.useEffect)(() => {
+				onBusyChange?.(busy || listBusy);
+			}, [
+				busy,
+				listBusy,
+				onBusyChange
+			]);
 			const [failure, setFailure] = (0, react.useState)(void 0);
 			const [committedOriginal, setCommittedOriginal] = (0, react.useState)(() => schema.getPath(namespace.user, settingsPath));
 			const [expectedRevision, setExpectedRevision] = (0, react.useState)(() => namespace.revision);
@@ -1440,7 +1532,8 @@ window.__ModuleLoader__.load({
 			]);
 			const fallback = schema.getPath(namespace.value, settingsPath);
 			const disabled = props.readOnly || busy;
-			const layout = layoutOf(namespace.ns);
+			const accountProvider = props.provider === "deepseek-account";
+			const layout = accountProvider ? "deepseek" : layoutOf(namespace.ns);
 			const keyRef = refFor(schema, namespace, settingsPath, props.provider);
 			const protocols = (0, react.useMemo)(() => layout === "pi-ai" ? protocolChoices(namespace, schema) : [], [
 				layout,
@@ -1448,16 +1541,21 @@ window.__ModuleLoader__.load({
 				schema
 			]);
 			(0, react.useEffect)(() => {
+				if (accountProvider) return;
 				let stale = false;
 				setKeyState(void 0);
-				api.credentials.describe([keyRef]).then((response) => {
-					if (stale || !response.ok) return;
-					setKeyState(response.value[keyRef]);
-				}, () => void 0);
+				operations.describeCredential(keyRef).then((described) => {
+					if (stale) return;
+					setKeyState(described);
+				});
 				return () => {
 					stale = true;
 				};
-			}, [api.credentials, keyRef]);
+			}, [
+				operations,
+				keyRef,
+				accountProvider
+			]);
 			const stringAt = (source, key) => {
 				const value = schema.getPath(source, [key]);
 				return typeof value === "string" && value.trim().length > 0 ? value : void 0;
@@ -1505,15 +1603,15 @@ window.__ModuleLoader__.load({
 					value: {}
 				}] : pathOps(settingsPath, committedOriginal, next);
 				if (ops.length > 0) {
-					const response = await api.settings.mutate(ns, ops, expectedRevision);
-					if (!response.ok) return response.error.code === "settings-conflict" ? t("conflict") : response.error.message;
-					setCommittedOriginal(schema.getPath(response.value.user, settingsPath));
-					setExpectedRevision(response.value.revision);
+					const written = await operations.writeSettings(ns, ops, expectedRevision);
+					if (written.kind !== "written") return written.kind === "conflict" ? t("conflict") : written.message;
+					setCommittedOriginal(schema.getPath(written.view.user, settingsPath));
+					setExpectedRevision(written.view.revision);
 					setDraft(next);
 				}
 				if (keyValue.length > 0) {
-					const stored = await api.credentials.set(keyRef, keyValue);
-					if (!stored.ok) return stored.error.message;
+					const stored = await operations.storeCredential(keyRef, keyValue);
+					if (stored !== void 0) return stored;
 				}
 				setKeyDraft("");
 			};
@@ -1527,8 +1625,6 @@ window.__ModuleLoader__.load({
 						return;
 					}
 					props.onClose(true);
-				} catch (error) {
-					setFailure(messageOf(error));
 				} finally {
 					setBusy(false);
 				}
@@ -1564,6 +1660,7 @@ window.__ModuleLoader__.load({
 				const models = modelDrafts(modelsOverridden ? customModels : inheritedModels());
 				const defaultContextWindow = schema.getPath(fallback, ["defaultContextWindow"]);
 				const defaultMaxTokens = schema.getPath(fallback, ["maxTokens"]);
+				const defaultInput = schema.getPath(fallback, ["defaultInput"]);
 				const keyPlaceholder = keyLocked ? t("keyEnvLocked") : keyState?.configured === true && props.credentialRequired !== true ? t("keyStored") : family === "pi-ai" ? t("keyPlaceholderNative") : t("keyPlaceholder");
 				/** What both family editors take: the rows, whose layer owns them, and the two writes. */
 				const catalogProps = {
@@ -1578,6 +1675,11 @@ window.__ModuleLoader__.load({
 						setDraft((current) => schema.deletePath(current, ["models"]));
 					}
 				};
+				if (accountProvider) return (0, react_jsx_runtime.jsx)(DeepSeekModelsEditor, {
+					...catalogProps,
+					defaultContextWindow: typeof defaultContextWindow === "number" ? defaultContextWindow : void 0,
+					defaultMaxTokens: typeof defaultMaxTokens === "number" ? defaultMaxTokens : void 0
+				});
 				return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {
 					className: ModelsSection_module_css_default["field"],
 					children: [
@@ -1588,7 +1690,7 @@ window.__ModuleLoader__.load({
 						(0, react_jsx_runtime.jsx)("input", {
 							className: ModelsSection_module_css_default["input"],
 							type: "password",
-							autoComplete: "off",
+							autoComplete: "new-password",
 							value: keyDraft,
 							placeholder: keyPlaceholder,
 							"aria-label": t("keyInput"),
@@ -1632,20 +1734,29 @@ window.__ModuleLoader__.load({
 							}) : null,
 							(0, react_jsx_runtime.jsxs)("div", {
 								className: ModelsSection_module_css_default["field"],
-								children: [(0, react_jsx_runtime.jsx)("span", {
-									className: ModelsSection_module_css_default["fieldLabel"],
-									children: t("baseUrl")
-								}), (0, react_jsx_runtime.jsx)("input", {
-									className: ModelsSection_module_css_default["input"],
-									type: "text",
-									value: stringAt(draft, "baseURL") ?? "",
-									placeholder: family === "deepseek" ? DEEPSEEK_PUBLIC_BASE_URL : stringAt(fallback, "baseURL") ?? t("baseUrlDefault"),
-									"aria-label": t("baseUrl"),
-									disabled,
-									onChange: (event) => {
-										setField("baseURL", event.target.value === "" ? void 0 : event.target.value);
-									}
-								})]
+								children: [
+									(0, react_jsx_runtime.jsx)("span", {
+										className: ModelsSection_module_css_default["fieldLabel"],
+										children: t("baseUrl")
+									}),
+									(0, react_jsx_runtime.jsx)("input", {
+										className: ModelsSection_module_css_default["input"],
+										type: "text",
+										value: stringAt(draft, "baseURL") ?? "",
+										placeholder: family === "deepseek" ? t("deepSeekBaseUrl") : stringAt(fallback, "baseURL") ?? t("baseUrlDefault"),
+										"aria-describedby": family === "deepseek" ? `${props.provider}-endpoint-hint` : void 0,
+										"aria-label": t("baseUrl"),
+										disabled,
+										onChange: (event) => {
+											setField("baseURL", event.target.value === "" ? void 0 : event.target.value);
+										}
+									}),
+									family === "deepseek" ? (0, react_jsx_runtime.jsx)("span", {
+										id: `${props.provider}-endpoint-hint`,
+										className: ModelsSection_module_css_default["advancedHint"],
+										children: t("deepSeekEndpointHint")
+									}) : null
+								]
 							}),
 							ownsIdentity ? (0, react_jsx_runtime.jsxs)("div", {
 								className: ModelsSection_module_css_default["field"],
@@ -1665,7 +1776,7 @@ window.__ModuleLoader__.load({
 										children: t("customApiUnset")
 									}) : null, protocols.map((choice) => (0, react_jsx_runtime.jsx)("option", {
 										value: choice,
-										children: choice
+										children: protocolLabel(t, choice)
 									}, choice))]
 								})]
 							}) : null,
@@ -1675,9 +1786,12 @@ window.__ModuleLoader__.load({
 								defaultMaxTokens: typeof defaultMaxTokens === "number" ? defaultMaxTokens : void 0
 							}) : (0, react_jsx_runtime.jsx)(ModelListEditor, {
 								...catalogProps,
+								catalogProvider: props.declared === true ? void 0 : props.provider,
+								defaultInput: Array.isArray(defaultInput) ? defaultInput : void 0,
 								probe,
 								probeBlocked: keyFailure,
-								api
+								operations,
+								onBusyChange: setListBusy
 							})
 						]
 					})]
@@ -1719,6 +1833,7 @@ window.__ModuleLoader__.load({
 							props.onClose(false);
 						},
 						onSubmit: () => {
+							props.onSubmitCredential?.();
 							apply();
 						}
 					})
@@ -1730,15 +1845,24 @@ window.__ModuleLoader__.load({
 		/**
 		* Models settings section: the provider rows joined from the configurable
 		* directory, settings namespaces, and credential states, with one editor
-		* card at a time. Rows expose only confirmed API-key state through accessible
+		* card at a time. Rows retain the account-first order supplied by the store
+		* and expose only confirmed API-key state through accessible
 		* solid configured or missing dots. A whole-section provider without a
 		* configured key renders as its open setup card instead of a row, but only in
 		* the first-run posture — no provider on the page can serve requests yet — and
-		* only until the user closes that card; the add flow is a card carrying the
-		* dormant-provider select. Each card kind owns its own open state, so closing
-		* one never discards a draft in another. Every mutation writes through the
-		* wire, while a provider removal first requires confirmation; the page
-		* re-renders from pushed invalidations or the post-apply reload.
+		* only until the user closes that card. The add flow is one card behind one
+		* button: a mode switch chooses between adopting a dormant directory provider
+		* (the catalog select over the provider editor) and declaring a custom model
+		* API (the create form). A panel mounts the first time its mode is shown and
+		* stays mounted, hidden, while the card is open and its mode stays offered,
+		* so switching modes discards neither draft and an unvisited mode costs
+		* nothing; the switch holds still while either panel has a write or an
+		* endpoint interrogation in flight, since a switch underneath one would
+		* orphan the answer. Each card kind owns its own open state, so closing one
+		* never discards a draft in another. Every
+		* mutation writes through the wire, while a provider removal first requires
+		* confirmation; the page re-renders from pushed invalidations or the
+		* post-apply reload.
 		*/
 		/** Render an editor for either the setup posture or an expanded provider row. */
 		function renderProviderEditor({ target, ...props }) {
@@ -1756,25 +1880,21 @@ window.__ModuleLoader__.load({
 		* and the whole operation safely retryable; both unsets are idempotent.
 		* The settings removal names the profile rather than rebuilding its whole
 		* namespace from a partial view.
-		* @param api - settings and credential wire faces.
+		* @param operations - the page's Host operations.
 		* @param controller - the page store to refresh.
 		* @param target - the provider's settings address and optional managed credential.
 		* @returns the failure message, or undefined once the write and reload landed.
 		*/
-		async function removeProviderProfile(api, controller, target) {
-			try {
-				if (target.credentialRef !== void 0) {
-					const credential = await api.credentials.unset(target.credentialRef);
-					if (!credential.ok) return credential.error.message;
-				}
-				const response = await api.settings.mutate(target.settingsNs, [{
-					op: "unset",
-					path: [...target.settingsPath]
-				}], void 0);
-				if (!response.ok) return response.error.message;
-			} catch (error) {
-				return messageOf(error);
+		async function removeProviderProfile(operations, controller, target) {
+			if (target.credentialRef !== void 0) {
+				const credential = await operations.removeCredential(target.credentialRef);
+				if (credential !== void 0) return credential;
 			}
+			const written = await operations.writeSettings(target.settingsNs, [{
+				op: "unset",
+				path: [...target.settingsPath]
+			}], void 0);
+			if (written.kind !== "written") return written.message;
 			await controller.load();
 		}
 		/**
@@ -1787,7 +1907,7 @@ window.__ModuleLoader__.load({
 		* @returns whether to render the setup card.
 		*/
 		function needsSetup(row, anyUsable) {
-			if (anyUsable) return false;
+			if (anyUsable || row.entry.provider === "deepseek-account") return false;
 			if (row.entry.settingsPath.length > 0) return false;
 			return row.credential?.configured !== true;
 		}
@@ -1827,13 +1947,13 @@ window.__ModuleLoader__.load({
 		* @returns the section, or null while the shell has not injected yet.
 		*/
 		function ModelsSection(props) {
-			const { controller, useSnapshot, api, schema, t, renderSlot } = props;
-			if (controller === void 0 || useSnapshot === void 0 || api === void 0 || schema === void 0 || t === void 0) return null;
+			const { controller, useSnapshot, operations, schema, t, renderSlot } = props;
+			if (controller === void 0 || useSnapshot === void 0 || operations === void 0 || schema === void 0 || t === void 0) return null;
 			return (0, react_jsx_runtime.jsx)(Loaded, {
 				injected: {
 					controller,
 					useSnapshot,
-					api,
+					operations,
 					schema,
 					t
 				},
@@ -1841,33 +1961,61 @@ window.__ModuleLoader__.load({
 			});
 		}
 		function Loaded({ injected, renderSlot }) {
-			const { controller, api, schema, t } = injected;
-			const state = injected.useSnapshot((snapshot) => snapshot);
+			const { controller, operations, schema, t } = injected;
+			const snapshot = injected.useSnapshot((value) => value);
+			const state = {
+				...snapshot,
+				rows: snapshot.rows.map((row) => row.entry.provider === "deepseek-account" ? {
+					...row,
+					entry: {
+						...row.entry,
+						displayName: t("deepSeekAccount")
+					}
+				} : row)
+			};
 			const [editing, setEditing] = (0, react.useState)(void 0);
-			const [adding, setAdding] = (0, react.useState)(false);
+			const [addOpen, setAddOpen] = (0, react.useState)(false);
+			const [addMode, setAddMode] = (0, react.useState)("catalog");
+			/** The modes shown since the add card opened; each keeps its panel mounted. */
+			const [visited, setVisited] = (0, react.useState)(() => /* @__PURE__ */ new Set());
+			/** Whether each add panel has a write or an interrogation in flight. */
+			const [catalogBusy, setCatalogBusy] = (0, react.useState)(false);
+			const [customBusy, setCustomBusy] = (0, react.useState)(false);
+			/** Base of the add card's tab and panel ids. */
+			const addId = (0, react.useId)();
 			const [deleteTarget, setDeleteTarget] = (0, react.useState)(void 0);
 			const [deleting, setDeleting] = (0, react.useState)(false);
 			const [deleteFailure, setDeleteFailure] = (0, react.useState)(void 0);
 			const [savedTarget, setSavedTarget] = (0, react.useState)(void 0);
-			const [declaring, setDeclaring] = (0, react.useState)(false);
 			const [dismissedSetup, setDismissedSetup] = (0, react.useState)(() => /* @__PURE__ */ new Set());
 			const announceSaved = (target) => {
 				controller.load().then(() => {
 					setSavedTarget(target);
 				});
 			};
-			const closeEditor = (changed, target) => {
+			/**
+			* Close the add card whole. The catalog target is forgotten with it, since
+			* `editing` doubles as the row editor's target once the card is closed and a
+			* refresh could otherwise open the row of a provider the draft never saved.
+			* The busy flags reset here because a panel that closes itself on success
+			* unmounts before it can report idle.
+			*/
+			const closeAdd = () => {
 				setEditing(void 0);
-				setAdding(false);
-				setDeclaring(false);
+				setAddOpen(false);
+				setCatalogBusy(false);
+				setCustomBusy(false);
+			};
+			const closeEditor = (changed, target) => {
+				closeAdd();
 				if (changed) announceSaved(target);
 			};
 			/**
-			* Close a setup card, which owns none of the state above: the row-editor,
-			* add, and declare cards each own one of those, so clearing them here would
-			* discard a draft the user opened beside this card. Dismissal is this card's
-			* own — the provider falls back to an ordinary row for the rest of the
-			* session, and reopens through Edit.
+			* Close a setup card, which owns none of the state above: the row-editor
+			* and add cards each own one of those, so clearing them here would discard
+			* a draft the user opened beside this card. Dismissal is this card's own —
+			* the provider falls back to an ordinary row for the rest of the session,
+			* and reopens through Edit.
 			*/
 			const closeSetup = (changed, target) => {
 				setDismissedSetup((previous) => new Set([...previous, target.provider]));
@@ -1883,7 +2031,7 @@ window.__ModuleLoader__.load({
 				if (deleteTarget === void 0 || deleting) return;
 				setDeleting(true);
 				setDeleteFailure(void 0);
-				removeProviderProfile(api, controller, deleteTarget).then((failure) => {
+				removeProviderProfile(operations, controller, deleteTarget).then((failure) => {
 					if (failure !== void 0) {
 						setDeleteFailure(failure);
 						return;
@@ -1919,11 +2067,38 @@ window.__ModuleLoader__.load({
 			};
 			const anyUsable = state.rows.some(providerUsable);
 			const configured = state.rows.filter((row) => row.configured);
-			const addable = state.rows.filter((row) => !row.configured && row.entry.settingsNs !== "");
-			const addTarget = adding ? editing : void 0;
-			const addNamespace = addTarget === void 0 ? void 0 : state.namespaces.get(addTarget.settingsNs);
-			const addRow = addTarget === void 0 ? void 0 : state.rows.find((row) => row.entry.provider === addTarget.provider);
-			const protocols = protocolChoices(state.namespaces.get("llm-pi-ai"), schema);
+			const configurable = state.rows.filter((row) => state.namespaces.has(row.entry.settingsNs));
+			const addable = state.rows.flatMap((row) => {
+				const namespace = state.namespaces.get(row.entry.settingsNs);
+				return namespace === void 0 || row.configured ? [] : [{
+					row,
+					namespace
+				}];
+			});
+			const piAi = state.namespaces.get("llm-pi-ai");
+			const protocols = protocolChoices(piAi, schema);
+			const catalogOffered = configurable.length > 0;
+			const catalogEnabled = addable.length > 0;
+			const customOffered = piAi !== void 0;
+			const customEnabled = protocols.length > 0;
+			const bothOffered = catalogOffered && customOffered;
+			const mode = bothOffered ? addMode : customOffered ? "custom" : "catalog";
+			const mounted = (candidate) => mode === candidate || visited.has(candidate);
+			const switchLocked = catalogBusy || customBusy;
+			const draft = (() => {
+				if (!addOpen || !catalogOffered) return void 0;
+				const kept = editing === void 0 ? void 0 : state.namespaces.get(editing.settingsNs);
+				if (editing !== void 0 && kept !== void 0) return {
+					target: editing,
+					namespace: kept
+				};
+				const first = addable[0];
+				return first === void 0 ? void 0 : {
+					target: targetOf(first.row),
+					namespace: first.namespace
+				};
+			})();
+			const addRow = draft === void 0 ? void 0 : state.rows.find((row) => row.entry.provider === draft.target.provider);
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: ModelsSection_module_css_default["section"],
 				children: [
@@ -1952,25 +2127,34 @@ window.__ModuleLoader__.load({
 							const namespace = state.namespaces.get(target.settingsNs);
 							/* v8 ignore next -- the join marks a row configured only when its namespace resolved */
 							if (namespace === void 0) return null;
+							const error = row.entry.error === void 0 ? null : (0, react_jsx_runtime.jsx)("p", {
+								role: "alert",
+								className: ModelsSection_module_css_default["error"],
+								children: row.entry.error
+							});
 							if (needsSetup(row, anyUsable) && !dismissedSetup.has(row.entry.provider)) return (0, react_jsx_runtime.jsxs)("li", {
 								className: ModelsSection_module_css_default["setupCard"],
-								children: [renderProviderEditor({
-									target,
-									namespace,
-									schema,
-									api,
-									t,
-									readOnly: !state.writable,
-									onClose: (changed) => {
-										closeSetup(changed, target);
-									}
-								}), renderSlot("settings.models.provider-card", {
-									provider: row.entry,
-									configured: row.configured,
-									keyConfigured: keyConfiguredOf(row)
-								}, { entryKey: row.entry.settingsNs })]
+								children: [
+									error,
+									renderProviderEditor({
+										target,
+										namespace,
+										schema,
+										operations,
+										t,
+										readOnly: !state.writable,
+										onClose: (changed) => {
+											closeSetup(changed, target);
+										}
+									}),
+									renderSlot("settings.models.provider-card", {
+										provider: row.entry,
+										configured: row.configured,
+										keyConfigured: keyConfiguredOf(row)
+									}, { entryKey: row.entry.settingsNs })
+								]
 							}, row.entry.provider);
-							const open = !adding && editing?.provider === row.entry.provider;
+							const open = !addOpen && editing?.provider === row.entry.provider;
 							const credentialConfigured = row.credential?.configured === true;
 							const credentialMissing = !credentialConfigured && row.apiKeyEnv !== void 0 && row.credential?.configured === false;
 							return (0, react_jsx_runtime.jsxs)("li", {
@@ -2009,8 +2193,7 @@ window.__ModuleLoader__.load({
 												"aria-label": providerCopy(t("editProvider"), target),
 												onClick: () => {
 													setSavedTarget(void 0);
-													setDeclaring(false);
-													setAdding(false);
+													setAddOpen(false);
 													setEditing(open ? void 0 : target);
 												},
 												children: t("edit")
@@ -2028,6 +2211,7 @@ window.__ModuleLoader__.load({
 											}) : null]
 										})]
 									}),
+									error,
 									renderSlot("settings.models.provider-card", {
 										provider: row.entry,
 										configured: row.configured,
@@ -2037,7 +2221,7 @@ window.__ModuleLoader__.load({
 										target,
 										namespace,
 										schema,
-										api,
+										operations,
 										t,
 										readOnly: !state.writable,
 										onClose: (changed) => {
@@ -2050,94 +2234,136 @@ window.__ModuleLoader__.load({
 					}),
 					(0, react_jsx_runtime.jsx)("div", {
 						className: ModelsSection_module_css_default["addBlock"],
-						children: addTarget !== void 0 && addNamespace !== void 0 ? (0, react_jsx_runtime.jsxs)("div", {
+						children: addOpen ? (0, react_jsx_runtime.jsxs)("div", {
 							className: ModelsSection_module_css_default["addCard"],
 							children: [
 								(0, react_jsx_runtime.jsxs)("div", {
-									className: ModelsSection_module_css_default["field"],
-									children: [(0, react_jsx_runtime.jsx)("span", {
-										className: ModelsSection_module_css_default["fieldLabel"],
-										children: t("provider")
-									}), (0, react_jsx_runtime.jsx)("select", {
-										className: `${ModelsSection_module_css_default["input"]} ${ModelsSection_module_css_default["selectInput"]}`,
-										value: addTarget.provider,
-										"aria-label": t("provider"),
-										onChange: (event) => {
-											const row = addable.find((candidate) => candidate.entry.provider === event.target.value);
-											/* v8 ignore next -- the select only lists addable rows */
-											if (row === void 0) return;
-											setEditing(targetOf(row));
-										},
-										children: addable.map((row) => (0, react_jsx_runtime.jsx)("option", {
-											value: row.entry.provider,
-											children: row.entry.displayName
-										}, row.entry.provider))
+									className: ModelsSection_module_css_default["addModes"],
+									children: [bothOffered ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.SegmentedControl, {
+										id: addId,
+										label: t("addMode"),
+										value: mode,
+										disabled: switchLocked,
+										options: [{
+											value: "catalog",
+											label: t("addCatalog"),
+											disabled: !catalogEnabled,
+											...catalogEnabled ? {} : { title: t("addCatalogExhausted") }
+										}, {
+											value: "custom",
+											label: t("addCustom"),
+											disabled: !customEnabled,
+											...customEnabled ? {} : { title: t("addCustomUnavailable") }
+										}],
+										onChange: (next) => {
+											setAddMode(next);
+											setVisited((previous) => new Set([...previous, next]));
+										}
+									}) : (0, react_jsx_runtime.jsx)("div", {
+										className: ModelsSection_module_css_default["editorHeader"],
+										children: (0, react_jsx_runtime.jsx)("span", {
+											className: ModelsSection_module_css_default["editorTitle"],
+											children: t(mode === "catalog" ? "addCatalog" : "addCustom")
+										})
+									}), (0, react_jsx_runtime.jsx)("p", {
+										className: ModelsSection_module_css_default["advancedHint"],
+										children: t(mode === "catalog" ? "addCatalogHint" : "addCustomHint")
 									})]
 								}),
-								(0, react_jsx_runtime.jsx)(ProviderEditor, {
-									provider: addTarget.provider,
-									displayName: addTarget.displayName,
-									hideTitle: true,
-									namespace: addNamespace,
-									schema,
-									settingsPath: addTarget.settingsPath,
-									api,
-									t,
-									readOnly: !state.writable,
-									onClose: (changed) => {
-										closeEditor(changed, addTarget);
-									}
-								}, addTarget.provider),
-								addRow === void 0 ? null : renderSlot("settings.models.provider-card", {
-									provider: addRow.entry,
-									configured: addRow.configured,
-									keyConfigured: keyConfiguredOf(addRow)
-								}, { entryKey: addRow.entry.settingsNs })
+								mounted("catalog") && draft !== void 0 ? (0, react_jsx_runtime.jsxs)("div", {
+									id: `${addId}-catalog-panel`,
+									...bothOffered ? {
+										role: "tabpanel",
+										"aria-labelledby": `${addId}-catalog`
+									} : {},
+									hidden: mode !== "catalog",
+									className: ModelsSection_module_css_default["addPanel"],
+									children: [
+										(0, react_jsx_runtime.jsxs)("div", {
+											className: ModelsSection_module_css_default["field"],
+											children: [(0, react_jsx_runtime.jsx)("span", {
+												className: ModelsSection_module_css_default["fieldLabel"],
+												children: t("provider")
+											}), (0, react_jsx_runtime.jsx)("select", {
+												className: `${ModelsSection_module_css_default["input"]} ${ModelsSection_module_css_default["selectInput"]}`,
+												value: draft.target.provider,
+												"aria-label": t("provider"),
+												disabled: catalogBusy,
+												onChange: (event) => {
+													const picked = addable.find((candidate) => candidate.row.entry.provider === event.target.value);
+													/* v8 ignore next -- the select only lists addable rows */
+													if (picked === void 0) return;
+													setEditing(targetOf(picked.row));
+												},
+												children: addable.map(({ row }) => (0, react_jsx_runtime.jsx)("option", {
+													value: row.entry.provider,
+													children: row.entry.displayName
+												}, row.entry.provider))
+											})]
+										}),
+										(0, react_jsx_runtime.jsx)(ProviderEditor, {
+											provider: draft.target.provider,
+											displayName: draft.target.displayName,
+											hideTitle: true,
+											namespace: draft.namespace,
+											schema,
+											settingsPath: draft.target.settingsPath,
+											operations,
+											t,
+											readOnly: !state.writable,
+											onClose: (changed) => {
+												closeEditor(changed, draft.target);
+											},
+											onBusyChange: setCatalogBusy
+										}, draft.target.provider),
+										addRow === void 0 ? null : renderSlot("settings.models.provider-card", {
+											provider: addRow.entry,
+											configured: addRow.configured,
+											keyConfigured: keyConfiguredOf(addRow)
+										}, { entryKey: addRow.entry.settingsNs })
+									]
+								}) : null,
+								mounted("custom") && piAi !== void 0 ? (0, react_jsx_runtime.jsx)("div", {
+									id: `${addId}-custom-panel`,
+									...bothOffered ? {
+										role: "tabpanel",
+										"aria-labelledby": `${addId}-custom`
+									} : {},
+									hidden: mode !== "custom",
+									className: ModelsSection_module_css_default["addPanel"],
+									children: (0, react_jsx_runtime.jsx)(CustomProviderCard, {
+										taken: state.rows.map((row) => row.entry.provider),
+										protocols,
+										revision: piAi.revision,
+										operations,
+										t,
+										readOnly: !state.writable,
+										onClose: (changed) => {
+											closeAdd();
+											if (changed) controller.load();
+										},
+										onBusyChange: setCustomBusy
+									})
+								}) : null
 							]
-						}) : declaring ? (0, react_jsx_runtime.jsx)("div", {
-							className: ModelsSection_module_css_default["addCard"],
-							children: (0, react_jsx_runtime.jsx)(CustomProviderCard, {
-								taken: state.rows.map((row) => row.entry.provider),
-								protocols,
-								/* v8 ignore next -- the card only opens from a button disabled without this namespace */
-								revision: state.namespaces.get("llm-pi-ai")?.revision ?? 0,
-								api,
-								t,
-								readOnly: !state.writable,
-								onClose: (changed) => {
-									setDeclaring(false);
-									if (changed) controller.load();
-								}
-							})
-						}) : (0, react_jsx_runtime.jsxs)("div", {
+						}) : catalogOffered || customOffered ? (0, react_jsx_runtime.jsx)("div", {
 							className: ModelsSection_module_css_default["addActions"],
-							children: [(0, react_jsx_runtime.jsxs)("button", {
+							children: (0, react_jsx_runtime.jsxs)("button", {
 								type: "button",
 								className: ModelsSection_module_css_default["addButton"],
-								disabled: addable.length === 0 || !state.writable,
+								disabled: !state.writable || !catalogEnabled && !customEnabled,
 								onClick: () => {
 									const first = addable[0];
-									/* v8 ignore next -- the button is disabled while nothing is addable */
-									if (first === void 0) return;
+									const initial = catalogEnabled ? "catalog" : "custom";
 									setSavedTarget(void 0);
-									setDeclaring(false);
-									setAdding(true);
-									setEditing(targetOf(first));
+									setEditing(first === void 0 ? void 0 : targetOf(first.row));
+									setAddMode(initial);
+									setVisited(new Set([initial]));
+									setAddOpen(true);
 								},
-								children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutline16, { size: 14 }), t("add")]
-							}), (0, react_jsx_runtime.jsxs)("button", {
-								type: "button",
-								className: ModelsSection_module_css_default["addButton"],
-								disabled: protocols.length === 0 || !state.writable,
-								onClick: () => {
-									setSavedTarget(void 0);
-									setAdding(false);
-									setEditing(void 0);
-									setDeclaring(true);
-								},
-								children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutline16, { size: 14 }), t("customAdd")]
-							})]
-						})
+								children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), t("add")]
+							})
+						}) : null
 					}),
 					renderSlot("settings.models.footer", {}),
 					(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
@@ -2149,7 +2375,7 @@ window.__ModuleLoader__.load({
 						className: ModelsSection_module_css_default["deleteDialog"],
 						footer: (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
 							variant: "outline",
-							autoFocus: true,
+							"data-modal-autofocus": true,
 							disabled: deleting,
 							onClick: closeDelete,
 							children: t("cancel")
@@ -2169,8 +2395,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-settings-models\src\client\OnboardingModal.module.css.mjs
-		const css$2 = ".Td6Qpq_dialog{width:min(600px,100%);padding:0}.Td6Qpq_content{box-sizing:border-box;flex-direction:column;max-height:calc(100vh - 48px);padding:28px;display:flex;overflow-y:auto}.Td6Qpq_title{color:var(--dsw-alias-label-primary);outline:none;margin:0;font-size:20px;font-weight:500;line-height:28px}.Td6Qpq_body{margin-top:20px}@media (width<=560px){.Td6Qpq_content{padding:24px}}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-models\src\client\OnboardingModal.module.css.mjs
+		const css$2 = ".qo_8fG_dialog{width:min(600px,100%);max-height:100%;padding:0}.qo_8fG_content{box-sizing:border-box;flex-direction:column;min-height:0;padding:28px;display:flex;overflow-y:auto}.qo_8fG_title{color:var(--dsw-alias-label-primary);outline:none;margin:0;font-size:20px;font-weight:500;line-height:28px}.qo_8fG_body{margin-top:20px}@media (width<=560px){.qo_8fG_content{padding:24px}}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-settings-models/OnboardingModal.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2180,10 +2406,10 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var OnboardingModal_module_css_default = {
-			"body": "Td6Qpq_body",
-			"content": "Td6Qpq_content",
-			"dialog": "Td6Qpq_dialog",
-			"title": "Td6Qpq_title"
+			"body": "qo_8fG_body",
+			"content": "qo_8fG_content",
+			"dialog": "qo_8fG_dialog",
+			"title": "qo_8fG_title"
 		};
 		//#endregion
 		//#region lib/types/client/OnboardingModal.js
@@ -2231,8 +2457,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-settings-models\src\client\DeepSeekOnboardingDialog.module.css.mjs
-		const css$1 = ".WaE4cW_description{color:var(--dsw-alias-label-secondary);margin:0;font-size:14px;line-height:24px}.WaE4cW_editor{margin-top:24px}@media (width<=560px){.WaE4cW_editor{margin-top:20px}}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-models\src\client\DeepSeekOnboardingDialog.module.css.mjs
+		const css$1 = "._4WZeAq_description{color:var(--dsw-alias-label-secondary);margin:0;font-size:14px;line-height:24px}._4WZeAq_editor{margin-top:24px}@media (width<=560px){._4WZeAq_editor{margin-top:20px}}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-settings-models/DeepSeekOnboardingDialog.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2242,18 +2468,11 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var DeepSeekOnboardingDialog_module_css_default = {
-			"description": "WaE4cW_description",
-			"editor": "WaE4cW_editor"
+			"description": "_4WZeAq_description",
+			"editor": "_4WZeAq_editor"
 		};
 		//#endregion
 		//#region lib/types/client/DeepSeekOnboardingDialog.js
-		/**
-		* Official-DeepSeek first-run step. Readiness comes from the same
-		* provider/settings/credential join as the Models page: any provider the user
-		* can already talk to ends the step, and only a user with none is offered the
-		* official DeepSeek route. The step reuses that page's credential editor in
-		* the onboarding plugin's shared modal, so the key is entered once.
-		*/
 		/* v8 ignore next 3 -- closed-union defaults only defend future source widening */
 		function assertNever$1(_value) {
 			throw new Error("unexpected DeepSeek onboarding state");
@@ -2265,20 +2484,34 @@ window.__ModuleLoader__.load({
 		* @returns the onboarding modal or null when onboarding needs no intervention.
 		*/
 		function DeepSeekOnboardingDialog(props) {
-			const { complete, controller, useModels, api, schema, t } = props;
+			const { complete, controller, useModels, operations, schema, t, renderSlot, automatic, explicit = false } = props;
+			const [apiKey, setApiKey] = (0, react.useState)(explicit);
 			const state = useModels((snapshot) => snapshot);
 			const readiness = onboardingReadiness(state);
 			(0, react.useEffect)(() => {
-				if (state.status === "idle") controller.load();
-			}, [controller, state.status]);
+				if ((automatic || explicit) && state.status === "idle") controller.load();
+			}, [
+				controller,
+				state.status,
+				automatic,
+				explicit
+			]);
 			(0, react.useEffect)(() => {
-				if (readiness.kind === "adapter-absent" || readiness.kind === "provider-ready" || readiness.kind === "unavailable") complete();
-			}, [complete, readiness.kind]);
+				if (!automatic && !explicit || readiness.kind === "adapter-absent" || !explicit && readiness.kind === "provider-ready" || readiness.kind === "unavailable") complete();
+			}, [
+				complete,
+				readiness.kind,
+				explicit,
+				automatic
+			]);
+			if (!automatic && !explicit) return null;
 			switch (readiness.kind) {
 				case "loading":
 				case "adapter-absent":
-				case "provider-ready":
 				case "unavailable": return null;
+				case "provider-ready":
+					if (!explicit) return null;
+					break;
 				case "credential-missing": break;
 				/* v8 ignore next -- every current readiness variant is handled above */
 				default: return assertNever$1(readiness);
@@ -2294,7 +2527,7 @@ window.__ModuleLoader__.load({
 				}
 				controller.load();
 			};
-			return (0, react_jsx_runtime.jsxs)(OnboardingModal, {
+			const editor = (0, react_jsx_runtime.jsxs)(OnboardingModal, {
 				title: t("onboardingTitle"),
 				children: [(0, react_jsx_runtime.jsx)("p", {
 					className: DeepSeekOnboardingDialog_module_css_default.description,
@@ -2307,11 +2540,14 @@ window.__ModuleLoader__.load({
 						namespace,
 						schema,
 						settingsPath: row.entry.settingsPath,
-						api,
+						operations,
 						t,
 						readOnly: false,
 						hideTitle: true,
 						credentialOnly: true,
+						onSubmitCredential: () => {
+							props.track?.("api_key_save_click", {});
+						},
 						credentialRequired: true,
 						autoFocusCredential: true,
 						cancelLabelKey: "onboardingLater",
@@ -2321,10 +2557,16 @@ window.__ModuleLoader__.load({
 					})
 				})]
 			});
+			return apiKey ? editor : renderSlot("settings.models.sign-in", {
+				complete,
+				useApiKey: () => {
+					setApiKey(true);
+				}
+			}, { fallback: editor });
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-settings-models\src\client\WelcomeNotice.module.css.mjs
-		const css = ".qXzuNG_copy{color:var(--dsw-alias-label-secondary);font-size:14px;line-height:24px}.qXzuNG_copy p{margin:0}.qXzuNG_copy p+p{margin-top:12px}.qXzuNG_error{color:var(--dsw-alias-state-error-primary);margin:16px 0 0;font-size:14px;line-height:22px}.qXzuNG_actions{justify-content:flex-end;margin-top:24px;display:flex}.qXzuNG_primary{min-width:120px}@media (width<=560px){.qXzuNG_primary{width:100%}}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-models\src\client\WelcomeNotice.module.css.mjs
+		const css = ".wg_4Da_copy{color:var(--dsw-alias-label-secondary);font-size:14px;line-height:24px}.wg_4Da_copy p{margin:0}.wg_4Da_copy p+p{margin-top:12px}.wg_4Da_error{color:var(--dsw-alias-state-error-primary);margin:16px 0 0;font-size:14px;line-height:22px}.wg_4Da_actions{justify-content:flex-end;margin-top:24px;display:flex}.wg_4Da_primary{min-width:120px}@media (width<=560px){.wg_4Da_primary{width:100%}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-settings-models/WelcomeNotice.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2334,14 +2576,14 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var WelcomeNotice_module_css_default = {
-			"actions": "qXzuNG_actions",
-			"copy": "qXzuNG_copy",
-			"error": "qXzuNG_error",
-			"primary": "qXzuNG_primary"
+			"actions": "wg_4Da_actions",
+			"copy": "wg_4Da_copy",
+			"error": "wg_4Da_error",
+			"primary": "wg_4Da_primary"
 		};
 		//#endregion
 		//#region lib/types/client/WelcomeNotice.js
-		/** Product-wide, versioned internal-testing notice. */
+		/** Product-wide, versioned preview notice. */
 		/**
 		* Render the current notice until its exact copy version is acknowledged.
 		* @param props - settings-shell owner state and welcome dependencies.
@@ -2398,14 +2640,14 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/onboarding-copy.js
 		/** Durable settings namespace for product-wide GUI onboarding facts. */
-		const WELCOME_NOTICE_SETTINGS_NAMESPACE = "ui-onboarding";
+		const WELCOME_NOTICE_SETTINGS_NAMESPACE = "ui-settings-general";
 		/** Field storing the last welcome notice version the user acknowledged. */
 		const WELCOME_NOTICE_ACK_FIELD = "welcomeNoticeVersion";
 		/**
 		* Bump only when the notice changes materially and every user should see it
 		* again. The acknowledgement is compared for exact equality.
 		*/
-		const WELCOME_NOTICE_VERSION = "2026-08-13.1";
+		const WELCOME_NOTICE_VERSION = "2026-09-28.1";
 		//#endregion
 		//#region lib/types/client/welcome-store.js
 		/**
@@ -2414,16 +2656,6 @@ window.__ModuleLoader__.load({
 		* remote browser's memory-mode scope never answers and the acknowledgement
 		* stays process-local here.
 		*/
-		/**
-		* Accept any object section verbatim; a malformed durable value reads as an
-		* empty section, so the notice treats it as unacknowledged instead of leaving
-		* the scope stuck on its previous value.
-		* @param section - the wire section value.
-		* @returns the section object, or an empty one for non-object values.
-		*/
-		function decodeWelcomeSection(section) {
-			return typeof section === "object" && section !== null && !Array.isArray(section) ? section : {};
-		}
 		/* v8 ignore next 3 -- closed-union default only defends future source widening */
 		function assertNever(_value) {
 			throw new Error("unexpected welcome settings status");
@@ -2533,6 +2765,61 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
+		//#region lib/types/client/operations.js
+		/**
+		* The Host reads and writes the Models cards perform, as callbacks built in the
+		* plugin body. Cards receive these instead of a context: the outcomes name what
+		* a card renders — a stored view, a stale revision, a refusal message — so the
+		* failure codes and Remote namespaces stay in the apply world.
+		*/
+		/**
+		* Bind the page's Host operations to the plugin's own Remote namespaces.
+		* @param ctx - the page plugin's context, which declares `remote.credentials`,
+		* `remote.llm`, and `remote.settings` in its own `inject`.
+		* @returns the callbacks the section and its cards are injected with.
+		*/
+		function createModelsOperations(ctx) {
+			return {
+				describeCredential: async (ref) => {
+					const response = await ctx.remote.credentials.describe([ref]);
+					return response.ok ? response.value[ref] : void 0;
+				},
+				storeCredential: async (ref, value) => {
+					const response = await ctx.remote.credentials.set(ref, value);
+					return response.ok ? void 0 : response.error.message;
+				},
+				removeCredential: async (ref) => {
+					const response = await ctx.remote.credentials.unset(ref);
+					return response.ok ? void 0 : response.error.message;
+				},
+				writeSettings: async (ns, ops, expectedRevision) => {
+					const response = await ctx.remote.settings.mutate(ns, ops, expectedRevision);
+					if (response.ok) return {
+						kind: "written",
+						view: response.value
+					};
+					const { code, message } = response.error;
+					return code === "settings/conflict" ? {
+						kind: "conflict",
+						message
+					} : {
+						kind: "refused",
+						message
+					};
+				},
+				discoverModels: async (settingsNs, request) => {
+					const response = await ctx.remote.llm.discoverModels(settingsNs, request);
+					return response.ok ? {
+						kind: "found",
+						models: response.value
+					} : {
+						kind: "refused",
+						message: response.error.message
+					};
+				}
+			};
+		}
+		//#endregion
 		//#region lib/types/client/schema-operations.js
 		/**
 		* Hide the Cordis service identity behind bound schema callbacks.
@@ -2556,6 +2843,7 @@ window.__ModuleLoader__.load({
 		/** English strings (the key-set source of truth for this pair). */
 		const en = {
 			nav: "Models",
+			deepSeekAccount: "DeepSeek Account",
 			title: "Models",
 			intro: "Enter your API keys to use models from the following providers.",
 			edit: "Edit",
@@ -2567,7 +2855,14 @@ window.__ModuleLoader__.load({
 			deleteDescriptionWithCredential: "Deleting {provider} removes its configuration and stored API key.",
 			deleteConfirm: "Delete {provider}",
 			deleting: "Deleting {provider}…",
-			add: "Add provider",
+			add: "Add model provider",
+			addMode: "How to add",
+			addCatalog: "Third-party model provider",
+			addCustom: "Custom model API",
+			addCatalogHint: "Pick OpenAI, Anthropic, Kimi, or another provider from the built-in catalog and enter its API key.",
+			addCustomHint: "Connect a relay, a self-hosted server, or any other OpenAI- or Anthropic-compatible endpoint by its base URL, protocol, and models.",
+			addCatalogExhausted: "Every catalog provider is already configured.",
+			addCustomUnavailable: "No API protocol is available to declare.",
 			provider: "Provider",
 			close: "Close",
 			cancel: "Cancel",
@@ -2588,6 +2883,8 @@ window.__ModuleLoader__.load({
 			customized: "Customized settings",
 			baseUrl: "Base URL",
 			baseUrlDefault: "Provider default",
+			deepSeekBaseUrl: "https://api.deepseek.com/anthropic",
+			deepSeekEndpointHint: "Use an API endpoint compatible with Anthropic Messages.",
 			models: "Models",
 			modelsInherited: "Using the adapter defaults",
 			modelsCustomized: "Customized model catalog",
@@ -2600,7 +2897,10 @@ window.__ModuleLoader__.load({
 			contextWindowPlaceholder: "Uses the provider default",
 			maxTokens: "Max output tokens",
 			maxTokensPlaceholder: "Uses the provider default",
-			modelAdvanced: "Capacities",
+			modelAdvanced: "Model options",
+			modelInputTypes: "Input types",
+			modelInputText: "Text",
+			modelInputImage: "Image",
 			addModel: "Add model",
 			removeModel: "Delete model",
 			modelsEmpty: "No models will be shown in the selector. Unlisted IDs can still be sent directly.",
@@ -2612,22 +2912,20 @@ window.__ModuleLoader__.load({
 			modelNameInvalid: "Display name cannot be empty.",
 			modelContextInvalid: "Context window must be a positive count, like 131072, 256K, or 1M.",
 			modelMaxTokensInvalid: "Max output tokens must be a positive count, like 8192, 64K, or 1M.",
-			advancedHint: "Other fields live in settings.yaml; edit that section directly.",
+			advancedHint: "Other fields live in cordis.patch.yml; edit that section directly.",
 			modelCapacityInvalid: "A capacity must be a number, optionally suffixed K or M.",
 			modelDuplicate: "Each model ID may appear once.",
-			modelContextWindow: "Context window",
-			modelMaxTokens: "Max output tokens",
 			fetchModels: "Fetch available models",
 			fetching: "Asking the provider…",
 			fetchNeedsBaseUrl: "Enter the base URL first, then fetch.",
 			fetchEmpty: "The provider listed no models. Add them by hand.",
 			fetchTitle: "Choose models to add",
 			fetchDescription: "These are the models this provider has available. Choose the ones to add.",
+			fetchSearch: "Search models",
+			fetchNoMatches: "No matching models.",
 			fetchSelectAll: "Select all",
 			fetchDeselectAll: "Deselect all",
 			fetchAdopt: "Add selected",
-			customAdd: "Add a custom provider",
-			customTitle: "Custom provider",
 			customTag: "Custom",
 			customRoute: "Provider ID",
 			customRouteHint: "Lowercase identifier, starting with a letter, that uniquely names this provider in requests and as its credential name.",
@@ -2636,14 +2934,19 @@ window.__ModuleLoader__.load({
 			customDisplayName: "Display name",
 			customApi: "API protocol",
 			customApiUnset: "Not selected",
+			protocolOpenAiCompletions: "OpenAI Chat Completions",
+			protocolOpenAiResponses: "OpenAI Responses",
+			protocolAnthropicMessages: "Anthropic Messages",
 			customNeedsBaseUrl: "A custom provider needs a base URL.",
+			customBaseUrlInvalid: "Enter a valid HTTP or HTTPS URL.",
 			customNeedsModels: "A custom provider needs at least one model.",
 			customBaseUrlPlaceholder: "https://gateway.example/v1",
+			customAnthropicBaseUrlPlaceholder: "https://gateway.example",
 			settingsPathUnresolvable: "unresolvable settings path",
 			create: "Create provider",
 			creating: "Creating…",
-			welcomeTitle: "Internal Testing Notice",
-			welcomeBody: "DeepSeek Harness 0.1 remains in testing for Harness developers. Many areas need further improvement, and we welcome feedback from the developer community. DeepSeek Harness's core plugins and foundational APIs will continue to evolve rapidly over the coming months.\n\nWe look forward to exploring the limits of intelligence with developers around the world, building on open-source, open, reusable, and composable infrastructure. We welcome Harness developers everywhere to join the DSH plugin ecosystem.",
+			welcomeTitle: "Preview Notice",
+			welcomeBody: "DeepSeek Harness 0.2 is still in preview, and many areas need continued improvement and refinement. We welcome feedback and suggestions from all developers and users. The new desktop app now targets a broad range of users, while developer-related advanced features can be enabled in the settings. DeepSeek Harness’s product features and plugin APIs are expected to continue rapid iteration and evolution, and will gradually stabilize over time.\n\nWe look forward to exploring the limits of intelligence together with users and developers around the world, building on open-source, reusable, and composable infrastructure. We welcome everyone to bring their ideas to life with DeepSeek Harness and participate in the community to enrich the plugin ecosystem.",
 			welcomeContinue: "Continue",
 			welcomeError: "The acknowledgement could not be saved. Please try again.",
 			onboardingTitle: "Add an API key to get started",
@@ -2656,8 +2959,9 @@ window.__ModuleLoader__.load({
 		/** Chinese strings (same keys as {@link en}). */
 		const zh = {
 			nav: "模型",
+			deepSeekAccount: "DeepSeek 账号",
 			title: "模型",
-			intro: "填入各提供方的 API 密钥即可使用其模型。",
+			intro: "填入各提供商的 API 密钥即可使用其模型。",
 			edit: "编辑",
 			editProvider: "编辑 {provider}",
 			remove: "删除",
@@ -2667,8 +2971,15 @@ window.__ModuleLoader__.load({
 			deleteDescriptionWithCredential: "删除 {provider} 会移除其配置和存储的 API 密钥。",
 			deleteConfirm: "删除 {provider}",
 			deleting: "正在删除 {provider}…",
-			add: "添加提供方",
-			provider: "提供方",
+			add: "添加模型提供商",
+			addMode: "添加方式",
+			addCatalog: "第三方模型提供商",
+			addCustom: "自定义模型 API",
+			addCatalogHint: "从内置目录中选择 OpenAI、Anthropic、Kimi 等提供商，填入其 API 密钥即可使用。",
+			addCustomHint: "连接中转站、自部署服务或其他兼容 OpenAI / Anthropic 协议的接口，需填写 API 地址、协议和模型。",
+			addCatalogExhausted: "目录中的提供商都已添加。",
+			addCustomUnavailable: "没有可用的 API 协议。",
+			provider: "提供商",
 			close: "关闭",
 			cancel: "取消",
 			apply: "保存",
@@ -2677,7 +2988,7 @@ window.__ModuleLoader__.load({
 			credentialConfigured: "API 密钥已配置",
 			credentialMissing: "API 密钥缺失",
 			readOnly: "当前部署的设置文档为只读。",
-			loadFailed: "加载提供方目录失败",
+			loadFailed: "加载提供商目录失败",
 			conflict: "这张卡片打开期间，这些设置已被其他地方改动。请关闭后重新打开，在当前值上编辑。",
 			retry: "重试",
 			keyInput: "API 密钥",
@@ -2687,7 +2998,9 @@ window.__ModuleLoader__.load({
 			keyEnvLocked: "由启动环境提供（只读）",
 			customized: "自定义设置",
 			baseUrl: "API 地址",
-			baseUrlDefault: "提供方默认",
+			baseUrlDefault: "提供商默认",
+			deepSeekBaseUrl: "https://api.deepseek.com/anthropic",
+			deepSeekEndpointHint: "请填写兼容 Anthropic Messages 协议的 API 地址。",
 			models: "模型目录",
 			modelsInherited: "正在使用适配器默认模型",
 			modelsCustomized: "已自定义模型目录",
@@ -2697,53 +3010,59 @@ window.__ModuleLoader__.load({
 			modelName: "显示名称",
 			modelNamePlaceholder: "留空时使用模型 ID",
 			contextWindow: "上下文窗口",
-			contextWindowPlaceholder: "使用提供方默认值",
+			contextWindowPlaceholder: "使用提供商默认值",
 			maxTokens: "最大输出 token 数",
-			maxTokensPlaceholder: "使用提供方默认值",
-			modelAdvanced: "容量",
+			maxTokensPlaceholder: "使用提供商默认值",
+			modelAdvanced: "模型选项",
+			modelInputTypes: "输入类型",
+			modelInputText: "文本",
+			modelInputImage: "图片",
 			addModel: "添加模型",
 			removeModel: "删除模型",
 			modelsEmpty: "模型选择器中将不显示任何模型；目录外 ID 仍可直接发送。",
 			keyBlank: "请输入 API 密钥；留空则保持已存储的密钥。",
-			keyBlankNew: "请输入 API 密钥；若该提供方以其他方式鉴权，可以留空。",
+			keyBlankNew: "请输入 API 密钥；若该提供商以其他方式鉴权，可以留空。",
 			keyIllegalCharacters: "该 API 密钥格式错误，请检查。",
 			modelIdRequired: "模型 ID 不能为空。",
 			modelIdDuplicate: "模型 ID 不能重复。",
 			modelNameInvalid: "显示名称不能为空。",
 			modelContextInvalid: "上下文窗口必须是正数，例如 131072、256K 或 1M。",
 			modelMaxTokensInvalid: "最大输出 token 数必须是正数，例如 8192、64K 或 1M。",
-			advancedHint: "其余字段在 settings.yaml 中，请直接编辑对应段。",
+			advancedHint: "其余字段在 cordis.patch.yml 中，请直接编辑对应段。",
 			modelCapacityInvalid: "容量需为数字，可加 K 或 M 后缀。",
 			modelDuplicate: "每个模型 ID 只能出现一次。",
-			modelContextWindow: "上下文窗口",
-			modelMaxTokens: "最大输出 token",
 			fetchModels: "获取可用模型",
-			fetching: "正在询问提供方…",
+			fetching: "正在询问提供商…",
 			fetchNeedsBaseUrl: "请先填写 API 地址，再获取。",
-			fetchEmpty: "该提供方没有列出任何模型，请手动添加。",
+			fetchEmpty: "该提供商没有列出任何模型，请手动添加。",
 			fetchTitle: "选择要添加的模型",
-			fetchDescription: "以下是模型提供方的可用模型，勾选要添加的模型。",
+			fetchDescription: "以下是模型提供商的可用模型，勾选要添加的模型。",
+			fetchSearch: "搜索模型",
+			fetchNoMatches: "没有匹配的模型。",
 			fetchSelectAll: "全选",
 			fetchDeselectAll: "取消全选",
 			fetchAdopt: "添加所选",
-			customAdd: "添加自定义提供方",
-			customTitle: "自定义提供方",
 			customTag: "自定义",
 			customRoute: "Provider ID",
-			customRouteHint: "以小写字母开头的标识，在请求中唯一标识该提供方，并用于派生凭据名。",
+			customRouteHint: "以小写字母开头的标识，在请求中唯一标识该提供商，并用于派生凭据名。",
 			customRouteInvalid: "需以小写字母开头，之后可用小写字母、数字和短横线。",
-			customRouteTaken: "已有提供方使用了这个 ID。",
+			customRouteTaken: "已有提供商使用了这个 ID。",
 			customDisplayName: "显示名称",
 			customApi: "API 协议",
 			customApiUnset: "未选择",
-			customNeedsBaseUrl: "自定义提供方需要填写 API 地址。",
-			customNeedsModels: "自定义提供方至少需要一个模型。",
+			protocolOpenAiCompletions: "OpenAI Chat Completions",
+			protocolOpenAiResponses: "OpenAI Responses",
+			protocolAnthropicMessages: "Anthropic Messages",
+			customNeedsBaseUrl: "自定义模型 API 需要填写 API 地址。",
+			customBaseUrlInvalid: "请输入有效的 HTTP 或 HTTPS 地址。",
+			customNeedsModels: "自定义模型 API 至少需要一个模型。",
 			customBaseUrlPlaceholder: "https://gateway.example/v1",
+			customAnthropicBaseUrlPlaceholder: "https://gateway.example",
 			settingsPathUnresolvable: "无法解析设置路径",
-			create: "创建提供方",
+			create: "创建提供商",
 			creating: "创建中…",
-			welcomeTitle: "内测声明",
-			welcomeBody: "DeepSeek Harness 目前的 0.1 版本仍处在面向 Harness 开发者进行测试的阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者的反馈建议。预计 DeepSeek Harness 的核心插件以及基础 API 都会在接下来的一段时间内快速迭代、持续演化。\n\n我们期待与全球开发者一起，在开源、开放、可复用、可组合的基础设施之上，共同探索智能上限。欢迎全球 Harness 开发者加入 DSH 插件生态。",
+			welcomeTitle: "预览版说明",
+			welcomeBody: "DeepSeek Harness 目前的 0.2 版本仍处于预览阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者和用户的反馈建议。现在，新的桌面端面向广泛用户，开发者相关的进阶功能可在配置中开启使用。预计 DeepSeek Harness 的产品功能以及插件 API 都会继续快速迭代、持续演化，并逐渐趋于稳定。\n\n我们期待与全球用户和开发者一起，在开源、可复用、可组合的基础设施之上，共同探索智能上限。欢迎大家用 DeepSeek Harness 将想法变成现实，与社区一起丰富插件生态。",
 			welcomeContinue: "继续",
 			welcomeError: "暂时无法保存确认状态，请重试。",
 			onboardingTitle: "添加一个 API Key 开始使用",
@@ -2753,6 +3072,904 @@ window.__ModuleLoader__.load({
 			onboardingSaving: "保存中…",
 			keyRequired: "请输入 API 密钥后继续。"
 		};
+		//#endregion
+		//#region ../../../vendor/cosmokit/src/misc.ts
+		/** Return true when a value is `null` or `undefined`. */
+		function isNullable(value) {
+			return value === null || value === void 0;
+		}
+		/** Return true for non-array object values. */
+		function isPlainObject(data) {
+			return data && typeof data === "object" && !Array.isArray(data);
+		}
+		/** Filter object entries and return a new object. */
+		function filterKeys(object, filter) {
+			return Object.fromEntries(Object.entries(object).filter(([key, value]) => filter(key, value)));
+		}
+		/** Map object values while preserving the original key set. */
+		function mapValues(object, transform) {
+			return Object.fromEntries(Object.entries(object).map(([key, value]) => [key, transform(value, key)]));
+		}
+		/** Pick selected keys from an object, optionally including `undefined` values. */
+		function pick(source, keys, forced) {
+			if (!keys) return { ...source };
+			const result = {};
+			for (const key of keys) if (forced || source[key] !== void 0) result[key] = source[key];
+			return result;
+		}
+		//#endregion
+		//#region ../../../vendor/cosmokit/src/volatile.ts
+		/** Shared config references used by schema validators and plugin runtimes. */
+		const write = Symbol.for("cosmokit.volatile.write");
+		function snapshot(value, ancestors = /* @__PURE__ */ new Set()) {
+			if (typeof value === "function") throw new TypeError("volatile config cannot contain functions");
+			if (value === null || typeof value !== "object") return value;
+			if (ancestors.has(value)) throw new TypeError("volatile config cannot contain cycles");
+			ancestors.add(value);
+			try {
+				if (Array.isArray(value)) return Object.freeze(value.map((item) => snapshot(item, ancestors)));
+				if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new TypeError("volatile config objects must be plain objects or arrays");
+				return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item, ancestors)])));
+			} finally {
+				ancestors.delete(value);
+			}
+		}
+		/**
+		* Create a detached reference containing an immutable copy of the supplied data.
+		* @param value - validated config data; class instances and functions are unsupported.
+		* @returns a reference whose value is updated only by its owning runtime.
+		*/
+		function createVolatile(value) {
+			let current = snapshot(value);
+			return Object.freeze({
+				get: () => current,
+				[write]: (value) => {
+					current = value;
+				}
+			});
+		}
+		/**
+		* Identify references across ESM/CJS copies of the shared library.
+		* @param value - a parsed config value.
+		* @returns whether the value implements the shared reference protocol.
+		*/
+		function isVolatile(value) {
+			return typeof value === "object" && value !== null && write in value;
+		}
+		//#endregion
+		//#region ../../../vendor/cosmokit/src/types.ts
+		/** Test values using `instanceof` with a `toStringTag` fallback. */
+		function is(type, value) {
+			if (arguments.length === 1) return (value) => is(type, value);
+			return type in globalThis && value instanceof globalThis[type] || Object.prototype.toString.call(value).slice(8, -1) === type;
+		}
+		function isArrayBufferLike(value) {
+			return is("ArrayBuffer", value) || is("SharedArrayBuffer", value);
+		}
+		function isArrayBufferSource(value) {
+			return isArrayBufferLike(value) || ArrayBuffer.isView(value);
+		}
+		let Binary;
+		(function(_Binary) {
+			_Binary.is = isArrayBufferLike;
+			_Binary.isSource = isArrayBufferSource;
+			function fromSource(source) {
+				if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+				else return source;
+			}
+			_Binary.fromSource = fromSource;
+			function toBase64(source) {
+				source = fromSource(source);
+				if (typeof Buffer !== "undefined") return Buffer.from(source).toString("base64");
+				let binary = "";
+				const bytes = new Uint8Array(source);
+				for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+				return btoa(binary);
+			}
+			_Binary.toBase64 = toBase64;
+			function fromBase64(source) {
+				if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "base64"));
+				return Uint8Array.from(atob(source), (c) => c.charCodeAt(0));
+			}
+			_Binary.fromBase64 = fromBase64;
+			function toHex(source) {
+				source = fromSource(source);
+				if (typeof Buffer !== "undefined") return Buffer.from(source).toString("hex");
+				return Array.from(new Uint8Array(source), (byte) => byte.toString(16).padStart(2, "0")).join("");
+			}
+			_Binary.toHex = toHex;
+			function fromHex(source) {
+				if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "hex"));
+				const hex = source.length % 2 === 0 ? source : source.slice(0, source.length - 1);
+				const buffer = [];
+				for (let i = 0; i < hex.length; i += 2) buffer.push(parseInt(`${hex[i]}${hex[i + 1]}`, 16));
+				return Uint8Array.from(buffer).buffer;
+			}
+			_Binary.fromHex = fromHex;
+		})(Binary || (Binary = {}));
+		Binary.fromBase64;
+		Binary.toBase64;
+		Binary.fromHex;
+		Binary.toHex;
+		/** Deep-clone common JavaScript values while preserving prototypes and cycles. */
+		function clone(source, refs = /* @__PURE__ */ new Map()) {
+			if (!source || typeof source !== "object") return source;
+			if (is("Date", source)) return new Date(source.valueOf());
+			if (is("RegExp", source)) return new RegExp(source.source, source.flags);
+			if (isArrayBufferLike(source)) return source.slice(0);
+			if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+			const cached = refs.get(source);
+			if (cached) return cached;
+			if (Array.isArray(source)) {
+				const result = [];
+				refs.set(source, result);
+				source.forEach((value, index) => {
+					result[index] = Reflect.apply(clone, null, [value, refs]);
+				});
+				return result;
+			}
+			const result = Object.create(Object.getPrototypeOf(source));
+			refs.set(source, result);
+			for (const key of Reflect.ownKeys(source)) {
+				const descriptor = { ...Reflect.getOwnPropertyDescriptor(source, key) };
+				if ("value" in descriptor) descriptor.value = Reflect.apply(clone, null, [descriptor.value, refs]);
+				Reflect.defineProperty(result, key, descriptor);
+			}
+			return result;
+		}
+		/**
+		* Compare values recursively, treating two volatile references as equal regardless of value.
+		* Strict comparison distinguishes null/undefined, treats opaque objects by identity,
+		* compares URLs by normalized href, treats array holes as undefined, and considers distinct cyclic structures unequal.
+		* @param a - first value.
+		* @param b - second value.
+		* @param strict - whether to require strict data equality outside volatile references.
+		* @returns whether the values compare equal.
+		*/
+		function deepEqual(a, b, strict) {
+			const ancestors = /* @__PURE__ */ new Set();
+			function compare(a, b) {
+				if (a === b) return true;
+				if (isVolatile(a) || isVolatile(b)) return isVolatile(a) && isVolatile(b);
+				if (!strict && isNullable(a) && isNullable(b)) return true;
+				if (typeof a !== typeof b || typeof a !== "object" || !a || !b) return false;
+				if (ancestors.has(a)) return false;
+				function check(test, then) {
+					return test(a) ? test(b) ? then(a, b) : false : test(b) ? false : void 0;
+				}
+				ancestors.add(a);
+				try {
+					return check(Array.isArray, (a, b) => {
+						if (a.length !== b.length) return false;
+						for (let index = 0; index < a.length; index++) if (!compare(a[index], b[index])) return false;
+						return true;
+					}) ?? check(is("Date"), (a, b) => a.valueOf() === b.valueOf()) ?? check(is("URL"), (a, b) => a.href === b.href) ?? check(is("RegExp"), (a, b) => a.source === b.source && a.flags === b.flags) ?? check(isArrayBufferLike, (a, b) => {
+						if (a.byteLength !== b.byteLength) return false;
+						const viewA = new Uint8Array(a);
+						const viewB = new Uint8Array(b);
+						for (let i = 0; i < viewA.length; i++) if (viewA[i] !== viewB[i]) return false;
+						return true;
+					}) ?? ((!strict || [a, b].every((value) => Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)) && Object.keys({
+						...a,
+						...b
+					}).every((key) => compare(a[key], b[key])));
+				} finally {
+					ancestors.delete(a);
+				}
+			}
+			return compare(a, b);
+		}
+		//#endregion
+		//#region ../../../vendor/cosmokit/src/time.ts
+		let Time;
+		(function(_Time) {
+			_Time.millisecond = 1;
+			const second = _Time.second = 1e3;
+			const minute = _Time.minute = second * 60;
+			const hour = _Time.hour = minute * 60;
+			const day = _Time.day = hour * 24;
+			const week = _Time.week = day * 7;
+			let timezoneOffset = (/* @__PURE__ */ new Date()).getTimezoneOffset();
+			function setTimezoneOffset(offset) {
+				timezoneOffset = offset;
+			}
+			_Time.setTimezoneOffset = setTimezoneOffset;
+			function getTimezoneOffset() {
+				return timezoneOffset;
+			}
+			_Time.getTimezoneOffset = getTimezoneOffset;
+			function getDateNumber(date = /* @__PURE__ */ new Date(), offset) {
+				if (typeof date === "number") date = new Date(date);
+				if (offset === void 0) offset = timezoneOffset;
+				return Math.floor((date.valueOf() / minute - offset) / 1440);
+			}
+			_Time.getDateNumber = getDateNumber;
+			function fromDateNumber(value, offset) {
+				const date = new Date(value * day);
+				if (offset === void 0) offset = timezoneOffset;
+				return new Date(+date + offset * minute);
+			}
+			_Time.fromDateNumber = fromDateNumber;
+			const numeric = /\d+(?:\.\d+)?/.source;
+			const timeRegExp = new RegExp(`^${[
+				"w(?:eek(?:s)?)?",
+				"d(?:ay(?:s)?)?",
+				"h(?:our(?:s)?)?",
+				"m(?:in(?:ute)?(?:s)?)?",
+				"s(?:ec(?:ond)?(?:s)?)?"
+			].map((unit) => `(${numeric}${unit})?`).join("")}$`);
+			function parseTime(source) {
+				const capture = timeRegExp.exec(source);
+				if (!capture) return 0;
+				return (parseFloat(capture[1]) * week || 0) + (parseFloat(capture[2]) * day || 0) + (parseFloat(capture[3]) * hour || 0) + (parseFloat(capture[4]) * minute || 0) + (parseFloat(capture[5]) * second || 0);
+			}
+			_Time.parseTime = parseTime;
+			function parseDate(date) {
+				const parsed = parseTime(date);
+				if (parsed) date = Date.now() + parsed;
+				else if (/^\d{1,2}(:\d{1,2}){1,2}$/.test(date)) date = `${(/* @__PURE__ */ new Date()).toLocaleDateString()}-${date}`;
+				else if (/^\d{1,2}-\d{1,2}-\d{1,2}(:\d{1,2}){1,2}$/.test(date)) date = `${(/* @__PURE__ */ new Date()).getFullYear()}-${date}`;
+				return date ? new Date(date) : /* @__PURE__ */ new Date();
+			}
+			_Time.parseDate = parseDate;
+			function format(ms) {
+				const abs = Math.abs(ms);
+				if (abs >= day - hour / 2) return Math.round(ms / day) + "d";
+				else if (abs >= hour - minute / 2) return Math.round(ms / hour) + "h";
+				else if (abs >= minute - second / 2) return Math.round(ms / minute) + "m";
+				else if (abs >= second) return Math.round(ms / second) + "s";
+				return ms + "ms";
+			}
+			_Time.format = format;
+			function toDigits(source, length = 2) {
+				return source.toString().padStart(length, "0");
+			}
+			_Time.toDigits = toDigits;
+			function template(template, time = /* @__PURE__ */ new Date()) {
+				return template.replace("yyyy", time.getFullYear().toString()).replace("yy", time.getFullYear().toString().slice(2)).replace("MM", toDigits(time.getMonth() + 1)).replace("dd", toDigits(time.getDate())).replace("hh", toDigits(time.getHours())).replace("mm", toDigits(time.getMinutes())).replace("ss", toDigits(time.getSeconds())).replace("SSS", toDigits(time.getMilliseconds(), 3));
+			}
+			_Time.template = template;
+		})(Time || (Time = {}));
+		//#endregion
+		//#region ../../../vendor/schemastery/src/index.ts
+		const kSchema = Symbol.for("schemastery");
+		const kValidationError = Symbol.for("ValidationError");
+		globalThis.__schemastery_index__ ??= 0;
+		globalThis.__schemastery_refs__ = void 0;
+		var ValidationError = class extends TypeError {
+			options;
+			name = "ValidationError";
+			constructor(message, options) {
+				let prefix = "$";
+				for (const segment of options.path || []) if (typeof segment === "string") prefix += "." + segment;
+				else if (typeof segment === "number") prefix += "[" + segment + "]";
+				else if (typeof segment === "symbol") prefix += `[Symbol(${segment.toString()})]`;
+				if (prefix.startsWith(".")) prefix = prefix.slice(1);
+				super((prefix === "$" ? "" : `${prefix} `) + message);
+				this.options = options;
+			}
+			static is(error) {
+				return !!error?.[kValidationError];
+			}
+		};
+		Object.defineProperty(ValidationError.prototype, kValidationError, { value: true });
+		const Schema = function(options) {
+			const schema = function(data, options = {}) {
+				return Schema.resolve(data, schema, options)[0];
+			};
+			if (options.refs) {
+				const refs = mapValues(options.refs, (options) => new Schema(options));
+				const getRef = (uid) => refs[uid];
+				for (const key in refs) {
+					const options = refs[key];
+					options.sKey = getRef(options.sKey);
+					options.inner = getRef(options.inner);
+					options.list = options.list && options.list.map(getRef);
+					options.dict = options.dict && mapValues(options.dict, getRef);
+				}
+				return refs[options.uid];
+			}
+			Object.assign(schema, options);
+			if (typeof schema.callback === "string") try {
+				schema.callback = new Function("return " + schema.callback)();
+			} catch {}
+			Object.defineProperty(schema, "uid", { value: globalThis.__schemastery_index__++ });
+			Object.setPrototypeOf(schema, Schema.prototype);
+			schema.meta ||= {};
+			schema.toString = schema.toString.bind(schema);
+			return schema;
+		};
+		Schema.prototype = Object.create(Function.prototype);
+		Schema.prototype[kSchema] = true;
+		Object.defineProperty(Schema.prototype, "~standard", { get() {
+			return {
+				version: 1,
+				vendor: "schemastery",
+				validate: (value) => {
+					try {
+						return { value: Schema.resolve(value, this, {})[0] };
+					} catch (error) {
+						if (ValidationError.is(error)) return { issues: [{
+							message: error.message,
+							path: error.options.path
+						}] };
+						throw error;
+					}
+				}
+			};
+		} });
+		Schema.ValidationError = ValidationError;
+		Schema.prototype.toJSON = function toJSON() {
+			if (globalThis.__schemastery_refs__) {
+				globalThis.__schemastery_refs__[this.uid] ??= JSON.parse(JSON.stringify({ ...this }));
+				return this.uid;
+			}
+			globalThis.__schemastery_refs__ = { [this.uid]: { ...this } };
+			globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
+			const result = {
+				uid: this.uid,
+				refs: globalThis.__schemastery_refs__
+			};
+			globalThis.__schemastery_refs__ = void 0;
+			return result;
+		};
+		Schema.prototype.set = function set(key, value) {
+			this.dict[key] = value;
+			return this;
+		};
+		Schema.prototype.push = function push(value) {
+			this.list.push(value);
+			return this;
+		};
+		function mergeDesc(original, messages) {
+			const result = typeof original === "string" ? { "": original } : { ...original };
+			for (const locale in messages) {
+				const value = messages[locale];
+				if (value?.$description || value?.$desc) result[locale] = value.$description || value.$desc;
+				else if (typeof value === "string") result[locale] = value;
+			}
+			return result;
+		}
+		function getInner(value) {
+			return value?.$value ?? value?.$inner;
+		}
+		function extractKeys(data) {
+			return filterKeys(data ?? {}, (key) => !key.startsWith("$"));
+		}
+		Schema.prototype.i18n = function i18n(messages) {
+			const schema = Schema(this);
+			const desc = mergeDesc(schema.meta.description, messages);
+			if (Object.keys(desc).length) schema.meta.description = desc;
+			if (schema.dict) schema.dict = mapValues(schema.dict, (inner, key) => {
+				return inner.i18n(mapValues(messages, (data) => getInner(data)?.[key] ?? data?.[key]));
+			});
+			if (schema.list) schema.list = schema.list.map((inner, index) => {
+				return inner.i18n(mapValues(messages, (data = {}) => {
+					if (Array.isArray(getInner(data))) return getInner(data)[index];
+					if (Array.isArray(data)) return data[index];
+					return extractKeys(data);
+				}));
+			});
+			if (schema.inner) schema.inner = schema.inner.i18n(mapValues(messages, (data) => {
+				if (getInner(data)) return getInner(data);
+				return extractKeys(data);
+			}));
+			if (schema.sKey) schema.sKey = schema.sKey.i18n(mapValues(messages, (data) => data?.$key));
+			return schema;
+		};
+		Schema.prototype.extra = function extra(key, value) {
+			const schema = Schema(this);
+			schema.meta = {
+				...schema.meta,
+				[key]: value
+			};
+			return schema;
+		};
+		for (const key of [
+			"required",
+			"disabled",
+			"collapse",
+			"hidden",
+			"loose"
+		]) Object.assign(Schema.prototype, { [key](value = true) {
+			const schema = Schema(this);
+			schema.meta = {
+				...schema.meta,
+				[key]: value
+			};
+			return schema;
+		} });
+		Schema.prototype.deprecated = function deprecated() {
+			const schema = Schema(this);
+			schema.meta.badges ||= [];
+			schema.meta.badges.push({
+				text: "deprecated",
+				type: "danger"
+			});
+			return schema;
+		};
+		Schema.prototype.experimental = function experimental() {
+			const schema = Schema(this);
+			schema.meta.badges ||= [];
+			schema.meta.badges.push({
+				text: "experimental",
+				type: "warning"
+			});
+			return schema;
+		};
+		Schema.prototype.pattern = function pattern(regexp) {
+			const schema = Schema(this);
+			const pattern = pick(regexp, ["source", "flags"]);
+			schema.meta = {
+				...schema.meta,
+				pattern
+			};
+			return schema;
+		};
+		Schema.prototype.simplify = function simplify(value) {
+			if (isVolatile(value)) value = value.get();
+			if (deepEqual(value, this.meta.default, this.type === "dict")) return null;
+			if (isNullable(value)) return value;
+			if (this.type === "object" || this.type === "dict") {
+				const result = {};
+				for (const key in value) {
+					const item = (this.type === "object" ? this.dict[key] : this.inner)?.simplify(value[key]);
+					if (this.type === "dict" || !isNullable(item)) result[key] = item;
+				}
+				if (deepEqual(result, this.meta.default, this.type === "dict")) return null;
+				return result;
+			} else if (this.type === "array" || this.type === "tuple") {
+				const result = [];
+				value.forEach((value, index) => {
+					const schema = this.type === "array" ? this.inner : this.list[index];
+					const item = schema ? schema.simplify(value) : value;
+					result.push(item);
+				});
+				return result;
+			} else if (this.type === "intersect") {
+				const result = {};
+				for (const item of this.list) Object.assign(result, item.simplify(value));
+				return result;
+			} else if (this.type === "union") for (const schema of this.list) try {
+				Schema.resolve(value, schema, {});
+				return schema.simplify(value);
+			} catch {}
+			return value;
+		};
+		Schema.prototype.toString = function toString(inline) {
+			return formatters[this.type]?.(this, inline) ?? `Schema<${this.type}>`;
+		};
+		Schema.prototype.role = function role(role, extra) {
+			const schema = Schema(this);
+			schema.meta = {
+				...schema.meta,
+				role,
+				extra
+			};
+			return schema;
+		};
+		for (const key of [
+			"default",
+			"link",
+			"comment",
+			"description",
+			"max",
+			"min",
+			"step"
+		]) Object.assign(Schema.prototype, { [key](value) {
+			const schema = Schema(this);
+			schema.meta = {
+				...schema.meta,
+				[key]: value
+			};
+			return schema;
+		} });
+		Schema.prototype.volatile = function volatile() {
+			if (this.meta.volatile) throw new TypeError("volatile schema is already wrapped");
+			return this.extra("volatile", true);
+		};
+		const resolvers = {};
+		const checkedVolatile = Symbol("checked-volatile-schema");
+		function validateVolatileSchema(schema, path = [], blocked = false, seen = /* @__PURE__ */ new Map()) {
+			const states = seen.get(schema) ?? /* @__PURE__ */ new Set();
+			if (states.has(blocked)) return;
+			states.add(blocked);
+			seen.set(schema, states);
+			if (schema.meta?.volatile && blocked) throw new ValidationError("volatile fields require a fixed object path without an enclosing volatile field", { path });
+			const nested = blocked || !!schema.meta?.volatile;
+			if (schema.dict) for (const [key, child] of Object.entries(schema.dict)) validateVolatileSchema(child, [...path, key], nested, seen);
+			if (schema.sKey) validateVolatileSchema(schema.sKey, [...path, "<key>"], true, seen);
+			if (schema.inner && (schema.type !== "lazy" || schema.inner[kSchema])) validateVolatileSchema(schema.inner, [...path, "*"], true, seen);
+			if (schema.list) for (let index = 0; index < schema.list.length; index++) validateVolatileSchema(schema.list[index], [...path, String(index)], true, seen);
+		}
+		Schema.extend = function extend(type, resolve) {
+			resolvers[type] = resolve;
+		};
+		Schema.resolve = function resolve(data, schema, options = {}, strict = false) {
+			if (!schema) return [data];
+			if (!options[checkedVolatile]) {
+				validateVolatileSchema(schema, options.path);
+				options = {
+					...options,
+					[checkedVolatile]: true
+				};
+			}
+			if (schema.meta?.volatile) {
+				const inner = Schema(schema);
+				inner.meta = {
+					...schema.meta,
+					volatile: false
+				};
+				const [value, adapted] = Schema.resolve(data, inner, options, strict);
+				try {
+					return [createVolatile(value), adapted];
+				} catch (error) {
+					throw new ValidationError(error instanceof Error ? error.message : String(error), options);
+				}
+			}
+			if (options.ignore?.(data, schema)) return [data];
+			if (isNullable(data) && schema.type !== "lazy") {
+				if (schema.meta.required) throw new ValidationError(`missing required value`, options);
+				let current = schema;
+				let fallback = schema.meta.default;
+				while (current?.type === "intersect" && isNullable(fallback)) {
+					current = current.list[0];
+					fallback = current?.meta.default;
+				}
+				if (isNullable(fallback)) return [data];
+				data = clone(fallback);
+			}
+			const callback = resolvers[schema.type];
+			if (!callback) throw new ValidationError(`unsupported type "${schema.type}"`, options);
+			try {
+				return callback(data, schema, options, strict);
+			} catch (error) {
+				if (!schema.meta.loose) throw error;
+				return [schema.meta.default];
+			}
+		};
+		Schema.from = function from(source) {
+			if (isNullable(source)) return Schema.any();
+			else if ([
+				"string",
+				"number",
+				"boolean"
+			].includes(typeof source)) return Schema.const(source).required();
+			else if (source[kSchema]) return source;
+			else if (typeof source === "function") switch (source) {
+				case String: return Schema.string().required();
+				case Number: return Schema.number().required();
+				case Boolean: return Schema.boolean().required();
+				case Function: return Schema.function().required();
+				default: return Schema.is(source).required();
+			}
+			else throw new TypeError(`cannot infer schema from ${source}`);
+		};
+		Schema.lazy = function lazy(builder) {
+			const toJSON = () => {
+				if (!schema.inner[kSchema]) {
+					schema.inner = schema.builder();
+					schema.inner.meta = {
+						...schema.meta,
+						...schema.inner.meta
+					};
+				}
+				return schema.inner.toJSON();
+			};
+			const schema = new Schema({
+				type: "lazy",
+				builder,
+				inner: { toJSON }
+			});
+			return schema;
+		};
+		Schema.natural = function natural() {
+			return Schema.number().step(1).min(0);
+		};
+		Schema.percent = function percent() {
+			return Schema.number().step(.01).min(0).max(1).role("slider");
+		};
+		Schema.date = function date() {
+			return Schema.union([Schema.is(Date), Schema.transform(Schema.string().role("datetime"), (value, options) => {
+				const date = new Date(value);
+				if (isNaN(+date)) throw new ValidationError(`invalid date "${value}"`, options);
+				return date;
+			}, true)]);
+		};
+		Schema.regExp = function regExp(flag = "") {
+			return Schema.union([Schema.is(RegExp), Schema.transform(Schema.string().role("regexp", { flag }), (value, options) => {
+				try {
+					return new RegExp(value, flag);
+				} catch (e) {
+					throw new ValidationError(e.message, options);
+				}
+			}, true)]);
+		};
+		Schema.arrayBuffer = function arrayBuffer(encoding) {
+			return Schema.union([
+				Schema.is(ArrayBuffer),
+				Schema.is(SharedArrayBuffer),
+				Schema.transform(Schema.any(), (value, options) => {
+					if (Binary.isSource(value)) return Binary.fromSource(value);
+					throw new ValidationError(`expected ArrayBufferSource but got ${value}`, options);
+				}, true),
+				...encoding ? [Schema.transform(Schema.string(), (value, options) => {
+					try {
+						return encoding === "base64" ? Binary.fromBase64(value) : Binary.fromHex(value);
+					} catch (e) {
+						throw new ValidationError(e.message, options);
+					}
+				}, true)] : []
+			]);
+		};
+		Schema.extend("lazy", (data, schema, options, strict) => {
+			if (!schema.inner[kSchema]) {
+				schema.inner = schema.builder();
+				schema.inner.meta = {
+					...schema.meta,
+					...schema.inner.meta
+				};
+				validateVolatileSchema(schema.inner, options.path, true);
+			}
+			return Schema.resolve(data, schema.inner, options, strict);
+		});
+		Schema.extend("any", (data) => {
+			return [data];
+		});
+		Schema.extend("never", (data, _, options) => {
+			throw new ValidationError(`expected nullable but got ${data}`, options);
+		});
+		Schema.extend("const", (data, { value }, options) => {
+			if (deepEqual(data, value)) return [value];
+			throw new ValidationError(`expected ${value} but got ${data}`, options);
+		});
+		function checkWithinRange(data, meta, description, options, skipMin = false) {
+			const { max = Infinity, min = -Infinity } = meta;
+			if (data > max) throw new ValidationError(`expected ${description} <= ${max} but got ${data}`, options);
+			if (data < min && !skipMin) throw new ValidationError(`expected ${description} >= ${min} but got ${data}`, options);
+		}
+		Schema.extend("string", (data, { meta }, options) => {
+			if (typeof data !== "string") throw new ValidationError(`expected string but got ${data}`, options);
+			if (meta.pattern) {
+				const regexp = new RegExp(meta.pattern.source, meta.pattern.flags);
+				if (!regexp.test(data)) throw new ValidationError(`expect string to match regexp ${regexp}`, options);
+			}
+			checkWithinRange(data.length, meta, "string length", options);
+			return [data];
+		});
+		function decimalShift(data, digits) {
+			const str = data.toString();
+			if (str.includes("e")) return data * Math.pow(10, digits);
+			const index = str.indexOf(".");
+			if (index === -1) return data * Math.pow(10, digits);
+			const frac = str.slice(index + 1);
+			const integer = str.slice(0, index);
+			if (frac.length <= digits) return +(integer + frac.padEnd(digits, "0"));
+			return +(integer + frac.slice(0, digits) + "." + frac.slice(digits));
+		}
+		function isMultipleOf(data, min, step) {
+			step = Math.abs(step);
+			if (!/^\d+\.\d+$/.test(step.toString())) return (data - min) % step === 0;
+			const index = step.toString().indexOf(".");
+			const digits = step.toString().slice(index + 1).length;
+			return Math.abs(decimalShift(data, digits) - decimalShift(min, digits)) % decimalShift(step, digits) === 0;
+		}
+		Schema.extend("number", (data, { meta }, options) => {
+			if (typeof data !== "number") throw new ValidationError(`expected number but got ${data}`, options);
+			checkWithinRange(data, meta, "number", options);
+			const { step } = meta;
+			if (step && !isMultipleOf(data, meta.min ?? 0, step)) throw new ValidationError(`expected number multiple of ${step} but got ${data}`, options);
+			return [data];
+		});
+		Schema.extend("boolean", (data, _, options) => {
+			if (typeof data === "boolean") return [data];
+			throw new ValidationError(`expected boolean but got ${data}`, options);
+		});
+		Schema.extend("bitset", (data, { bits, meta }, options) => {
+			let value = 0, keys = [];
+			if (typeof data === "number") {
+				value = data;
+				for (const key in bits) if (data & bits[key]) keys.push(key);
+			} else if (Array.isArray(data)) {
+				keys = data;
+				for (const key of keys) {
+					if (typeof key !== "string") throw new ValidationError(`expected string but got ${key}`, options);
+					if (key in bits) value |= bits[key];
+				}
+			} else throw new ValidationError(`expected number or array but got ${data}`, options);
+			if (value === meta.default) return [value];
+			return [value, keys];
+		});
+		Schema.extend("function", (data, _, options) => {
+			if (typeof data === "function") return [data];
+			throw new ValidationError(`expected function but got ${data}`, options);
+		});
+		Schema.extend("is", (data, { constructor }, options) => {
+			if (typeof constructor === "function") {
+				if (data instanceof constructor) return [data];
+				throw new ValidationError(`expected ${constructor.name} but got ${data}`, options);
+			} else {
+				if (isNullable(data)) throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+				let prototype = Object.getPrototypeOf(data);
+				while (prototype) {
+					if (prototype.constructor?.name === constructor) return [data];
+					prototype = Object.getPrototypeOf(prototype);
+				}
+				throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+			}
+		});
+		function property(data, key, schema, options) {
+			try {
+				const [value, adapted] = Schema.resolve(data[key], schema, {
+					...options,
+					path: [...options.path || [], key]
+				});
+				if (adapted !== void 0) data[key] = adapted;
+				return value;
+			} catch (e) {
+				if (!options?.autofix) throw e;
+				delete data[key];
+				return schema.meta.volatile ? createVolatile(schema.meta.default) : schema.meta.default;
+			}
+		}
+		Schema.extend("array", (data, { inner, meta }, options) => {
+			if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+			checkWithinRange(data.length, meta, "array length", options, !isNullable(inner.meta.default));
+			return [data.map((_, index) => property(data, index, inner, options))];
+		});
+		Schema.extend("dict", (data, { inner, sKey }, options, strict) => {
+			if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+			const result = {};
+			for (const key in data) {
+				let rKey;
+				try {
+					rKey = Schema.resolve(key, sKey, options)[0];
+				} catch (error) {
+					if (strict) continue;
+					throw error;
+				}
+				result[rKey] = property(data, key, inner, options);
+				data[rKey] = data[key];
+				if (key !== rKey) delete data[key];
+			}
+			return [result];
+		});
+		Schema.extend("tuple", (data, { list }, options, strict) => {
+			if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+			const result = list.map((inner, index) => property(data, index, inner, options));
+			if (strict) return [result];
+			result.push(...data.slice(list.length));
+			return [result];
+		});
+		function merge(result, data) {
+			for (const key in data) {
+				if (key in result) continue;
+				result[key] = data[key];
+			}
+		}
+		Schema.extend("object", (data, { dict }, options, strict) => {
+			if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+			const result = {};
+			for (const key in dict) {
+				const value = property(data, key, dict[key], options);
+				if (!isNullable(value) || key in data) result[key] = value;
+			}
+			if (!strict) merge(result, data);
+			return [result];
+		});
+		Schema.extend("union", (data, { list, toString }, options, strict) => {
+			const messages = [];
+			for (const inner of list) try {
+				return Schema.resolve(data, inner, options, strict);
+			} catch (error) {
+				messages.push(error);
+			}
+			throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
+		});
+		Schema.extend("intersect", (data, { list, toString }, options, strict) => {
+			if (!list.length) return [data];
+			let result;
+			for (const inner of list) {
+				const value = Schema.resolve(data, inner, options, true)[0];
+				if (isNullable(value)) continue;
+				if (isNullable(result)) result = value;
+				else if (typeof result !== typeof value) throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
+				else if (typeof value === "object") merge(result ??= {}, value);
+				else if (result !== value) throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
+			}
+			if (!strict && isPlainObject(data)) merge(result, data);
+			return [result];
+		});
+		Schema.extend("transform", (data, { inner, callback, preserve }, options) => {
+			const [result, adapted = data] = Schema.resolve(data, inner, options, true);
+			if (preserve) return [callback(result)];
+			else return [callback(result), callback(adapted)];
+		});
+		const formatters = {};
+		function defineMethod(name, keys, format) {
+			formatters[name] = format;
+			Object.assign(Schema, { [name](...args) {
+				const schema = new Schema({ type: name });
+				keys.forEach((key, index) => {
+					switch (key) {
+						case "sKey":
+							schema.sKey = args[index] ?? Schema.string();
+							break;
+						case "inner":
+							schema.inner = Schema.from(args[index]);
+							break;
+						case "list":
+							schema.list = args[index].map(Schema.from);
+							break;
+						case "dict":
+							schema.dict = mapValues(args[index], Schema.from);
+							break;
+						case "bits":
+							schema.bits = {};
+							for (const key in args[index]) {
+								if (typeof args[index][key] !== "number") continue;
+								schema.bits[key] = args[index][key];
+							}
+							break;
+						case "callback": {
+							const callback = schema.callback = args[index];
+							callback["toJSON"] ||= () => callback.toString();
+							break;
+						}
+						case "constructor": {
+							const constructor = schema.constructor = args[index];
+							if (typeof constructor === "function") constructor["toJSON"] ||= () => constructor["name"];
+							break;
+						}
+						default: schema[key] = args[index];
+					}
+				});
+				if (name === "object" || name === "dict") schema.meta.default = {};
+				else if (name === "array" || name === "tuple") schema.meta.default = [];
+				else if (name === "bitset") schema.meta.default = 0;
+				return schema;
+			} });
+		}
+		defineMethod("is", ["constructor"], ({ constructor }) => {
+			if (typeof constructor === "function") return constructor.name;
+			else return constructor;
+		});
+		defineMethod("any", [], () => "any");
+		defineMethod("never", [], () => "never");
+		defineMethod("const", ["value"], ({ value }) => typeof value === "string" ? JSON.stringify(value) : value);
+		defineMethod("string", [], () => "string");
+		defineMethod("number", [], () => "number");
+		defineMethod("boolean", [], () => "boolean");
+		defineMethod("bitset", ["bits"], () => "bitset");
+		defineMethod("function", [], () => "function");
+		defineMethod("array", ["inner"], ({ inner }) => `${inner.toString(true)}[]`);
+		defineMethod("dict", ["inner", "sKey"], ({ inner, sKey }) => `{ [key: ${sKey.toString()}]: ${inner.toString()} }`);
+		defineMethod("tuple", ["list"], ({ list }) => `[${list.map((inner) => inner.toString()).join(", ")}]`);
+		defineMethod("object", ["dict"], ({ dict }) => {
+			if (Object.keys(dict).length === 0) return "{}";
+			return `{ ${Object.entries(dict).map(([key, inner]) => {
+				return `${key}${inner.meta.required ? "" : "?"}: ${inner.toString()}`;
+			}).join(", ")} }`;
+		});
+		defineMethod("union", ["list"], ({ list }, inline) => {
+			const result = list.map(({ toString: format }) => format()).join(" | ");
+			return inline ? `(${result})` : result;
+		});
+		defineMethod("intersect", ["list"], ({ list }) => {
+			return `${list.map((inner) => inner.toString(true)).join(" & ")}`;
+		});
+		defineMethod("transform", [
+			"inner",
+			"callback",
+			"preserve"
+		], ({ inner }, isInner) => inner.toString(isInner));
+		//#endregion
+		//#region lib/types/onboarding-config.js
+		/** Public page-bootstrap options shared by the Host and Client halves. */
+		/** Validate Host configuration and its public page-bootstrap payload. */
+		const Config = Schema.object({ credentialOnboarding: Schema.boolean().default(true) });
+		/** Page-global key carrying only the public onboarding options. */
+		const ONBOARDING_CONFIG_GLOBAL = "__DSH_MODELS_ONBOARDING__";
 		//#endregion
 		//#region lib/types/client/index.js
 		/** Dictionary namespace owned by this plugin. */
@@ -2778,7 +3995,8 @@ window.__ModuleLoader__.load({
 			"remote.credentials",
 			"remote.llm",
 			"remote.settings",
-			"settingsScope",
+			"remote.session",
+			"configForms",
 			"settingsSchema"
 		];
 		/**
@@ -2788,36 +4006,33 @@ window.__ModuleLoader__.load({
 		* @param ctx - client root context.
 		*/
 		function apply(ctx) {
+			const payload = globalThis[ONBOARDING_CONFIG_GLOBAL];
+			const credentialOnboarding = Config(payload === void 0 ? {} : payload).credentialOnboarding && !("dshDesktop" in globalThis);
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en
 			}), "ui-settings-models: copy dictionaries");
 			const schema = createSettingsSchemaOperations(ctx.settingsSchema);
-			const wire = {
-				credentials: ctx.remote.credentials,
-				llm: ctx.remote.llm,
-				settings: ctx.remote.settings
-			};
-			const controller = new ModelsSettingsStore(wire, schema, ctx.settingsScope.describe());
+			const operations = createModelsOperations(ctx);
+			const controller = new ModelsSettingsStore(ctx, schema, ctx.configForms.describe());
 			const t = ctx.locale.bind(NS);
 			const injected = () => ({
 				controller,
 				hooks: { snapshot: controller.store },
-				api: wire,
+				operations,
 				schema,
 				t
 			});
 			const deepSeekOnboardingInjected = () => ({
+				automatic: credentialOnboarding,
+				track: (name, attributes) => ctx.get("productAnalytics")?.track(name, attributes),
 				controller,
 				hooks: { models: controller.store },
-				api: wire,
+				operations,
 				schema,
 				t
 			});
-			const welcomeController = new WelcomeNoticeStore(ctx.settingsScope.bind({
-				namespace: WELCOME_NOTICE_SETTINGS_NAMESPACE,
-				decode: decodeWelcomeSection
-			}));
+			const welcomeController = new WelcomeNoticeStore(ctx.configForms.get(WELCOME_NOTICE_SETTINGS_NAMESPACE));
 			const welcomeInjected = () => ({
 				controller: welcomeController,
 				hooks: { welcome: welcomeController.store },
@@ -2831,6 +4046,7 @@ window.__ModuleLoader__.load({
 					ctx.remote.$on("settings/document-updated", () => {
 						refreshModels();
 					}),
+					ctx.remote.$on("credentials/record-updated", refreshModels),
 					ctx.remote.$on("credentials/reference-updated", refreshModels),
 					ctx.remote.$on("llm/adapters-updated", refreshModels),
 					ctx.on("connection/reset", refreshModels)
@@ -2857,7 +4073,7 @@ window.__ModuleLoader__.load({
 					}
 				}
 			}, ModelsSection));
-			ctx.slots.inject("settings.onboarding", () => ctx.slots.register({
+			if (!("dshDesktop" in globalThis)) ctx.slots.inject("settings.onboarding", () => ctx.slots.register({
 				name: "settings.onboarding",
 				id: "welcome-notice",
 				order: -100,
@@ -2866,6 +4082,10 @@ window.__ModuleLoader__.load({
 			ctx.slots.inject("settings.onboarding", () => ctx.slots.register({
 				name: "settings.onboarding",
 				id: "deepseek-official",
+				children: { "settings.models.sign-in": {
+					kind: "single",
+					scope: "root"
+				} },
 				order: 0,
 				inject: deepSeekOnboardingInjected
 			}, DeepSeekOnboardingDialog));

@@ -6,10 +6,10 @@
  * whether the workspace connect created it or reused an existing blank one,
  * which is why staging cannot simply ride along on `sessions.create`.
  *
- * The stage is forgotten once applied: the next new session starts from the
- * deployment default again, matching the workspace picker beside it.
+ * The stage is forgotten once applied. The next new session starts from the
+ * Host-effective default again.
  */
-import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
 import type { AgentPresetOption } from './settings-store.ts';
@@ -19,8 +19,11 @@ export interface AgentPresetSeatState {
     options: readonly AgentPresetOption[];
     /** The staged choice, empty until the roster loads. */
     current: string;
-    /** A rejected apply's message, cleared by the next attempt. */
-    error: string | null;
+    /** An error message; explicit selection failures also carry the preset for a Toast. */
+    error: string | {
+        readonly preset: AgentPresetOption;
+        readonly reason: string;
+    } | null;
     busy: boolean;
     /**
      * One-shot cue that the chip should introduce itself (the creator-draft
@@ -29,26 +32,37 @@ export interface AgentPresetSeatState {
      */
     introduce: boolean;
 }
+/** Mutable one-shot preset choice shared across Provider-bound seat controllers. */
+export interface AgentPresetStage {
+    /** Preset awaiting application; absence means no staged choice. */
+    id: string | undefined;
+    /** Whether the receiving chip should announce the applied choice once. */
+    introduce: boolean;
+}
 /** Stages the next session's preset and applies it when one appears. */
 export declare class AgentPresetSeatController {
-    private readonly remote;
+    private readonly ctx;
     /** The session the hero is about to hand over to, when there is one. */
     private readonly currentSession;
+    private readonly staged;
     /** Chip snapshot the renderer subscribes to. */
     readonly store: SnapshotStore<AgentPresetSeatState>;
     /**
-     * The deployment default, so a consumed stage can fall back to it without
+     * The Host-effective default, so a consumed stage can fall back to it without
      * re-reading the roster.
      */
     private fallback;
-    /** Set while a pick is waiting for a session; cleared once applied. */
-    private staged;
-    constructor(remote: Pick<ClientRemote, 'agentPresets'>, 
+    /** Only the newest roster read may publish after overlapping refreshes. */
+    private loadGeneration;
+    /** Completion of the active Host selection; Settings choices wait before staging. */
+    private pendingSelection;
+    constructor(ctx: ClientContext, 
     /** The session the hero is about to hand over to, when there is one. */
-    currentSession: () => Pick<SessionSummary, 'id' | 'blank' | 'projectionValues'> | undefined);
+    currentSession: () => Pick<SessionSummary, 'id' | 'blank' | 'projectionValues'> | undefined, staged?: AgentPresetStage);
     private set;
+    private clearStage;
     /**
-     * Read the roster and open the chip on the deployment default.
+     * Read the roster and open the chip on the Host-effective default.
     * @returns once the snapshot reflects the host.
     */
     load(): Promise<void>;
@@ -56,11 +70,8 @@ export declare class AgentPresetSeatController {
      * Stage one preset for the next session, applying it immediately when a
      * blank session is already current.
      *
-     * The refusal is returned as well as stored, because the two readers need
-     * different things from it: the chip's own label carries the standing state,
-     * while the caller that made this pick is the one that has to say why the
-     * label came back — and only it knows the pick was a person's, not the
-     * applier catching up with a session that just became current.
+     * The refusal is stored for the chip's announcement and returned to callers
+     * such as Settings that also report the result of their own write.
      * @param id - the preset to stage.
      * @returns the refusal text, or undefined once the pick settled.
      */
@@ -77,6 +88,23 @@ export declare class AgentPresetSeatController {
      * chip should announce itself on the session it lands on.
      */
     stage(id: string, introduce?: boolean): void;
+    /** Acknowledge a displayed refusal without dismissing a newer attempt.
+     * @param refusal - the selection error whose Toast finished.
+     */
+    dismissRefusal(refusal: AgentPresetSeatState['error']): void;
+    /**
+     * Capture the exact blank Session a Settings action may bring along.
+     * @returns its id, or undefined outside a blank Session.
+     */
+    blankSessionId(): SessionSummary['id'] | undefined;
+    /**
+     * Apply a Settings choice only if its captured Session is still current and
+     * blank after any pending selection settles. The selection uses the existing stage/apply path.
+     * @param expectedSessionId - blank Session captured before the Settings write.
+     * @param id - the effective default that the write persisted.
+     * @returns the Host refusal text, or undefined when applied or no longer relevant.
+     */
+    syncBlankSession(expectedSessionId: SessionSummary['id'], id: string): Promise<string | undefined>;
     /** Acknowledge the introduction cue once the chip has played it. */
     introduced(): void;
     /**
@@ -84,8 +112,9 @@ export declare class AgentPresetSeatController {
      *
      * Called both by `select()` and by whoever observes the current session
      * changing, because the session may appear either before or after the pick.
-     * @returns once the switch settled, or immediately when there is nothing to do.
+     * List updates do not repeat a selection while its response is pending.
+     * @returns this attempt's Host refusal, or undefined when successful or no switch starts.
      */
-    apply(): Promise<void>;
+    apply(): Promise<string | undefined>;
 }
 //# sourceMappingURL=seat-store.d.ts.map

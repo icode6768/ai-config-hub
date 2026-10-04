@@ -17,8 +17,8 @@
  *
  * The tree itself boots through the host's own `boot()` glue loaded from the
  * image, so entry mounting, the activation audit, and its diagnostics are the
- * same code the Node deployment runs. Only the module seam and the command line
- * are supplied from here.
+ * same code the Node deployment runs. The Worker supplies module loading,
+ * profile locations, and the command line.
  * @module @deepseek-ai/dsh-experimental-webworker-runtime/src/worker-host
  */
 import { WorkerModuleLoader, type StaticModuleFactory } from './module-system/module-loader.ts';

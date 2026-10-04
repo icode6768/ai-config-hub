@@ -15,12 +15,14 @@
 import z from '@deepseek-ai/schemastery';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout';
-import { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from "./connection.js";
+import { DEFAULT_MAX_INSTRUCTION_BYTES, RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from "./connection.js";
+import { registerServerContext } from "./server-context.js";
+export { createMcpToolDefinition } from "./tools.js";
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'mcp-client';
 /** Services required by this plugin. */
 export const inject = ['tools'];
-/** Default timeout for individual MCP tool calls (ms). */
+/** Default timeout for individual MCP tool calls and resource requests (ms). */
 const DEFAULT_TOOL_CALL_TIMEOUT_MS = 60_000;
 /** Valid `serverName`, kept below the public tool-name budget. */
 const SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
@@ -46,6 +48,7 @@ export const Config = z.union([
         cwd: z.string().default(''),
         toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
         failOnStartupError: z.boolean().default(false),
+        maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
         reconnect: Reconnect,
     }),
     z.object({
@@ -55,6 +58,7 @@ export const Config = z.union([
         headers: z.dict(String).default({}),
         toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
         failOnStartupError: z.boolean().default(false),
+        maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
         reconnect: Reconnect,
     }),
 ]);
@@ -91,9 +95,18 @@ export async function apply(ctx, config) {
     // loop, and the live tool registrations; disposal stops reconnection,
     // quiesces in-flight work, and unregisters the current generation.
     const connection = startConnection(ctx, config, reconnect);
-    ctx.effect(() => {
-        return () => connection.dispose();
-    }, 'mcp-client.connection');
+    registerServerContext(ctx, config.serverName, connection);
+    let stopping;
+    const dispose = () => stopping ??= connection.dispose();
+    // Cordis announces unload before awaiting an unfinished apply(). Closing
+    // the transport here releases startup requests that are still awaiting a reply.
+    // oxlint-disable-next-line typescript/no-misused-promises -- Cordis contains observer failures; the effect also awaits this promise.
+    ctx.on('internal/plugin', (fiber) => {
+        if (fiber !== ctx.fiber || fiber.uid !== null)
+            return;
+        return dispose();
+    }, { global: true });
+    ctx.effect(() => dispose, 'mcp-client.connection');
     // Block plugin activation on the initial connection + tool discovery so
     // Cordis consumers observe the tools immediately after the fiber activates.
     // When failOnStartupError is true, a failed initial attempt rejects the

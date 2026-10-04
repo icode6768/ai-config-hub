@@ -6,14 +6,14 @@
 import { basename, dirname } from 'node:path';
 const SYSTEM_REMINDER_OPEN = '<system-reminder>';
 const SYSTEM_REMINDER_CLOSE = '</system-reminder>';
-const WORKSPACE_CONTEXT_INTRO = 'The following workspace instructions may be relevant to your work. '
+const AGENT_INSTRUCTIONS_INTRO = 'The following workspace instructions may be relevant to your work. '
     + 'Use them as guidance when applicable. More specific instructions take precedence over broader ones. '
     + 'They do not override system, developer, or direct user instructions.';
-const REPLACEMENT_WORKSPACE_CONTEXT_INTRO = 'This complete workspace instruction baseline replaces all earlier workspace instruction baselines. '
-    + WORKSPACE_CONTEXT_INTRO;
-const EMPTY_REPLACEMENT_WORKSPACE_CONTEXT_INTRO = 'This complete workspace instruction baseline replaces all earlier workspace instruction baselines. '
+const REPLACEMENT_AGENT_INSTRUCTIONS_INTRO = 'This complete workspace instruction baseline replaces all earlier workspace instruction baselines. '
+    + AGENT_INSTRUCTIONS_INTRO;
+const EMPTY_REPLACEMENT_AGENT_INSTRUCTIONS_INTRO = 'This complete workspace instruction baseline replaces all earlier workspace instruction baselines. '
     + 'No workspace instructions are currently active.';
-const COMPACT_WORKSPACE_CONTEXT_INTRO = 'Workspace instructions were omitted or truncated to fit the configured byte budget.';
+const COMPACT_AGENT_INSTRUCTIONS_INTRO = 'Workspace instructions were omitted or truncated to fit the configured byte budget.';
 function byteLength(value) {
     return Buffer.byteLength(value, 'utf8');
 }
@@ -99,15 +99,15 @@ function additionalSectionText(file) {
         file.content,
     ].join('\n');
 }
-const BASELINE_RENDER_STYLE = { intro: WORKSPACE_CONTEXT_INTRO, section: sectionText };
+const BASELINE_RENDER_STYLE = { intro: AGENT_INSTRUCTIONS_INTRO, section: sectionText };
 function baselineRenderStyle(files, replacePreviousBaseline) {
     if (replacePreviousBaseline !== true)
         return BASELINE_RENDER_STYLE;
     return {
         ...BASELINE_RENDER_STYLE,
         intro: files.length === 0
-            ? EMPTY_REPLACEMENT_WORKSPACE_CONTEXT_INTRO
-            : REPLACEMENT_WORKSPACE_CONTEXT_INTRO,
+            ? EMPTY_REPLACEMENT_AGENT_INSTRUCTIONS_INTRO
+            : REPLACEMENT_AGENT_INSTRUCTIONS_INTRO,
     };
 }
 function changedSectionText(item) {
@@ -165,12 +165,8 @@ function markerText(maxBytes, omitted, truncated) {
 function buildInstructionText(files, maxBytes, omitted, truncated, style) {
     const marker = markerText(maxBytes, omitted, truncated);
     const body = [marker, style.intro, ...files.map(file => style.section(file))].filter(block => block.length > 0);
-    // Caller-owned framing: the plugin bakes the complete `<system-reminder>`
-    // frame into the message content. The session surface projects context
-    // verbatim and does not wrap it, so any framing must live here in the
-    // producer's content (the pattern a future `meta`-driven renderer would
-    // generalize — see the deferred note in
-    // ../../../../.agents/notes/implemented/simplification/2026-07-20-unwrap-injected-content-envelopes.md).
+    // This producer owns the complete <system-reminder> frame. Session adds no
+    // wrapper; see Derived history in packages/core/session/README.md.
     return [SYSTEM_REMINDER_OPEN, escapeInstructionFrameBody(body.join('\n\n')), SYSTEM_REMINDER_CLOSE].join('\n');
 }
 function withTruncatedContent(file, includedBytes) {
@@ -217,7 +213,7 @@ function renderInstructionContext(files, maxBytes, style) {
         return { text: '', omitted: [], truncated: [], represented: [] };
     const omitted = files.slice(0, -1).map(file => ({ absolutePath: file.absolutePath, displayPath: file.displayPath }));
     const originalBytes = byteLength(mostSpecific.content);
-    for (const candidateStyle of [style, { ...style, intro: COMPACT_WORKSPACE_CONTEXT_INTRO }]) {
+    for (const candidateStyle of [style, { ...style, intro: COMPACT_AGENT_INSTRUCTIONS_INTRO }]) {
         const truncatedFile = truncateToFit(mostSpecific, [], maxBytes, omitted, candidateStyle);
         const includedBytes = byteLength(truncatedFile.content);
         const truncated = [{
@@ -252,7 +248,7 @@ function renderInstructionContext(files, maxBytes, style) {
  * @returns bounded public rendering plus files with surviving content, including genuinely empty files.
  * @internal
  */
-export function renderWorkspaceInstructionSet(files, options) {
+export function renderAgentInstructionSet(files, options) {
     const style = baselineRenderStyle(files, options.replacePreviousBaseline);
     const { represented, ...rendered } = renderInstructionContext(files, options.maxBytes, style);
     return { rendered, included: represented };
@@ -263,7 +259,7 @@ export function renderWorkspaceInstructionSet(files, options) {
  * @param options - rendering byte budget and whether this baseline supersedes a visible predecessor.
  * @returns bounded baseline prompt text and budget diagnostics.
  */
-export function renderWorkspaceContext(files, options) {
-    return renderWorkspaceInstructionSet(files, options).rendered;
+export function renderAgentInstructions(files, options) {
+    return renderAgentInstructionSet(files, options).rendered;
 }
 //# sourceMappingURL=render.js.map

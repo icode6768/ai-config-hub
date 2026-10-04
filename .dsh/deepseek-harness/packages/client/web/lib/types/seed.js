@@ -14,6 +14,7 @@ import * as Cordis from '@deepseek-ai/cordis';
 import * as ClientStore from '@deepseek-ai/dsh-client-store';
 import * as UiSlots from '@deepseek-ai/dsh-client-ui-slots';
 import * as UiPrimitives from '@deepseek-ai/dsh-client-ui-primitives';
+import * as UiDockkit from '@deepseek-ai/dsh-client-ui-dockkit';
 /**
  * Build the static table handed to the module loader at boot.
  * @returns module specifier → exported entity (one entry per platform word).
@@ -31,6 +32,7 @@ export function getStaticModules() {
         '@deepseek-ai/dsh-client-store': ClientStore,
         '@deepseek-ai/dsh-client-ui-slots': UiSlots,
         '@deepseek-ai/dsh-client-ui-primitives': UiPrimitives,
+        '@deepseek-ai/dsh-client-ui-dockkit': UiDockkit,
     };
 }
 //# sourceMappingURL=seed.js.map

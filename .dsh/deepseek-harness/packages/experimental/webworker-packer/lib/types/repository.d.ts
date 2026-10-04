@@ -1,4 +1,5 @@
 import type { ConfigTree, ImageTree, PackResult } from './pack.ts';
+export { packPreviewFixture } from './preview.ts';
 /** One built-in Preview source and the trees packed into its overlay. */
 export interface PreviewFixture {
     /** URL/query-safe identifier. */
@@ -18,11 +19,11 @@ export interface PreviewFixture {
 export declare function indexWorkspacePackages(repoRoot: string): Map<string, string>;
 /**
  * Compose one profile through the real CLI dump path, leaving `!!js`
- * unevaluated. The dump runs against a throwaway Harness home and default
- * layers only, so the image is the shipped profile: the machine's `$DSH_HOME`
- * — its profile manifest with locally installed bundles, and its patch files —
- * would otherwise leak this machine's plugins into the image and break the
- * same-tree-same-bytes guarantee.
+ * unevaluated. The dump runs against a throwaway Harness home, so the
+ * profile's own layer is the freshly initialized empty patch file and the
+ * machine's `$DSH_HOME` — its profile manifest with locally installed
+ * bundles, and its patch files — would otherwise leak this machine's plugins
+ * into the image and break the same-tree-same-bytes guarantee.
  * @param repoRoot - Absolute repository root.
  * @param profile - Profile name to compose.
  * @returns The composed YAML.

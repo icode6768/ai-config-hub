@@ -62,4 +62,16 @@ export function launchEnvironmentOf(ctx) {
     return ctx.get(DSH_LAUNCH_ENVIRONMENT_KEY)
         ?? createLaunchEnvironmentSnapshot([{ source: 'process', values: process.env }]);
 }
+/**
+ * Detect SSH from non-empty SSH_CONNECTION or SSH_TTY inherited at launch.
+ * Project and user `.env` values never establish an SSH session.
+ * @param environment - the launcher's environment snapshot.
+ * @returns whether the inherited process layer carries either SSH marker.
+ */
+export function launchedThroughSsh(environment) {
+    return ['SSH_CONNECTION', 'SSH_TTY'].some((name) => {
+        const value = environment.getFrom(name, ['process'])?.value;
+        return value !== undefined && value !== '';
+    });
+}
 //# sourceMappingURL=index.js.map

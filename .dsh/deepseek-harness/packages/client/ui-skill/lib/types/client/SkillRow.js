@@ -1,6 +1,6 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState } from 'react';
-import { IconChevronDownOutline14, IconInspectOutline12, IconSkillOutline16, StateDot, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconChevronDownOutlineRegular, IconInspectOutlineRegular, IconSkillOutlineRegular, TextShimmer, } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './SkillRow.module.css';
 /** First physical line for the collapsed error summary and malformed-args fallback. */
 function firstLine(text) {
@@ -54,29 +54,20 @@ function skillRowModel(block) {
         state,
     };
 }
-/** State substitution for the collapsed leading slot. */
-function leadingFor(state) {
-    switch (state) {
-        case 'error': return _jsx(StateDot, { state: "error" });
-        case 'stopped': return _jsx(StateDot, { state: "warning" });
-        default: return _jsx(IconSkillOutline16, { size: 14 });
-    }
-}
 /** Leading disclosure slot: state icon at rest, chevron on hover or while open. */
-function disclosureLeading(state, open, expandable) {
+function disclosureLeading(open, expandable) {
     if (open)
-        return _jsx(IconChevronDownOutline14, { className: css.chevron });
-    const icon = leadingFor(state);
+        return _jsx(IconChevronDownOutlineRegular, { className: css.chevron });
+    const icon = _jsx(IconSkillOutlineRegular, { size: 14 });
     if (!expandable)
         return icon;
-    return (_jsxs(_Fragment, { children: [_jsx("span", { className: css.iconIdle, children: icon }), _jsx(IconChevronDownOutline14, { className: `${css.chevron} ${css.chevronHover}` })] }));
+    return (_jsxs(_Fragment, { children: [_jsx("span", { className: css.iconIdle, children: icon }), _jsx(IconChevronDownOutlineRegular, { className: `${css.chevron} ${css.chevronHover}` })] }));
 }
-/** Visually hidden state copy for the colour-only lifecycle cues. */
+/** Visually hidden state copy for the color-only running sweep and error tone. */
 function stateStatus(state, t) {
     switch (state) {
         case 'running': return t('row.running');
         case 'error': return t('row.failed');
-        case 'stopped': return t('row.stopped');
         default: return null;
     }
 }
@@ -85,13 +76,19 @@ function stateStatus(state, t) {
  * @param props - keyed toolview payload plus the skill locale seat.
  * @returns the dedicated skill row.
  */
-export function SkillRow({ block, inspect, t }) {
+export function SkillRow(props) {
+    if (props.phase === 'preparing')
+        return _jsx("div", { className: css.card, "data-tool": "skill", "data-state": "preparing", children: _jsxs("div", { className: css.row, children: [_jsx("span", { className: css.leading, children: _jsx(IconSkillOutlineRegular, { size: 14 }) }), _jsx("span", { className: css.visuallyHidden, children: props.t('row.preparing') }), _jsx(TextShimmer, { active: true, className: css.title, children: props.t('row.title') })] }) });
+    return _jsx(StartedSkillRow, { ...props });
+}
+function StartedSkillRow({ block, inspect, t }) {
     const model = skillRowModel(block);
     const [expanded, setExpanded] = useState(false);
     const expandable = model.output !== null;
     const open = expanded && expandable;
     const status = stateStatus(model.state, t);
-    const summary = model.errorSummary ?? model.name;
+    const running = model.state === 'running';
+    const summary = model.state === 'stopped' ? t('row.stopped') : model.errorSummary ?? model.name;
     const toggleExpand = () => {
         setExpanded(value => !value);
     };
@@ -108,7 +105,8 @@ export function SkillRow({ block, inspect, t }) {
         onClick: toggleExpand,
         onKeyDown: toggleFromKeyboard,
     } : {};
-    const leading = disclosureLeading(model.state, open, expandable);
-    return (_jsxs("div", { className: css.card, "data-tool": "skill", "data-state": model.state, children: [_jsxs("div", { className: css.row, "data-expandable": expandable || undefined, ...disclosureProps, children: [_jsx("span", { className: css.leading, children: leading }), status !== null ? _jsx("span", { className: css.visuallyHidden, children: status }) : null, _jsx("span", { className: css.title, children: t('row.title') }), _jsx("span", { className: css.separator, "aria-hidden": true }), _jsx("span", { className: model.errorSummary === null ? css.summary : `${css.summary} ${css.errorSummary}`, children: summary })] }), open ? (_jsxs("div", { className: css.bodyWrap, children: [_jsxs("section", { className: css.instructionsCard, "aria-label": t('row.instructions'), children: [_jsx("div", { className: css.instructionsHeader, children: t('row.instructions') }), _jsx("pre", { className: css.instructions, "data-error": model.state === 'error' || undefined, children: model.output })] }), inspect !== undefined ? (_jsxs("button", { type: "button", className: css.inspectButton, onClick: inspect, children: [_jsx(IconInspectOutline12, {}), t('row.inspect')] })) : null] })) : null] }));
+    const leading = disclosureLeading(open, expandable);
+    return (_jsxs("div", { className: css.card, "data-tool": "skill", "data-state": model.state, children: [_jsxs("div", { className: css.row, "data-expandable": expandable || undefined, ...disclosureProps, children: [_jsx("span", { className: css.leading, children: leading }), status !== null ? _jsx("span", { className: css.visuallyHidden, children: status }) : null, _jsxs(TextShimmer, { active: running, children: [_jsx("span", { className: css.title, children: _jsx(TextShimmer, { children: t('row.title') }) }), _jsx("span", { className: css.separator, "data-shimmer-decoration": true, "aria-hidden": true }), _jsx("span", { className: `${css.summary}${model.state === 'error' ? ` ${css.errorSummary}`
+                                    : model.state === 'stopped' ? ` ${css.stoppedSummary}` : ''}`, children: _jsx(TextShimmer, { children: summary }) })] })] }), open ? (_jsxs("div", { className: css.bodyWrap, children: [_jsxs("section", { className: css.instructionsCard, "aria-label": t('row.instructions'), children: [_jsx("div", { className: css.instructionsHeader, children: t('row.instructions') }), _jsx("pre", { className: css.instructions, "data-error": model.state === 'error' || undefined, children: model.output })] }), inspect !== undefined ? (_jsxs("button", { type: "button", className: css.inspectButton, onClick: inspect, children: [_jsx(IconInspectOutlineRegular, {}), t('row.inspect')] })) : null] })) : null] }));
 }
 //# sourceMappingURL=SkillRow.js.map

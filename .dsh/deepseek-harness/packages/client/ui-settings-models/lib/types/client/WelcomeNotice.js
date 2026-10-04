@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-/** Product-wide, versioned internal-testing notice. */
+/** Product-wide, versioned preview notice. */
 import { useCallback, useEffect, useRef } from 'react';
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import { OnboardingModal } from "./OnboardingModal.js";

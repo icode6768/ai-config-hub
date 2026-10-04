@@ -1,5 +1,5 @@
 import { jsx as _jsx } from "react/jsx-runtime";
-import { IconSearchOutline16 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconSearchOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { searchCardModel } from "../models/search-card-model.js";
 import { toolRowModel } from "../models/tool-call-model.js";
 import { ToolRow } from "../components/ToolRow.js";
@@ -9,12 +9,12 @@ const SEARCH_TITLE_KEYS = {
     glob: 'tool.title.glob',
 };
 /** Lets users expand grep or glob results and recover capped searches. */
-export function SearchRow({ toolName, block, inspect, t }) {
+export function SearchRow({ toolName, block, inspect, useDisclosure, t }) {
     const model = toolRowModel(toolName, block);
     const search = searchCardModel(block);
-    return (_jsx(ToolRow, { t: t, variant: model.variant, toolName: toolName, icon: _jsx(IconSearchOutline16, { size: 14 }), title: t(toolName === 'grep'
+    return (_jsx(ToolRow, { useDisclosure: useDisclosure, t: t, variant: model.variant, toolName: toolName, icon: _jsx(IconSearchOutlineRegular, { size: 14 }), title: t(toolName === 'grep'
             ? SEARCH_TITLE_KEYS.grep
-            : toolName === 'glob' ? SEARCH_TITLE_KEYS.glob : model.titleKey), summary: model.summary, body: null, 
+            : toolName === 'glob' ? SEARCH_TITLE_KEYS.glob : model.titleKey), summary: model.summary, 
         // ToolRow ignores output when a structured card is present; otherwise it
         // preserves the generic fallback for errors and legacy results.
         output: model.output, errorSummary: model.errorSummary, search: search, state: model.state, inspect: inspect }));

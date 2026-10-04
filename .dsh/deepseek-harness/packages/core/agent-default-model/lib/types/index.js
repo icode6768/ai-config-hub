@@ -1,20 +1,6 @@
-/**
- * Default model selection for an Agent without a session-specific selection.
- *
- * @module @deepseek-ai/dsh-agent-default-model
- */
 import { Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
-/** Settings namespace carrying the default model selection for future Agents. */
-export const AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE = settingsNamespace('agent-default-model');
-/** Schema of the default Agent model settings section. */
-export const AGENT_DEFAULT_MODEL_SETTINGS_SCHEMA = z.object({
-    provider: z.string().required(),
-    model: z.string().required(),
-    reasoningEffort: z.string(),
-});
 /** Project stored settings onto the Agent-facing selection type. */
 function selection(settings) {
     return {
@@ -27,45 +13,55 @@ function selection(settings) {
 }
 /**
  * Owns the default model selection independently of any Host or transport.
- * The composition entry remains usable without a settings provider; when one
- * is mounted, its user layer is read live.
+ * Each operation reads the owning Config references.
  */
 export class AgentDefaultModelConfig extends Service {
+    ownerContext;
+    config;
+    saves = Promise.resolve();
     static Config = z.object({
-        provider: z.string().required(),
-        model: z.string().required(),
+        provider: z.string().required().volatile(),
+        model: z.string().required().volatile(),
+        reasoningEffort: z.string().volatile(),
     });
-    source;
-    constructor(ctx, config) {
-        super(ctx, 'agentDefaultModel');
-        const entry = { provider: config.provider, model: config.model };
-        this.source = () => entry;
-        installSettingsSection(ctx, AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE, AGENT_DEFAULT_MODEL_SETTINGS_SCHEMA, entry, {
-            setSource: (current) => { this.source = current; },
-            // Every consumer reads through currentSelection(), so no registration-level fact
-            // needs rebuilding when the settings document changes.
-            onChange: () => { },
-        });
+    constructor(ownerContext, config) {
+        super(ownerContext, 'agentDefaultModel');
+        this.ownerContext = ownerContext;
+        this.config = config;
+        ownerContext.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ownerContext.fiber)); });
     }
     /**
      * Read the current default model selection.
      * @returns a detached provider, model, and optional reasoning selection.
      */
     currentSelection() {
-        return selection(this.source());
+        const reasoningEffort = this.config.reasoningEffort.get();
+        return selection({
+            provider: this.config.provider.get(), model: this.config.model.get(),
+            ...reasoningEffort === undefined ? {} : { reasoningEffort },
+        });
     }
     /**
-     * Save the complete default model selection. A deployment without a settings
-     * provider keeps its composition entry.
+     * Save the complete default model selection. A deployment without a configuration
+     * editor keeps its composition entry. Saves commit in submission order; a failed
+     * save rejects its caller without blocking later saves.
      * @param next - resolved selection accepted by an entry point.
-     * @returns fulfillment after the optional settings write settles.
+     * @returns fulfillment after the optional profile write settles.
      */
     async saveSelection(next) {
-        await this.ctx.get('settings')?.replace(AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE, {
-            provider: next.provider,
-            model: next.model,
+        const entry = this.ownerContext.fiber.entry;
+        if (entry === undefined)
+            return;
+        const editor = this.ctx.get('configEditor');
+        if (editor === undefined)
+            return;
+        const config = {
+            provider: next.provider, model: next.model,
             ...next.reasoningEffort === undefined ? {} : { reasoningEffort: String(next.reasoningEffort) },
-        });
+        };
+        const saved = this.saves.then(() => editor.edit(entry, () => config));
+        this.saves = saved.catch(() => { });
+        await saved;
     }
 }
 export default AgentDefaultModelConfig;

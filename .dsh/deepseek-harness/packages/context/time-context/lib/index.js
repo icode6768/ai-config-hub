@@ -1,5 +1,8 @@
 import z from "@deepseek-ai/schemastery";
-import { assertNever, createUserMessage } from "@deepseek-ai/dsh-llm";
+import { z as z$1 } from "zod";
+import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { SessionSeq } from "@deepseek-ai/dsh-session";
+import { assertNever } from "@deepseek-ai/dsh-util-values";
 //#region lib/types/request-zone.js
 /** Browser-zone derivation and model-facing policy text for one open request turn. */
 const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)+$/;
@@ -97,8 +100,16 @@ function formatTimestamp(now, formatter, timeZone) {
 */
 /** Cordis plugin name used by loader diagnostics. */
 const name = "time-context";
+const timeContextStateSchema = z$1.object({
+	/** Time of the latest model-visible event (user/assistant message, tool result), or null. */
+	lastMessageTime: z$1.number().nullable(),
+	/** Time of this plugin's latest durable injection, or null. */
+	lastInjectionTime: z$1.number().nullable(),
+	/** Latest injection time in the open turn, or null before that turn receives one. */
+	lastTurnInjectionTime: z$1.number().nullable()
+});
 /** The agent registry that owns pre-step processing. */
-const inject = ["agents"];
+const inject = ["agents", "sessionProjections"];
 /** Schemastery validation for {@link Config}. */
 const Config = z.object({
 	timeZone: z.string(),
@@ -120,30 +131,15 @@ function formatDuration(elapsedMs) {
 	parts.push(`${seconds}s`);
 	return parts.join(" ");
 }
-/** Find the latest model-visible event, excluding this plugin's pending append. */
-function precedingMessageTime(agent) {
-	for (const event of [...agent.session.events].reverse()) switch (event.type) {
-		case "user/message":
-		case "assistant/message":
-		case "tool/result": return event.time;
-		default: break;
-	}
-}
-/** Find the preceding time-context event within the open turn. */
-function precedingStepContextTime(agent, turn) {
-	for (const event of [...agent.session.events].reverse()) {
-		if (event.type === "turn/start" && event.data.turn === turn) return void 0;
-		if (event.type === "user/message" && event.data.source.kind === "plugin" && event.data.source.plugin === "time-context") return event.time;
-	}
-}
-/** Find this plugin's latest durable injection, including a shadowed surface event. */
-function latestInjectionTime(agent) {
-	for (const event of [...agent.session.events].reverse()) if (event.type === "user/message" && event.data.source.kind === "plugin" && event.data.source.plugin === "time-context") return event.time;
-}
 /** Collect already-entered and proposed user messages belonging to one open turn. */
 function requestMessages(agent, turn, proposed) {
-	const start = agent.session.events.findLastIndex((event) => event.type === "turn/start" && event.data.turn === turn);
-	return [...start < 0 ? [] : agent.session.events.slice(start + 1).flatMap((event) => event.type === "user/message" ? [event.data] : []), ...proposed];
+	const entered = [];
+	for (let seq = agent.session.seq - 1; seq >= 0; seq -= 1) {
+		const event = agent.session.eventAt(SessionSeq(seq));
+		if (event?.type === "turn/start" && event.data.turn === turn) return [...entered.reverse(), ...proposed];
+		if (event?.type === "user/message") entered.push(event.data);
+	}
+	return [...proposed];
 }
 function renderText(now, turn, step, previous, formatter, timeZone, browserContext) {
 	const elapsed = previous === void 0 ? "unavailable" : formatDuration(now - previous);
@@ -153,7 +149,7 @@ function renderText(now, turn, step, previous, formatter, timeZone, browserConte
 }
 /** Reject refresh intervals that cannot represent an exact elapsed-millisecond threshold. */
 function validateRefreshInterval(refreshIntervalMs) {
-	if (refreshIntervalMs !== void 0 && (!Number.isSafeInteger(refreshIntervalMs) || refreshIntervalMs < 0)) throw new TypeError(`time-context: refreshIntervalMs must be a non-negative safe integer, got ${String(refreshIntervalMs)}`);
+	if (!Number.isSafeInteger(refreshIntervalMs) || refreshIntervalMs < 0) throw new TypeError(`time-context: refreshIntervalMs must be a non-negative safe integer, got ${String(refreshIntervalMs)}`);
 }
 /**
 * Register a prepended pre-step listener for the lifetime of `ctx`.
@@ -163,7 +159,7 @@ function validateRefreshInterval(refreshIntervalMs) {
 */
 function apply(ctx, config) {
 	const timeZone = config.timeZone;
-	const refreshIntervalMs = config.refreshIntervalMs;
+	const refreshIntervalMs = config.refreshIntervalMs ?? 6e5;
 	validateRefreshInterval(refreshIntervalMs);
 	let fallbackFormatter;
 	try {
@@ -182,15 +178,51 @@ function apply(ctx, config) {
 		formatters.set(selectedTimeZone, created);
 		return created;
 	};
+	ctx.sessionProjections.register({
+		key: "timeContext",
+		stateVersion: 2,
+		stateSchema: timeContextStateSchema,
+		init: () => ({
+			lastMessageTime: null,
+			lastInjectionTime: null,
+			lastTurnInjectionTime: null
+		}),
+		apply: (state, event) => {
+			if (event.type === "turn/start" || event.type === "turn/end") return state.lastTurnInjectionTime === null ? state : {
+				...state,
+				lastTurnInjectionTime: null
+			};
+			if (event.type === "user/message") {
+				const injected = event.data.source.kind === name;
+				const withMessage = state.lastMessageTime === event.time ? state : {
+					...state,
+					lastMessageTime: event.time
+				};
+				if (!injected) return withMessage;
+				return {
+					...withMessage,
+					lastInjectionTime: event.time,
+					lastTurnInjectionTime: event.time
+				};
+			}
+			if (event.type === "assistant/message" || event.type === "tool/result") return state.lastMessageTime === event.time ? state : {
+				...state,
+				lastMessageTime: event.time
+			};
+			return state;
+		}
+	});
 	ctx.on("agent/pre-step", async ({ agent, turn, step, signal }, next) => {
 		const decision = await next();
 		if (decision.kind === "reject" || signal.aborted) return decision;
 		const now = Date.now();
-		if (refreshIntervalMs !== void 0 && refreshIntervalMs > 0) {
-			const lastInjection = latestInjectionTime(agent);
-			if (lastInjection !== void 0 && now >= lastInjection && now - lastInjection < refreshIntervalMs) return decision;
+		const state = ctx.sessionProjections.stateOf(agent.session, "timeContext");
+		if (refreshIntervalMs > 0) {
+			const lastInjection = state.lastInjectionTime;
+			if (lastInjection != null && now >= lastInjection && now - lastInjection < refreshIntervalMs) return decision;
 		}
-		const previous = step === 1 ? precedingMessageTime(agent) : precedingStepContextTime(agent, turn);
+		/* v8 ignore next 6 -- every later step follows a recorded injection in the same turn */
+		const previous = step === 1 ? state.lastMessageTime ?? void 0 : state.lastTurnInjectionTime ?? void 0;
 		const browser = deriveBrowserTimeZoneContext(requestMessages(agent, turn, decision.messages));
 		const selectedTimeZone = browser.kind === "resolved" ? browser.timeZone : fallbackTimeZone;
 		const text = renderText(now, turn, step, previous, formatterFor(selectedTimeZone), selectedTimeZone, browser);
@@ -202,8 +234,7 @@ function apply(ctx, config) {
 					text
 				}],
 				source: {
-					kind: "plugin",
-					plugin: name,
+					kind: name,
 					form: "snapshot",
 					sections: [{
 						name,

@@ -13,9 +13,9 @@ export type ThemePreference = typeof THEME_PREFERENCES[number];
 /** Default preference when the user-settings document has no override. */
 export declare const DEFAULT_PREFERENCE: ThemePreference;
 /** Smallest accepted content font size (px). */
-export declare const FONT_SIZE_MIN = 12;
+export declare const FONT_SIZE_MIN = 10;
 /** Largest accepted content font size (px). */
-export declare const FONT_SIZE_MAX = 17;
+export declare const FONT_SIZE_MAX = 22;
 /** Content font size when the user-settings document has no override (px). */
 export declare const DEFAULT_FONT_SIZE = 14;
 /** Durable theme section shared by the Host schema and the browser scope. */

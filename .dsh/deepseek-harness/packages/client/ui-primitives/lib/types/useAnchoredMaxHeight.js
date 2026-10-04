@@ -5,7 +5,11 @@
  * the design cap to the space between that edge and the viewport top.
  */
 import { useLayoutEffect, useState } from 'react';
-/** Safe distance kept between the overlay and the viewport top edge (mirrors the Menu portal margin). */
+import { overlayTopMargin } from "./overlay-top-margin.js";
+/**
+ * Safe distance kept between the overlay and the viewport top edge (mirrors
+ * the Menu portal margin); the frame's overlay inset widens it.
+ */
 const MARGIN = 12;
 /**
  * Clamp a bottom-anchored overlay's max-height to the viewport.
@@ -13,16 +17,19 @@ const MARGIN = 12;
  * @param cap - design max-height in px (the clamp never exceeds it).
  * @param signal - re-measure trigger: pass the overlay's render state so anchor
  *   moves (composer growth) re-fit; resize/scroll re-fit while mounted.
+ * @param margin - viewport top margin floor in px; the frame's overlay
+ *   inset widens it. Callers under fixed chrome (the conversation header)
+ *   raise it past their chrome's height.
  * @returns the max-height to apply inline, in px.
  */
-export function useAnchoredMaxHeight(ref, cap, signal) {
+export function useAnchoredMaxHeight(ref, cap, signal, margin = MARGIN) {
     const [maxHeight, setMaxHeight] = useState(cap);
     useLayoutEffect(() => {
         const el = ref.current;
         if (el === null)
             return;
         const fit = () => {
-            setMaxHeight(Math.min(cap, Math.max(0, el.getBoundingClientRect().bottom - MARGIN)));
+            setMaxHeight(Math.min(cap, Math.max(0, el.getBoundingClientRect().bottom - overlayTopMargin(margin))));
         };
         fit();
         window.addEventListener('resize', fit);
@@ -31,7 +38,7 @@ export function useAnchoredMaxHeight(ref, cap, signal) {
             window.removeEventListener('resize', fit);
             window.removeEventListener('scroll', fit, true);
         };
-    }, [ref, cap, signal]);
+    }, [ref, cap, signal, margin]);
     return maxHeight;
 }
 //# sourceMappingURL=useAnchoredMaxHeight.js.map

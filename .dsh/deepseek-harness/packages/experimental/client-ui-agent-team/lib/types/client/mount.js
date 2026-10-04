@@ -1,9 +1,15 @@
-/** Source-safe Agent Teams browser registration and Remote mount lifecycle. */
-import { TeamAction, } from "./TeamAction.js";
+/** Source-safe Agent Teams browser registration. */
+import { TeamAction } from "./TeamAction.js";
 import { en, NS, zh } from "./locales.js";
-/** Required browser services for RPC, navigation, slots, and localized copy. */
-export const inject = ['sessions', 'remote', 'slots', 'locale'];
-function registerUi(ctx) {
+/** Required browser services for navigation, slots, and localized copy. */
+export const inject = ['sessions', 'uiWorkspace', 'slots', 'locale'];
+/**
+ * Register the Team locale dictionaries and the conversation-header action.
+ * The panel reads the Lead Session's `agentTeam` projection from the shared
+ * Session store; this registration performs no Team RPC.
+ * @param ctx - Client Context carrying the injected navigation, locale, slot, and Session services.
+ */
+export function registerAgentTeamUi(ctx) {
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'client-ui-agent-team: dictionaries');
     const sessions = ctx.sessions;
     const leadSessionId = (sessionId) => {
@@ -11,29 +17,17 @@ function registerUi(ctx) {
         return address?.parentSessionId ?? sessionId;
     };
     const actions = {
-        async load(sessionId) {
-            return await ctx.remote.agentTeams.view(leadSessionId(sessionId));
-        },
-        async createTask(sessionId, input) {
-            return await ctx.remote.agentTeams.createTask(leadSessionId(sessionId), input);
-        },
-        async updateTask(sessionId, input) {
-            const { owner, ...rest } = input;
-            return await ctx.remote.agentTeams.updateTask(leadSessionId(sessionId), {
-                ...rest,
-                ...owner === undefined ? {} : { owner },
-            });
-        },
-        async openTeammate(sessionId, member) {
-            if (member.role !== 'teammate')
-                return;
+        openTeammate(sessionId, childSessionId) {
             const parentSessionId = leadSessionId(sessionId);
-            await sessions.refreshSubagents(parentSessionId);
-            if (sessions.list.getSnapshot().current !== sessionId)
+            if ((sessions.retainInfo(sessionId).getSnapshot().retainedBy.mainView ?? 0) === 0)
                 return;
-            sessions.openSubagent({
+            if (childSessionId === parentSessionId) {
+                ctx.uiWorkspace.openSession(parentSessionId);
+                return;
+            }
+            ctx.uiWorkspace.openSession({
                 parentSessionId,
-                childSessionId: member.id,
+                childSessionId,
                 mode: 'continuable',
             });
         },
@@ -41,31 +35,9 @@ function registerUi(ctx) {
     ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
         name: 'conversation.session.header.actions',
         id: 'agent-team',
-        order: 20,
+        order: -20,
         locale: NS,
         inject: () => actions,
     }, TeamAction));
-}
-/**
- * Mount one generated Team Remote contribution, then register its browser UI.
- * @param ctx - Client Context carrying navigation, locale, slot, and Remote services.
- * @param contribution - generated Team descriptors selected by the browser entry.
- * @returns disposer for both the UI registrations and Remote namespace.
- */
-export async function mountAgentTeamUi(ctx, contribution) {
-    const disposeRemote = await ctx.remote.$mount(contribution);
-    const ui = ctx.inject(['sessions', 'remote.agentTeams', 'slots', 'locale'], registerUi);
-    try {
-        await ui;
-    }
-    catch (error) {
-        await ui.dispose();
-        await disposeRemote();
-        throw error;
-    }
-    return async () => {
-        await ui.dispose();
-        await disposeRemote();
-    };
 }
 //# sourceMappingURL=mount.js.map

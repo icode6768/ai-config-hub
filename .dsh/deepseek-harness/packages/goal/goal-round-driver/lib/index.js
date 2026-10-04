@@ -201,13 +201,10 @@ function apply(ctx) {
 		ctx.on("agent/error", ({ agent }) => {
 			disarm(stateFor(agent));
 		});
-		ctx.on("agent/created", ({ agent }) => {
-			stateFor(agent);
-		});
 		ctx.on("agent/disposed", ({ agent }) => {
 			states.delete(agent);
 		});
-		ctx.on("agent/session-start", ({ agent }) => {
+		ctx.on("agent/created", ({ agent }) => {
 			const state = stateFor(agent);
 			state.attempt = void 0;
 			state.competingQueued = false;
@@ -219,21 +216,24 @@ function apply(ctx) {
 				state.competingQueued = false;
 				const attempt = state.attempt;
 				const goal = currentGoal(state);
-				if ((attempt?.phase === "queued" || attempt?.phase === "claimed" || attempt?.cancelled) && goal?.phase === "active" && goal.activation === "armed") {
+				const pause = attempt !== void 0 && (attempt.phase === "queued" || attempt.phase === "claimed" || attempt.cancelled) && goal !== void 0 && goal.phase === "active" && goal.activation === "armed" && attempt.goalId === goal.id && attempt.revision === goal.revision;
+				if (pause || attempt?.phase === "queued") {
 					state.attempt = void 0;
 					try {
-						ctx.goals.pause(agent, goalRef(goal));
+						if (attempt.phase === "queued") agent.inbox.remove(attempt.messageId);
+						if (pause) ctx.goals.pause(agent, goalRef(goal));
 					} catch (error) {
-						ctx.logger.warn(`goal-round-driver: could not pause cancelled goal for agent "${agent.id}": ${renderThrown(error)}`);
+						ctx.logger.warn(`goal-round-driver: could not settle cancelled goal round for agent "${agent.id}": ${renderThrown(error)}`);
 						disarm(state);
 					}
 				}
 				requestDrive(state);
 			}
 		});
-		ctx.on("goal/changed", ({ agent }) => {
+		ctx.on("goal/changed", ({ agent, change }) => {
 			const state = stateFor(agent);
 			state.needsCheckpoint = true;
+			if (change.operation === "pause" && agent.status === "running" && ctx.agents.currentInitiator() !== agent) agent.cancel({ kind: "user" }, { keepInbox: true });
 			requestDrive(state);
 		});
 		ctx.on("agent/inbox/inserted", ({ agent, message }) => {

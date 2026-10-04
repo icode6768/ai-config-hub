@@ -1,10 +1,17 @@
 /** ACL/token bindings layered on the shared Win32 process owner. */
-import koffi from 'koffi';
+import { createLazyRequire } from '@deepseek-ai/dsh-lazy-require';
 import { ERROR_INSUFFICIENT_BUFFER, Win32Error, extendWin32ProcessBindings, isNullPtr, throwLastError, } from '@deepseek-ai/dsh-win32-process';
 import * as abi from "./win32-abi.js";
 export { allocPtrSlot, allocUint32, decodePtr, decodeUint32, isNullPtr, throwLastError, throwWin32, } from '@deepseek-ai/dsh-win32-process';
-const PVOID = koffi.pointer('void');
-const PPVOID = koffi.pointer(PVOID);
+const requireKoffi = createLazyRequire('koffi', import.meta.url);
+let cachedTypes;
+function ffiTypes() {
+    if (cachedTypes !== undefined)
+        return cachedTypes;
+    const koffi = requireKoffi();
+    const PVOID = koffi.pointer('void');
+    return cachedTypes = { PVOID, PPVOID: koffi.pointer(PVOID) };
+}
 /**
  * Return whether CreateFileW produced INVALID_HANDLE_VALUE.
  * @param handle - handle returned by CreateFileW.
@@ -21,7 +28,7 @@ export function isInvalidHandle(handle) {
  * @param value - unsigned value to store.
  */
 export function encodeUint32(slot, value) {
-    koffi.encode(slot, 'uint32', value);
+    requireKoffi().encode(slot, 'uint32', value);
 }
 /**
  * Return a Koffi pointer's numeric address for struct packing.
@@ -29,7 +36,7 @@ export function encodeUint32(slot, value) {
  * @returns pointer address.
  */
 export function ptrAddress(ptr) {
-    return koffi.address(ptr);
+    return requireKoffi().address(ptr);
 }
 /**
  * Allocate a raw byte block.
@@ -37,7 +44,7 @@ export function ptrAddress(ptr) {
  * @returns allocated pointer.
  */
 export function allocBytes(length) {
-    return koffi.alloc('uint8', length);
+    return requireKoffi().alloc('uint8', length);
 }
 /**
  * Allocate one zeroed x64 OVERLAPPED record.
@@ -55,7 +62,7 @@ export function allocOverlapped() {
  * @returns decoded pointer, or null for address zero.
  */
 export function decodePtrAt(buffer, offset) {
-    const value = koffi.decode(buffer, offset, PVOID);
+    const value = requireKoffi().decode(buffer, offset, ffiTypes().PVOID);
     return isNullPtr(value) ? null : value;
 }
 /**
@@ -65,7 +72,7 @@ export function decodePtrAt(buffer, offset) {
  * @returns decoded value.
  */
 export function decodeUint8At(ptr, offset) {
-    return koffi.decode(ptr, offset, 'uint8');
+    return requireKoffi().decode(ptr, offset, 'uint8');
 }
 /**
  * Decode a uint16 field at a native pointer offset.
@@ -74,7 +81,7 @@ export function decodeUint8At(ptr, offset) {
  * @returns decoded value.
  */
 export function decodeUint16At(ptr, offset) {
-    return koffi.decode(ptr, offset, 'uint16');
+    return requireKoffi().decode(ptr, offset, 'uint16');
 }
 /**
  * Decode a uint32 field at a native pointer offset.
@@ -83,7 +90,7 @@ export function decodeUint16At(ptr, offset) {
  * @returns decoded value.
  */
 export function decodeUint32At(ptr, offset) {
-    return koffi.decode(ptr, offset, 'uint32');
+    return requireKoffi().decode(ptr, offset, 'uint32');
 }
 /**
  * Compare two in-memory SID records without allocating strings.
@@ -116,6 +123,8 @@ let cached;
 function bindings() {
     if (cached !== undefined)
         return cached;
+    const koffi = requireKoffi();
+    const { PVOID, PPVOID } = ffiTypes();
     cached = extendWin32ProcessBindings(({ kernel32, advapi32, bind }) => ({
         openProcess: bind(kernel32, 'OpenProcess', PVOID, ['uint32', 'int', 'uint32']),
         openProcessToken: bind(advapi32, 'OpenProcessToken', 'int', [PVOID, 'uint32', PPVOID]),
@@ -136,6 +145,8 @@ function bindings() {
             PVOID, 'uint32', 'uint32', PVOID, 'uint32', PVOID, 'uint32', PVOID, PPVOID,
         ]),
         setEntriesInAclW: bind(advapi32, 'SetEntriesInAclW', 'uint32', ['uint32', PVOID, PVOID, PPVOID]),
+        initializeAcl: bind(advapi32, 'InitializeAcl', 'int', [PVOID, 'uint32', 'uint32']),
+        addMandatoryAce: bind(advapi32, 'AddMandatoryAce', 'int', [PVOID, 'uint32', 'uint32', 'uint32', PVOID]),
         setNamedSecurityInfoW: bind(advapi32, 'SetNamedSecurityInfoW', 'uint32', [
             'str16', 'int', 'uint32', PVOID, PVOID, PVOID, PVOID,
         ]),

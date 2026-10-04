@@ -15,14 +15,38 @@ export declare const API_REMOTE_FORWARDED_EVENTS: readonly [{
 }, {
     readonly event: "approval/request";
     readonly mode: "waterfall";
-}, ...{
-    event: "api-session/added" | "api-session/removed" | "api-session/status" | "api-session/activity" | "api-session/error";
-    mode: "emit";
-}[], {
+}, {
+    readonly event: "api-session/activity";
+    readonly mode: "emit";
+}, {
+    readonly event: "api-session/added";
+    readonly mode: "emit";
+}, {
+    readonly event: "api-session/error";
+    readonly mode: "emit";
+}, {
+    readonly event: "api-session/removed";
+    readonly mode: "emit";
+}, {
+    readonly event: "api-session/status";
+    readonly mode: "emit";
+}, {
     readonly event: "commands/change";
     readonly mode: "emit";
 }, {
+    readonly event: "deepseek-account/session-expired";
+    readonly mode: "emit";
+}, {
+    readonly event: "deepseek-account/model-sign-in-required";
+    readonly mode: "emit";
+}, {
+    readonly event: "credentials/record-updated";
+    readonly mode: "emit";
+}, {
     readonly event: "credentials/reference-updated";
+    readonly mode: "emit";
+}, {
+    readonly event: "goal/activation-changed";
     readonly mode: "emit";
 }, {
     readonly event: "cordis/request-run";
@@ -46,7 +70,22 @@ export declare const API_REMOTE_FORWARDED_EVENTS: readonly [{
     readonly event: "llm/adapters-updated";
     readonly mode: "emit";
 }, {
+    readonly event: "permission-presets/catalog-changed";
+    readonly mode: "emit";
+}, {
+    readonly event: "plugin-manager/changed";
+    readonly mode: "emit";
+}, {
+    readonly event: "plugin-manager/install-log";
+    readonly mode: "emit";
+}, {
+    readonly event: "plugin-manager/install-state";
+    readonly mode: "emit";
+}, {
     readonly event: "settings/document-updated";
+    readonly mode: "emit";
+}, {
+    readonly event: "schedule/changed";
     readonly mode: "emit";
 }, {
     readonly event: "user-questions/request";

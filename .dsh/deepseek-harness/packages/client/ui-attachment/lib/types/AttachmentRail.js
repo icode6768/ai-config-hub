@@ -1,9 +1,8 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-/** Draft-attachment thumbnail rail: scrollbar-less horizontal overflow paged
- * by edge arrows, hover-revealed per-item remove, single-click open. */
+/** Draft-attachment rail: scrollbar-less horizontal overflow paged by edge arrows. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { IconChevronLeftOutline14, IconChevronRightOutline14, IconCloseFill14, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './AttachmentRail.module.css';
 /** Approximate pixels per wheel step for `deltaMode` LINE deltas (Firefox
  * notch wheels report lines, not pixels). */
@@ -12,11 +11,11 @@ const WHEEL_LINE_PX = 16;
 function pageBehavior() {
     // jsdom (the unit lane) implements no matchMedia despite lib.dom's
     // non-optional typing; the optional call keeps that lane on the default.
-    // oxlint-disable-next-line typescript/no-unnecessary-condition
-    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    const matchMedia = window.matchMedia;
+    return matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
 /**
- * Horizontal thumbnail rail over the caller's draft attachments.
+ * Horizontal rail over the caller's ordered draft attachments.
  *
  * The rail scrolls with its scrollbar hidden; overflow is announced by edge
  * arrows recomputed from scroll geometry on scroll, item-count changes, and
@@ -24,18 +23,15 @@ function pageBehavior() {
  * panel resizes count, not only window resizes). A vertical wheel pans the
  * rail horizontally and is consumed exclusively (non-passive listener), a
  * newly added item is revealed at the rail's end while a rail that mounts
- * over an existing draft keeps its start position, and each thumbnail opens
- * on a single click while its remove control sits inside the card and
- * reveals on hover or focus. The owner decides mounting; it renders the rail
- * only while items exist.
+ * over an existing draft keeps its start position. The owner renders each
+ * item and decides mounting; it renders the rail only while items exist.
  *
- * @param props.items - resolved thumbnails in draft order.
- * @param props.labels - rail-level strings (group name, open tooltip, arrows).
- * @param props.onOpen - single-click open of one item's original image.
- * @param props.onRemove - remove one item from the draft.
+ * @param props.items - attachments in draft order.
+ * @param props.labels - rail-level strings (group name and paging arrows).
+ * @param props.renderItem - render one attachment card in draft order.
  * @returns the rail group with its paging arrows.
  */
-export function AttachmentRail({ items, labels, onOpen, onRemove }) {
+export function AttachmentRail({ items, labels, renderItem }) {
     const railRef = useRef(null);
     // null marks the first layout pass: a rail that MOUNTS over an existing
     // draft (session switch back to held images) is initial display, not
@@ -117,6 +113,6 @@ export function AttachmentRail({ items, labels, onOpen, onRemove }) {
         // the floor keeps narrow rails paging a useful distance.
         el.scrollBy({ left: direction * Math.max(el.clientWidth - 64, 200), behavior: pageBehavior() });
     };
-    return (_jsxs("div", { className: css.root, children: [edges.left && (_jsx("button", { type: "button", className: clsx(css.arrow, css.arrowLeft), "aria-label": labels.scrollLeft, onClick: () => { page(-1); }, children: _jsx(IconChevronLeftOutline14, {}) })), _jsx("div", { ref: railRef, className: css.rail, role: "group", "aria-label": labels.group, onScroll: updateEdges, children: items.map(item => (_jsxs("div", { className: css.item, children: [_jsx("button", { type: "button", className: css.thumbnail, title: labels.open, onClick: () => { onOpen(item); }, children: _jsx("img", { src: item.previewUrl, alt: item.alt }) }), _jsx("button", { type: "button", className: css.remove, "aria-label": item.removeLabel, onClick: () => { onRemove(item); }, children: _jsx(IconCloseFill14, { size: 12 }) })] }, item.id))) }), edges.right && (_jsx("button", { type: "button", className: clsx(css.arrow, css.arrowRight), "aria-label": labels.scrollRight, onClick: () => { page(1); }, children: _jsx(IconChevronRightOutline14, {}) }))] }));
+    return (_jsxs("div", { className: css.root, children: [edges.left && (_jsx("button", { type: "button", className: clsx(css.arrow, css.arrowLeft), "aria-label": labels.scrollLeft, onClick: () => { page(-1); }, children: _jsx(IconChevronLeftOutlineRegular, {}) })), _jsx("div", { ref: railRef, className: css.rail, role: "group", "aria-label": labels.group, onScroll: updateEdges, children: items.map(item => (_jsx("div", { className: css.item, children: renderItem(item) }, item.id))) }), edges.right && (_jsx("button", { type: "button", className: clsx(css.arrow, css.arrowRight), "aria-label": labels.scrollRight, onClick: () => { page(1); }, children: _jsx(IconChevronRightOutlineRegular, {}) }))] }));
 }
 //# sourceMappingURL=AttachmentRail.js.map

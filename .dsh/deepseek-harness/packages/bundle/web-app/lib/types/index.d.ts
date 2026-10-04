@@ -5,9 +5,10 @@
  * the built frontend dist (workspace knowledge of this bundle, never user
  * config), mounts the `frontend-static` fallback owner over it, registers the
  * harness-source and web-surface prompt sections, the bash-visible web runtime
- * variable, the process-token URL line, and the default-browser handoff. The
- * model and shell retain the clean URL. App command-line values arrive through
- * the `webStartup` service expressions in the bundle patch.
+ * variable, the process-token URL line, and the default-browser handoff. An
+ * advertised `publicUrl` replaces the published root — the loopback URL
+ * otherwise. App command-line values arrive through the `webStartup` service
+ * expressions in the bundle patch.
  * @module @deepseek-ai/dsh-web-app
  */
 import type { Context } from '@deepseek-ai/cordis';
@@ -29,6 +30,14 @@ export interface Config {
      * orientation text would be false.
      */
     surfaceContext: boolean;
+    /**
+     * Canonical HTTP(S) root to advertise in the printed and opened URL,
+     * `DSH_WEB_URL`, and the web-surface orientation, e.g.
+     * `https://app.example/ui/`, normalized to end in `/`. Advertisement only;
+     * see [public deployments](../README.md#public-deployments). Absent or YAML
+     * `null` advertises the loopback URL.
+     */
+    publicUrl?: string;
     /** Explicit `--trusted-host` authorities from this invocation. */
     trustedHosts: string[];
 }

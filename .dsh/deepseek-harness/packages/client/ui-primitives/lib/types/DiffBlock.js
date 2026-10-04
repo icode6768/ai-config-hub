@@ -1,8 +1,12 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useCallback, useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { structuredPatch } from 'diff';
 import { FoldToggle } from "./FoldToggle.js";
 import { writeClipboard } from "./clipboard.js";
+import { CodeToolbar } from "./CodeToolbar.js";
+import { languageForPath } from "./code-highlighting.js";
+import cardCss from './CodeCard.module.css';
 import css from './DiffBlock.module.css';
 /** Output lines shown before the height cap collapses the middle. */
 export const DEFAULT_DIFF_MAX_LINES = 16;
@@ -16,43 +20,67 @@ const ROW_CLASS = {
     path: css.path,
     del: css.del,
     add: css.add,
+    context: css.context,
     gap: css.gap,
 };
+/** Bound synchronous edit-graph search; one replacement consumes two edits. */
+const MAX_DIFF_EDIT_LENGTH = 256;
+/** Derive exact local patches or a whole-fragment replacement when search exceeds the limit. */
+function localHunks(diff) {
+    const oldLines = contentLines(diff.oldText ?? '');
+    const newLines = contentLines(diff.newText);
+    const normalize = (lines) => lines.map(line => `${line}\n`).join('');
+    return structuredPatch('', '', normalize(oldLines), normalize(newLines), undefined, undefined, { context: 3, maxEditLength: MAX_DIFF_EDIT_LENGTH })?.hunks
+        ?? [{ lines: [...oldLines.map(line => `-${line}`), ...newLines.map(line => `+${line}`)] }];
+}
 /**
- * Flatten the hunks into the body's rows plus the footer counts. A path header
- * opens each new file; a same-file second hunk (a scattered edit) opens with a
- * `⋯` gap instead of repeating the path. Every old-side line counts toward
- * `removed` and every new-side line toward `added`. The file count is of
- * DISTINCT paths, matching the TUI diff card's footer, so two hunks in one file
- * read as `1 file` on both front ends.
+ * Count displayed additions and deletions. Exact patches exclude shared context;
+ * comparisons exceeding the edit limit count both complete fragments as replaced.
+ * Text follows {@link contentLines}'s terminator rule.
+ * @param diffs - the hunks to count.
+ * @returns the +/- totals for tool summaries.
+ */
+export function diffTotals(diffs) {
+    let added = 0;
+    let removed = 0;
+    for (const diff of diffs) {
+        for (const hunk of localHunks(diff)) {
+            for (const line of hunk.lines) {
+                if (line.startsWith('+'))
+                    added++;
+                if (line.startsWith('-'))
+                    removed++;
+            }
+        }
+    }
+    return { added, removed };
+}
+/**
+ * Flatten local patches into rows.
+ * A path header opens each new file. A `⋯` gap separates consecutive same-file
+ * fragments and distant patches within a fragment.
  * @param diffs - the hunks to render.
- * @returns the body rows, the +/- totals, and the distinct-file count.
+ * @returns the body rows.
  */
 function buildRows(diffs) {
     const rows = [];
-    const paths = new Set();
-    let added = 0;
-    let removed = 0;
     let prevPath;
     for (const diff of diffs) {
-        paths.add(diff.path);
         if (diff.path !== prevPath)
             rows.push({ kind: 'path', text: diff.path });
         else
             rows.push({ kind: 'gap', text: '⋯' });
         prevPath = diff.path;
-        if (diff.oldText !== null) {
-            for (const line of contentLines(diff.oldText)) {
-                rows.push({ kind: 'del', text: line });
-                removed++;
+        for (const [index, hunk] of localHunks(diff).entries()) {
+            if (index > 0)
+                rows.push({ kind: 'gap', text: '⋯' });
+            for (const line of hunk.lines) {
+                const kind = line.startsWith('-') ? 'del' : line.startsWith('+') ? 'add' : 'context';
+                rows.push({ kind, text: line.slice(1) });
             }
         }
-        for (const line of contentLines(diff.newText)) {
-            rows.push({ kind: 'add', text: line });
-            added++;
-        }
     }
-    return { rows, added, removed, files: paths.size };
+    return rows;
 }
 /**
  * Split a side's text into its content lines. Empty text is zero lines (a full
@@ -70,9 +98,8 @@ function contentLines(text) {
     return body.split('\n');
 }
 /**
- * The diff text a reader copies: each row's `-`/`+`/path/gap prefix and its
- * content, exactly what the card shows. The removed and added blocks are the
- * change; the path headers keep a multi-file copy attributable.
+ * Copy the full local diff, including folded rows: removed/added lines have
+ * `- `/`+ ` prefixes, context has two spaces, and paths and gaps stay verbatim.
  * @param rows - the flattened body rows.
  * @returns the diff as plain text.
  */
@@ -81,6 +108,7 @@ function copyText(rows) {
         switch (row.kind) {
             case 'del': return `- ${row.text}`;
             case 'add': return `+ ${row.text}`;
+            case 'context': return `  ${row.text}`;
             case 'path': return row.text;
             case 'gap': return row.text;
             /* v8 ignore next -- closed-union backstop; only reached if a row kind is forged */
@@ -94,9 +122,12 @@ function copyText(rows) {
  * @returns the diff block element.
  */
 export function DiffBlock({ diffs, labels, maxLines = DEFAULT_DIFF_MAX_LINES, className }) {
-    const { rows, added, removed, files } = useMemo(() => buildRows(diffs), [diffs]);
+    const rows = useMemo(() => buildRows(diffs), [diffs]);
     const [expanded, setExpanded] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [wrapped, setWrapped] = useState(false);
+    const firstLanguage = diffs[0] === undefined ? undefined : languageForPath(diffs[0].path);
+    const language = diffs.every(diff => languageForPath(diff.path) === firstLanguage) ? firstLanguage : undefined;
     const onCopy = useCallback(() => {
         if (copied)
             return;
@@ -118,6 +149,6 @@ export function DiffBlock({ diffs, labels, maxLines = DEFAULT_DIFF_MAX_LINES, cl
     const tailLines = maxLines - headLines;
     const head = capped ? rows.slice(0, headLines) : rows;
     const tail = capped ? rows.slice(rows.length - tailLines) : [];
-    return (_jsxs("div", { className: clsx(css.block, className), "data-diff": "", children: [_jsx("button", { type: "button", className: css.copyButton, onClick: onCopy, children: copied ? labels.copied : labels.copy }), _jsxs("div", { className: css.body, children: [head.map((row, index) => (_jsx("div", { className: clsx(css.line, ROW_CLASS[row.kind]), children: row.text }, index))), hidden > 0 && (_jsx(FoldToggle, { className: css.expand, expanded: expanded, hidden: hidden, labels: labels, onToggle: onToggle })), tail.map((row, index) => (_jsx("div", { className: clsx(css.line, ROW_CLASS[row.kind]), children: row.text }, index)))] }), _jsxs("div", { className: css.footer, children: ["\u2514 +", added, " -", removed, " \u00B7 ", labels.files(files)] })] }));
+    return (_jsxs("div", { className: clsx(cardCss.card, css.block, className), "data-diff": "", "data-code-wrap": wrapped, children: [_jsx(CodeToolbar, { lang: language, labels: labels, copyLabel: labels.copy, copiedLabel: labels.copied, copied: copied, wrapped: wrapped, onCopy: onCopy, onWrap: () => { setWrapped(value => !value); } }), _jsxs("div", { className: css.body, children: [head.map((row, index) => (_jsx("div", { className: clsx(css.line, ROW_CLASS[row.kind]), children: row.text }, index))), hidden > 0 && (_jsx(FoldToggle, { className: css.expand, expanded: expanded, hidden: hidden, labels: labels, onToggle: onToggle })), tail.map((row, index) => (_jsx("div", { className: clsx(css.line, ROW_CLASS[row.kind]), children: row.text }, index)))] })] }));
 }
 //# sourceMappingURL=DiffBlock.js.map

@@ -1,6 +1,7 @@
 import z from "@deepseek-ai/schemastery";
-import { BlockAssembler, createUserMessage, deepFreeze } from "@deepseek-ai/dsh-llm";
+import { BlockAssembler, createUserMessage } from "@deepseek-ai/dsh-llm";
 import { MAX_TIMER_DELAY_MS, deadline } from "@deepseek-ai/dsh-timeout";
+import { deepFreeze } from "@deepseek-ai/dsh-util-values";
 import { SessionTitleProviderId, normalizeSessionTitle } from "@deepseek-ai/dsh-session-title";
 //#region lib/types/index.js
 /**
@@ -198,10 +199,7 @@ async function generateSessionTitleWithLlm(ctx, config, request, selectedMessage
 				type: "text",
 				text: framedInput
 			}],
-			source: {
-				kind: "plugin",
-				plugin: "dsh-session-title-llm"
-			}
+			source: { kind: "dsh-session-title-llm" }
 		})];
 		const system = systemPrompt(config);
 		const callDeadline = __addDisposableResource(env_1, deadline(request.signal, config.timeoutMs, SESSION_TITLE_TIMEOUT_CODE), false);

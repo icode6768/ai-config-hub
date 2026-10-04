@@ -6,7 +6,11 @@ window.__ModuleLoader__.load({
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react_jsx_runtime = require("react/jsx-runtime");
+		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
+		/** Browser-relative form of {@link SESSION_LOG_EXPORT_PATH}. */
+		const SESSION_LOG_EXPORT_ROUTE = "/api/session.export".slice(1);
+		//#endregion
 		//#region lib/types/client/controller.js
 		/** Browser download state shared by the Session Header button and `/export`. */
 		const INITIAL = { bySession: {} };
@@ -19,8 +23,9 @@ window.__ModuleLoader__.load({
 			return `dsh-session-${String(sessionId).replace(/[^A-Za-z0-9_-]/g, "_")}.zip`;
 		}
 		/**
-		* Hand a Host download URL to the browser download manager.
-		* @param url - same-origin Host download URL.
+		* Hand a Host download route to the browser download manager, which resolves it
+		* against the document's own base.
+		* @param url - document-relative Host download route.
 		* @param filename - browser download filename.
 		*/
 		function downloadUrl(url, filename) {
@@ -28,11 +33,6 @@ window.__ModuleLoader__.load({
 			anchor.href = url;
 			anchor.download = filename;
 			anchor.click();
-		}
-		/** Resolve the browser's Host base with the connection carrier's null-origin fallback. */
-		function hostBase() {
-			const origin = globalThis.location?.origin;
-			return origin !== void 0 && origin !== "null" ? origin : "http://dsh.internal";
 		}
 		function messageOf(error) {
 			return error instanceof Error ? error.message : String(error);
@@ -101,10 +101,11 @@ window.__ModuleLoader__.load({
 					error: null
 				});
 				try {
-					const url = new URL("/api/session.export", hostBase());
-					url.searchParams.set("sessionId", sessionId);
-					url.searchParams.set("includeDescendants", "true");
-					const response = await this.fetcher(url, {
+					const route = `${SESSION_LOG_EXPORT_ROUTE}?${new URLSearchParams({
+						sessionId,
+						includeDescendants: "true"
+					}).toString()}`;
+					const response = await this.fetcher(route, {
 						method: "HEAD",
 						signal
 					});
@@ -112,7 +113,7 @@ window.__ModuleLoader__.load({
 						const detail = await response.text().catch(() => "");
 						throw new Error(`Export failed: HTTP ${response.status}${detail === "" ? "" : ` ${detail}`}`);
 					}
-					this.save(url.toString(), sessionLogZipFilename(sessionId));
+					this.save(route, sessionLogZipFilename(sessionId));
 					const open = this.store.getSnapshot().bySession[String(sessionId)]?.open ?? true;
 					this.publish(sessionId, {
 						open,
@@ -141,7 +142,7 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/Dialog.js
 		/**
-		* Modal shared by the Session Header button and this browser's `/export` command.
+		* Modal shared by the Session Header download menu item and this browser's `/export` command.
 		* @param props - Session runtime, bound controller state, actions, and localized copy.
 		* @returns the modal portal contribution.
 		*/
@@ -168,8 +169,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\session-query\session-log-export\src\client\HeaderAction.module.css.mjs
-		const css = ".rvOcAG_sessionLogButton{border:1px solid var(--dsw-alias-border-l2);min-width:111px;height:32px;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);cursor:pointer;background:0 0;border-radius:18px;justify-content:center;align-items:center;gap:4px;padding:6px 12px;font-size:13px;font-weight:400;line-height:20px;display:inline-flex}.rvOcAG_sessionLogButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.rvOcAG_sessionLogButton:disabled{color:var(--dsw-alias-label-dimmed);cursor:wait}.rvOcAG_sessionLogButton span,.rvOcAG_sessionLogButton svg{flex:none}.rvOcAG_sessionLogButton span{white-space:nowrap}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\session-query\session-log-export\src\client\HeaderAction.module.css.mjs
+		const css = ".dXApqG_moreButton{width:28px;color:var(--dsw-alias-label-secondary);flex:none;padding:0}.dXApqG_moreButton svg{width:15px;height:15px}";
 		const tagId = "@deepseek-ai/dsh-session-log-export/HeaderAction.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -178,26 +179,53 @@ window.__ModuleLoader__.load({
 			tag.textContent = css;
 			document.head.appendChild(tag);
 		}
-		var HeaderAction_module_css_default = { "sessionLogButton": "rvOcAG_sessionLogButton" };
+		var HeaderAction_module_css_default = { "moreButton": "dXApqG_moreButton" };
 		//#endregion
 		//#region lib/types/client/HeaderAction.js
 		/**
-		* Render the Session Header export capsule and its shared result dialog.
-		* @param props - Session runtime, download controller, and localized dialog copy.
+		* Render the Session Header menu with download and optional feedback actions.
+		* @param props - Session runtime, download controller, and localized copy.
 		* @returns the persistent Header action and Session-scoped dialog.
 		*/
 		function SessionLogDownloadHeaderAction(props) {
-			const { sessionId, useSessionLogDownload, request, t } = props;
+			const { sessionId, useSessionLogDownload, useFeedbackAvailable, request, openFeedback, t } = props;
+			const feedbackAvailable = useFeedbackAvailable((value) => value);
 			const busy = useSessionLogDownload((state) => state.bySession[String(sessionId)])?.status === "downloading";
-			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("button", {
-				type: "button",
-				className: HeaderAction_module_css_default.sessionLogButton,
-				disabled: busy,
-				"aria-busy": busy,
-				onClick: () => {
-					request(sessionId);
+			const [open, setOpen] = (0, react.useState)(false);
+			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Menu, {
+				open,
+				align: "end",
+				dense: true,
+				onClose: () => {
+					setOpen(false);
 				},
-				children: [(0, react_jsx_runtime.jsx)("span", { children: t("header.action") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconDownloadOutline16, { size: 12 })]
+				items: [{
+					id: "download",
+					label: t("menu.download"),
+					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconDownloadOutlineRegular, {}),
+					disabled: busy
+				}, ...feedbackAvailable ? [{
+					id: "feedback",
+					label: t("menu.feedback"),
+					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPaperPlaneOutlineRegular, {})
+				}] : []],
+				onSelect: (id) => {
+					setOpen(false);
+					if (id === "feedback") openFeedback(sessionId);
+					else request(sessionId);
+				},
+				anchor: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+					size: "sm",
+					className: HeaderAction_module_css_default.moreButton,
+					"aria-label": t("header.more"),
+					"aria-haspopup": "menu",
+					"aria-expanded": open,
+					"aria-busy": busy,
+					onClick: () => {
+						setOpen((value) => !value);
+					},
+					children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEllipsisOutlineRegular, {})
+				})
 			}), (0, react_jsx_runtime.jsx)(SessionLogDownloadDialog, { ...props })] });
 		}
 		//#endregion
@@ -206,7 +234,9 @@ window.__ModuleLoader__.load({
 		const NS = "session-log-download";
 		/** Simplified-Chinese Session export strings. */
 		const zh = {
-			"header.action": "Session 日志",
+			"header.more": "更多操作",
+			"menu.download": "下载 Session 日志",
+			"menu.feedback": "反馈",
 			"dialog.preparingTitle": "正在导出 Session",
 			"dialog.preparingDescription": "正在准备包含当前 Session、子 Session 和附件的 ZIP 文件。",
 			"dialog.successTitle": "Session 导出已开始下载",
@@ -217,7 +247,9 @@ window.__ModuleLoader__.load({
 		};
 		/** English Session export strings. */
 		const en = {
-			"header.action": "Session log",
+			"header.more": "More actions",
+			"menu.download": "Download session log",
+			"menu.feedback": "Feedback",
 			"dialog.preparingTitle": "Exporting Session",
 			"dialog.preparingDescription": "Preparing a ZIP containing this Session, its sub-Sessions, and attachments.",
 			"dialog.successTitle": "Session download started",
@@ -244,6 +276,15 @@ window.__ModuleLoader__.load({
 				zh,
 				en
 			}), "session-log-download: browser dictionaries");
+			const feedbackAvailable = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(false);
+			ctx.inject(["feedbackUi"], (scope) => {
+				scope.effect(() => {
+					feedbackAvailable.set(true);
+					return () => {
+						feedbackAvailable.set(false);
+					};
+				}, "session-log-download: feedback availability");
+			});
 			ctx.on("command/executed", (sessionId, commandName, result) => {
 				if (commandName === "export" && result.kind === "success") controller.download(sessionId);
 			});
@@ -252,10 +293,16 @@ window.__ModuleLoader__.load({
 				id: "session-log-download",
 				locale: NS,
 				inject: () => ({
-					hooks: { sessionLogDownload: controller.store },
+					hooks: {
+						sessionLogDownload: controller.store,
+						feedbackAvailable
+					},
 					request: (sessionId) => controller.download(sessionId),
 					dismiss: (sessionId) => {
 						controller.dismiss(sessionId);
+					},
+					openFeedback: (sessionId) => {
+						ctx.get("feedbackUi")?.openSession(sessionId);
 					}
 				})
 			}, SessionLogDownloadHeaderAction));

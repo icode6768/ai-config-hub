@@ -14,15 +14,15 @@
  * Reasoning effort is deliberately absent: it is a per-MODEL capability, and
  * the models under one provider disagree about it, so a provider-scoped
  * control can only be set to a value some of them reject. The composer's
- * model picker offers each model its own levels; `settings.yaml` keeps the
+ * model picker offers each model its own levels; `cordis.patch.yml` keeps the
  * profile field for a deployment that knows its route. Everything else stays
- * owned by `settings.yaml`. Profile edits land as minimal `settings.mutate`
+ * owned by `cordis.patch.yml`. Profile edits land as minimal `settings.mutate`
  * path ops against the stored section — the card names only the fields it can
  * see instead of rebuilding the whole subtree from a partial descriptor.
  */
 import type { ReactNode } from 'react';
 import type { SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client';
-import type { ModelsWire } from './store.ts';
+import type { ModelsOperations } from './operations.ts';
 import type { SettingsSchemaOperations } from './schema-operations.ts';
 import type { en } from './locales.ts';
 /** Props of {@link ProviderEditor}. */
@@ -47,8 +47,8 @@ export interface ProviderEditorProps {
     schema: SettingsSchemaOperations;
     /** Path from the section root to this provider's profile. */
     settingsPath: readonly string[];
-    /** Wire faces for writes and for interrogating a provider endpoint. */
-    api: ModelsWire;
+    /** The Host operations this card writes and interrogates through. */
+    operations: ModelsOperations;
     /** Section copy. */
     t: (key: keyof typeof en) => string;
     /** Disable writes (read-only settings provider). */
@@ -67,6 +67,14 @@ export interface ProviderEditorProps {
     submitBusyLabelKey?: keyof typeof en;
     /** Close the editor; `changed` reports whether an Apply committed. */
     onClose: (changed: boolean) => void;
+    /** Called on a credential form submission before the save starts. */
+    onSubmitCredential?: () => void;
+    /**
+     * Called once per change with whether the apply or the model list's
+     * endpoint interrogation is in flight, so the owner can hold its surface
+     * still.
+     */
+    onBusyChange?: (busy: boolean) => void;
 }
 /**
  * The minimal path ops carrying `after` over `before`, both as the card sees

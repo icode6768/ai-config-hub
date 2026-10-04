@@ -1,10 +1,11 @@
 /** Worker projection from Cordis snapshots to a connection-neutral semantic DOM. */
+import type { InspectorSourceId } from '../../../../shared/bridge/ids.ts';
 import type { InspectorSourceDescriptor } from '../../../../shared/bridge/messages/observation.ts';
 import type { InspectorObjectReference } from '../../../../shared/cordis/object-reference.ts';
 import type { InspectorRealmDescriptor } from '../../../inspection/realm.ts';
 import { type CdpBackendNodeId } from '../../ids.ts';
 import type { CordisTreeObjectRoute, CordisTreeStore } from '../../../inspection/cordis-store.ts';
-/** One Worker-global backend node independent of any DevTools connection. */
+/** One backend-owned node independent of any DevTools connection. */
 export interface CordisDomNode {
     readonly backendNodeId: CdpBackendNodeId;
     readonly key: string;
@@ -14,7 +15,7 @@ export interface CordisDomNode {
     readonly object?: CordisTreeObjectRoute;
     readonly children: readonly CordisDomNode[];
 }
-/** Immutable document revision shared by all current DevTools sessions. */
+/** Immutable document revision shared by the consumers of one backend. */
 export interface CordisDomDocument {
     readonly revision: number;
     readonly root: CordisDomNode;
@@ -58,6 +59,7 @@ export type CordisDomChange = {
 /** Assigns durable backend ids and projects the latest source snapshots. */
 export declare class CordisDomBackend {
     private readonly trees;
+    private readonly clientSourceId?;
     private readonly backendIdByKey;
     private readonly listeners;
     private documentValue;
@@ -65,7 +67,17 @@ export declare class CordisDomBackend {
     private nextRevision;
     private readonly unsubscribe;
     private readonly nodeByObject;
-    constructor(trees: CordisTreeStore);
+    /**
+     * @param trees - Shared store; this backend owns only its subscription and projection.
+     * @param clientSourceId - Restrict Clients to this source; omission includes every retained Client.
+     */
+    constructor(trees: CordisTreeStore, clientSourceId?: InspectorSourceId | undefined);
+    /**
+     * Create an independent Host-and-Client projection over the same retained snapshots.
+     * @param sourceId - Client source to include across its reconnect generations.
+     * @returns A new backend whose caller must close; closing it leaves this backend and the store intact.
+     */
+    forClient(sourceId: InspectorSourceId): CordisDomBackend;
     /**
      * Read the latest connection-neutral semantic document.
      * @returns The current immutable document revision.
@@ -77,7 +89,7 @@ export declare class CordisDomBackend {
      * @returns A disposer removing the listener.
      */
     subscribe(listener: (event: CordisDomChange) => void): () => void;
-    /** Release repository subscriptions at Worker shutdown. */
+    /** Release only this backend's store subscription and listeners. */
     close(): void;
     /**
      * Resolve one source-local object reference to its current projected node.
@@ -93,6 +105,7 @@ export declare class CordisDomBackend {
      * @returns The current projected node, when present.
      */
     nodeForObjectKind(kind: InspectorSourceDescriptor['kind'], reference: InspectorObjectReference): CordisDomNode | undefined;
+    private includesSource;
     /**
      * Resolve one realm-neutral Runtime reference to its current projected node.
      * @param realm - Realm that exposed the Runtime object.

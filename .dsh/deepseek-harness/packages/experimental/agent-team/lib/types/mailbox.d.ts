@@ -15,7 +15,6 @@ export declare class TeamMailbox {
     private readonly maxPendingMessagesPerMember;
     private readonly maxMessageBytes;
     private readonly dispatchTails;
-    private readonly activeDispatches;
     private readonly inFlightMessages;
     private readonly inFlightDispatches;
     /**
@@ -30,7 +29,7 @@ export declare class TeamMailbox {
     /**
      * Queue one durable peer message, then attempt immediate delivery.
      * @param caller - exact live sending Team member.
-     * @param request - target name, content, scheduling mode, and pre-queue cancellation.
+     * @param request - target name, content, and pre-queue cancellation.
      * @returns durable message identity and immediate-delivery observation.
      */
     send(caller: Agent, request: SendTeamMessageRequest): Promise<SendTeamMessageResult>;
@@ -61,10 +60,10 @@ export declare class TeamMailbox {
     private tryDispatchAdmitted;
     /** Serialize delivery admission for one durable target in queued order. */
     private serializeDispatch;
+    /** Deliver every pending target message through `message` in durable queue order. */
+    private dispatchThrough;
     /** Attempt one queued delivery after target-local ordering admits it. */
     private dispatchOnce;
-    /** Whether `left` was durably queued before `right` in one Lead log. */
-    private messagePrecedes;
     /** Flush one live target receipt before the Lead records its delivered edge. */
     private checkpointDelivered;
     /** Record delivery unless the acknowledgement already exists. */
@@ -73,7 +72,7 @@ export declare class TeamMailbox {
     private targetRecorded;
     /** Frame peer content with stable sender and message identity for the receiving model. */
     private deliveryContent;
-    /** Inspect an inactive target before cold resume; uncertainty keeps the mailbox queued. */
+    /** Read an inactive target's durable log before cold resume; uncertainty keeps the mailbox queued. */
     private persistedTargetRecorded;
 }
 //# sourceMappingURL=mailbox.d.ts.map

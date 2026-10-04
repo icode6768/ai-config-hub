@@ -7,9 +7,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         'subagent': SubagentKey;
     }
 }
-export type { SubagentCatalogInjected, SubagentHeaderLineageProps, } from './SubagentHeaderLineage.tsx';
+export type { SubagentCatalogActionProps, SubagentCatalogInjected, SubagentHeaderLineageProps, } from './SubagentHeaderLineage.tsx';
 export type { SubagentReadOnlyComposerProps, SubagentReadOnlyMatch, } from './SubagentReadOnlyComposer.tsx';
-/** Required services for conversation slots and session navigation. */
+/** Required services for subagent presentation and navigation. */
 export declare const inject: string[];
 /**
  * Client plugin body: register the subagent catalog and read-only composer seats.

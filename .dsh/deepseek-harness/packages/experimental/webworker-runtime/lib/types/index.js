@@ -6,6 +6,8 @@ export { createAlsRuntime, } from "./polyfill/async-context/als-runtime.js";
 export { parseInboundFrame, } from "./transport/frames.js";
 export { DEFAULT_CONDITIONS, requireActiveModuleLoader, setActiveModuleLoader, WorkerModuleLoader, } from "./module-system/module-loader.js";
 export * as posixPath from "./module-system/posix-path.js";
+export { MODULE_PROXIES, MODULE_PROXY_PREFIXES } from "./module-proxies.js";
+export { REPLACED_EXTERNAL_PACKAGES } from "./node/external_packages/replaced-externals.js";
 export { createSyntheticExchange, } from "./transport/synthetic-http.js";
 export { lowerModuleSource } from "./compile/transform.js";
 export { API_PREFIX, SYNTHETIC_HOST, TunnelServer, } from "./transport/tunnel.js";

@@ -6,7 +6,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * settings surface.
  */
 import { useState } from 'react';
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './LanguageRow.module.css';
 /**
  * Render the Language row.
@@ -21,6 +21,6 @@ export function LanguageRow({ t, setLocale, useStore }) {
     return (_jsxs("div", { className: css.row, children: [_jsx("div", { className: css.rowText, children: _jsx("div", { className: css.title, children: t('language.title') }) }), _jsx(Menu, { open: open, onClose: () => { setOpen(false); }, items: options.map(o => ({ id: o.id, label: o.label })), selectedId: active, onSelect: (id) => {
                     setLocale(id);
                     setOpen(false);
-                }, align: "end", portal: true, anchor: (_jsxs("button", { type: "button", className: css.selector, "aria-haspopup": "menu", "aria-expanded": open, onClick: () => { setOpen(v => !v); }, children: [activeLabel, _jsx(IconChevronDownOutline14, { className: css.chevron })] })) })] }));
+                }, align: "end", portal: true, anchor: (_jsxs("button", { type: "button", className: css.selector, "aria-haspopup": "menu", "aria-expanded": open, onClick: () => { setOpen(v => !v); }, children: [activeLabel, _jsx(IconChevronDownOutlineRegular, { className: css.chevron })] })) })] }));
 }
 //# sourceMappingURL=LanguageRow.js.map

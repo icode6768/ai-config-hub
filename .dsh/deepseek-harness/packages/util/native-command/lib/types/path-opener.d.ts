@@ -5,7 +5,10 @@
  * The default intent prefers the default browser for documents it renders when
  * the platform can name one, then falls back to the default application. WSL
  * translates every path for the Windows desktop instead of assuming a Linux
- * GUI. The text-editor intent never consults the browser.
+ * GUI. The text-editor intent never consults the browser. Windows hands every
+ * intent to Explorer: the shell's own default-application resolution, the one
+ * a double-click uses, selects the application, while a process that resolves
+ * the association itself reads a narrower record and reports none.
  * @module @deepseek-ai/dsh-native-command/path-opener
  */
 import { type NativeCommandRunner } from './runner.ts';
@@ -41,6 +44,14 @@ export declare function canOpenNativePath(internals?: PathOpenerInternals): bool
  */
 export declare function openNativePath(path: string, signal: AbortSignal, internals?: PathOpenerInternals): Promise<void>;
 /**
+ * Open a filesystem path through its file-type association, including HTML and SVG.
+ * @param path - absolute or host-resolvable path; the caller verifies local access.
+ * @param signal - caller lifetime; abort terminates the native command.
+ * @param internals - platform, environment, and runner facts for adapter tests.
+ * @returns after the associated application accepts the path.
+ */
+export declare function openNativeAssociatedPath(path: string, signal: AbortSignal, internals?: PathOpenerInternals): Promise<void>;
+/**
  * Open a text document for editing; macOS bypasses the file-type association
  * so a YAML association with a browser cannot consume the gesture.
  * @param path - absolute or host-resolvable text-document path.
@@ -48,4 +59,20 @@ export declare function openNativePath(path: string, signal: AbortSignal, intern
  * @param internals - Platform and runner hooks for deterministic tests.
  */
 export declare function openNativeTextFile(path: string, signal: AbortSignal, internals?: PathOpenerInternals): Promise<void>;
+/** File-manager behavior available on the serving Host, including WSL's Windows desktop. */
+export type NativeFileManager = 'finder' | 'explorer' | 'directory';
+/**
+ * Identify the native file-manager action without inspecting the browser's platform.
+ * @param internals - platform and WSL facts.
+ * @returns the supported file-manager action, or null on unsupported platforms.
+ */
+export declare function nativeFileManager(internals?: PathOpenerInternals): NativeFileManager | null;
+/**
+ * Reveal a file in Finder or Explorer, or open its parent in the Linux default file manager.
+ * @param path - absolute file path already authorized by the caller.
+ * @param signal - caller lifetime; abort terminates the native command.
+ * @param internals - platform, environment, and command runner for adapter tests.
+ * @returns after command completion; Explorer exit 1 is accepted as a delegated handoff, not proof of selection.
+ */
+export declare function revealNativePath(path: string, signal: AbortSignal, internals?: PathOpenerInternals): Promise<void>;
 //# sourceMappingURL=path-opener.d.ts.map

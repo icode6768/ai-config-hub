@@ -6,7 +6,7 @@
  * combo scripts plus their source maps,
  * contributes the registration facade, application preloads, bootstrap scripts,
  * and graph to the webserver's index injection table, and provides the
- * `clientModuleHost` service (the HMR node half's registration/notification
+ * `clientModules` service (the HMR node half's registration/notification
  * face).
  *
  * Scanning is incremental per package — there is no full-rescan code path.
@@ -40,6 +40,8 @@ export interface ClientArtifactBaseline {
     readonly path: string;
     /** Bundle modification time in milliseconds. */
     readonly mtimeMs: number;
+    /** Bundle status-change time in milliseconds, including writes that preserve mtime. */
+    readonly ctimeMs: number;
     /** Bundle size in bytes. */
     readonly size: number;
 }
@@ -81,8 +83,6 @@ export declare class ClientModuleRegistry extends Service {
     private readonly rebuildListeners;
     private readonly graphListeners;
     private readonly dirty;
-    private readonly initialRevisionNonce;
-    private nextInitialRevision;
     private responses;
     private batchResponses;
     /** One prior graph generation covers a request racing the HMR recomposition that replaced its URL. */
@@ -91,7 +91,8 @@ export declare class ClientModuleRegistry extends Service {
     private composed;
     /**
      * Build the service: subscribe, seed, and run the activation flush.
-     * @param ctx - plugin context carrying webServer and loader.
+     * Bundle routes follow the optional Web carrier's injected lifecycle.
+     * @param ctx - plugin context carrying Loader and an optional Web carrier.
      */
     constructor(ctx: Context);
     /**
@@ -106,6 +107,15 @@ export declare class ClientModuleRegistry extends Service {
      */
     clientPath(id: string): string | undefined;
     /**
+     * Serve an advertised revisioned bundle or source map without a Web server.
+     * Unknown URLs return 404, unsupported methods return 405, and `HEAD`
+     * returns the same immutable headers without materializing a body. Each body
+     * is built once on its first `GET`; script construction never reads maps.
+     * @param request - shell-carrier request for a `/plugins` resource.
+     * @returns the exact response also exposed by the optional Web route.
+     */
+    fetchBundle(request: Request): Promise<Response>;
+    /**
      * Filesystem baseline captured before an entry's current bytes were read.
      * HMR compares it with the live files when installing a watch, so a write
      * between startup composition and watch installation cannot disappear into
@@ -115,14 +125,15 @@ export declare class ClientModuleRegistry extends Service {
      */
     artifactBaseline(id: string): ClientArtifactBaseline | undefined;
     /**
-     * Re-hash one bundle (the HMR watch's registration hook — the only entry
-     * point through which bundle content changes reach the graph).
+     * Publish one completed bundle generation (the HMR watch's registration
+     * hook — the only entry point through which build changes reach the graph).
+     * Unchanged mtime, ctime and size preserve the graph without reading the bundle.
      * @param id - entry id (package name).
-     * @returns the new rev, or undefined for an unknown id.
+     * @returns the current artifact rev, or undefined for an unknown id.
      */
     rebuilt(id: string): string | undefined;
     /**
-     * Subscribe to bundle rebuilds; fires only when the re-hash changed the rev.
+     * Subscribe to bundle rebuilds; fires only when artifact metadata changes the rev.
      * @param listener - receives the entry id and its new bundle rev.
      * @returns the unsubscriber.
      */
@@ -153,23 +164,26 @@ export declare class ClientModuleRegistry extends Service {
     private sourceKey;
     /** Capture the bundle stats before reading its bytes. */
     private captureArtifactBaseline;
-    /** Allocate an opaque initial row revision without inspecting artifact bytes. */
-    private allocateInitialRevision;
     /**
-     * Read the activation-time bundle and optional source-map snapshots.
+     * Read the activation-time bundle snapshot.
      * @param pkgName - package that declares the client bundle.
      * @param clientPath - absolute path of the built client artifact.
      * @returns the immutable bytes plus the pre-read filesystem baseline.
      * @throws {MissingClientBundleError} when the read fails with `ENOENT`; other filesystem errors are rethrown unchanged.
      */
     private initialBundleSnapshot;
-    /** Treat a missing, torn, or malformed development map as an identity-mapped artifact revision. */
-    private readSourceMapSnapshot;
+    /** Treat a missing, torn, or malformed development map as an identity section. */
+    private readonly readSourceMap;
     /** Reconcile one entry name against the live Loader sources. @returns whether the table changed. */
     private processOne;
     private resolveSource;
     private reconcilePackage;
     private flush;
+    /** Match an exact current-revision package-local chunk URL without reading its file. */
+    private chunkRequest;
+    /** Build a package-local chunk response only when its URL is requested. */
+    private chunkResponse;
+    private bundleResource;
     private readonly serveBundle;
 }
 export default ClientModuleRegistry;

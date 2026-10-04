@@ -1,5 +1,6 @@
 import { resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path';
-import { parsedToolCall, singleResultText, validEscalationFields } from "./raw-tool-call.js";
+import { hasSpillNotice } from '@deepseek-ai/dsh-spill-policy/notice';
+import { parsedToolCall, singleResultText } from "./raw-tool-call.js";
 /**
  * Build the TerminalBlock display copy from the conversation locale seat —
  * the one place the primitive's label surface pairs with this package's
@@ -12,6 +13,7 @@ export function terminalBlockLabels(t) {
     return {
         signal: signal => t('terminal.signal', { signal }),
         exitCode: code => t('terminal.exitCode', { code }),
+        noExitCode: t('terminal.noExitCode'),
         running: t('terminal.running'),
         failed: t('terminal.failed'),
         done: t('terminal.done'),
@@ -150,8 +152,9 @@ function shellCall(name, args) {
         return null;
     if (background !== undefined && typeof background !== 'boolean')
         return null;
-    if (!validEscalationFields(args))
-        return null;
+    // Escalation fields stay unchecked: their validity depends on the Session's
+    // sandbox mode, which only the Host knows, and a rejected call settles as an
+    // error result on the generic body.
     if (description === undefined) {
         // Standard dsh-tool-bash and dsh-tool-pwsh schemas require `description`;
         // persistent shell providers omit it. Their parameter roots stay open, so
@@ -183,6 +186,23 @@ export function isSettledPersistentShellCall(block) {
     if (parsed === null)
         return false;
     return shellCall(parsed.name, parsed.args)?.persistent === true;
+}
+/**
+ * Identify a settled foreground shell preview whose spill footer can hide the exit marker.
+ * @param block - running or settled Tool block.
+ * @returns whether the shell output must remain generic without an inferred exit status.
+ */
+export function isSpilledShellCall(block) {
+    if (!('kind' in block))
+        return false;
+    const parsed = parsedToolCall(block);
+    if (parsed === null)
+        return false;
+    const call = shellCall(parsed.name, parsed.args);
+    if (call === null || call.background)
+        return false;
+    const output = singleResultText(block);
+    return output !== undefined && hasSpillNotice(output);
 }
 function terminalSendCall(name, args) {
     if (name !== 'terminal_send')
@@ -217,18 +237,16 @@ function parseExitStatus(text) {
     return { output: text, exitCode: 0 };
 }
 /**
- * Derive terminal props for supported root shell and terminal-send calls.
- * Standard shell results parse their final status marker; persistent shell
- * results, background calls, errors, malformed input, or child dispatches use
- * the generic path. {@link isSettledPersistentShellCall} lets that generic
+ * Derive terminal props for supported shell and terminal-send calls, including
+ * nested PTC dispatch calls. Standard shell results parse their final status
+ * marker; persistent shell results, spill previews, background calls, errors,
+ * and malformed input use the generic path. {@link isSettledPersistentShellCall} lets that generic
  * persistent result remain expandable without inventing one process status.
  * @param block - running or settled Tool block.
  * @param sessionCwd - session workspace root used to resolve workdir.
  * @returns locale-neutral terminal-card data, or null for the generic path.
  */
 export function terminalCardModel(block, sessionCwd) {
-    if (block.parentCallId !== undefined)
-        return null;
     const parsed = parsedToolCall(block);
     if (parsed === null)
         return null;
@@ -251,7 +269,7 @@ export function terminalCardModel(block, sessionCwd) {
             },
         };
     }
-    if (block.isError || (call.kind === 'shell' && call.persistent))
+    if (block.isError || (call.kind === 'shell' && call.persistent) || isSpilledShellCall(block))
         return null;
     const output = singleResultText(block);
     if (output === undefined)

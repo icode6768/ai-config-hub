@@ -1,6 +1,8 @@
 /** Session-specific adapters for Gateway-owned Remote stream lifecycles. */
-import { RemoteJournalStream, RemoteSnapshotStream, RemoteStreamCarrierError, RemoteStreamError, } from '@deepseek-ai/dsh-api-gateway/client';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
+import { RemoteJournalStream, RemoteSnapshotStream, RemoteStreamCarrierError, } from '@deepseek-ai/dsh-api-gateway/client';
 import { historyEntries, historyRecordFirstSeq, historyRecordLastSeq, } from "./sessions/history-records.js";
+import { assertSessionWireEvent } from "./session-wire-event.js";
 export { SESSION_SEARCH_RESULT_LIMIT, SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS, } from "../types.js";
 function toSessionJournalChange(change) {
     switch (change.type) {
@@ -8,14 +10,13 @@ function toSessionJournalChange(change) {
         case 'prepend':
             return { ...change, entries: historyEntries(change.entries) };
         case 'append': {
-            if (change.entry.type !== 'event') {
-                throw new Error('session live stream emitted a packed history record');
-            }
             return {
                 type: 'append',
                 entry: change.entry,
             };
         }
+        case 'notification':
+            return { type: 'assistant-stream', frame: change.notification };
     }
 }
 /**
@@ -71,11 +72,19 @@ export class SessionEventStream extends RemoteJournalStream {
     }
     /** @inheritdoc */
     async *follow(request, signal) {
+        let assistantRevision;
         for await (const frame of this.remote.session.follow({
             address: this.address,
-            ...(request.maxMessages === undefined ? {} : { maxMessages: request.maxMessages }),
+            assistantStream: true,
+            ...this.repairRequest(request),
         }, signal)) {
             if (frame.type === 'snapshot') {
+                for (const record of frame.records)
+                    assertSessionWireEvent(record.event);
+                if (frame.assistantStream === undefined) {
+                    throw new RemoteError('gateway/internal', 'session assistant stream omitted its opted-in opening baseline', {});
+                }
+                assistantRevision = frame.assistantStream.revision;
                 yield {
                     type: 'opened',
                     cursor: frame.cursor,
@@ -83,34 +92,39 @@ export class SessionEventStream extends RemoteJournalStream {
                         records: frame.records,
                         hasMore: frame.hasMore,
                         projections: frame.projections,
+                        assistantStream: frame.assistantStream,
                     },
                 };
                 continue;
             }
+            if (frame.type === 'assistant-stream') {
+                const expected = (assistantRevision ?? 0) + 1;
+                if (frame.frame.revision !== expected) {
+                    throw new RemoteStreamCarrierError(`session assistant stream skipped revision ${String(expected)}`);
+                }
+                assistantRevision = frame.frame.revision;
+                yield { type: 'notification', notification: frame.frame };
+                continue;
+            }
+            assertSessionWireEvent(frame.event);
             yield { type: 'entry', entry: frame };
         }
     }
     /** @inheritdoc */
     async readPage(request, throughSeq, signal) {
         const result = await this.remote.session.page({ address: this.address, throughSeq, ...request }, signal);
-        if (!result.ok) {
-            throw new RemoteStreamError(result.error.code, result.error.message, result.error.details);
-        }
+        if (!result.ok)
+            throw result.error;
+        for (const record of result.value.records)
+            assertSessionWireEvent(record.event);
         return result.value;
     }
     /** @inheritdoc */
     repairRequest(request) {
-        return request.maxMessages === undefined ? {} : { maxMessages: request.maxMessages };
+        return {
+            ...(request.maxMessages === undefined ? {} : { maxMessages: request.maxMessages }),
+            ...(request.turnWindow === undefined ? {} : { turnWindow: request.turnWindow }),
+        };
     }
-}
-/**
- * Recover a Host Session failure from a Remote stream terminal error.
- * @param error - value thrown while opening or consuming a Session stream.
- * @returns the Host failure, or `undefined` for carrier and local failures.
- */
-export function sessionStreamFailure(error) {
-    if (!(error instanceof RemoteStreamError))
-        return undefined;
-    return { code: error.code, message: error.message, details: error.details };
 }
 //# sourceMappingURL=transport.js.map

@@ -21,8 +21,9 @@ export declare const name = "experimental-inspector";
 /** This transport root has no Client service dependencies. */
 export declare const inject: string[];
 /**
- * Mount the Client source and shared `ctx.inspector` publishing API.
+ * Mount the Client source, including when the plugin activates after the page loads.
  * @param ctx - Client Cordis context whose page identity and lifecycle own the source.
+ * @throws Invalid bootstrap data or a failed service registration; transport setup failures retain reconnect recovery.
  */
 export declare function apply(ctx: Context): Promise<void>;
 //# sourceMappingURL=plugin.d.ts.map

@@ -144,6 +144,17 @@ async function deepseekHarnessVersion(): Promise<RuntimeVersion> {
   return versionFromCommand(process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'dsh.cmd') : 'dsh')
 }
 
+async function hermesVersion(): Promise<RuntimeVersion> {
+  const root = rootPath()
+  const metadata = await versionFromMetadata(join(root, '.hermes', 'hermes-agent', 'pyproject.toml'), versionFromToml)
+  // Official Hermes keeps a placeholder 0.0.0 in pyproject.toml and exposes
+  // the real git/upstream version through its CLI.
+  if (metadata.available && metadata.version !== '0.0.0') return metadata
+  const executable = join(root, '.hermes', 'hermes-agent', 'venv', process.platform === 'win32' ? 'Scripts/hermes.exe' : 'bin/hermes')
+  if (existsSync(executable)) return versionFromCommand(executable)
+  return metadata.available ? metadata : unavailable()
+}
+
 export async function detectRuntimeVersions(): Promise<RuntimeVersions> {
   const root = rootPath()
   const node = await nodeRuntimeVersion()
@@ -161,7 +172,7 @@ export async function detectRuntimeVersions(): Promise<RuntimeVersions> {
       process.platform === 'win32' ? 'runtime/windows/npm-global/node_modules/@openai/codex/package.json' : 'runtime/macos/nvm/npm-global/lib/node_modules/@openai/codex/package.json',
       'node_modules/@openai/codex/package.json',
     ], process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'codex.cmd') : 'codex'),
-    versionFromMetadata(join(root, '.hermes', 'hermes-agent', 'pyproject.toml'), versionFromToml),
+    hermesVersion(),
     deepseekHarnessVersion(),
   ])
   return { node, python, openclaw, claude, codex, hermes, deepseekHarness }

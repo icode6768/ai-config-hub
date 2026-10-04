@@ -4,12 +4,19 @@
  * matchers, snake_case payloads without a trailing newline, no hook environment
  * or command substitution, and no pre-tool approval or rewrite path; only
  * blocking decisions are honored. Shared execution and parsing live in
- * `dsh-hook-protocol`; see the
- * [hook-bridges Agent Note](../../../../.agents/notes/implemented/feature/2026-06-30-hook-bridges.md).
+ * `dsh-hook-protocol`.
  * @module @deepseek-ai/dsh-hooks-codex
  */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
+import type { ContextFormed } from '@deepseek-ai/dsh-llm';
+declare module '@deepseek-ai/dsh-llm' {
+    interface MessageSourceMap {
+        'hooks-codex': {
+            kind: 'hooks-codex';
+        } & ContextFormed;
+    }
+}
 export declare const name = "hooks-codex";
 export declare const inject: string[];
 /** Plugin config: where the Codex hooks.json lives + the model name for payloads. */

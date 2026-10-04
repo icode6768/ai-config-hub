@@ -1,18 +1,23 @@
 /**
  * Pure row-model derivation for tool summary rows: variant classification,
- * one-line summary, expanded-body text, and flattened result output from the
- * frozen call slice. Input material comes from the call ARGUMENTS; output and
- * error material from the settled result node. A supported terminal call gets
- * its expanded body from `terminalCardModel` instead.
+ * one-line summary, expansion-time body input, and flattened result output
+ * from the frozen call slice. Input material comes from the call ARGUMENTS;
+ * output and error material from the settled result node. A supported terminal
+ * call gets its expanded body from `terminalCardModel` instead.
  */
 import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { LocaleKeysOf } from '@deepseek-ai/dsh-client-ui-slots';
 export type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-chat/client';
 /** Tool-call row variants selected by the generic atomic renderer. */
 export type ToolRowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'code' | 'others';
-/** Row state semantic; colors self-supplied via StateDot (design gives none). */
-export type ToolRowState = 'running' | 'ok' | 'error' | 'stopped';
-type ToolTitleKey = Extract<LocaleKeysOf<'conversation'>, `tool.title.${string}`>;
+/** Row lifecycle state used by summary styling and accessible status text. */
+export type ToolRowState = 'preparing' | 'running' | 'ok' | 'error' | 'stopped';
+/** Locale-neutral structured fact consumed only by the user-facing Tool row. */
+export interface AutoReviewDenial {
+    /** Raw persisted reviewer reason; display normalization happens at render time. */
+    reason: string | null;
+}
+type ToolTitleKey = Extract<LocaleKeysOf<'conversation'>, `tool.title.${string}` | 'ask.rowTitle' | 'todo.rowTitle'>;
 /** Locale key per generic row variant. */
 export declare const VARIANT_TITLE_KEYS: {
     readonly search: "tool.title.search";
@@ -29,23 +34,33 @@ export declare const VARIANT_TITLE_KEYS: {
  * @returns matching variant, others when unknown.
  */
 export declare function classifyTool(toolName: string): ToolRowVariant;
+/**
+ * Select a tool-owned or generic title without reading arguments.
+ * @param toolName - wire tool name.
+ * @returns the localized title key.
+ */
+export declare function toolTitleKey(toolName: string): ToolTitleKey;
 /** Everything ToolRow needs, derived once from the frozen slice. */
 export interface ToolRowModel {
     variant: ToolRowVariant;
     titleKey: ToolTitleKey;
+    /** Generic rows retain the wire tool name; available arguments append their summary. */
     summary: string;
     /**
      * Filesystem path from args (`path` / `file_path`) when the row is a file
-     * tool; absent for URL reads and non-file tools. The chat view resolves
-     * relative values against the session cwd before opening.
+     * tool; absent for URL reads and non-file tools. A `file_path` argument
+     * supplies it at every stage once its string is complete. The chat view
+     * resolves relative values against the session cwd before opening.
      */
     filePath: string | undefined;
-    /** Expanded-body input text (pretty args); null = no input section. */
-    body: string | null;
+    /** Original argument JSON retained for expansion-time body formatting. */
+    bodyRaw: string | null;
     /** Flattened result text ({@link resultText}); null while running or when the result carries no text. */
     output: string | null;
     /** First line of the result text on an error row; null for every other state. */
     errorSummary: string | null;
+    /** Structured Auto-review denial identity; null for every ordinary result. */
+    autoReviewDenial: AutoReviewDenial | null;
     state: ToolRowState;
 }
 /**
@@ -57,16 +72,16 @@ export interface ToolRowModel {
  */
 export declare function resultText(node: ToolResultNode): string;
 /**
- * Strip the workspace root from a workspace-rooted absolute path (display only).
- * @param text - the path to shorten.
- * @param cwd - session workspace root; absent or empty leaves the path unchanged.
- * @returns the path relative to the workspace root, or unchanged when it is not rooted there.
+ * Format one argument payload when its generic input body becomes visible.
+ * @param variant - row presentation selected for the Tool name.
+ * @param argsRaw - original argument JSON or incomplete raw text.
+ * @returns display body, or null for empty input.
  */
-export declare function relativizeToCwd(text: string, cwd: string | undefined): string;
+export declare function formatToolBody(variant: ToolRowVariant, argsRaw: string): string | null;
 /**
  * Derive the full row model from a frozen call slice.
  * @param toolName - wire tool name (dispatch-supplied; survives windowless results).
- * @param block - RunningToolCall or ToolResultNode off the snapshot caches.
+ * @param block - preparing call, dispatched call, or result from the snapshot.
  * @param cwd - session workspace root; workspace-rooted path summaries display relative to it.
  * @param home - host account home; a leftover POSIX home path displays as `~`.
  * @returns the row model.

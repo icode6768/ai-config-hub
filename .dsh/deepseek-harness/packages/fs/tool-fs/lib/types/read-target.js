@@ -12,7 +12,7 @@ import { sessionResolveOptions } from "./session-cwd.js";
  * @returns the resolved target and its single stat result.
  */
 export async function resolveRegularReadTarget(ctx, exec, requestedPath) {
-    const target = await ctx.fs.resolve(requestedPath, sessionResolveOptions(exec, requestedPath));
+    const target = await ctx.fs.resolve(requestedPath, sessionResolveOptions(exec));
     const info = await ctx.fs.stat(target, exec.signal);
     if (info === undefined) {
         ctx.emit('fs/observed', target, { kind: 'absent' }, exec);

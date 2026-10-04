@@ -38,17 +38,19 @@ function emptyPiUsage() {
  * order), so `BlockAssembler` prunes an entry with its block whenever assembly
  * removes one.
  * @param message - completed native pi-ai assistant response.
+ * @param requestedModel - request identity stored in the assistant source; defaults to the native model.
  * @returns the versioned lossless-JSON replay projection.
  */
-export function toPiReplayState(message) {
+export function toPiReplayState(message, requestedModel = message.model) {
     const response = {
         kind: 'pi-ai',
         version: 2,
         api: message.api,
         provider: message.provider,
-        model: message.model,
+        model: requestedModel,
         ...message.responseModel === undefined ? {} : { responseModel: message.responseModel },
         ...message.responseId === undefined ? {} : { responseId: message.responseId },
+        ...message.providerThinkingLevel === undefined ? {} : { providerThinkingLevel: message.providerThinkingLevel },
         stopReason: message.stopReason,
     };
     return {
@@ -99,6 +101,8 @@ function readReplayState(value) {
         return invalidReplay('responseModel must be a string');
     if (response['responseId'] !== undefined && typeof response['responseId'] !== 'string')
         return invalidReplay('responseId must be a string');
+    if (response['providerThinkingLevel'] !== undefined && typeof response['providerThinkingLevel'] !== 'string')
+        return invalidReplay('providerThinkingLevel must be a string');
     const blocks = envelope['blocks'];
     if (!Array.isArray(blocks))
         return invalidReplay('blocks must be an array');
@@ -122,7 +126,7 @@ function readReplayState(value) {
 }
 /** Convert provider-neutral blocks without trusting them as same-model replay. */
 function foreignAssistant(message) {
-    const source = message.source.kind === 'model' ? message.source : undefined;
+    const source = message.source;
     const content = [];
     for (const block of message.content) {
         switch (block.type) {
@@ -153,8 +157,8 @@ function foreignAssistant(message) {
         // Deliberately never equals a catalog API: absent replay state is foreign
         // even if source names the same provider/model as this request.
         api: 'dsh-foreign',
-        provider: source?.provider ?? 'dsh-foreign',
-        model: source?.model ?? 'dsh-foreign',
+        provider: source.provider,
+        model: source.model,
         usage: emptyPiUsage(),
         stopReason: content.some(piece => piece.type === 'toolCall') ? 'toolUse' : 'stop',
         timestamp: 0,
@@ -204,6 +208,7 @@ function replayedAssistant(message, source, rawState) {
         model: state.response.model,
         ...state.response.responseModel === undefined ? {} : { responseModel: state.response.responseModel },
         ...state.response.responseId === undefined ? {} : { responseId: state.response.responseId },
+        ...state.response.providerThinkingLevel === undefined ? {} : { providerThinkingLevel: state.response.providerThinkingLevel },
         usage: emptyPiUsage(),
         stopReason: state.response.stopReason,
         timestamp: 0,
@@ -217,14 +222,14 @@ function replayedAssistant(message, source, rawState) {
  * another adapter's kind, another version, a malformed value, or metadata that
  * no longer matches the content — therefore degrades the one message to
  * provider-neutral history instead of failing the request.
- * @param message - assistant content with required source and optional adapter-owned replay metadata.
+ * @param message - model-produced assistant content with provider, model, and optional adapter-owned replay metadata.
  * @param onDegrade - called with the diagnostic reason when an unusable replay
  *   state falls back to provider-neutral conversion.
  * @returns a native pi-ai assistant message reconstructed from durable content.
  */
 export function toPiAssistant(message, onDegrade) {
     const source = message.source;
-    if (source.kind !== 'model' || source.replayState === undefined)
+    if (source.replayState === undefined)
         return foreignAssistant(message);
     try {
         return replayedAssistant(message, source, source.replayState);

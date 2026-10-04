@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
+import { Deque } from "@deepseek-ai/dsh-deque";
 import { carrierKeyOf } from "@deepseek-ai/dsh-scope";
-import { isJsonValue } from "@deepseek-ai/dsh-session";
-import { SESSION_CONTROLLER_REMOTE_EVENTS } from "@deepseek-ai/dsh-api-session-controller/remote-events";
+import { isJsonValue } from "@deepseek-ai/dsh-util-values";
 //#region lib/types/remote-events.js
 /**
 * The one home of this application's forwarded-Host-event allowlist. Both
@@ -23,16 +23,48 @@ const API_REMOTE_FORWARDED_EVENTS = [
 		event: "approval/request",
 		mode: "waterfall"
 	},
-	...SESSION_CONTROLLER_REMOTE_EVENTS.map((event) => ({
-		event,
+	{
+		event: "api-session/activity",
 		mode: "emit"
-	})),
+	},
+	{
+		event: "api-session/added",
+		mode: "emit"
+	},
+	{
+		event: "api-session/error",
+		mode: "emit"
+	},
+	{
+		event: "api-session/removed",
+		mode: "emit"
+	},
+	{
+		event: "api-session/status",
+		mode: "emit"
+	},
 	{
 		event: "commands/change",
 		mode: "emit"
 	},
 	{
+		event: "deepseek-account/session-expired",
+		mode: "emit"
+	},
+	{
+		event: "deepseek-account/model-sign-in-required",
+		mode: "emit"
+	},
+	{
+		event: "credentials/record-updated",
+		mode: "emit"
+	},
+	{
 		event: "credentials/reference-updated",
+		mode: "emit"
+	},
+	{
+		event: "goal/activation-changed",
 		mode: "emit"
 	},
 	{
@@ -64,7 +96,27 @@ const API_REMOTE_FORWARDED_EVENTS = [
 		mode: "emit"
 	},
 	{
+		event: "permission-presets/catalog-changed",
+		mode: "emit"
+	},
+	{
+		event: "plugin-manager/changed",
+		mode: "emit"
+	},
+	{
+		event: "plugin-manager/install-log",
+		mode: "emit"
+	},
+	{
+		event: "plugin-manager/install-state",
+		mode: "emit"
+	},
+	{
 		event: "settings/document-updated",
+		mode: "emit"
+	},
+	{
+		event: "schedule/changed",
 		mode: "emit"
 	},
 	{
@@ -93,13 +145,14 @@ function remoteEventSource(ctx) {
 				});
 			}));
 			return ctx.on(event, (function(request, next) {
-				const subject = carrierKeyOf(this);
-				if (subject === void 0) return next();
-				const value = Reflect.get(subject, "ctx");
-				if (typeof value !== "object" || value === null) throw new TypeError(`forwarded scoped event ${JSON.stringify(event)} has no live Context`);
+				const carrierAgent = carrierKeyOf(this);
+				if (carrierAgent === void 0) return next();
+				const agent = request.agent;
+				if (agent === void 0 || agent !== carrierAgent) throw new TypeError(`forwarded scoped event ${JSON.stringify(event)} must carry its Agent directly`);
 				return forwardWaterfall(queue, event, request, {
-					value,
-					subject
+					value: agent.ctx,
+					subject: agent,
+					agentId: agent.id
 				}, next);
 			}));
 		});
@@ -110,20 +163,22 @@ function remoteEventSource(ctx) {
 }
 /** One pull-driven queue bridging synchronous Cordis listeners to an AsyncIterable. */
 var RemoteEventQueue = class {
-	buffer = [];
+	buffer = new Deque();
 	waiter;
 	done = false;
 	push(frame) {
 		if (this.done) return false;
-		this.buffer.push(frame);
+		this.buffer.pushBack(frame);
 		this.waiter?.();
 		return true;
 	}
 	end(reason) {
 		if (this.done) return;
 		this.done = true;
-		const buffered = this.buffer.splice(0);
-		for (const dispatch of buffered) if ("context" in dispatch) dispatch.reject(reason);
+		while (this.buffer.size > 0) {
+			const dispatch = this.buffer.popFront();
+			if ("context" in dispatch) dispatch.reject(reason);
+		}
 		this.waiter?.();
 	}
 	async *iterate(signal, cleanup) {
@@ -134,7 +189,7 @@ var RemoteEventQueue = class {
 		try {
 			while (true) {
 				if (this.done || signal.aborted) return;
-				while (this.buffer.length > 0) yield this.buffer.shift();
+				while (this.buffer.size > 0) yield this.buffer.popFront();
 				await new Promise((resolve) => {
 					this.waiter = resolve;
 				});

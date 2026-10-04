@@ -8,13 +8,6 @@ declare module '@deepseek-ai/cordis' {
     interface Events {
         'hmr/change'(url: string): void;
         'hmr/reload'(reloads: Map<Plugin, Reload>): void;
-        /**
-         * A watched config-file refresh failed.
-         * @param filename - Absolute path observed by HMR.
-         * @param error - Normalized refresh failure.
-         * @mode parallel
-         */
-        'hmr/config-update-failed'(filename: string, error: Error): Promise<void> | void;
     }
 }
 interface Reload {
@@ -23,13 +16,9 @@ interface Reload {
 }
 declare class Hmr extends Service {
     config: Hmr.Config;
-    static inject: string[];
     baseDir: string;
     private internal;
     private watcher;
-    private readonly configs;
-    private readonly configRefreshes;
-    private readonly refreshTasks;
     /**
      * Changes from externals will always trigger a full reload.
      * Externals are the dependency tree of the CLI worker entry point.
@@ -49,19 +38,10 @@ declare class Hmr extends Service {
     private stashed;
     constructor(ctx: Context, config: Hmr.Config);
     /**
-     * Watch one exact config path outside the configured module roots.
-     * @param filename - Config path, resolved against the HMR base directory.
-     * @param refresh - Refresh callback run serially on add, change, or unlink.
-     * @returns an asynchronous disposer once the exact watch is ready.
-     * @throws when HMR is inactive, the path is already registered, or watcher startup fails.
-     */
-    registerConfig(filename: string, refresh: () => Promise<void> | void): Promise<() => Promise<void>>;
-    /**
      * Resolve a module specifier to a URL, compatible with Node 22-24.
      */
     private _resolve;
     [Service.init](): AsyncGenerator<() => Promise<void>, void, unknown>;
-    private refreshConfig;
     getOuterStack: () => string[];
     getLinked(url: string): Promise<string[]>;
     /**

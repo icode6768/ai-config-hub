@@ -4,9 +4,9 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
 import Schema from "@deepseek-ai/schemastery";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { ReasoningEffortId, createUserMessage, errorChain } from "@deepseek-ai/dsh-llm";
 import { PROTOCOL_VERSION, RequestError, agent, methods, ndJsonStream } from "@agentclientprotocol/sdk";
-import { SessionId } from "@deepseek-ai/dsh-session";
 import { isImageAdmissionError } from "@deepseek-ai/dsh-attachment";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import * as McpClient from "@deepseek-ai/dsh-mcp-client";
@@ -544,7 +544,8 @@ function turnEndToStopReason(reason) {
 		case "interrupted": return "cancelled";
 		case "blocked":
 		case "error": return "end_turn";
-		/* v8 ignore next 2 -- TurnEndReason is closed and every member is handled above */
+		/* v8 ignore next 2 -- TurnEndReason is merge-extensible; every live-turn member is
+		* handled above, and seed-only variants (`forked`) never end an ACP prompt turn. */
 		default: return "end_turn";
 	}
 }
@@ -605,9 +606,9 @@ function toolCallUpdate(event) {
 * @returns the standard completed or failed tool-call update.
 */
 async function toolResultUpdate(ctx, event) {
-	const result = event.data.message.content[0];
+	const message = event.data.message;
 	const content = [];
-	for (const block of result.content) {
+	for (const block of message.content) {
 		const converted = await assistantBlockToAcp(ctx, block);
 		if (converted !== void 0) content.push({
 			type: "content",
@@ -616,8 +617,8 @@ async function toolResultUpdate(ctx, event) {
 	}
 	return {
 		sessionUpdate: "tool_call_update",
-		toolCallId: result.toolCallId,
-		status: result.isError === true ? "failed" : "completed",
+		toolCallId: message.toolCallId,
+		status: message.isError === true ? "failed" : "completed",
 		content
 	};
 }
@@ -714,10 +715,7 @@ var AcpSession = class AcpSession {
 			resumeSessionId: options.sessionId,
 			agentOptions: options.agentOptions,
 			signal: options.signal,
-			setup: async (agentCtx) => {
-				const agent = agentCtx.agent;
-				/* v8 ignore next -- Agent factory setup always carries its unpublished Agent. */
-				if (agent === void 0) throw new Error("acp: resumed Agent is absent during setup");
+			setup: async (agentCtx, agent) => {
 				modelControl = new AcpModelControl(ctx.llm, selectionFor(agent.session.requestHeader(), options.fallbackSelection));
 				modelControl.install(agentCtx);
 				await mountAcpMcpServers(agentCtx, options.mcpServers, options.cwd);
@@ -1170,7 +1168,7 @@ function apply(ctx, config) {
 		async newSession(params, signal) {
 			assertOpen();
 			validateWorkspaceParams(params);
-			const sessionId = SessionId(randomUUID());
+			const sessionId = brandString(randomUUID());
 			let record;
 			try {
 				record = await AcpSession.create(ctx, {
@@ -1195,7 +1193,7 @@ function apply(ctx, config) {
 			try {
 				const configOptions = await record.configOptions(signal);
 				assertOpen();
-				await persistence.ensureMaterialized(record.agent.session);
+				await ctx.sessions.flush(record.agent.session);
 				assertOpen();
 				return {
 					sessionId,
@@ -1210,11 +1208,11 @@ function apply(ctx, config) {
 		async resumeSession(params, signal) {
 			assertOpen();
 			validateWorkspaceParams(params);
-			const sessionId = SessionId(params.sessionId);
+			const sessionId = brandString(params.sessionId);
 			if (sessions.has(sessionId) || activating.has(sessionId) || ctx.sessions.get(sessionId) !== void 0) throw invalidParams(`session is already active: ${sessionId}`);
 			activating.add(sessionId);
 			return (async () => {
-				const persisted = (await persistence.list(signal)).find((header) => header.id === sessionId);
+				const persisted = (await persistence.stat(sessionId, { signal }))?.header;
 				if (persisted === void 0 || persisted.origin === "subagent" || persisted.parentSession !== void 0) throw invalidParams(`session is not resumable: ${sessionId}`);
 				if (!await sameDirectory(persisted.cwd, params.cwd)) throw invalidParams(`session cwd does not match: ${params.cwd}`);
 				let record;
@@ -1264,8 +1262,8 @@ function apply(ctx, config) {
 			} catch (error) {
 				throw invalidParams(error.message);
 			}
-			const listed = await persistence.list(signal);
-			const entries = (await Promise.all(listed.map(async (header) => {
+			const listed = await persistence.list({ signal });
+			const entries = (await Promise.all(listed.map(async ({ header }) => {
 				if (sessions.has(header.id) || activating.has(header.id) || ctx.sessions.get(header.id) !== void 0 || header.origin === "subagent" || header.parentSession !== void 0 || header.cwd === void 0 || !isAbsolute(header.cwd)) return void 0;
 				if (params.cwd !== void 0 && params.cwd !== null && !await sameDirectory(header.cwd, params.cwd)) return;
 				return {
@@ -1287,7 +1285,7 @@ function apply(ctx, config) {
 		},
 		async setSessionConfigOption(params, signal) {
 			assertOpen();
-			const record = requireSession(SessionId(params.sessionId));
+			const record = requireSession(brandString(params.sessionId));
 			try {
 				return { configOptions: await record.setConfig(params.configId, params.value, signal) };
 			} catch (error) {
@@ -1297,7 +1295,7 @@ function apply(ctx, config) {
 		},
 		async closeSession(params) {
 			assertOpen();
-			const sessionId = SessionId(params.sessionId);
+			const sessionId = brandString(params.sessionId);
 			const record = requireSession(sessionId);
 			try {
 				await record.close("ACP session closed");
@@ -1310,10 +1308,10 @@ function apply(ctx, config) {
 		},
 		async prompt(params, requestSignal) {
 			assertOpen();
-			return requireSession(SessionId(params.sessionId)).prompt(params, imagePromptEnabled, requestSignal);
+			return requireSession(brandString(params.sessionId)).prompt(params, imagePromptEnabled, requestSignal);
 		},
 		cancel(params) {
-			sessions.get(SessionId(params.sessionId))?.cancel();
+			sessions.get(brandString(params.sessionId))?.cancel();
 			return Promise.resolve();
 		}
 	};

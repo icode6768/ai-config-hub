@@ -33,6 +33,10 @@ export class ClientBridgeLifecycle {
         if (this.closed)
             return;
         this.closed = true;
+        this.cancelReconnect();
+    }
+    /** Cancel a scheduled attempt while the page is outside its active lifetime. */
+    cancelReconnect() {
         if (this.reconnectTimer !== undefined)
             clearTimeout(this.reconnectTimer);
         this.reconnectTimer = undefined;

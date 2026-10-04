@@ -5,8 +5,8 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * cache frozen blocks as React elements; the rendered DOM is pinned
  * byte-for-byte by `tests/fixtures/markdown-dom` and must not drift.
  *
- * Untrusted-output policy (unchanged from the replaced pipeline): link and
- * image destinations pass a protocol allowlist, images additionally require
+ * External link and image destinations pass a protocol allowlist; settled
+ * local file links use an explicit owner callback. Images additionally require
  * absolute HTTP(S), raw HTML renders as literal text (no HTML enters the
  * DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
  * the allowlist, so footnote references and back-references render as plain
@@ -16,11 +16,17 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * nothing) rather than ending in assertNever: grammars registered elsewhere
  * may add node types this renderer has no mapping for.
  */
-import { Fragment, createElement } from 'react';
+import { Fragment, createElement, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { normalizeUri } from 'micromark-util-sanitize-uri';
 import { CodeBlock } from "./CodeBlock.js";
+import { parseFileLink } from "./file-link.js";
 import { renderTexToReact } from "./katex.js";
+import { LinkIconMedium, classifyLinkPath } from "../LinkIcon.js";
+import { useMarkdownDelegate } from "./MarkdownDelegate.js";
+import { HoverCard } from "../HoverCard.js";
+import { ImageLightbox } from "../ImageLightbox.js";
+import { ImagePreview } from "../ImagePreview.js";
 import css from './MarkdownText.module.css';
 function sanitizeUrl(url) {
     try {
@@ -48,6 +54,36 @@ function remoteImageUrl(url) {
         // Same single failure mode as above: not an absolute URL.
         return undefined;
     }
+}
+/** Rewritten images may use Web media protocols or the Desktop application's file route. */
+function vocabularyImageUrl(url) {
+    try {
+        const protocol = new URL(url).protocol;
+        return protocol === 'http:' || protocol === 'https:' || protocol === 'blob:' || protocol === 'data:'
+            || url.startsWith('dsh-app://app/api/file?')
+            ? url
+            : undefined;
+    }
+    catch {
+        // A vocabulary result must be an absolute URL; anything else stays a miss.
+        return undefined;
+    }
+}
+/**
+ * The displayable source for one image destination: absolute HTTP(S) as
+ * authored, otherwise the context's local-path vocabulary when it vouches for
+ * the destination. Either miss leaves the authored fallback (alt text) to the
+ * caller.
+ * @param url - The authored markdown destination.
+ * @param pathImages - Rewriting vocabulary, when the render pass has one.
+ * @returns The displayable image URL, or undefined.
+ */
+function imageSource(url, pathImages) {
+    const remote = remoteImageUrl(sanitizeUrl(normalizeUri(url)));
+    if (remote !== undefined)
+        return remote;
+    const rewritten = pathImages?.resolve(url);
+    return rewritten === undefined ? undefined : vocabularyImageUrl(rewritten);
 }
 /**
  * Create an empty {@link ReferenceTargets}.
@@ -166,7 +202,7 @@ function renderNode(node, key, context) {
             // Inside an anchor the token stays inert — a button cannot nest there.
             const mention = context.inLink === true ? undefined : context.fileMentions?.resolve(value);
             if (mention !== undefined) {
-                return (_jsx("code", { children: _jsx("button", { type: "button", className: css.fileMention, title: mention.title, "aria-label": mention.label, onClick: mention.open, children: value }) }, key));
+                return (_jsx("code", { children: _jsxs("button", { type: "button", className: css.fileMention, title: mention.title, "aria-label": mention.label, onClick: mention.open, children: [_jsx(LinkIconMedium, { kind: classifyLinkPath(value), className: css.linkIcon }), value] }) }, key));
             }
             return _jsx("code", { children: value }, key);
         }
@@ -187,11 +223,11 @@ function renderNode(node, key, context) {
         case 'table':
             return renderTable(node, key, context);
         case 'link':
-            return renderAnchor(node.url, renderChildren(node.children, { ...context, inLink: true }), key);
+            return renderAnchor(node.url, renderChildren(node.children, { ...context, inLink: true }), key, !anchorWrapsOnlyImages(node.children), context.streaming);
         case 'linkReference':
             return renderLinkReference(node, key, context);
         case 'image':
-            return renderImage(node.url, node.alt ?? '', key);
+            return renderImage(node.url, node.alt ?? '', key, context);
         case 'imageReference':
             return renderImageReference(node, key, context);
         case 'footnoteReference':
@@ -232,7 +268,7 @@ function renderCode(node, key, context) {
         // survives every chunk. A fence whose info string is still mid-chunk
         // has no content yet and took the empty-fence arm above, so `lang`
         // here is final: it can never re-resolve to a different grammar.
-        streaming: context.streaming, copyLabel: context.labels.code.copyLabel, copiedLabel: context.labels.code.copiedLabel }, key));
+        streaming: context.streaming, copyLabel: context.labels.code.copyLabel, copiedLabel: context.labels.code.copiedLabel, toolbarLabels: context.labels.code.toolbarLabels }, key));
 }
 /** A list is loose when it or any of its items is spread; every item then keeps its paragraphs. */
 function listLoose(list) {
@@ -312,17 +348,51 @@ function renderTableRow(row, cellTag, align, key, context) {
     }
     return _jsx("tr", { children: cells }, key);
 }
-/** Anchor over an already-authored href: allowlisted or unwrapped, external links get the safe attributes. */
-function renderSafeLink(href, children, key) {
+/**
+ * True when an anchor's markdown children are all images, so the anchor is a
+ * clickable picture (badge, thumbnail): the leading URL glyph would dangle
+ * beside the image instead of leading link text, so those anchors skip it.
+ */
+function anchorWrapsOnlyImages(children) {
+    return children.length > 0 && children.every(child => child.type === 'image' || child.type === 'imageReference');
+}
+/** Anchor over an already-authored href: allowlisted or unwrapped, with optional owner navigation for HTTP(S). */
+function renderSafeLink(href, children, key, glyph = true) {
     const safeHref = sanitizeUrl(href);
     if (safeHref === '')
         return _jsx(Fragment, { children: children }, key);
-    const external = ['http:', 'https:'].includes(new URL(safeHref).protocol);
-    return (_jsx("a", { href: safeHref, ...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {}), children: children }, key));
+    return _jsx(MarkdownAnchor, { href: safeHref, glyph: glyph, children: children }, key);
 }
-/** Anchor over a parsed markdown destination, which hast normalized before the allowlist saw it. */
-function renderAnchor(url, children, key) {
-    return renderSafeLink(normalizeUri(url), children, key);
+function MarkdownAnchor({ href, glyph, children }) {
+    const { openExternalLink } = useMarkdownDelegate();
+    const external = ['http:', 'https:'].includes(new URL(href).protocol);
+    const open = external ? openExternalLink : undefined;
+    return (_jsxs("a", { href: href, ...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {}), onClick: open === undefined ? undefined : (event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+                return;
+            event.preventDefault();
+            open(href);
+        }, children: [glyph && _jsx(LinkIconMedium, { kind: "url", href: href, className: css.linkIcon }), children] }));
+}
+/** Local destinations use the scoped file delegate after settlement. */
+function renderAnchor(url, children, key, glyph = true, streaming = false) {
+    const file = streaming ? undefined : parseFileLink(url);
+    if (file !== undefined) {
+        return _jsx(MarkdownFileLink, { file: file, glyph: glyph, children: children }, key);
+    }
+    return renderSafeLink(normalizeUri(url), children, key, glyph);
+}
+function MarkdownFileLink({ file, glyph, children }) {
+    const { openFile, fileImages } = useMarkdownDelegate();
+    if (openFile === undefined)
+        return _jsx(_Fragment, { children: children });
+    // Pure-image anchors already contain their preview and keep one navigation target.
+    const preview = glyph && classifyLinkPath(file.path) === 'image' ? fileImages : undefined;
+    const src = preview?.resolve(file.path);
+    const anchor = (_jsxs("button", { type: "button", className: clsx(css.fileMention, css.fileLink), title: src === undefined ? file.path : undefined, onClick: () => { openFile(file.path, file.line === undefined ? undefined : { line: file.line }); }, children: [glyph && _jsx(LinkIconMedium, { kind: classifyLinkPath(file.path), className: css.linkIcon }), children] }));
+    if (src === undefined || preview === undefined)
+        return anchor;
+    return _jsx(HoverCard, { inline: true, anchor: anchor, content: _jsxs(_Fragment, { children: [_jsx(ImagePreview, { src: src, alt: file.path, loadingLabel: preview.labels.loading, failedLabel: preview.labels.failed }), _jsx("span", { className: css.previewName, children: file.path.split(/[\\/]/u).pop() })] }) });
 }
 /**
  * The complete inline-code value when it is exactly an absolute HTTP(S) URL
@@ -340,12 +410,27 @@ function inlineCodeHttpUrl(value) {
         return undefined;
     }
 }
-function renderImage(url, alt, key) {
-    const imageSrc = remoteImageUrl(sanitizeUrl(normalizeUri(url)));
-    if (imageSrc === undefined) {
-        return _jsx("span", { className: css.imageAlt, children: alt }, key);
-    }
-    return (_jsx("img", { className: css.image, src: imageSrc, alt: alt, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" }, key));
+function renderImage(url, alt, key, context) {
+    return _jsx(MarkdownImage, { destination: url, alt: alt, pathImages: context.pathImages, streaming: context.streaming, inLink: context.inLink === true }, `${key}:${url}`);
+}
+function MarkdownImage({ destination, alt, pathImages, streaming, inLink }) {
+    const { fileImages } = useMarkdownDelegate();
+    const file = streaming ? undefined : parseFileLink(destination);
+    const src = (file === undefined ? undefined : fileImages?.resolve(file.path)) ?? imageSource(destination, pathImages);
+    if (src === undefined)
+        return _jsx("span", { className: css.imageAlt, children: alt });
+    return _jsx(LoadedMarkdownImage, { src: src, alt: alt, destination: destination, preview: inLink ? undefined : fileImages }, src);
+}
+function LoadedMarkdownImage({ src, alt, destination, preview }) {
+    const [failed, setFailed] = useState(false);
+    const [open, setOpen] = useState(false);
+    const close = useCallback(() => { setOpen(false); }, []);
+    if (failed)
+        return _jsxs("span", { className: css.imageAlt, children: [preview === undefined ? '' : `${preview.labels.failed} · `, alt || destination] });
+    const img = _jsx("img", { className: css.image, src: src, alt: alt, onError: () => { setFailed(true); }, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer" });
+    if (preview === undefined)
+        return img;
+    return _jsxs(_Fragment, { children: [_jsx("button", { type: "button", className: css.imageButton, title: preview.labels.open, "aria-label": alt ? `${preview.labels.open}: ${alt}` : preview.labels.open, onClick: () => { setOpen(true); }, children: img }), open && _jsx(ImageLightbox, { src: src, alt: alt, labels: preview.labels, onClose: close })] });
 }
 /** The bracketed source text a reference reverts to when its definition is missing. */
 function referenceSuffix(node) {
@@ -364,13 +449,14 @@ function renderLinkReference(node, key, context) {
         // not an anchor, so mentions inside it stay live.
         return _jsxs(Fragment, { children: ['[', renderChildren(node.children, context), referenceSuffix(node)] }, key);
     }
-    return renderAnchor(definition.url, renderChildren(node.children, { ...context, inLink: true }), key);
+    const rendered = renderChildren(node.children, { ...context, inLink: true });
+    return renderAnchor(definition.url, rendered, key, !anchorWrapsOnlyImages(node.children), context.streaming);
 }
 function renderImageReference(node, key, context) {
     const definition = context.targets.definitions.get(node.identifier.toUpperCase());
     if (definition === undefined)
         return `![${node.alt ?? ''}${referenceSuffix(node)}`;
-    return renderImage(definition.url, node.alt ?? '', key);
+    return renderImage(definition.url, node.alt ?? '', key, context);
 }
 function renderFootnoteReference(node, key, context) {
     const id = node.identifier.toUpperCase();

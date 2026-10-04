@@ -5,9 +5,9 @@
  */
 import z from '@deepseek-ai/schemastery';
 import { TerminalSessionId } from '@deepseek-ai/dsh-terminal';
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { boundTerminalText, renderList, renderRead, renderSend, renderSendRead, renderSpawn } from "./render.js";
+import { sendSource } from "./background.js";
+import { boundTerminalText, renderList, renderRead, renderSend, renderSpawn } from "./render.js";
 /** Cordis plugin name. */
 export const name = 'tool-terminal';
 /** Required capability, registry, and prompt services. */
@@ -53,7 +53,7 @@ const SESSION_SNAPSHOT_SCHEMA = {
     additionalProperties: false,
     properties: SESSION_SNAPSHOT_PROPERTIES,
 };
-const BACKGROUND_TASK_OUTPUT_SCHEMA = {
+const BACKGROUND_JOB_OUTPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     properties: {
@@ -99,7 +99,7 @@ export function apply(ctx, config = {}) {
     };
     ctx.systemPrompt.section({
         name: 'tool:pty',
-        order: FIRST_PARTY_SECTION_ORDER.TOOL_PTY,
+        order: ctx.systemPrompt.getSectionOrder('TOOL_PTY'),
         text: 'Use a terminal session only when work needs persistent terminal state or interactive stdin; prefer shell/read/write/edit for bounded one-shot operations. Track every terminal session id and close sessions that no longer matter. An inferred_idle or timeout result does not prove the foreground command exited.',
     });
     ctx.tools.register(defineTool({
@@ -153,7 +153,7 @@ export function apply(ctx, config = {}) {
         output: {
             schema: {
                 oneOf: [
-                    BACKGROUND_TASK_OUTPUT_SCHEMA,
+                    BACKGROUND_JOB_OUTPUT_SCHEMA,
                     {
                         type: 'object',
                         additionalProperties: false,
@@ -197,20 +197,22 @@ export function apply(ctx, config = {}) {
                 if (jobs === undefined)
                     throw new Error('background terminal sends require @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs');
                 let cancelRequested = false;
+                let operation;
                 const jobId = jobs.start({
                     kind: 'pty-send',
                     label: `${id}: ${args.text || '(input)'}`,
-                    owner,
+                    owner: owner.id,
                     outputLimitBytes: maxResultBytes,
+                    output: [sendSource(() => operation)],
                     run: () => {
-                        const operation = ctx.terminals.startSend(owner, id, request);
+                        const started = ctx.terminals.startSend(owner, id, request);
+                        operation = started;
                         return {
                             cancel: () => {
                                 cancelRequested = true;
-                                operation.cancel();
+                                started.cancel();
                             },
-                            done: operation.done.then(result => ({ status: cancelRequested ? 'killed' : 'completed', detail: sendDetail(result) }), (error) => ({ status: 'failed', detail: String(error) })),
-                            readOutput: () => renderSendRead(operation.readOutput()),
+                            done: started.done.then(result => ({ status: cancelRequested ? 'killed' : 'completed', detail: sendDetail(result) }), (error) => ({ status: 'failed', detail: String(error) })),
                         };
                     },
                 });

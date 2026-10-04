@@ -58,5 +58,5 @@ export interface RunHookResult {
  * @param now - millisecond clock used for the reported duration.
  * @returns the decoded output plus the run's wall-clock duration.
  */
-export declare function runHook(bash: ShellExecutor, hook: CommandHook, options: RunHookOptions, now: () => number): Promise<RunHookResult>;
+export declare function runHook(bash: Pick<ShellExecutor, 'resolve' | 'execute'>, hook: CommandHook, options: RunHookOptions, now: () => number): Promise<RunHookResult>;
 //# sourceMappingURL=runner.d.ts.map

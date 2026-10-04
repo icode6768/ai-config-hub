@@ -31,6 +31,7 @@ import {
 import type { AppFileState, AppId, AppRuntimeStatus, LauncherConfig, RuntimeVersion, StepStatus } from '../shared/types'
 import { resolveEditorDraft } from '../shared/editor-draft'
 import dongchuangaiLogo from '../assets/logo.png'
+import { useI18n } from './i18n'
 
 type Bootstrap = {
   config: LauncherConfig
@@ -51,6 +52,7 @@ type Bootstrap = {
   }
   appStatuses: Record<AppId, AppRuntimeStatus>
   skills: SkillRecord[]
+  workbuddy: { platform: string; supported: boolean; installed: boolean; running: boolean; version: string; path?: string; downloadUrl: string; error?: string }
 }
 
 type SkillRecord = {
@@ -71,6 +73,7 @@ type SkillRecord = {
     deepseekHarness: boolean
     hermes: boolean
     openclaw: boolean
+    workbuddy?: boolean
   }
 }
 
@@ -334,6 +337,7 @@ function emptyWechat() {
 }
 
 export default function App(): React.ReactElement {
+  const { language, setLanguage, t } = useI18n()
   const query = new URLSearchParams(window.location.search)
   const initialApp = query.get('app') as AppId | null
   const initialStep = query.get('step')
@@ -358,6 +362,7 @@ export default function App(): React.ReactElement {
   const [marketQuery, setMarketQuery] = useState({ page: 1, categoryId: 0, search: '', revision: 0 })
   const [marketLoading, setMarketLoading] = useState(false)
   const [marketError, setMarketError] = useState('')
+  const [workbuddyBusy, setWorkbuddyBusy] = useState(false)
   const [skillsBusy, setSkillsBusy] = useState<Partial<Record<string, boolean>>>({})
   const [dongchuangAuth, setDongchuangAuth] = useState<DongchuangAIAuth | null>(null)
   const [dongchuangAuthBusy, setDongchuangAuthBusy] = useState(false)
@@ -684,7 +689,7 @@ export default function App(): React.ReactElement {
       const body = await response.json() as { appStatuses?: Record<AppId, AppRuntimeStatus>; error?: string }
       if (!response.ok) throw new Error(body.error ?? `${label(appId)} 操作失败`)
       if (body.appStatuses) setBootstrap(previous => previous ? { ...previous, appStatuses: body.appStatuses! } : previous)
-      setStatus(actionMessage(appId, action))
+      setStatus(t(actionMessage(appId, action)))
     } catch (error) {
       setStatus(error instanceof Error ? error.message : `${label(appId)} 操作失败`)
     } finally {
@@ -714,6 +719,18 @@ export default function App(): React.ReactElement {
     } finally {
       setSkillsBusy(previous => ({ ...previous, [skill.id]: false }))
     }
+  }
+
+  async function workbuddyAction(action: 'install' | 'open' | 'update' | 'uninstall'): Promise<void> {
+    setWorkbuddyBusy(true)
+    try {
+      const response = await fetch(`/api/workbuddy/${action}`, { method: 'POST' })
+      const body = await response.json() as { error?: string; workbuddy?: Bootstrap['workbuddy'] }
+      if (!response.ok) throw new Error(body.error ?? 'WorkBuddy 操作失败')
+      if (body.workbuddy) setBootstrap(previous => previous ? { ...previous, workbuddy: body.workbuddy! } : previous)
+      setStatus(action === 'install' ? 'WorkBuddy 安装程序已打开' : action === 'update' ? 'WorkBuddy 更新程序已打开' : action === 'uninstall' ? 'WorkBuddy 已卸载' : 'WorkBuddy 已打开')
+    } catch (error) { setStatus(error instanceof Error ? error.message : 'WorkBuddy 操作失败') }
+    finally { setWorkbuddyBusy(false) }
   }
 
   async function startWechat(appId: AppId): Promise<void> {
@@ -786,7 +803,7 @@ export default function App(): React.ReactElement {
           ) : (
             <>
               <Activity className="spin" />
-              <span>正在读取启动配置...</span>
+              <span>{t('正在读取启动配置...')}</span>
             </>
           )}
         </div>
@@ -817,8 +834,8 @@ export default function App(): React.ReactElement {
         <div className="brand">
           <img className="brandLogo" src={dongchuangaiLogo} alt="东创AI" draggable={false} />
           <div className="brandText">
-            <div className="brandTitle">聚合工作台</div>
-            <div className="brandSub">本地网页引导安装</div>
+            <div className="brandTitle">{t('聚合工作台')}</div>
+            <div className="brandSub">{t('本地网页引导安装')}</div>
           </div>
           {softwareUpdate && (
             <button type="button" className="updateNotice" onClick={() => { setUpdateMessage(''); setUpdateModalOpen(true) }}>
@@ -836,8 +853,8 @@ export default function App(): React.ReactElement {
             >
               <span className="stepIndex">{step.completed ? <CheckCircle2 size={16} /> : index + 1}</span>
               <span className="stepText">
-                <strong>{step.title}</strong>
-                <small>{step.detail}</small>
+                <strong>{t(stepLabel(step.id))}</strong>
+                <small>{t(step.detail)}</small>
               </span>
             </button>
           ))}
@@ -865,7 +882,7 @@ export default function App(): React.ReactElement {
               </button>
             )}
             <a className="railButton" href="https://dongchuangai.com/" target="_blank" rel="noreferrer">
-              <LifeBuoy size={16} /> <span>技术支持</span><ExternalLink size={13} />
+              <LifeBuoy size={16} /> <span>{t('技术支持')}</span><ExternalLink size={13} />
             </a>
           </div>
         </div>
@@ -874,15 +891,21 @@ export default function App(): React.ReactElement {
       <main className="main">
         <header className="topbar">
           <div>
-            <h1>{stepLabel(activeStep)}</h1>
-            <p>共享 API 默认写入全局 config.yaml，应用文件可单独在线编辑。</p>
+            <h1>{t(stepLabel(activeStep))}</h1>
+            <p>{t('共享 API 默认写入全局 config.yaml，应用文件可单独在线编辑。')}</p>
           </div>
           <div className="actions">
+            <label className="languageSelect" aria-label="Language">
+              <select value={language} onChange={event => setLanguage(event.target.value as 'zh-CN' | 'en')}>
+                <option value="zh-CN">简体中文</option>
+                <option value="en">English</option>
+              </select>
+            </label>
             <button type="button" className="ghost" onClick={() => void refresh({ reloadDraft: true })}>
-              <RefreshCcw size={16} /> 刷新
+              <RefreshCcw size={16} /> {t('刷新')}
             </button>
             <button type="button" className="primary" onClick={() => void saveGlobalConfig()} disabled={saving}>
-              <Save size={16} /> 保存全局
+              <Save size={16} /> {t('保存全局')}
             </button>
           </div>
         </header>
@@ -1170,14 +1193,38 @@ export default function App(): React.ReactElement {
                   <div key={step.id} className={`summaryCard ${step.completed ? 'ok' : ''}`}>
                     <div className="summaryTitle">
                       {step.completed ? <CheckCircle2 size={16} /> : <Circle size={16} />}
-                      <strong>{step.title}</strong>
+                      <strong>{t(stepLabel(step.id))}</strong>
                     </div>
-                    <span>{step.detail}</span>
+                    <span>{t(step.detail)}</span>
                   </div>
                 ))}
               </div>
 
               <div className="entries">
+                <div className="entryRow workbuddyRow">
+                  <div className="entryMain">
+                    <strong>WorkBuddy</strong>
+                    <div className="entryDetails">
+                      <span className={`runtimeChip ${bootstrap.workbuddy.installed ? 'running' : ''}`}>
+                        <Activity size={13} /> {bootstrap.workbuddy.installed ? t('已安装') : t('未安装')}
+                      </span>
+                      {bootstrap.workbuddy.installed && bootstrap.workbuddy.version !== '已安装' && <span>{language === 'en' ? 'Version' : '版本'} {bootstrap.workbuddy.version}</span>}
+                      {bootstrap.workbuddy.running && <span>{t('运行中')}</span>}
+                      <span>{bootstrap.workbuddy.platform} · {bootstrap.workbuddy.supported ? 'Desktop' : 'Unsupported'}</span>
+                    </div>
+                    <span>{bootstrap.workbuddy.path ?? bootstrap.workbuddy.downloadUrl}</span>
+                  </div>
+                  <div className="appOps entryActions">
+                    <button type="button" className="primary" onClick={() => void workbuddyAction(bootstrap.workbuddy.installed ? 'open' : 'install')} disabled={workbuddyBusy || !bootstrap.workbuddy.supported}>
+                      <ExternalLink size={15} /> {bootstrap.workbuddy.installed ? t('打开入口') : t('安装')}
+                    </button>
+                    {bootstrap.workbuddy.installed && <>
+                      <button type="button" className="ghost" onClick={() => void workbuddyAction('update')} disabled={workbuddyBusy}><Download size={15} /> {t('更新')}</button>
+                      <button type="button" className="ghost" onClick={() => void workbuddyAction('uninstall')} disabled={workbuddyBusy}>{t('卸载')}</button>
+                    </>}
+                    <a className="ghost" href={bootstrap.workbuddy.downloadUrl} target="_blank" rel="noreferrer"><Download size={15} /> {t('下载')}</a>
+                  </div>
+                </div>
                 {appIds().map((id) => {
                   const url = launch.webUrls[id]
                   const runtimeStatus = bootstrap.appStatuses[id]
@@ -1188,36 +1235,36 @@ export default function App(): React.ReactElement {
                         <strong>{label(id)}</strong>
                         <div className="entryDetails">
                           <span className={`runtimeChip ${runtimeStatus?.running ? 'running' : runtimeStatus?.phase === 'error' ? 'error' : ''}`}>
-                            <Activity size={13} /> {runtimeStatusLabel(runtimeStatus)}
+                            <Activity size={13} /> {t(runtimeStatusLabel(runtimeStatus))}
                           </span>
-                          <span>{runtimeStatus?.version && runtimeStatus.version !== '未找到' ? `版本 ${runtimeStatus.version}` : '版本未知'}</span>
-                          <span>{runtimeStatus?.kind === 'cli' ? 'CLI 应用，无网页服务' : runtimeStatus?.pid ? `PID ${runtimeStatus.pid}` : '网页服务'}</span>
+                          <span>{runtimeStatus?.version && runtimeStatus.version !== '未找到' ? `${language === 'en' ? 'Version' : '版本'} ${runtimeStatus.version}` : (language === 'en' ? 'Version unknown' : '版本未知')}</span>
+                          <span>{runtimeStatus?.kind === 'cli' ? t('CLI 应用，无网页服务') : runtimeStatus?.pid ? `PID ${runtimeStatus.pid}` : t('网页服务')}</span>
                         </div>
-                        <span>{runtimeStatus?.kind === 'cli' ? '请通过终端运行交互式命令' : url || '未配置外部入口'}</span>
+                          <span>{runtimeStatus?.kind === 'cli' ? t('请通过终端运行交互式命令') : url || t('未配置外部入口')}</span>
                       </div>
                       <div className="appOps entryActions">
                         <button type="button" className="ghost" onClick={() => void appAction(id, 'start')} disabled={busy || Boolean(runtimeStatus?.running)}>
-                          <Play size={15} /> 启动
+                          <Play size={15} /> {t('启动')}
                         </button>
                         <button type="button" className="ghost" onClick={() => void appAction(id, 'stop')} disabled={busy || !runtimeStatus?.running}>
-                          <Square size={15} /> 停止
+                          <Square size={15} /> {t('停止')}
                         </button>
                         <button type="button" className="ghost" onClick={() => void appAction(id, 'restart')} disabled={busy}>
-                          <RotateCcw size={15} /> 重启
+                          <RotateCcw size={15} /> {t('重启')}
                         </button>
                         <button type="button" className="ghost" onClick={() => void appAction(id, 'update')} disabled={busy}>
-                          <Download size={15} /> 更新
+                          <Download size={15} /> {t('更新')}
                         </button>
                         <button type="button" className="ghost" onClick={() => void appAction(id, 'terminal')} disabled={busy}>
-                          <Terminal size={15} /> 打开终端
+                            <Terminal size={15} /> {t('打开终端')}
                         </button>
-                        {id === 'hermes' && (
+                        {(id === 'hermes' || id === 'deepseek-harness') && (
                           <button type="button" className="primary" onClick={() => void appAction(id, 'terminal-desktop')} disabled={busy}>
-                            <ExternalLink size={15} /> 打开桌面端
+                            <ExternalLink size={15} /> {t('打开桌面端')}
                           </button>
                         )}
                         <button type="button" className="ghost" onClick={() => { setActiveApp(id); setActiveStep('api') }}>
-                          <Settings2 size={15} /> 编辑配置
+                            <Settings2 size={15} /> {t('编辑配置')}
                         </button>
                         {runtimeStatus?.kind !== 'cli' && (
                           <button type="button" className="primary" onClick={() => void fetch('/api/launch-url', {
@@ -1225,7 +1272,7 @@ export default function App(): React.ReactElement {
                             headers: { 'content-type': 'application/json' },
                             body: JSON.stringify({ appId: id, target: url || `${location.origin}/?app=${id}&step=done` }),
                           })}>
-                            <ExternalLink size={15} /> 打开入口
+                            <ExternalLink size={15} /> {t('打开入口')}
                           </button>
                         )}
                       </div>
@@ -1266,8 +1313,8 @@ export default function App(): React.ReactElement {
         </section>}
 
         <footer className="footer">
-          <span>{status || '就绪'}</span>
-          <span>{stepMap.get(activeStep)?.completed ? '当前步骤已完成' : '当前步骤未完成'}</span>
+          <span>{status || t('就绪')}</span>
+          <span>{t(stepMap.get(activeStep)?.completed ? '当前步骤已完成' : '当前步骤未完成')}</span>
         </footer>
       </main>
       {dongchuangAuth && (
@@ -1364,7 +1411,7 @@ function allSkillTargets(skill: SkillRecord): boolean {
 function targetSummary(skill: SkillRecord): string {
   const targets = Object.values(skill.targets ?? {})
   if (!skill.installed) return '未安装'
-  return `应用 ${targets.filter(Boolean).length}/5`
+  return `应用 ${targets.filter(Boolean).length}/6`
 }
 
 function actionMessage(appId: AppId, action: 'start' | 'stop' | 'restart' | 'update' | 'terminal' | 'terminal-desktop'): string {

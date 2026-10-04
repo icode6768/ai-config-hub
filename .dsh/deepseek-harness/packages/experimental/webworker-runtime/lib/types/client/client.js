@@ -3,7 +3,9 @@
  * turns fetch-shaped calls into `req` frames and rebuilds Responses from the
  * worker's `res` / `res-head`+`res-chunk`+`res-end` frames, so every consumer
  * (boot payload, bundle transport, ApiClient, Typert RPC) speaks plain HTTP.
+ * The worker's unsolicited `view-text` frame opens the page's text viewer.
  */
+import { showTextViewer } from "./text-viewer.js";
 /** Error carrying stream semantics across independently bundled Client code. */
 class TunnelLogicalStreamError extends Error {
     dshRemoteStreamFailure;
@@ -80,12 +82,16 @@ async function localizeSourceMap(source, bundleUrl, fetch) {
         return source.replace(SOURCE_MAP_TRAILER, '');
     }
 }
-/** Normalize a RequestInit body to a transferable ArrayBuffer. */
-function toBodyBuffer(body) {
+/** Keep opaque Blobs and transferable streams intact; normalize other bodies to bytes. */
+function toTunnelBody(body) {
     if (body === undefined || body === null)
         return undefined;
     if (typeof body === 'string')
         return encoder.encode(body).buffer;
+    if (body instanceof Blob)
+        return body;
+    if (body instanceof ReadableStream)
+        return body;
     if (body instanceof ArrayBuffer)
         return body;
     if (ArrayBuffer.isView(body)) {
@@ -137,7 +143,7 @@ export class WorkerTunnel {
                 kind: 'carrier',
                 message: `web-preview tunnel: worker failed: ${event.message}`,
             }, { cause: reason });
-            for (const inbox of this.logicalStreams.values())
+            for (const { inbox } of this.logicalStreams.values())
                 inbox.fail(failure);
             this.logicalStreams.clear();
             for (const release of this.releases.values())
@@ -161,21 +167,23 @@ export class WorkerTunnel {
         if (signal?.aborted === true)
             throw new DOMException('The operation was aborted.', 'AbortError');
         const id = this.nextId++;
+        const body = init?.body === undefined || init.body === null ? undefined : toTunnelBody(init.body);
         const frame = {
             t: 'req',
             id,
             method: init?.method ?? 'GET',
             url: new URL(input, globalThis.location.origin).toString(),
             headers: Object.fromEntries(new Headers(init?.headers).entries()),
-            ...(init?.body === undefined || init.body === null
-                ? {}
-                : { body: toBodyBuffer(init.body) }),
+            ...(body === undefined ? {} : { body }),
         };
         const response = new Promise((resolve, reject) => {
             this.unary.set(id, { resolve, reject });
         });
         this.inFlight.set(id, `${frame.method} ${frame.url}`);
-        this.worker.postMessage(frame);
+        if (body instanceof ReadableStream)
+            this.worker.postMessage(frame, [body]);
+        else
+            this.worker.postMessage(frame);
         if (signal === undefined || signal === null)
             return await response;
         const raced = this.rejectOnAbort(id, signal);
@@ -196,17 +204,19 @@ export class WorkerTunnel {
      * @param endpoint - canonical Gateway Remote endpoint.
      * @param payload - decoded endpoint payload.
      * @param signal - logical-stream cancellation.
+     * @param uplink - the stream's uplink, posted as `stream-uplink-item` frames and closed with `stream-uplink-end`.
      * @returns decoded stream values from the worker Host.
      */
-    async *open(endpoint, payload, signal) {
+    async *open(endpoint, payload, signal, uplink) {
         signal.throwIfAborted();
         const id = this.nextId++;
         const inbox = new LogicalStreamInbox();
+        const stream = { inbox, pump: undefined };
         let opened = false;
         let terminal = false;
         const onAbort = () => { inbox.fail(signal.reason); };
         signal.addEventListener('abort', onAbort, { once: true });
-        this.logicalStreams.set(id, inbox);
+        this.logicalStreams.set(id, stream);
         this.inFlight.set(id, `STREAM ${endpoint}`);
         try {
             const frame = { t: 'stream-open', id, endpoint, payload };
@@ -220,6 +230,8 @@ export class WorkerTunnel {
                     message: `web-preview tunnel: failed to open Remote stream ${endpoint}`,
                 }, { cause });
             }
+            if (uplink !== undefined)
+                stream.pump = this.pumpUplink(id, uplink, signal, inbox);
             while (true) {
                 const response = await inbox.next();
                 signal.throwIfAborted();
@@ -237,9 +249,58 @@ export class WorkerTunnel {
             signal.removeEventListener('abort', onAbort);
             this.logicalStreams.delete(id);
             this.inFlight.delete(id);
+            stream.pump?.stop();
             if (opened && !terminal)
                 this.abortWorkerOperation(id);
+            if (stream.pump !== undefined)
+                await stream.pump.done;
         }
+    }
+    /**
+     * Post the caller's uplink items for one logical stream. A failing uplink
+     * fails the downlink, and the enclosing `open` then aborts the worker side.
+     * `stop()` interrupts a pump blocked on `uplink.next()` and returns the
+     * caller's iterator at once, so a handle's queue closes and `send()` throws
+     * from then on; a generator blocked in `next()` completes that return only
+     * once it yields, so it is not awaited.
+     */
+    pumpUplink(id, uplink, signal, inbox) {
+        const interrupt = Promise.withResolvers();
+        const iterator = uplink[Symbol.asyncIterator]();
+        const state = { active: true, released: false };
+        const release = () => {
+            if (state.released)
+                return;
+            state.released = true;
+            void Promise.resolve(iterator.return?.()).catch(() => undefined);
+        };
+        const done = this.forwardUplink(id, iterator, interrupt.promise, () => state.active && !signal.aborted)
+            .then((exhausted) => { state.released ||= exhausted; }, (error) => { inbox.fail(error); })
+            .then(release);
+        return {
+            done,
+            stop: () => {
+                state.active = false;
+                interrupt.resolve({ value: undefined, done: true });
+                release();
+            },
+        };
+    }
+    /**
+     * Post items until the caller's iterator ends, the pump is stopped, or the page aborts the stream.
+     * @returns whether the caller's iterator was exhausted and the uplink end posted.
+     */
+    async forwardUplink(id, iterator, interrupt, isActive) {
+        for (;;) {
+            const next = await Promise.race([iterator.next(), interrupt]);
+            if (!isActive())
+                return false;
+            if (next.done === true)
+                break;
+            this.worker.postMessage({ t: 'stream-uplink-item', id, value: next.value });
+        }
+        this.worker.postMessage({ t: 'stream-uplink-end', id });
+        return true;
     }
     /**
      * Read the pre-cordis boot payload (the injection table).
@@ -258,7 +319,8 @@ export class WorkerTunnel {
      * The image packs each bundle with a trailing `sourceURL` naming its image
      * path, so the blob shows under that name in the debugger instead of as an
      * anonymous blob entry.
-     * @param url - Graph combo URL (`/plugins/??<id>/client.js&rev=...`).
+     * @param url - Graph combo reference (`plugins/??<id>/client.js&rev=...`), which
+     * this tunnel resolves against the page origin it maps from.
      */
     async loadBundle(url) {
         const response = await this.fetch(url);
@@ -430,10 +492,20 @@ export class WorkerTunnel {
                 controller.error(reason);
                 return;
             }
+            case 'view-text': {
+                showTextViewer(frame.path, frame.text);
+                return;
+            }
             case 'stream-item':
             case 'stream-end':
             case 'stream-error': {
-                this.logicalStreams.get(frame.id)?.push(frame);
+                const stream = this.logicalStreams.get(frame.id);
+                if (stream === undefined)
+                    return;
+                stream.inbox.push(frame);
+                // A terminal frame ends the uplink now, not on the consumer's next read.
+                if (frame.t !== 'stream-item')
+                    stream.pump?.stop();
                 return;
             }
             default: {

@@ -74,8 +74,13 @@ export const menuReduce = (state, ev) => {
                 open: true,
                 hit: ev.hit,
                 generation: state.generation + 1,
-                groups: state.groups.map(g => ({ ...g, status: 'pending', items: [] })),
-                highlight: null,
+                // Items and highlight survive the refinement (stale-while-revalidate):
+                // the previous query's candidates stay rendered with the highlight
+                // parked where it was while the new fetch runs, and the settled
+                // generation replaces the items and revalidates the highlight
+                // wholesale. Pending status still fences picks off the stale rows.
+                groups: state.groups.map(g => ({ ...g, status: 'pending' })),
+                highlight: state.highlight,
             };
         }
         case 'source-settled': {

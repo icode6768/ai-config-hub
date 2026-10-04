@@ -15,11 +15,12 @@ export declare class WorkspaceFeed {
     private knownIds;
     private order;
     private archived;
+    private pinned;
     /** @param ctx - Host context containing the authoritative Workspace registry. */
     constructor(ctx: Context);
     /**
      * Read the complete current projection synchronously.
-     * @returns all active Workspaces and archived Session identities.
+     * @returns all active Workspaces plus archived and pinned Session identities.
      */
     baseline(): WorkspaceBaseline;
     /**

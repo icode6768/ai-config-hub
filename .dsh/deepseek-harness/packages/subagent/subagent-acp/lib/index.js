@@ -5,7 +5,7 @@ import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
 import { randomUUID } from "node:crypto";
 import { Readable, Writable } from "node:stream";
 import { PROTOCOL_VERSION, client, methods, ndJsonStream } from "@agentclientprotocol/sdk";
-import { SessionId } from "@deepseek-ai/dsh-session";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { AssistantOutputFold, settleRunResult, subprocessRunHandle } from "@deepseek-ai/dsh-subagent";
 //#region lib/types/run.js
 /**
@@ -74,8 +74,8 @@ function permissionRequestKind(kind) {
 	const candidate = kind ?? "unknown";
 	return ACP_TOOL_KINDS.has(candidate) ? candidate : "unknown";
 }
-/** Bounded whole-tree exit wait: polls the handle's tree liveness until it exits or `ms` elapses. */
-async function treeExitsWithin(child, ms) {
+/** Bounded managed-range exit wait: observes the handle's range until it is empty or `ms` elapses. */
+async function rangeExitsWithin(child, ms) {
 	const controller = new AbortController();
 	const timer = setTimeout(() => {
 		controller.abort();
@@ -88,22 +88,31 @@ async function treeExitsWithin(child, ms) {
 }
 /**
 * Cooperative teardown ladder for an out-of-process agent, over the seam's
-* public verbs; resolves only at whole-tree quiescence: stdin EOF (the child's
+* public verbs; resolves only at whole-range quiescence: stdin EOF (the child's
 * window to flush persistence and reap its own descendants), then the
 * terminate() escalation (SIGTERM → spec grace → SIGKILL) and its
-* whole-tree exit proof.
+* whole-range exit proof.
 * @param child - the spawned ACP child's handle.
 * @param eofGraceMs - tier-1 window after stdin EOF.
 */
 async function disposeAcpChild(child, eofGraceMs) {
-	if (child.pid <= 0) {
-		await child.done.catch(() => {});
-		return;
-	}
+	const failures = [];
 	child.stdin?.end();
-	if (await treeExitsWithin(child, eofGraceMs)) return;
+	let exited = false;
+	try {
+		exited = await rangeExitsWithin(child, eofGraceMs);
+	} catch (error) {
+		failures.push(toError(error));
+	}
+	if (exited) return;
 	child.terminate();
-	await child.waitForExit();
+	try {
+		await child.waitForExit();
+	} catch (error) {
+		failures.push(toError(error));
+	}
+	if (failures.length === 1) throw failures[0];
+	if (failures.length > 1) throw new AggregateError(failures, "ACP subprocess teardown failed");
 }
 /**
 * Map an ACP {@link StopReason} to a harness {@link SubagentStopReason}.
@@ -154,11 +163,7 @@ function reportFailure(spec, error) {
 	} catch {}
 }
 /** Classify an unpublished failure from the active protocol operation and observed process facts. */
-function startupFailure(error, stage, child, outcome) {
-	if (child.pid <= 0) return new AcpRunFailure({
-		stage: "process",
-		category: "process-start"
-	}, error);
+function startupFailure(error, stage, outcome) {
 	return new AcpRunFailure(
 		/* v8 ignore next -- Windows anonymous pipes cannot expose a live-child protocol close during startup. */
 		outcome === void 0 ? {
@@ -194,10 +199,10 @@ function terminalFailure(reason, permission) {
 /**
 * Start and publish one ACP child after initialization and session creation.
 * Child failures resolve through the run result. Startup rejects with fixed
-* safe facts after provider-owned cleanup; successful cleanup proves process
-* reap. Cleanup failure preserves startup plus teardown facts for an ordinary
+* safe facts after provider-owned cleanup; successful cleanup proves managed
+* range quiescence. Cleanup failure preserves startup plus teardown facts for an ordinary
 * failure, or teardown alone after cancellation, without claiming quiescence.
-* Disposal cancels, kills, and reaps the child.
+* Disposal cancels, terminates, and settles the child's managed range.
 * @param request - the start request; its signal is the cancellation channel.
 * @param spec - the resolved spawn spec: command/args/cwd, env, permission
 * policy, dispose graces, and the optional error sink.
@@ -205,7 +210,7 @@ function terminalFailure(reason, permission) {
 */
 async function startAcpRun(request, spec) {
 	if (request.signal.aborted) throw new Error("subagent request was aborted before the ACP child started");
-	const id = SessionId(randomUUID());
+	const id = brandString(randomUUID());
 	let child;
 	try {
 		child = spec.spawn({
@@ -230,18 +235,22 @@ async function startAcpRun(request, spec) {
 	if (child.stdin === void 0 || child.stdout === void 0) throw new Error("subagent-acp: subprocess implementation dropped a piped protocol stream");
 	/* v8 ignore stop */
 	let processOutcome;
+	let processFailure;
 	const processDone = child.done.then((outcome) => {
 		processOutcome = outcome;
 		return outcome;
+	}, (error) => {
+		processFailure = toError(error);
+		throw processFailure;
 	});
-	const spawnFailed = processDone.then(
+	const processRejected = processDone.then(
 		/* v8 ignore next -- the success arm's never-settling executor is intentionally empty. */
 		() => new Promise(() => {}),
 		(err) => Promise.reject(toError(err))
 	);
-	spawnFailed.catch(() => {});
+	processRejected.catch(() => {});
 	const observeProcessOutcome = async (signal) => {
-		if (processOutcome !== void 0 || child.pid <= 0) return processOutcome;
+		if (processOutcome !== void 0) return processOutcome;
 		const timeout = AbortSignal.timeout(Math.ceil(spec.disposeGraceMs));
 		const bound = signal === void 0 ? timeout : AbortSignal.any([signal, timeout]);
 		const aborted = Promise.withResolvers();
@@ -255,7 +264,6 @@ async function startAcpRun(request, spec) {
 		try {
 			return await Promise.race([processDone, aborted.promise]);
 		} catch {
-			/* v8 ignore next -- a published child.done cannot reject; spawn rejection is consumed before publication. */
 			return processOutcome;
 		} finally {
 			bound.removeEventListener("abort", onObservationAbort);
@@ -331,18 +339,20 @@ async function startAcpRun(request, spec) {
 				/* v8 ignore next -- cancelSettled wins the startup race before this post-response guard can settle it. */
 				if (flags.cancelled) throw new Error("subagent cancelled before the ACP session started");
 			})(),
-			spawnFailed,
+			processRejected,
 			cancelSettled.then(() => {
 				throw new Error("subagent cancelled before the ACP session started");
 			})
 		]);
 	} catch (error) {
 		request.signal.removeEventListener("abort", onAbort);
-		const startup = flags.cancelled ? { kind: "cancelled" } : {
+		const cancelledBeforeCleanup = flags.cancelled;
+		const observedOutcome = !cancelledBeforeCleanup && !(error instanceof AcpRunFailure) ? await observeProcessOutcome() : void 0;
+		const startup = cancelledBeforeCleanup ? { kind: "cancelled" } : {
 			kind: "failed",
-			failure: error instanceof AcpRunFailure ? error : startupFailure(error, startupStage, child, await observeProcessOutcome())
+			failure: error instanceof AcpRunFailure ? error : startupFailure(error, startupStage, observedOutcome)
 		};
-		if (startup.kind === "cancelled") {} else reportFailure(spec, error instanceof AcpRunFailure ? error.cause : error);
+		if (startup.kind === "cancelled") {} else reportFailure(spec, error instanceof AcpRunFailure ? error.cause : processFailure ?? error);
 		try {
 			await disposeProcess();
 		} catch (cleanupError) {
@@ -392,7 +402,7 @@ async function startAcpRun(request, spec) {
 							outcome
 						}, latestPermission);
 					}
-					throw error;
+					throw processFailure ?? error;
 				}
 			},
 			collectOutput,

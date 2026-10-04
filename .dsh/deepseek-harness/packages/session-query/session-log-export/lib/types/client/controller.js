@@ -1,5 +1,6 @@
 /** Browser download state shared by the Session Header button and `/export`. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
+import { SESSION_LOG_EXPORT_ROUTE } from "../routes.js";
 const INITIAL = { bySession: {} };
 /**
  * Collapse an untrusted Session id into the filename convention owned by the host endpoint.
@@ -10,8 +11,9 @@ export function sessionLogZipFilename(sessionId) {
     return `dsh-session-${String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_')}.zip`;
 }
 /**
- * Hand a Host download URL to the browser download manager.
- * @param url - same-origin Host download URL.
+ * Hand a Host download route to the browser download manager, which resolves it
+ * against the document's own base.
+ * @param url - document-relative Host download route.
  * @param filename - browser download filename.
  */
 export function downloadUrl(url, filename) {
@@ -19,11 +21,6 @@ export function downloadUrl(url, filename) {
     anchor.href = url;
     anchor.download = filename;
     anchor.click();
-}
-/** Resolve the browser's Host base with the connection carrier's null-origin fallback. */
-function hostBase() {
-    const origin = globalThis.location?.origin;
-    return origin !== undefined && origin !== 'null' ? origin : 'http://dsh.internal';
 }
 function messageOf(error) {
     return error instanceof Error ? error.message : String(error);
@@ -86,15 +83,14 @@ export class SessionLogDownloadController {
     async run(sessionId, signal) {
         this.publish(sessionId, { open: true, status: 'downloading', error: null });
         try {
-            const url = new URL('/api/session.export', hostBase());
-            url.searchParams.set('sessionId', sessionId);
-            url.searchParams.set('includeDescendants', 'true');
-            const response = await this.fetcher(url, { method: 'HEAD', signal });
+            const query = new URLSearchParams({ sessionId, includeDescendants: 'true' });
+            const route = `${SESSION_LOG_EXPORT_ROUTE}?${query.toString()}`;
+            const response = await this.fetcher(route, { method: 'HEAD', signal });
             if (!response.ok) {
                 const detail = await response.text().catch(() => '');
                 throw new Error(`Export failed: HTTP ${response.status}${detail === '' ? '' : ` ${detail}`}`);
             }
-            this.save(url.toString(), sessionLogZipFilename(sessionId));
+            this.save(route, sessionLogZipFilename(sessionId));
             const open = this.store.getSnapshot().bySession[String(sessionId)]?.open ?? true;
             this.publish(sessionId, { open, status: 'success', error: null });
         }

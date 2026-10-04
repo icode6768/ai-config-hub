@@ -10,8 +10,8 @@
  * {@link assertObjectJsonSchema} before accepting input.
  * @module dsh-tools/json-schema
  */
-import { assertNever, HarnessError } from '@deepseek-ai/dsh-llm';
-import { isJsonValue } from '@deepseek-ai/dsh-session';
+import { HarnessError } from '@deepseek-ai/dsh-llm';
+import { assertNever, isJsonValue } from '@deepseek-ai/dsh-util-values';
 /**
  * Thrown when a raw schema falls outside the enforced subset. `violations`
  * lists every offending path instead of stopping at the first author error.

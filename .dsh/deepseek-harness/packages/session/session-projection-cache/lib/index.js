@@ -1,6 +1,7 @@
 import { Service } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
-import { snapshotJsonValue } from "@deepseek-ai/dsh-session";
+import { isJsonValue, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
+import { SessionLogOffset, SessionSeq } from "@deepseek-ai/dsh-session";
 import { z as z$1 } from "zod";
 import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
 //#region lib/types/spec.js
@@ -18,15 +19,16 @@ import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
 /**
 * One persisted checkpoint row (the RFC's `(sessionId, key, ver, seq, val)`
 * minus the two record keys). `val` is the unit's internal state — plain
-* JSON by the unit contract; `z.json()` enforces that at the durable
-* boundary. A row is never wrong, only possibly stale: `seq` says exactly
-* how stale, and a `ver` mismatch against the live unit's `stateVersion`
+* JSON by the unit contract. Validation uses the same lossless JSON rules as
+* writes and preserves every state key without cloning. A row is never wrong,
+* only possibly stale: `seq` says exactly how stale, and a `ver` mismatch
+* against the live unit's `stateVersion`
 * discards it at read time (never a migration).
 */
 const checkpointRow = z$1.object({
 	ver: z$1.number().int().nonnegative(),
-	seq: z$1.number().int().gte(-1),
-	val: z$1.json()
+	seq: z$1.number().int().gte(-1).transform((value) => value === -1 ? -1 : SessionSeq(value)),
+	val: z$1.custom(isJsonValue, { message: "checkpoint state must be losslessly JSON-serializable" })
 });
 /**
 * The stored-log identity a record is bound to: the immutable header fields
@@ -36,10 +38,20 @@ const checkpointRow = z$1.object({
 * old record pass every watermark check and seed state folded from an
 * unrelated log. Reads validate this against the live header (listing) or
 * the stored header (cold read) before accepting any record.
+*
+* The format and lineage fields are optional because records admitted through
+* `compatibleVersions` predate them. The reader (`identityMatches`) refuses an
+* absent format generation because no current Session log can prove that
+* record's fold semantics. It interprets absent lineage as unseeded only after
+* the format generation matches. Current-version writes always store all three
+* fields.
 */
 const checkpointIdentity = z$1.object({
+	formatVersion: z$1.number().int().nonnegative().optional(),
 	createdAt: z$1.number().int().nonnegative(),
-	cwd: z$1.string().optional()
+	cwd: z$1.string().optional(),
+	isSeeded: z$1.boolean().optional(),
+	inheritedEventCount: z$1.number().int().nonnegative().transform(SessionLogOffset).optional()
 });
 /**
 * One session's stored record: the log identity it was folded from plus its
@@ -56,11 +68,34 @@ const checkpointRecord = z$1.object({
 * bumps per session: after a bump, a stale session document is discarded on
 * open (cache semantics — a stale or unreadable cache costs a longer tail
 * replay, never a wrong value) while the rest of the domain stays usable,
-* instead of rejecting the whole medium.
+* instead of rejecting the whole medium. The `compatibleVersions` entries
+* keep structurally valid predecessor records available for a later current
+* checkpoint rewrite. Records without `formatVersion` remain unusable as fold
+* shortcuts because they cannot prove which Session event semantics produced
+* their rows; the per-record version map and disposition live in this package's README.
+* The per-row `ver` guard and the identity match still discard anything the
+* current fold semantics cannot vouch for.
+*
+* A lifecycle-matching predecessor may still expose its version-compatible
+* title through the cache service's listing-only hint; this never relaxes the
+* format requirement for hydration or another fold shortcut.
+*
+* `invalidRecords: 'backup-and-skip'`: a stored record that fails the schema
+* anyway is disposable derived data, so it must never cost the boot — the
+* domain layer moves the document aside as `<key>.json.bak.<stamp>`, logs
+* the concrete validation failure, and serves the session as uncached (a
+* cold read rebuilds and rewrites it).
 */
 const projectionCacheDomainSpec = defineDomain({
 	name: "session_projcache",
-	version: 4,
+	version: 7,
+	compatibleVersions: [
+		3,
+		4,
+		5,
+		6
+	],
+	invalidRecords: "backup-and-skip",
 	layout: "per-record",
 	tables: { sessions: domainTable(checkpointRecord) }
 });
@@ -83,6 +118,7 @@ const projectionCacheDomainSpec = defineDomain({
 * (.agents/notes/proposed/architecture/2026-07-27-session-projection-and-command-log.md).
 * @module @deepseek-ai/dsh-session-projection-cache
 */
+const PREDECESSOR_TITLE_KEY = "title";
 const Config = z.object({
 	writeEveryEvents: z.natural().min(1).required(),
 	writeIntervalMs: z.natural().min(1).required()
@@ -136,25 +172,66 @@ var SessionProjectionCache = class extends Service {
 	}
 	/**
 	* The zero-I/O listing read: whole values viewed straight from the stored
-	* rows (version-matching keys only), each cut carried with its watermark so
-	* a client value store can seed under its higher-seq-wins rule — as stale
-	* as the last durable checkpoint but never wrong, and never from an
-	* unrelated log (the caller's header is the identity witness). Fresher
-	* paths (the history tail baseline) supersede these values whenever a
-	* session is actually opened.
+	* rows (version-matching keys only) of the record bound to the caller's
+	* lifecycle. The header is the only identity witness a listing holds, so
+	* this face matches the lifecycle identity (`formatVersion`, `createdAt`,
+	* `cwd`, `isSeeded`) and not the inherited cut: within one format
+	* generation the cut is fixed at fork time, so it distinguishes no
+	* lifecycle the other fields do not, and a viewed value never seeds a fold.
+	* The view is as stale as the last durable checkpoint but never wrong and
+	* never from an unrelated log. Its `asOfSeq` is the lowest watermark among
+	* the served rows: the stored record's own position, which the header
+	* cannot relate to the log the caller later opens. The Session list
+	* therefore labels the block as cached, and the client lets every value the
+	* connected Session produces supersede it whatever this number says.
 	* @param meta - the listed session's header (identity witness; no log read).
 	* @param keys - optional projection keys required by the caller's audience.
-	* @returns the cut (`asOfSeq` = lowest served-row watermark), or
-	*   `undefined` when no usable row exists for this lifecycle.
+	* @returns the viewed block, or `undefined` when no usable row exists for
+	*   this lifecycle at the current Session format.
 	*/
 	cachedSnapshot(meta, keys) {
-		const record = this.recordFor(meta.id, identityOf(meta));
-		if (record === void 0) return void 0;
+		const expected = lifecycleIdentityOf(meta);
+		const record = this.requireTable().get(meta.id);
+		if (record === void 0 || !currentLifecycleMatches(record.identity, expected)) return void 0;
+		return this.viewRecord(record, keys);
+	}
+	/**
+	* Read only a predecessor checkpoint's title as a zero-I/O listing hint.
+	*
+	* The authoritative Session header supplies the lifecycle identity. A cache
+	* checkpoint can lag that log but cannot lead it because writes flush the
+	* log first, so a matching predecessor title is a genuine (possibly stale)
+	* fact from this Session. The registry still requires the current title
+	* projection's row version and schema. No other predecessor projection is
+	* exposed: format normalization can change their current meaning, and the
+	* {@link cachedSnapshot} / hydration paths continue to reject them.
+	* @param meta - authoritative listed Session header.
+	* @returns a title-only block at the stored title row's watermark, or
+	*   `undefined` when the record is current, newer, unrelated, missing, or
+	*   incompatible with the title unit.
+	*/
+	cachedPredecessorTitle(meta) {
+		const expected = lifecycleIdentityOf(meta);
+		const record = this.requireTable().get(meta.id);
+		if (record === void 0 || !predecessorIdentityMatches(record.identity, expected)) return void 0;
+		return this.viewRecord(record, [PREDECESSOR_TITLE_KEY]);
+	}
+	/**
+	* View selected wire rows as one block bound to the lowest served
+	* watermark: the seq every served value has folded through at least. The
+	* number is the record's own; whether a consumer may compare it with a
+	* live Session's seqs is decided by the face that serves the block, not
+	* here.
+	*/
+	viewRecord(record, keys) {
 		const values = this.ctx.sessionProjections.viewCheckpoint(record.rows, keys);
-		const servedKeys = Object.keys(values);
-		if (servedKeys.length === 0) return void 0;
-		return {
-			asOfSeq: Math.min(...servedKeys.map((key) => record.rows[key].seq)),
+		let asOfSeq;
+		for (const [key, row] of Object.entries(record.rows)) {
+			if (!Object.hasOwn(values, key)) continue;
+			if (asOfSeq === void 0 || row.seq < asOfSeq) asOfSeq = row.seq;
+		}
+		return asOfSeq === void 0 ? void 0 : {
+			asOfSeq,
 			values
 		};
 	}
@@ -164,17 +241,16 @@ var SessionProjectionCache = class extends Service {
 	* advances every unit to the observation cut. No checkpoint is written
 	* because the logical observation may contain recovery events not yet durable.
 	* @param session - exact unpublished Session retained by persistence.
-	* @param meta - observed lifecycle header.
 	* @param events - exact logical event prefix represented by the observation.
 	* @returns all projection values at the event cut.
 	*/
-	hydratePrepared(session, meta, events) {
-		const record = this.recordFor(meta.id, identityOf(meta));
-		if (record === void 0) return this.ctx.sessionProjections.hydrate(session, {}, events, 0);
+	hydratePrepared(session, events) {
+		const record = this.recordFor(session.id, identityOf(session.header, session.inheritedEventCount));
+		if (record === void 0) return this.ctx.sessionProjections.hydrate(session, {}, events, SessionLogOffset(0));
 		try {
-			return this.ctx.sessionProjections.hydrate(session, record.rows, events, 0);
+			return this.ctx.sessionProjections.hydrate(session, record.rows, events, SessionLogOffset(0));
 		} catch {
-			return this.ctx.sessionProjections.hydrate(session, {}, events, 0);
+			return this.ctx.sessionProjections.hydrate(session, {}, events, SessionLogOffset(0));
 		}
 	}
 	/**
@@ -190,7 +266,7 @@ var SessionProjectionCache = class extends Service {
 		const rows = this.ctx.sessionProjections.checkpoint(session);
 		this.markClean(session);
 		if (this.ctx.sessions.get(session.id) === session) await this.ctx.sessions.flush(session);
-		await this.put(session.id, identityOf(session.header), rows);
+		await this.put(session.id, identityOf(session.header, session.inheritedEventCount), rows);
 	}
 	/**
 	* Cold-read one session's projections from its complete log. Each unit is
@@ -201,12 +277,14 @@ var SessionProjectionCache = class extends Service {
 	* The caller supplies the complete log in seq order: this service never
 	* consults the persistence layer.
 	* @param meta - the stored session header (identity witness).
+	* @param inheritedEventCount - exact inherited prefix length for projection initialization and identity.
 	* @param events - the session's complete log, in seq order.
 	* @returns the projection cut at the log end.
 	*/
-	coldSnapshot(meta, events) {
-		const restored = this.ctx.sessionProjections.restore(this.recordFor(meta.id, identityOf(meta))?.rows ?? {}, events, 0, meta);
-		this.put(meta.id, identityOf(meta), restored.checkpoint).catch((error) => {
+	coldSnapshot(meta, inheritedEventCount, events) {
+		const identity = identityOf(meta, inheritedEventCount);
+		const restored = this.ctx.sessionProjections.restore(this.recordFor(meta.id, identity)?.rows ?? {}, events, SessionLogOffset(0), meta, inheritedEventCount);
+		this.put(meta.id, identity, restored.checkpoint).catch((error) => {
 			this.ctx.logger.warn(`session projection cache: cold-read write-back for "${meta.id}" failed (cache stays stale): ${String(error)}`);
 		});
 		return restored.snapshot;
@@ -281,16 +359,52 @@ var SessionProjectionCache = class extends Service {
 		return this.table;
 	}
 };
-/** Project a header onto the identity fields a record is bound to. */
-function identityOf(header) {
+/** Project a header onto the identity fields a header alone can witness. */
+function lifecycleIdentityOf(header) {
 	return {
+		formatVersion: header.version,
 		createdAt: header.createdAt,
-		...header.cwd === void 0 ? {} : { cwd: header.cwd }
+		...header.cwd === void 0 ? {} : { cwd: header.cwd },
+		isSeeded: header.isSeeded
 	};
 }
-/** Whether a stored record's bound identity names the caller's lifecycle. */
+/** Project a header and its exact inherited cut onto the complete fold identity. */
+function identityOf(header, inheritedEventCount) {
+	const cut = SessionLogOffset(inheritedEventCount);
+	if (!header.isSeeded && cut !== 0) throw new Error("unseeded projection-cache identity inherited event count must be 0");
+	return {
+		...lifecycleIdentityOf(header),
+		inheritedEventCount: cut
+	};
+}
+/**
+* Whether a stored record may seed the caller's fold: the current format
+* generation, the same lifecycle, and the same inherited cut. A record folded
+* under another cut encodes that cut in unit states (`schedule`,
+* `subagentCatalog`, `permissions`) and would carry it into the continued
+* fold and the next checkpoint. Absent lineage fields (records admitted via
+* `compatibleVersions` predate them) read as the unseeded lineage: exact for
+* an unseeded caller, while a seeded caller fails the match.
+*/
 function identityMatches(stored, expected) {
-	return stored.createdAt === expected.createdAt && stored.cwd === expected.cwd;
+	return currentLifecycleMatches(stored, expected) && (stored.inheritedEventCount ?? 0) === expected.inheritedEventCount;
+}
+/**
+* Whether a stored record was folded from the caller's lifecycle at the
+* current Session format. An absent format generation cannot prove the fold
+* semantics and never matches. This is the whole identity a header-only
+* reader can check, and the whole identity a view needs.
+*/
+function currentLifecycleMatches(stored, expected) {
+	return stored.formatVersion === expected.formatVersion && lifecycleIdentityMatches(stored, expected);
+}
+/** Match one predecessor cache record to the authoritative listed lifecycle. */
+function predecessorIdentityMatches(stored, expected) {
+	return (stored.formatVersion === void 0 || stored.formatVersion < expected.formatVersion) && lifecycleIdentityMatches(stored, expected);
+}
+/** Match the format-independent fields that distinguish one Session lifecycle. */
+function lifecycleIdentityMatches(stored, expected) {
+	return stored.createdAt === expected.createdAt && stored.cwd === expected.cwd && (stored.isSeeded ?? false) === expected.isSeeded;
 }
 //#endregion
 export { Config, SessionProjectionCache, SessionProjectionCache as default, checkpointIdentity, checkpointRecord, checkpointRow, projectionCacheDomainSpec };

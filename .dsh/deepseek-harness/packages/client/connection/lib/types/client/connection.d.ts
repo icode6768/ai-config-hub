@@ -1,3 +1,6 @@
+/** Connection generation readiness, cancellation, and continuous recovery. */
+import { type ConnectionRecoveryConfig } from '../recovery-config.ts';
+export type { ConnectionRecoveryConfig } from '../recovery-config.ts';
 /** Stable Host facts delivered by one established Remote event generation. */
 export interface ConnectionHostInfo {
     /** Host account home used only to abbreviate displayed filesystem paths. */
@@ -10,33 +13,22 @@ export interface ConnectionGeneration {
     /** Host facts carried by this generation's opening frame. */
     readonly host: ConnectionHostInfo;
 }
-/** Reconnect/backoff tunables (deployment-varying — no hardcoded tunables; these become the
- *  future `ctx.connection` plugin's Config). All fields optional; defaults below. */
-export interface ConnectionConfig {
-    /** First-retry backoff cap in ms (jittered: actual delay is cap/2..cap). */
-    backoffBaseMs?: number;
-    /** Exponential growth factor per consecutive failed attempt. */
-    backoffFactor?: number;
-    /** Upper bound for the backoff cap in ms. */
-    backoffMaxMs?: number;
-    /** Maximum wait for the registered generation source's ready signal. */
-    generationReadyTimeoutMs?: number;
-}
-/** Coarse connection state for the UI: 'connected' after each generation's handshake,
- *  'reconnecting' the moment the generation fails (covers the whole backoff+retry span). */
-export type ConnectionState = 'connected' | 'reconnecting';
+/** Connection lifecycle state published after the first attempt has an outcome. */
+export type ConnectionState = 'connected' | 'disconnected' | 'connecting';
 /** Connection-generation callbacks owned by API Gateway. */
 export interface ConnectionSinks {
     /** After the generation source reports ready, first connect included. */
     onConnected?: (host: ConnectionHostInfo) => void;
-    /** Coarse state transitions (deduplicated: fires only on change). The initial pre-connect
-     *  span reports nothing — the UI treats "no state yet" as connecting, not as an outage. */
+    /** State transitions after the initial attempt has an outcome. Equivalent states are deduplicated. */
     onStateChange?: (state: ConnectionState) => void;
+    /** Start one fresh physical-carrier attempt before each logical retry. */
+    onReconnectRequested?: () => void;
 }
 /**
  * One long-lived source defining a Connection generation. The source must
  * attach its incremental listeners before calling `ready`, then remain pending
- * until the generation is lost or `signal` aborts.
+ * until the generation is lost or `signal` aborts. On abort it must stop
+ * delivery, release its resources, and settle before a replacement can start.
  * @param signal - cancellation for the current generation.
  * @param ready - one-shot report that incremental delivery is attached.
  * @returns a promise settling only when this generation ends or fails.
@@ -53,15 +45,28 @@ export declare class ConnectionController {
     private generation;
     private attempt;
     private current;
+    private retryDelay;
     private running;
+    private immediateRetry;
+    private networkAvailable;
     private lastState;
     private readonly config;
-    constructor(source: ConnectionGenerationSource, sinks?: ConnectionSinks, config?: ConnectionConfig);
+    constructor(source: ConnectionGenerationSource, sinks?: ConnectionSinks, config?: ConnectionRecoveryConfig);
     /** Idempotent: begin the connect/pump/reconnect loop. */
     start(): void;
     /** Stop the loop and abort the current generation source. */
     stop(): void;
+    /** Reset the retry sequence and replace the current generation or retry delay immediately. */
+    reconnect(): void;
+    /**
+     * Suspend automatic retries while offline and restart backoff when the network returns.
+     * @param available - whether the browser reports network access.
+     */
+    setNetworkAvailable(available: boolean): void;
+    private backoffCap;
     private backoffDelay;
+    /** Re-read retry inputs after a potentially reentrant state sink. */
+    private isRetryInterrupted;
     /** Read through a method: stop() flips the flag across awaits, so narrowing from the loop condition must not stick. */
     private isRunning;
     /** Re-read both mutable liveness guards after a potentially reentrant sink. */

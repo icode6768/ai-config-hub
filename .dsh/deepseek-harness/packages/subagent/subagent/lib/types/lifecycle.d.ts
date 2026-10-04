@@ -26,7 +26,7 @@ export interface ActivationTerminal {
     /** Why this epoch's last ordinary turn ended, or `error` when teardown failed. */
     readonly stopReason: SubagentResult['stopReason'];
     /** The epoch's final assistant content, absent when it produced none or failed. */
-    readonly output?: ContentBlock[];
+    readonly output?: readonly ContentBlock[];
 }
 /**
  * Lifecycle observer for one Activation's residency epoch, so continuable

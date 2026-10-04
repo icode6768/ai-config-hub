@@ -8,6 +8,8 @@
  */
 import { requireActiveModuleLoader } from "../../module-system/module-loader.js";
 import { processAlive, signalProcess } from "../process-table.js";
+/** Virtual executable identity; the worker has no Node binary behind it. */
+const EXEC_PATH = '/dsh/bin/node';
 /**
  * Publish `globalThis.process`.
  *
@@ -25,8 +27,9 @@ export function installProcessGlobal(options) {
     };
     const shim = {
         env: { ...options.env },
-        argv: [...(options.argv ?? ['node', 'dsh-webworker'])],
+        argv: [...(options.argv ?? [EXEC_PATH])],
         execArgv: [],
+        execPath: EXEC_PATH,
         title: 'dsh-webworker',
         platform: 'linux',
         arch: 'x64',

@@ -117,8 +117,12 @@ export declare class MemoryVfs implements Vfs {
     private writeFileNode;
     /** Resize one file identity and notify all linked paths. */
     private truncateFile;
+    /** Change one file identity's permission bits and notify every linked path. */
+    private chmodFile;
     /** @returns Plain stats for an open file, including after its last name is removed. */
     private fileStats;
+    /** @returns BigInt stats for an open file, including its device and inode identity. */
+    private fileBigIntStats;
     /** Forget removed directory identities, so recreated paths report new ones. */
     private forgetIdentity;
     /**

@@ -1,23 +1,21 @@
 /** Agent Teams service façade over roster, mailbox, task, and runtime lifecycle owners. */
-import { Context } from '@deepseek-ai/cordis';
+import { Context, Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { TeamMembership } from './roster.ts';
 import { TeamTaskId } from './types.ts';
-import type { Config, CreateTeamTaskRequest, SendTeamMessageRequest, SendTeamMessageResult, SpawnTeammateRequest, SpawnTeammateResult, TeamMemberView, TeamTaskMutationResult, TeamTaskView, TeamView, TeamWaitResult, UpdateTeamTaskRequest } from './types.ts';
+import type { Config, CreateTeamTaskRequest, SendTeamMessageRequest, SendTeamMessageResult, SpawnTeammateRequest, SpawnTeammateResult, TeamMemberView, TeamTaskView, TeamWaitResult, UpdateTeamTaskRequest } from './types.ts';
 export type * from './types.ts';
 export type { TeamMembership } from './roster.ts';
 export { TeamId, TeamMessageId, TeamTaskId } from './types.ts';
 export { TeamError } from './error.ts';
-export { foldTeam } from './fold.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         agentTeams: TeamService;
     }
 }
 /** Agent Teams service backed by the exact live Lead Session log. */
-export declare class TeamService extends TypertRemoteService {
+export declare class TeamService extends Service {
     static inject: string[];
     static Config: z<Config>;
     /** Validated deployment limits used by every Team operation. */
@@ -51,7 +49,7 @@ export declare class TeamService extends TypertRemoteService {
     /**
      * Queue one durable peer message, then attempt immediate delivery.
      * @param caller - exact live sending Team member.
-     * @param request - target name, content, scheduling mode, and pre-queue cancellation.
+     * @param request - target name, content, and pre-queue cancellation.
      * @returns durable message identity and immediate-delivery observation.
      */
     sendMessage(caller: Agent, request: SendTeamMessageRequest): Promise<SendTeamMessageResult>;
@@ -97,7 +95,7 @@ export declare class TeamService extends TypertRemoteService {
      * @returns the target status sampled before cancellation.
      */
     interrupt(caller: Agent, targetName: string): {
-        previousStatus: 'running' | 'idle' | 'inactive';
+        previousStatus: 'running' | 'inactive';
     };
     /**
      * Resolve a caller without throwing, used by scoped-tool installation and observers.
@@ -105,28 +103,6 @@ export declare class TeamService extends TypertRemoteService {
      * @returns Team membership, or undefined for non-Team subagents and stale identities.
      */
     tryMembership(agent: Agent): TeamMembership | undefined;
-    /**
-     * Read the current roster and non-deleted task board through the generated Remote API.
-     * @param agent - exact live Team member used as the authority credential.
-     * @returns detached current roster and task views.
-     */
-    remoteView(agent: Agent): TeamView;
-    /**
-     * Create one shared task through the generated Remote API.
-     * @param agent - exact live Team member creating the task.
-     * @param request - task text, blockers, and advisory write scopes.
-     * @returns the revision-one task or a typed Team rejection.
-     */
-    remoteCreateTask(agent: Agent, request: CreateTeamTaskRequest): Promise<TeamTaskMutationResult>;
-    /**
-     * Apply one task mutation and preserve Team rejections as business results.
-     * @param agent - exact live Team member authorizing the mutation.
-     * @param request - task identity, expected revision, action, and action fields.
-     * @returns the committed task or a typed Team rejection.
-     */
-    remoteUpdateTask(agent: Agent, request: UpdateTeamTaskRequest): Promise<TeamTaskMutationResult>;
-    /** Preserve Team task rejections while allowing unexpected failures to reject the Remote call. */
-    private taskMutationResult;
     /** Queue one contained recovery pass after publication has unwound. */
     private scheduleRecovery;
     /** Reconcile roster provisioning before retrying that member's pending mailbox. */

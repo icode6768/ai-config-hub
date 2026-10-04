@@ -9,14 +9,16 @@
  * refresh stay serial while writing.
  *
  * Exactly one scenario per header-composition class pins the tokenized header
- * sequence. Its prompt and tool-schema sequences live in independent
- * sidecars, each of which may be shared with another class pin when the bytes
- * are identical. Every live header is checked against the composed pin, so
+ * sequence and the tokenized `system/message` sequence. Its prompt and
+ * tool-schema sequences live in independent sidecars, each of which may be
+ * shared with another class pin when the bytes are identical. Every live
+ * header and system prompt is checked against the composed pin, so
  * session-dependent composition must declare a separate class instead of
  * escaping coverage.
  * @module @deepseek-ai/dsh-session-snapshot/suite
  */
 import { type AgentUnderTest, type HarvestedLog } from './harness.ts';
+import { type SnapshotSessionFormatManifest } from './manifest.ts';
 import { type CwdPathMode, type NormalizeContext } from './normalize.ts';
 /** A snapshot scenario and how its fixtures are produced. */
 export interface Scenario {
@@ -27,24 +29,26 @@ export interface Scenario {
     hasModelTurn: boolean;
     /**
      * Whether the run persists a comparable session log to diff against the
-     * `session.jsonl` fixture. Defaults to {@link hasModelTurn} (a model turn
+     * selected parent Session fixture. Defaults to {@link hasModelTurn} (a model turn
      * always produces a log worth comparing). Set it independently for a scenario
      * that produces a non-trivial durable log without calling the model.
      */
     comparesLog?: boolean;
     /**
-     * Whether `test:snapshot:record` regenerates this scenario's `session.jsonl`
-     * from the LIVE API. `recorded` scenarios are model-driven and reproducible;
+     * Whether `test:snapshot:record` regenerates this scenario's current-version
+     * Session fixtures from the LIVE API. `recorded` scenarios are model-driven and reproducible;
      * `authored` scenarios (fixtures hand-written or hand-harvested — e.g. a
      * provider error or a cancel the live API can't be coaxed into
      * deterministically, a deterministic hook scenario, or a scripted repetition
      * a live model won't reproduce) are NEVER re-recorded.
      */
     recorded: boolean;
+    /** Historical generation retained as a read-only migration fixture. */
+    sessionFormat?: SnapshotSessionFormatManifest;
     /**
      * Whether replay is driven by a hand-written `replay.override.json` sidecar
      * (a `ReplayOverrideDoc` that replaces or patches the script derived from
-     * `session.jsonl`) — the throw/hang cases chunks cannot express. The fixture
+     * selected parent Session fixture) — the throw/hang cases chunks cannot express. The fixture
      * guard requires the sidecar exactly when this is set: the harness forwards
      * the file purely on existence, so an unregistered stray sidecar would
      * silently alter the derived script. The guard fails loud on either
@@ -61,13 +65,13 @@ export interface Scenario {
     /**
      * Header-pinning scenario whose `system-prompt.expected.md` this pin reuses.
      * Defaults to this scenario. The source must own its prompt sidecar and
-     * declare the same {@link expectedHeaderChanges}; meaningless off a pin.
+     * declare the same {@link expectedPromptChanges}; only valid on a pin.
      */
     systemPromptSource?: string;
     /**
      * Header-pinning scenario whose `tool-schemas.expected.json` this pin reuses.
      * Defaults to this scenario. The source must own its schema sidecar and
-     * declare the same {@link expectedHeaderChanges}; meaningless off a pin.
+     * declare the same {@link expectedHeaderChanges}; only valid on a pin.
      */
     toolSchemasSource?: string;
     /**
@@ -86,10 +90,18 @@ export interface Scenario {
     pinsChildSystemPrompts?: readonly number[];
     /**
      * How many changed `request/header` snapshots this PINNING scenario's primary
-     * fixture legitimately carries (default 0). Their full prompt text is kept in
-     * the readable Markdown pin; any other count fails. Meaningless off the pin.
+     * fixture legitimately carries (default 0). Each change owns one more schema
+     * set in the structured JSON pin; any other count fails. Only valid on the pin.
      */
     expectedHeaderChanges?: number;
+    /**
+     * How many later `system/message` events — replacements of surface node 0
+     * or in-history appends — this PINNING scenario's primary fixture
+     * legitimately carries after the initial prompt (default 0). Each change's
+     * full prompt text is kept in the readable Markdown pin; any other count
+     * fails. Only valid on the pin.
+     */
+    expectedPromptChanges?: number;
     /**
      * Which header-composition class this scenario belongs to. Scenarios that
      * boot the same config compose the same header; each class has exactly one
@@ -142,9 +154,10 @@ export interface Scenario {
 }
 /**
  * Whether a scenario's run test is skipped for this mode and host: record mode
- * skips authored (non-`recorded`) scenarios, {@link Scenario.posixOnly}
- * scenarios skip on Windows, and {@link Scenario.pwshOnly} scenarios skip
- * when the caller's `hasPwsh` probe is false.
+ * skips authored (non-`recorded`) scenarios and explicit historical Session
+ * generations, {@link Scenario.posixOnly} scenarios skip on Windows, and
+ * {@link Scenario.pwshOnly} scenarios skip when the caller's `hasPwsh` probe
+ * is false.
  *
  * @param scenario The scenario whose run test is being registered.
  * @param recording Whether the suite runs in record mode.
@@ -224,23 +237,11 @@ export declare function claimSharedSnapshot(claims: Map<string, SharedSnapshotCl
  */
 export declare function assertUniqueSnapshotContents(kind: string, snapshots: readonly NamedSnapshotContent[]): void;
 /**
- * Validate and order a scenario directory's session-fixture filenames.
- *
- * The primary fixture is always `session.jsonl`; child sessions are discovered
- * from contiguous `session.1.jsonl` … filenames. The directory is the source of
- * truth, so scenario tables do not duplicate a child count that can drift from
- * the files. A session-like JSONL with any other suffix fails loud.
- *
- * @param names File names in one scenario directory.
- * @returns The primary and child fixture names in replay/harvest order.
- */
-export declare function sessionFixtureNames(names: readonly string[]): string[];
-/**
  * Derive normalization values from a fixture's own session header. Recorded ids and cwd differ
  * from the live replay run; the non-empty sentinel for missing cwd avoids accidental empty-
  * string replacement.
  *
- * @param fixture The committed `session.jsonl` content.
+ * @param fixture The selected committed parent Session fixture content.
  * @returns The fixture's own volatile values, ready for {@link normalizeSessionLog}.
  */
 export declare function fixtureContext(fixture: string): NormalizeContext;
@@ -248,8 +249,7 @@ export declare function fixtureContext(fixture: string): NormalizeContext;
  * The `data.header` payload of every `request/header` event in a session
  * JSONL, in log order, with the log's volatile values scrubbed first
  * ({@link normalizeSessionLog}) so headers harvested from different runs —
- * each embedding its own generated cwd in the composed prompt — compare on equal
- * footing.
+ * each embedding its own generated cwd — compare on equal footing.
  *
  * @param rawLog The session `.jsonl` content to extract headers from.
  * @param ctx The volatile values of the run that produced it.
@@ -257,15 +257,26 @@ export declare function fixtureContext(fixture: string): NormalizeContext;
  */
 export declare function normalizedHeaders(rawLog: string, ctx: NormalizeContext): unknown[];
 /**
- * The normalized string-valued system prompts carried by request headers in a
- * session JSONL, in log order. Headers without a string prompt are omitted so
- * callers can assert one prompt per header explicitly.
+ * The normalized prompt text of every `system/message` event in a session
+ * JSONL, in log order: the first is the initial system prompt (surface node 0)
+ * and each later one replaced it or, on an in-history route, appended the
+ * changed prompt after the cached history. An empty `content` yields `''`; a
+ * `system/message` without a text block is omitted.
  *
  * @param rawLog The session `.jsonl` content to inspect.
  * @param ctx The volatile values of the run that produced it.
- * @returns The normalized system prompts, in header order.
+ * @returns The normalized system prompts, in log order.
  */
 export declare function normalizedSystemPrompts(rawLog: string, ctx: NormalizeContext): string[];
+/**
+ * Whether every model request in a session JSONL is preceded by its system
+ * prompt: the log has no `request/header`, or a `system/message` event comes
+ * before its first `request/header`.
+ *
+ * @param rawLog The session `.jsonl` content to inspect.
+ * @returns True when the first `request/header` (if any) follows a `system/message`.
+ */
+export declare function systemPromptPrecedesRequests(rawLog: string): boolean;
 /**
  * The normalized tool-schema arrays carried by request headers in a session
  * JSONL, in log order. Headers without an array-valued tools field are omitted
@@ -301,7 +312,7 @@ export declare function parseToolSchemasSnapshot(snapshot: string): ToolSchemasS
 /**
  * Restore one sidecar schema set into a tokenized pinned header.
  *
- * @param header The parsed request header carrying `tools: "{{tools}}"`.
+ * @param header The parsed request header carrying a tools token or ordered tool names matching the sidecar.
  * @param schemas The complete schemas for this full header snapshot.
  * @returns A copy of the header with its complete schemas restored.
  */
@@ -311,11 +322,22 @@ export declare function restorePinnedToolSchemas(header: unknown, schemas: reado
  * Prompt text is unchanged except that a missing terminal newline is added so
  * the committed file follows the repository newline contract.
  *
- * @param prompt The normalized system prompt.
- * @param changes Full normalized prompts from later changed-header snapshots.
+ * @param prompt The normalized initial system prompt (surface node 0).
+ * @param changes Full normalized prompts from later `system/message` events, replacements or in-history appends.
  * @returns Markdown snapshot text ending in a newline.
  */
 export declare function formatSystemPromptSnapshot(prompt: string, changes?: readonly string[]): string;
+/**
+ * Split a prompt sidecar into its initial prompt and each later change, the
+ * inverse of {@link formatSystemPromptSnapshot}.
+ *
+ * @param snapshot The Markdown sidecar text.
+ * @returns The initial prompt snapshot plus one entry per later `system/message`.
+ */
+export declare function parseSystemPromptSnapshot(snapshot: string): {
+    initial: string;
+    changes: string[];
+};
 /**
  * Reject a child prompt sidecar that cannot own distinct, canonical prompt text.
  * @param sidecar - committed child prompt snapshot.
@@ -365,6 +387,13 @@ export declare function unknownToolCallIds(rawLog: string): string[];
  */
 export declare function refreshFixtureReplacements(logs: HarvestedLog[], fixtures: string[]): FixtureReplacement[];
 /**
+ * Check raw parent/child clocks before normalization, or preserve their equality during refresh.
+ * @param logs - one scenario's parent and child logs with shared Session ids.
+ * @param policy - validate live output, or align refreshed catalogs to the retained child headers.
+ * @returns logs with only conflicting catalog creation times replaced under preserve-headers.
+ */
+export declare function reconcileCatalogCreationTimes(logs: readonly string[], policy: 'validate' | 'preserve-headers'): string[];
+/**
  * Rewrite a fresh replay-produced log so repeated refreshes do not churn
  * volatile fixture fields. Meaningful event payloads come from `fresh`; the
  * existing fixture lends normalized-equivalent values, including non-message ids, paths,
@@ -384,11 +413,19 @@ export declare function refreshFixtureReplacements(logs: HarvestedLog[], fixture
  */
 export declare function stabilizeRefreshLog(fresh: string, existing: string, replacements: FixtureReplacement[], freshContext: NormalizeContext): string;
 /**
+ * Check every selected role for tool/path defects and current generations for canonical prompt/identity storage.
+ * Historical roles retain their released bytes, including roles retired by the current writer.
+ * @param dir Scenario directory containing canonical Session fixtures.
+ * @param scenarioName Scenario name used in failure diagnostics.
+ * @returns Resolves when all selected fixtures satisfy the storage checks.
+ */
+export declare function assertSessionFixtureStorage(dir: string, scenarioName: string): Promise<void>;
+/**
  * Register the suite: one test per scenario (the expected-output and log comparisons and
- * the header-uniformity guard) plus the fixture guard block (no orphan
+ * the header and prompt uniformity guard) plus the fixture guard block (no orphan
  * scenario dirs, required files present, exactly one pin per header class,
- * shared sidecars unique and well-formed, every JSONL prompt-scrubbed,
- * non-pinning fixtures fully header-scrubbed). Must
+ * shared sidecars unique and well-formed, every JSONL prompt- and
+ * schema-scrubbed with a `system/message` before its first request). Must
  * run at vitest collection time — it calls `describe`/`it`. Throws
  * immediately if any header class lacks a pinning scenario or carries two
  * (the uniformity guard needs exactly one comparison anchor per class).

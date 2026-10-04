@@ -1,19 +1,19 @@
 /** Lazy Koffi bindings for generic Win32 process, stdio, and Job operations. */
-import koffi from 'koffi';
+import { type Koffi } from './koffi.ts';
 declare const nativePtr: unique symbol;
 /** Koffi native pointer branded against accidental numeric use. */
 export type NativePtr = bigint & {
     readonly [nativePtr]: true;
 };
-type Ptr = ReturnType<typeof koffi.pointer>;
+type Ptr = ReturnType<Koffi['pointer']>;
 /** Loaded Win32 libraries and the shared stdcall binder used by process extensions. */
 export interface Win32BindingContext {
     /** Kernel process, handle, pipe, and Job APIs. */
-    readonly kernel32: ReturnType<typeof koffi.load>;
+    readonly kernel32: ReturnType<Koffi['load']>;
     /** Token and security APIs. */
-    readonly advapi32: ReturnType<typeof koffi.load>;
+    readonly advapi32: ReturnType<Koffi['load']>;
     /** Bind one stdcall function from a loaded Win32 library. */
-    readonly bind: (library: ReturnType<typeof koffi.load>, name: string, result: Ptr | string, args: Array<Ptr | string>) => unknown;
+    readonly bind: (library: ReturnType<Koffi['load']>, name: string, result: Ptr | string, args: Array<Ptr | string>) => unknown;
 }
 /**
  * Return whether a Koffi pointer represents NULL.
@@ -25,9 +25,12 @@ export declare function isNullPtr(value: NativePtr | null | undefined): value is
 export interface StartupInfoInput {
     cb: number;
     dwFlags: number;
+    wShowWindow: number;
     hStdInput: NativePtr;
     hStdOutput: NativePtr;
     hStdError: NativePtr;
+    cbReserved2?: number;
+    lpReserved2?: NativePtr;
 }
 /** Decoded PROCESS_INFORMATION result. */
 export interface ProcessInfoOutput {
@@ -40,25 +43,40 @@ export interface ProcessInfoOutput {
 export interface Win32ProcessBindings {
     closeHandle(handle: NativePtr): number;
     getLastError(): number;
+    getFileType(handle: NativePtr): number;
+    uvGetOsfhandle(fileDescriptor: number): NativePtr | null;
     formatMessageW(flags: number, source: null, messageId: number, languageId: number, buffer: Buffer, size: number, args: null): number;
     createPipe(readHandle: NativePtr, writeHandle: NativePtr, attributes: null, size: number): number;
     setHandleInformation(handle: NativePtr, mask: number, flags: number): number;
-    createProcessAsUserW(token: NativePtr, applicationName: null, commandLine: string, processAttributes: null, threadAttributes: null, inheritHandles: number, creationFlags: number, environment: null, currentDirectory: string | null, startupInfo: NativePtr, processInfo: NativePtr): number;
+    createProcessAsUserW(token: NativePtr, applicationName: string | null, commandLine: string, processAttributes: null, threadAttributes: null, inheritHandles: number, creationFlags: number, environment: null, currentDirectory: string | null, startupInfo: NativePtr, processInfo: NativePtr): number;
+    createProcessW(applicationName: string | null, commandLine: string, processAttributes: null, threadAttributes: null, inheritHandles: number, creationFlags: number, environment: Buffer | null, currentDirectory: string | null, startupInfo: NativePtr, processInfo: NativePtr): number;
     readFile(file: NativePtr, buffer: Buffer, count: number, bytesRead: NativePtr, overlapped: null): number;
     peekNamedPipe(pipe: NativePtr, buffer: null, size: number, bytesRead: NativePtr | null, totalAvail: NativePtr, leftThisMessage: NativePtr | null): number;
     waitForSingleObject(handle: NativePtr, milliseconds: number): number;
     getExitCodeProcess(process: NativePtr, exitCode: NativePtr): number;
     createJobObjectW(attributes: null, name: null): NativePtr;
     setInformationJobObject(job: NativePtr, cls: number, information: Buffer, length: number): number;
+    queryInformationJobObject(job: NativePtr, cls: number, information: Buffer, length: number, returnLength: null): number;
     assignProcessToJobObject(job: NativePtr, process: NativePtr): number;
     resumeThread(thread: NativePtr): number;
     terminateProcess(process: NativePtr, exitCode: number): number;
+    terminateJobObject(job: NativePtr, exitCode: number): number;
     getStdHandle(stdHandle: number): NativePtr;
 }
-/** Koffi STARTUPINFOW layout. */
-export declare const STARTUPINFOW: import("koffi").TypeObject;
-/** Koffi PROCESS_INFORMATION layout. */
-export declare const PROCESS_INFORMATION: import("koffi").TypeObject;
+/** Generic Win32 calls plus Node's libuv descriptor-to-handle bridge. */
+export interface CurrentTokenProcessBindings extends Win32ProcessBindings {
+    uvGetOsfhandle(fileDescriptor: number): NativePtr | null;
+}
+/**
+ * Materialize the Koffi STARTUPINFOW layout on first native use.
+ * @returns the cached native struct type.
+ */
+export declare function startupInfoType(): ReturnType<Koffi['struct']>;
+/**
+ * Materialize the Koffi PROCESS_INFORMATION layout on first native use.
+ * @returns the cached native struct type.
+ */
+export declare function processInformationType(): ReturnType<Koffi['struct']>;
 /**
  * Allocate a pointer-sized out-parameter slot.
  * @returns allocated native slot.
@@ -108,7 +126,12 @@ export declare function decodeProcessInfo(processInfo: NativePtr): ProcessInfoOu
  * @param create - binds only the caller-specific operations from the shared libraries.
  * @returns generic process bindings combined with the caller-specific operations.
  */
-export declare function extendWin32ProcessBindings<Extension extends object>(create: (context: Win32BindingContext) => Extension): Win32ProcessBindings & Extension;
+export declare function extendWin32ProcessBindings<Extension extends object>(create: (context: Win32BindingContext) => Extension): CurrentTokenProcessBindings & Extension;
+/**
+ * Load the generic process binding table without policy-specific extensions.
+ * @returns shared Win32 process, stdio, and Job operations.
+ */
+export declare function loadWin32ProcessBindings(): CurrentTokenProcessBindings;
 /**
  * Format a Win32 error code through FormatMessageW.
  * @param api - active binding table.

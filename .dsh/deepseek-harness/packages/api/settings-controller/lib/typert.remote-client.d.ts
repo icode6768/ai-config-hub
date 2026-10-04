@@ -3,10 +3,10 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { AgentPresetDirectoryOpenValue, SettingsDocumentOpenValue } from '@deepseek-ai/dsh-api-settings-controller/types'
+import type { SettingsDocumentOpenValue } from '@deepseek-ai/dsh-api-settings-controller/types'
 import type { CredentialInfo } from '@deepseek-ai/dsh-credentials/types'
-import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-settings/types'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$63726564656e7469616c73 {
@@ -15,10 +15,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     unset: (ref: string) => Promise<RemoteResult<void>>
   }
   interface TypertRemoteNamespace$73657474696e6773 {
-    canOpenAgentPresetDirectory: () => Promise<RemoteResult<boolean>>
     describe: () => Promise<RemoteResult<SettingsDescribeValue>>
     mutate: (ns: string, ops: SettingsPathOpView[], expectedRevision: number | undefined) => Promise<RemoteResult<SettingsNamespaceView>>
-    openAgentPresetDirectory: (agentPreset: string, signal?: AbortSignal) => Promise<RemoteResult<AgentPresetDirectoryOpenValue>>
     openSettingsDocument: (signal?: AbortSignal) => Promise<RemoteResult<SettingsDocumentOpenValue>>
     replace: (ns: string, section: Record<string, JsonValue>, expectedRevision: number | undefined) => Promise<RemoteResult<SettingsNamespaceView>>
     update: (ns: string, patch: Record<string, JsonValue>, expectedRevision: number | undefined) => Promise<RemoteResult<SettingsNamespaceView>>
@@ -27,10 +25,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'credentials/describe': (refs: string[]) => Promise<RemoteResult<Record<string, CredentialInfo>>>
     'credentials/set': (ref: string, value: string) => Promise<RemoteResult<void>>
     'credentials/unset': (ref: string) => Promise<RemoteResult<void>>
-    'settings/canOpenAgentPresetDirectory': () => Promise<RemoteResult<boolean>>
     'settings/describe': () => Promise<RemoteResult<SettingsDescribeValue>>
     'settings/mutate': (ns: string, ops: SettingsPathOpView[], expectedRevision: number | undefined) => Promise<RemoteResult<SettingsNamespaceView>>
-    'settings/openAgentPresetDirectory': (agentPreset: string, signal?: AbortSignal) => Promise<RemoteResult<AgentPresetDirectoryOpenValue>>
     'settings/openSettingsDocument': (signal?: AbortSignal) => Promise<RemoteResult<SettingsDocumentOpenValue>>
     'settings/replace': (ns: string, section: Record<string, JsonValue>, expectedRevision: number | undefined) => Promise<RemoteResult<SettingsNamespaceView>>
     'settings/update': (ns: string, patch: Record<string, JsonValue>, expectedRevision: number | undefined) => Promise<RemoteResult<SettingsNamespaceView>>

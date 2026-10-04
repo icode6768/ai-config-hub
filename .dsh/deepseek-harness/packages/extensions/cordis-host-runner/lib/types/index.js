@@ -46,7 +46,6 @@ import { missingServices, startHostHalf } from "./lifecycle.js";
 import { DynamicCordisRegistry } from "./registry.js";
 import { createSandbox, evaluateHostCode, precheckCode } from "./sandbox.js";
 export { CordisInspectRegistryService } from "./inspect-registry.js";
-export { HOST_BUILTIN_INSPECTION } from "./sandbox.js";
 /**
  * Brand a Host-minted Plugin ID.
  * @param id - opaque identifier minted by the Host registry.
@@ -127,6 +126,7 @@ let DynamicCordisRunnerService = (() => {
         static inject = ['tools'];
         static Config = z.object({
             vmTimeoutMs: z.number().min(1).default(5000),
+            clientInspectTimeoutMs: z.number().step(1).min(1).max(2_147_483_647).default(10_000),
         });
         rootCtx = __runInitializers(this, _instanceExtraInitializers);
         registry = new DynamicCordisRegistry();
@@ -139,7 +139,7 @@ let DynamicCordisRunnerService = (() => {
             super(ctx, 'dynamicCordisRunner');
             this.rootCtx = ctx;
             this.resolved = config;
-            this.inspectRegistry = new CordisInspectRegistryService(ctx);
+            this.inspectRegistry = new CordisInspectRegistryService(ctx, this.resolved.clientInspectTimeoutMs);
         }
         /**
          * Define a new Plugin's first Package or append a Package to an existing Plugin.
@@ -476,11 +476,12 @@ let DynamicCordisRunnerService = (() => {
             return null;
         }
         /**
-         * Claim one pending Client inspect query with its live result.
+         * Submit a Client inspect result or failure for a pending query.
          * @param agent - Session that owns the query.
          * @param requestId - exact pending query identity.
          * @param resolution - provider result or structured refusal.
-         * @returns whether this answer won the query.
+         * @returns acknowledgement with accepted true only for a valid success that settles the query;
+         * pending-query failures return { accepted: false } and retain only the first diagnostic.
          */
         resolveInspectQuery(agent, requestId, resolution) {
             return this.inspectRegistry.resolveClientQuery(agent, requestId, resolution);
@@ -941,15 +942,15 @@ let DynamicCordisRunnerService = (() => {
             }
             else {
                 const returnedStatus = pending.requiresApproval ? 'awaiting-approval' : 'starting';
-                text = `Cordis ${pending.mode} ${identity} failed after cordis_run returned ${returnedStatus}: `
+                text = `Cordis ${pending.mode} ${identity} failed after the runner returned ${returnedStatus}: `
                     + `${settled.reason}\n${formatErrorDetails(settled)}\n`
                     + `currentPackageId: ${plugin?.currentPackageId ?? 'none'}\n`
                     + `nextPackageId: ${plugin?.nextPackageId ?? pending.packageId}\n`
-                    + 'Inspect the failed Package, correct it on the same Plugin when needed, and retry the activation autonomously.';
+                    + 'Report the failure to the user; the definition can be managed through the Cordis panel.';
             }
             agent.steer(createUserMessage({
                 content: [{ type: 'text', text }],
-                source: { kind: 'plugin', plugin: 'cordis-host-runner' },
+                source: { kind: 'cordis-host-runner' },
             }));
         }
         steerRenderFailure(agent, plugin, definition, pluginRunId, failure) {
@@ -960,10 +961,9 @@ let DynamicCordisRunnerService = (() => {
                             + `Slot "${failure.slot}" after activation.\n`
                             + `${formatErrorDetails(failure)}\n`
                             + `entryAbdicated: ${failure.abdicated}\n`
-                            + 'Inspect the failed Package, fix the Client code by defining a new Package on the same Plugin, and '
-                            + 'activate that Package autonomously with cordis_run mode:"update".',
+                            + 'Report the Client render failure to the user; the definition can be stopped through the Cordis panel.',
                     }],
-                source: { kind: 'plugin', plugin: 'cordis-host-runner' },
+                source: { kind: 'cordis-host-runner' },
             }));
         }
         steerHostHandlerFailure(plugin, run, method, failure) {
@@ -980,11 +980,10 @@ let DynamicCordisRunnerService = (() => {
                         text: `Cordis Host handler ${plugin.pluginId}/${run.packageId} (${run.pluginRunId}) failed when the Client called `
                             + `host.call(${JSON.stringify(method)}).\n`
                             + `${formatErrorDetails(failure)}\n`
-                            + 'The Plugin remains running. Inspect this Package, correct the Host code on the same Plugin, and activate '
-                            + 'the new Package autonomously with cordis_run mode:"update". If the handler needs a Service, either declare '
+                            + 'The Plugin remains running. Report the Host handler failure to the user. If the handler needs a Service, either declare '
                             + 'that Service in the returned Plugin inject list or read it with ctx.get(name) and handle undefined.',
                     }],
-                source: { kind: 'plugin', plugin: 'cordis-host-runner' },
+                source: { kind: 'cordis-host-runner' },
             }));
         }
         /* jscpd:ignore-start */
@@ -1001,10 +1000,9 @@ let DynamicCordisRunnerService = (() => {
                         type: 'text',
                         text: `Cordis ${platform} guard rejected runtime code in ${plugin.pluginId}/${run.packageId} `
                             + `(${run.pluginRunId}) after activation.\n${formatErrorDetails(failure)}\n`
-                            + 'The Plugin remains running. Inspect this Package, define a corrected Package on the same Plugin, and '
-                            + 'activate it autonomously with cordis_run mode:"update".',
+                            + 'The Plugin remains running. Report the guard rejection to the user; it can be stopped through the Cordis panel.',
                     }],
-                source: { kind: 'plugin', plugin: 'cordis-host-runner' },
+                source: { kind: 'cordis-host-runner' },
             }));
         }
         /* jscpd:ignore-end */
@@ -1041,7 +1039,7 @@ let DynamicCordisRunnerService = (() => {
                 return;
             agent.inject(createUserMessage({
                 content: [{ type: 'text', text }],
-                source: { kind: 'plugin', plugin: 'cordis-host-runner' },
+                source: { kind: 'cordis-host-runner' },
             }));
         }
         cancelPending(pluginId, message) {

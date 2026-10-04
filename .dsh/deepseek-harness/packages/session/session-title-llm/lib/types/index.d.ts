@@ -5,17 +5,26 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
+import type { ContextFormed } from '@deepseek-ai/dsh-llm';
+declare module '@deepseek-ai/dsh-llm' {
+    interface MessageSourceMap {
+        'dsh-session-title-llm': {
+            kind: 'dsh-session-title-llm';
+        } & ContextFormed;
+    }
+}
 import type { Message } from '@deepseek-ai/dsh-llm';
+import type { SessionSeq } from '@deepseek-ai/dsh-session';
 import { SessionTitleProviderId } from '@deepseek-ai/dsh-session-title';
-import type { SessionTitleAutomaticMode, SessionTitleModelProvenance, SessionTitleProviderRequest, SessionTitleProviderResult, SessionTitleUserMessage } from '@deepseek-ai/dsh-session-title';
+import type { SessionTitleAutomaticMode, SessionTitleModelIdentity, SessionTitleProviderRequest, SessionTitleProviderResult, SessionTitleUserMessage } from '@deepseek-ai/dsh-session-title';
 /** Exact model-visible request recorded before one auxiliary title dispatch. */
 export interface SessionTitleLlmRequestEventData {
     /** Registered title-provider identity responsible for the request. */
     readonly titleProvider: SessionTitleProviderId;
     /** Exact human `user/message` seqs represented in `messages`. */
-    readonly messageSeqs: number[];
+    readonly messageSeqs: SessionSeq[];
     /** Exact auxiliary LLM route. */
-    readonly route: SessionTitleModelProvenance;
+    readonly route: SessionTitleModelIdentity;
     /** Exact auxiliary system prompt. */
     readonly system: string;
     /** Exact auxiliary message list. */
@@ -53,13 +62,13 @@ export interface ResolvedSessionTitleLlmConfig extends SessionTitleLlmConfig {
 }
 /** Shared Loader field schemas with no library defaults. */
 export declare const SessionTitleLlmConfigFields: {
-    targetWords: z<number, number>;
-    targetCjkCharacters: z<number, number>;
-    maxInputBytes: z<number, number>;
-    maxOutputTokens: z<number, number>;
-    timeoutMs: z<number, number>;
-    provider: z<string, string>;
-    model: z<string, string>;
+    targetWords: z<number, number, "defined">;
+    targetCjkCharacters: z<number, number, "defined">;
+    maxInputBytes: z<number, number, "defined">;
+    maxOutputTokens: z<number, number, "defined">;
+    timeoutMs: z<number, number, "defined">;
+    provider: z<string, string, "plain">;
+    model: z<string, string, "plain">;
 };
 /** Shared Loader schema with no library defaults. */
 export declare const SessionTitleLlmConfigSchema: z<SessionTitleLlmConfig>;

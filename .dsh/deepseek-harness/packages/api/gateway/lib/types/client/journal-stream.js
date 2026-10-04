@@ -1,10 +1,16 @@
 /** Cursor, page, and live-tail coordination over a reconnecting Remote stream. */
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import { RemoteStreamCarrierError } from "./stream-client.js";
+/** Host-side stream protocol violation, marked so consumers surface it as an error state. */
+function protocolViolation(message) {
+    return new RemoteError('gateway/internal', message, {});
+}
 /**
  * Owns snapshot-first opening, ordered live delivery, pagination, and repair.
  *
  * The domain retains its published window during reconnection. A replacement is
  * published only after the opening page reaches the generation's cursor.
+ * Notifications never change a cursor and wait behind an in-flight gap repair.
  */
 export class RemoteJournalStream {
     options;
@@ -32,7 +38,7 @@ export class RemoteJournalStream {
             open: signal => this.follow(this.initialRequest, signal),
             ended: accepted => accepted
                 ? new RemoteStreamCarrierError(`${options.name} ended without a terminal result`)
-                : new Error(`${this.hasResumeCursor ? 'resumed ' : ''}${options.name} ended before its opening cursor`),
+                : protocolViolation(`${this.hasResumeCursor ? 'resumed ' : ''}${options.name} ended before its opening cursor`),
             ...(options.carrierFailed === undefined
                 ? {}
                 : { carrierFailed: options.carrierFailed }),
@@ -56,7 +62,7 @@ export class RemoteJournalStream {
         try {
             const first = await this.takeNext(iterator);
             if (first.done)
-                throw new Error(`${this.options.name} ended before its opening cursor`);
+                throw protocolViolation(`${this.options.name} ended before its opening cursor`);
             this.replaceGeneration(first.value, false);
             this.opened = true;
             this.done = this.consume(iterator);
@@ -86,7 +92,7 @@ export class RemoteJournalStream {
         if (tail !== undefined && before !== undefined
             && !this.options.follows(this.options.last(tail), before)) {
             this.options.publish({ type: 'prepend', page, entries: [], hasMore: false });
-            throw new Error(`${this.options.name} history page is discontinuous`);
+            throw protocolViolation(`${this.options.name} history page is discontinuous`);
         }
         const first = accepted[0];
         if (first !== undefined)
@@ -130,7 +136,11 @@ export class RemoteJournalStream {
                     continue;
                 }
                 if (item.value.type === 'opened') {
-                    throw new Error(`${this.options.name} emitted more than one opening cursor`);
+                    throw protocolViolation(`${this.options.name} emitted more than one opening cursor`);
+                }
+                if (item.value.type === 'notification') {
+                    this.publishNotification(item.value.notification);
+                    continue;
                 }
                 await this.acceptEntry(item.value.entry, item, iterator);
             }
@@ -146,12 +156,12 @@ export class RemoteJournalStream {
     }
     opening(item, resumed) {
         if (item.value.type !== 'opened') {
-            throw new Error(`${resumed ? 'resumed ' : ''}${this.options.name} emitted an entry before its opening cursor`);
+            throw protocolViolation(`${resumed ? 'resumed ' : ''}${this.options.name} emitted an entry before its opening cursor`);
         }
         const cursor = item.value.cursor;
         if (resumed && this.lastCursor !== undefined
             && this.options.compare(cursor, this.lastCursor) < 0) {
-            throw new Error(`${this.options.name} resumed at a cursor behind the last applied entry`);
+            throw protocolViolation(`${this.options.name} resumed at a cursor behind the last applied entry`);
         }
         this.generation = item.generation;
         item.accept();
@@ -179,11 +189,11 @@ export class RemoteJournalStream {
         if (this.options.compare(cursor, last) <= 0)
             return;
         if (this.options.compare(first, last) <= 0) {
-            throw new Error(`${this.options.name} emitted a partially overlapping entry`);
+            throw protocolViolation(`${this.options.name} emitted a partially overlapping entry`);
         }
         if (!this.options.follows(last, first)) {
             const request = this.repairPageRequest();
-            const superseded = await this.replaceThrough(request, cursor, item.generation, item.signal, iterator, [entry]);
+            const superseded = await this.replaceThrough(request, cursor, item.generation, item.signal, iterator, [entry], []);
             if (superseded !== undefined) {
                 this.replaceGeneration(superseded, true);
             }
@@ -195,8 +205,8 @@ export class RemoteJournalStream {
         this.setResumeCursor(cursor);
         this.options.publish({ type: 'append', entry });
     }
-    async replaceThrough(request, requiredCursor, generation, signal, iterator, queued) {
-        let read = await this.readPageWhileFollowing(request, requiredCursor, generation, signal, iterator, queued);
+    async replaceThrough(request, requiredCursor, generation, signal, iterator, queued, notifications) {
+        let read = await this.readPageWhileFollowing(request, requiredCursor, generation, signal, iterator, queued, notifications);
         if (read.type === 'superseded')
             return read.item;
         let page = read.page;
@@ -204,7 +214,7 @@ export class RemoteJournalStream {
         let entries = this.mergeReplacement(page, queued);
         let target = this.maxCursor(requiredCursor, queued);
         if (entries === undefined || this.options.compare(this.tailCursor(entries), target) < 0) {
-            read = await this.readPageWhileFollowing(this.repairPageRequest(), target, generation, signal, iterator, queued);
+            read = await this.readPageWhileFollowing(this.repairPageRequest(), target, generation, signal, iterator, queued, notifications);
             if (read.type === 'superseded')
                 return read.item;
             page = read.page;
@@ -213,7 +223,7 @@ export class RemoteJournalStream {
             target = this.maxCursor(requiredCursor, queued);
         }
         if (entries === undefined || this.options.compare(this.tailCursor(entries), target) < 0) {
-            throw new Error(`${this.options.name} page did not reach its opening cursor`);
+            throw protocolViolation(`${this.options.name} page did not reach its opening cursor`);
         }
         const first = entries[0];
         /* v8 ignore next -- a successful positive-cursor replacement page cannot be empty. */
@@ -226,9 +236,12 @@ export class RemoteJournalStream {
             entries,
             hasMore: this.options.hasMore(page),
         });
+        for (const notification of notifications) {
+            this.publishNotification(notification);
+        }
         return undefined;
     }
-    async readPageWhileFollowing(request, through, generation, signal, iterator, queued) {
+    async readPageWhileFollowing(request, through, generation, signal, iterator, queued, notifications) {
         const page = this.readPage(request, through, signal).then(value => ({ type: 'page', value }), (error) => ({ type: 'page-error', error }));
         while (true) {
             const pending = this.nextResult(iterator);
@@ -248,13 +261,17 @@ export class RemoteJournalStream {
                 throw result.error;
             if (result.value.done) {
                 signal.throwIfAborted();
-                throw new Error(`${this.options.name} ended while reading its replacement page`);
+                throw protocolViolation(`${this.options.name} ended while reading its replacement page`);
             }
             const item = result.value.value;
             if (item.generation !== generation)
                 return { type: 'superseded', item };
             if (item.value.type === 'opened') {
-                throw new Error(`${this.options.name} emitted more than one opening cursor`);
+                throw protocolViolation(`${this.options.name} emitted more than one opening cursor`);
+            }
+            if (item.value.type === 'notification') {
+                notifications.push(item.value.notification);
+                continue;
             }
             queued.push(item.value.entry);
         }
@@ -271,13 +288,13 @@ export class RemoteJournalStream {
             }
             if (next.done) {
                 this.stream.signal.throwIfAborted();
-                throw new Error(`${this.options.name} ended while replacing an aborted page generation`);
+                throw protocolViolation(`${this.options.name} ended while replacing an aborted page generation`);
             }
             const item = next.value;
             if (item.generation !== generation)
                 return { type: 'superseded', item };
             if (item.value.type === 'opened') {
-                throw new Error(`${this.options.name} emitted more than one opening cursor`);
+                throw protocolViolation(`${this.options.name} emitted more than one opening cursor`);
             }
             pending = this.nextResult(iterator);
         }
@@ -295,7 +312,7 @@ export class RemoteJournalStream {
             if (this.options.compare(last, tail) <= 0)
                 continue;
             if (this.options.compare(first, tail) <= 0) {
-                throw new Error(`${this.options.name} replacement contains a partially overlapping entry`);
+                throw protocolViolation(`${this.options.name} replacement contains a partially overlapping entry`);
             }
             if (!this.options.follows(tail, first))
                 return undefined;
@@ -329,6 +346,12 @@ export class RemoteJournalStream {
     releaseNext() {
         this.pendingNext = undefined;
     }
+    publishNotification(notification) {
+        this.options.publish({
+            type: 'notification',
+            notification,
+        });
+    }
     repairPageRequest() {
         return this.repairRequest(this.initialRequest);
     }
@@ -352,7 +375,7 @@ export class RemoteJournalStream {
         for (const entry of iterator) {
             const range = this.entryRange(entry);
             if (!this.options.follows(previousRange.last, range.first)) {
-                throw new Error(`${this.options.name} page contains discontinuous entries`);
+                throw protocolViolation(`${this.options.name} page contains discontinuous entries`);
             }
             previousRange = range;
         }
@@ -361,14 +384,14 @@ export class RemoteJournalStream {
         const first = this.options.first(entry);
         const last = this.options.last(entry);
         if (this.options.compare(first, last) > 0) {
-            throw new Error(`${this.options.name} entry has an inverted cursor range`);
+            throw protocolViolation(`${this.options.name} entry has an inverted cursor range`);
         }
         return { first, last };
     }
     assertPageThrough(page, through) {
         const tail = this.tailCursor(this.options.entries(page));
         if (this.options.compare(tail, through) !== 0) {
-            throw new Error(`${this.options.name} page did not end at its requested cursor`);
+            throw protocolViolation(`${this.options.name} page did not end at its requested cursor`);
         }
     }
 }

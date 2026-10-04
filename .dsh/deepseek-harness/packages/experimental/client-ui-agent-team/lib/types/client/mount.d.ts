@@ -1,6 +1,5 @@
-/** Source-safe Agent Teams browser registration and Remote mount lifecycle. */
+/** Source-safe Agent Teams browser registration. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
-import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol';
 import { type TeamKey } from './locales.ts';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {
@@ -8,13 +7,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         'agent-team': TeamKey;
     }
 }
-/** Required browser services for RPC, navigation, slots, and localized copy. */
+/** Required browser services for navigation, slots, and localized copy. */
 export declare const inject: string[];
 /**
- * Mount one generated Team Remote contribution, then register its browser UI.
- * @param ctx - Client Context carrying navigation, locale, slot, and Remote services.
- * @param contribution - generated Team descriptors selected by the browser entry.
- * @returns disposer for both the UI registrations and Remote namespace.
+ * Register the Team locale dictionaries and the conversation-header action.
+ * The panel reads the Lead Session's `agentTeam` projection from the shared
+ * Session store; this registration performs no Team RPC.
+ * @param ctx - Client Context carrying the injected navigation, locale, slot, and Session services.
  */
-export declare function mountAgentTeamUi(ctx: ClientContext, contribution: TypertRemoteContribution): Promise<() => Promise<void>>;
+export declare function registerAgentTeamUi(ctx: ClientContext): void;
 //# sourceMappingURL=mount.d.ts.map

@@ -1,5 +1,4 @@
 /** Serialized Team transactions over the exact live Lead Session log. */
-import { foldTeam } from "./fold.js";
 /** Owns per-Lead transaction order and committed Team event publication. */
 export class TeamJournal {
     ctx;
@@ -14,12 +13,17 @@ export class TeamJournal {
         this.onCommit = onCommit;
     }
     /**
-     * Fold authoritative Team state for one exact live Lead.
+     * Read authoritative Team state for one exact live Lead.
      * @param root - exact live Team Lead.
-     * @returns current replay state selected by the Lead Team id.
+     * @returns current projected state selected by the Lead Team id.
      */
     state(root) {
-        return foldTeam(root.id, root.session.events);
+        const projection = this.ctx.sessionProjections.stateOf(root.session, 'agentTeam');
+        if (projection === undefined)
+            throw new Error('Agent Teams projection is not registered');
+        if (projection.failure !== undefined)
+            throw new Error(projection.failure);
+        return projection;
     }
     /**
      * Serialize one Lead's asynchronous mutation operation.

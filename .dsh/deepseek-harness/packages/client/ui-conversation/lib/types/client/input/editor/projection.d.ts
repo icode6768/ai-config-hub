@@ -8,7 +8,7 @@
  * All $-functions must run inside `editor.read()` / `editor.update()`.
  */
 import type { LexicalNode, NodeKey, Point } from 'lexical';
-import type { Occurrence } from '../../contract/input.ts';
+import type { Occurrence } from '../../contract/draft-editor.ts';
 /** The detect-projection stand-in for one chip (object replacement character). */
 export declare const ATOMIC_CHAR = "\uFFFC";
 /** One leaf (or gap) of the composer document in projection coordinates. */

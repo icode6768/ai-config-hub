@@ -1,12 +1,11 @@
 /**
- * HMR plugin, node half: the host end of the dev reload chain. One interval
+ * Host transport for Web client graph changes and rebuilt bundles. One interval
  * stat-polls every graph row's client bundle (polling by design: network mounts
  * deliver no inotify events), reports changes through
- * `clientModuleHost.rebuilt(id)`, and serves the `/plugins/events` SSE channel
+ * `clientModules.rebuilt(id)`, and serves the `/plugins/events` SSE channel
  * broadcasting graph/rebuilt frames to the browser half (src/client/).
- * The web bundle mounts this row unconditionally: without a rebuild
- * watcher rewriting client bundles, the poll observes no changes and the
- * chain stays idle.
+ * The Web composition mounts this transport for live graph updates;
+ * a development rebuild watcher also supplies bundle changes.
  */
 import { statSync } from 'node:fs';
 import z from '@deepseek-ai/schemastery';
@@ -14,7 +13,7 @@ import { EVENTS_ENDPOINT } from "./events.js";
 export { EVENTS_ENDPOINT } from "./events.js";
 /** Cordis plugin name. */
 export const name = 'client-hmr';
-/** Required services: the web plugin table and the route registry. */
+/** Required services: the client graph and Web route registry. */
 export const inject = ['clientModules', 'webServer'];
 export const Config = z.object({
     pollIntervalMs: z.number().step(1).min(1).default(500),
@@ -26,16 +25,17 @@ function sseData(frame) {
 /** Snapshot the executable bundle metadata that drives reloads. */
 function bundleStat(path) {
     const bundle = statSync(path);
-    return { mtimeMs: bundle.mtimeMs, size: bundle.size };
+    return { mtimeMs: bundle.mtimeMs, ctimeMs: bundle.ctimeMs, size: bundle.size };
 }
-/** Whether the executable bundle is unchanged since the last successful re-hash. */
+/** Whether the executable bundle metadata is unchanged since its last publication. */
 function sameBundleStat(left, right) {
     return left.mtimeMs === right.mtimeMs
+        && left.ctimeMs === right.ctimeMs
         && left.size === right.size;
 }
 /**
- * Mount the dev chain: bundle watches, rebuilt reporting, and the SSE channel.
- * @param ctx - host plugin context carrying clientModuleHost and webServer.
+ * Mount bundle watches and graph/rebuilt SSE delivery.
+ * @param ctx - host plugin context carrying clientModules and webServer.
  * @param config - validated {@link Config}.
  */
 export function apply(ctx, config) {
@@ -43,10 +43,8 @@ export function apply(ctx, config) {
     const pollIntervalMs = config.pollIntervalMs;
     // --- bundle watch: one HMR-owned stat poll ------------------------------
     const watched = new Map();
-    const rehash = (id, watch, current) => {
+    const publish = (id, watch, current) => {
         try {
-            // rebuilt() replaces the opaque startup rev on its first call; later
-            // calls stay silent when the content hash is unchanged.
             ctx.clientModules.rebuilt(id);
         }
         catch (error) {
@@ -58,6 +56,7 @@ export function apply(ctx, config) {
             ctx.logger.warn(error);
         }
         watch.mtimeMs = current.mtimeMs;
+        watch.ctimeMs = current.ctimeMs;
         watch.size = current.size;
         watch.dirty = false;
     };
@@ -75,9 +74,9 @@ export function apply(ctx, config) {
             return;
         }
         // The module host captured its baseline before reading the bytes in the
-        // startup batch. Only a mismatch crosses into the content-hash path.
+        // startup batch. Only a mismatch crosses into generation publication.
         if (!sameBundleStat(current, watch))
-            rehash(id, watch, current);
+            publish(id, watch, current);
     };
     const pollWatches = () => {
         for (const [id, watch] of watched) {
@@ -93,9 +92,10 @@ export function apply(ctx, config) {
             }
             if (!watch.dirty && sameBundleStat(current, watch))
                 continue;
-            // Stat-before-hash preserves a detectable older baseline for writes that
-            // land during hashing. Repeated stat changes heal a torn read.
-            rehash(id, watch, current);
+            // Stat-before-publication preserves a detectable older baseline for
+            // writes that land during the read. The preset stamps the entry after
+            // sibling chunks, so a completed build supplies the final stat change.
+            publish(id, watch, current);
         }
     };
     // Diff the watch set against the current graph: drop watches for removed
@@ -120,7 +120,7 @@ export function apply(ctx, config) {
     ctx.effect(() => {
         // Initial sync covers rows already in the graph; the subscription covers
         // rows arriving later (boot-window activations, including this plugin's
-        // own row — no self-exemption, a modules/hmr rebuild rides the same chain).
+        // own row; bootstrap revisions also reach page diagnostics).
         syncWatches();
         const unsubscribe = ctx.clientModules.onGraphChanged(syncWatches);
         const timer = setInterval(pollWatches, pollIntervalMs);
@@ -133,6 +133,11 @@ export function apply(ctx, config) {
     }, 'client-hmr: bundle watches');
     // --- /plugins/events SSE channel ----------------------------------------
     const connections = new Set();
+    const publishGraph = () => {
+        const line = sseData({ type: 'graph', graph: ctx.clientModules.graph() });
+        for (const res of connections)
+            res.write(line);
+    };
     const connect = (res) => {
         res.writeHead(200, {
             'content-type': 'text/event-stream',
@@ -142,8 +147,8 @@ export function apply(ctx, config) {
         // Comment line on open so clients/proxies see a live channel even when
         // no rebuild ever happens; EventSource frame parsing skips it naturally.
         res.write(': connected\n\n');
-        res.write(sseData({ type: 'graph', graph: ctx.clientModules.graph() }));
         connections.add(res);
+        res.write(sseData({ type: 'graph', graph: ctx.clientModules.graph() }));
         res.on('close', () => { connections.delete(res); });
     };
     ctx.effect(() => {
@@ -161,12 +166,14 @@ export function apply(ctx, config) {
                 connect(res);
             },
         });
+        const unsubscribeGraph = ctx.clientModules.onGraphChanged(publishGraph);
         const unsubscribe = ctx.clientModules.onRebuilt((id, rev) => {
             const line = sseData({ type: 'rebuilt', id, rev });
             for (const res of connections)
                 res.write(line);
         });
         return () => {
+            unsubscribeGraph();
             unsubscribe();
             disposeRoute();
             for (const res of connections)

@@ -23,7 +23,7 @@ const present = (value) => value !== undefined && value !== '';
 export function resolveDirectoryPickerBackend(facts) {
     if (facts.bindHost !== '127.0.0.1')
         return 'browse';
-    if (present(facts.env.SSH_CONNECTION) || present(facts.env.SSH_TTY))
+    if (facts.ssh)
         return 'browse';
     if (facts.platform === 'darwin' || facts.platform === 'win32')
         return 'native';

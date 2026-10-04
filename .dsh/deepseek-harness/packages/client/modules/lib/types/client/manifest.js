@@ -46,6 +46,50 @@ export function optionalStringArray(subject, field, value) {
     return value;
 }
 /**
+ * Narrow an unknown parsed JSON value to the `dsh.client` declaration. Shared
+ * by the node half's Loader scan and the roster generator, so both read a
+ * package's browser declaration through one validator.
+ * @param pkgName - package name used as the diagnostic prefix.
+ * @param value - the raw `dsh.client` field of the package manifest.
+ * @returns the validated declaration, or undefined when the field is absent.
+ * @throws {Error} when the field is present but any member is malformed.
+ */
+export function parseDshClient(pkgName, value) {
+    if (value === undefined)
+        return undefined;
+    if (typeof value !== 'object' || value === null) {
+        throw new Error(`client-modules: ${pkgName} has a non-object dsh.client declaration`);
+    }
+    const decl = value;
+    if (typeof decl.platform !== 'string') {
+        throw new Error(`client-modules: ${pkgName} dsh.client.platform must be a string`);
+    }
+    const inject = optionalStringArray(pkgName, 'dsh.client.inject', decl.inject);
+    const external = optionalStringArray(pkgName, 'dsh.client.external', decl.external);
+    if (decl.immediately !== undefined && typeof decl.immediately !== 'boolean') {
+        throw new Error(`client-modules: ${pkgName} dsh.client.immediately must be a boolean`);
+    }
+    return {
+        platform: decl.platform,
+        ...(inject !== undefined ? { inject } : {}),
+        ...(external !== undefined ? { external } : {}),
+        ...(decl.immediately !== undefined ? { immediately: decl.immediately } : {}),
+    };
+}
+/**
+ * The bare package-root specifier `specifier` names, or undefined for a subpath, a path, or any scheme-qualified
+ * specifier (`cordis:` builtins, `node:` modules, URLs).
+ * @param specifier - Loader row name.
+ * @returns the package name, or undefined.
+ */
+export function exactPackageSpecifier(specifier) {
+    if (specifier.startsWith('@')) {
+        const parts = specifier.split('/');
+        return parts.length === 2 && parts.every(Boolean) ? specifier : undefined;
+    }
+    return specifier.length > 0 && !specifier.includes('/') && !specifier.includes(':') ? specifier : undefined;
+}
+/**
  * Normalize a module specifier onto the graph row that owns it: a plugin bundle
  * IS its package's client half, so `<id>/client` (the exports subpath external
  * bundles emit) and the bare package name resolve to the same exports. Both the

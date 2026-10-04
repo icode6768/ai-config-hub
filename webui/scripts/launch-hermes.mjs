@@ -23,7 +23,7 @@ if (base) {
 }
 
 // Load credentials inside Python so terminal commands and shell history contain no API key.
-const bootstrap = `import os, sys, runpy
+const bootstrap = `import os, sys, runpy, shutil
 import yaml
 from pathlib import Path
 import hermes_constants
@@ -32,7 +32,18 @@ import hermes_constants
 hermes_constants.iter_hermes_node_dirs = lambda home=None: [Path(os.environ['HERMES_PORTABLE_NODE_BIN'])]
 # The panel owns this runtime; Hermes must not replace it after a slow USB
 # health probe times out. Resolve the already-pinned PATH without auto-healing.
-hermes_constants.find_node_executable = hermes_constants.find_node_executable_on_path
+def portable_node_executable(command):
+    # Pin Node tools to the launcher's toolchain, never provision via Hermes PM.
+    name = str(command)
+    if '/' in name or chr(92) in name:
+        return shutil.which(name)
+    base = name.lower()
+    for suffix in ('.cmd', '.exe', '.ps1'):
+        base = base.removesuffix(suffix)
+    if base in ('node', 'npm', 'npx'):
+        return shutil.which(base, path=os.environ['HERMES_PORTABLE_NODE_BIN'])
+    return shutil.which(name)
+hermes_constants.find_node_executable = portable_node_executable
 root = sys.argv.pop(1)
 config_file = os.path.join(root, 'config.yaml')
 if os.path.isfile(config_file):

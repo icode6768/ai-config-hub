@@ -1,8 +1,8 @@
 import { Service } from "@deepseek-ai/cordis";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { z } from "zod";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { UserQuestionError } from "@deepseek-ai/dsh-user-questions";
 //#region lib/types/index.js
 /**
@@ -13,19 +13,17 @@ import { UserQuestionError } from "@deepseek-ai/dsh-user-questions";
 * policy enforce restrictions independently and do not read or write plan
 * state.
 *
-* The state in force is folded from the session log (`plan/mode`, last one
-* wins), so resume and fork restore it without a live mirror. User selections
-* remain pending until the next accepted in-turn pre-step. The service includes
-* the selected state in the proposed step assembly, then appends `plan/mode`
-* from `agent/pre-step` only when the step is accepted. Same-step request
-* retries reuse their assembly.
+* The `plan` projection folds the session log, so resume and fork restore the
+* state. User selections remain pending until the next accepted in-turn
+* pre-step. The service includes the selected state in the proposed step
+* assembly, then appends `plan/mode` from `agent/pre-step` only when the step
+* is accepted. Same-step request retries reuse their assembly.
 *
 * The exit tool remains registered while plan mode is inactive, so entering
 * or leaving plan mode changes only the prompt section, not the request tool
 * catalog.
 *
-* Agent Note:
-* - .agents/notes/implemented/simplification/2026-07-22-plan-specific-collaboration-state.md
+* See packages/plan/plan-mode/README.md.
 *
 * @module @deepseek-ai/dsh-plan-mode
 */
@@ -40,7 +38,7 @@ const REVIEW_ID = "plan-review";
 const APPROVE_LABEL = "Approve";
 /** The review question's keep-planning option label. */
 const KEEP_PLANNING_LABEL = "Keep planning";
-const EXIT_DESCRIPTION = "Use only in plan mode. Present your plan for the user's review and, on approval, leave plan mode. Send the COMPLETE plan as markdown, starting with a # heading that names it. The user may approve (carry out the plan from your next step) or keep planning — their feedback comes back in the tool result; revise and present again.";
+const EXIT_DESCRIPTION = "Use only in plan mode. Present your plan for the user's review and, on approval, leave plan mode. The user may approve (carry out the plan from your next step) or keep planning — their feedback comes back in the tool result; revise and present again.";
 /** The plan's first markdown heading (any level), or `undefined` when it has none. */
 function firstHeading(plan) {
 	for (const line of plan.split("\n")) {
@@ -63,62 +61,81 @@ function resolveConfig(config) {
 	if (unknown.length > 0) throw new Error(`PlanModeConfig has unknown key(s) ${unknown.join(", ")} — config is { section }`);
 	return { section };
 }
-/**
-* Whether plan mode is active after the first `end` events. The last
-* `plan/mode` wins; a prefix with none is inactive.
-*
-* @param events The session log or any prefix of it.
-* @param end Fold `events[0, end)`; defaults to the whole log.
-* @returns Whether plan mode is active.
-*/
-function foldPlanMode(events, end = events.length) {
-	let active = false;
-	let index = 0;
-	for (const event of events) {
-		if (index >= end) break;
-		index++;
-		if (event.type === "plan/mode") active = event.data.active;
+/** Projection of logged plan selections and committed mode. */
+const planProjectionDefinition = {
+	key: "plan",
+	stateVersion: 3,
+	stateSchema: z.object({
+		active: z.boolean(),
+		wanted: z.boolean().nullable(),
+		running: z.object({
+			commandId: z.string(),
+			wanted: z.boolean()
+		}).strict().nullable(),
+		activeAtLastHeader: z.boolean().nullable()
+	}).strict(),
+	init: () => ({
+		active: false,
+		wanted: null,
+		running: null,
+		activeAtLastHeader: null
+	}),
+	apply: (state, event) => {
+		if (event.type === "command/run" && event.data.name === "plan") {
+			if (event.data.args === void 0) return state;
+			const wanted = event.data.args.trim() !== "off";
+			return {
+				...state,
+				running: {
+					commandId: event.data.commandId,
+					wanted
+				}
+			};
+		}
+		if (event.type === "command/done" && event.data.commandId === state.running?.commandId) {
+			const wanted = event.data.kind === "success" && state.running.wanted !== state.active ? state.running.wanted : null;
+			return {
+				...state,
+				wanted,
+				running: null
+			};
+		}
+		if (event.type === "plan/mode") return {
+			...state,
+			active: event.data.active,
+			wanted: null
+		};
+		if (event.type === "request/header") return {
+			...state,
+			activeAtLastHeader: state.active
+		};
+		return state;
+	},
+	wire: {
+		viewSchema: z.object({
+			active: z.boolean(),
+			pending: z.boolean()
+		}),
+		view: (state) => {
+			const wanted = state.running?.wanted ?? state.wanted;
+			return {
+				active: state.active,
+				pending: wanted !== null && wanted !== state.active
+			};
+		}
 	}
-	return active;
-}
-const planUnitStateSchema = z.object({
-	active: z.boolean(),
-	wanted: z.boolean().nullable(),
-	running: z.object({
-		commandId: z.string(),
-		wanted: z.boolean()
-	}).strict().nullable()
-}).strict();
-/** Wire payload schema of the `plan` projection. */
-const planProjectionSchema = z.object({
-	active: z.boolean(),
-	pending: z.boolean()
-});
-/** Whether the log holds an opened turn without its closing `turn/end`. */
-function hasOpenTurn(events) {
-	let open = false;
-	for (const event of events) if (event.type === "turn/start") open = true;
-	else if (event.type === "turn/end") open = false;
-	return open;
-}
-/** Plan state at the last logged request header, or `undefined` before the first header. */
-function planModeAtLastHeader(events) {
-	let lastHeader = -1;
-	let index = 0;
-	for (const event of events) {
-		if (event.type === "request/header") lastHeader = index;
-		index++;
-	}
-	if (lastHeader < 0) return void 0;
-	return foldPlanMode(events, lastHeader + 1);
-}
+};
 /**
 * `ctx.planMode`: owns logged plan state, applies and narrates selected state at step start,
 * the `plan:policy` section, the `/plan` command, and the stable exit tool.
-* UIs observe committed flips through `session/event`; there is no live mirror.
+* Client carriers expose the projection's cropped `{ active, pending }` view.
 */
 var PlanModeController = class extends Service {
-	static inject = ["tools", "systemPrompt"];
+	static inject = [
+		"tools",
+		"systemPrompt",
+		"sessionProjections"
+	];
 	/** Validated deployment-owned guidance. */
 	section;
 	/**
@@ -152,74 +169,27 @@ var PlanModeController = class extends Service {
 		}, "dsh-plan-mode: close service lifetime");
 		ctx.systemPrompt.section({
 			name: "plan:policy",
-			order: FIRST_PARTY_SECTION_ORDER.PLAN_POLICY,
+			order: ctx.systemPrompt.getSectionOrder("PLAN_POLICY"),
 			text: (context) => {
 				if (context.agent === void 0) return "";
-				return this.pendingIntents.get(context.agent.session)?.active ?? foldPlanMode(context.agent.session.events) ? this.section : "";
+				return this.pendingIntents.get(context.agent.session)?.active ?? this.loggedActive(context.agent.session) ? this.section : "";
 			}
 		});
-		ctx.inject(["sessionProjections"], (projectionCtx) => {
-			projectionCtx.sessionProjections.register({
-				key: "plan",
-				stateSchema: planUnitStateSchema,
-				init: () => ({
-					active: false,
-					wanted: null,
-					running: null
-				}),
-				apply: (state, event) => {
-					if (event.type === "command/run" && event.data.name === "plan") {
-						if (event.data.args === void 0) return state;
-						const wanted = event.data.args.trim() !== "off";
-						return {
-							...state,
-							running: {
-								commandId: event.data.commandId,
-								wanted
-							}
-						};
-					}
-					if (event.type === "command/done" && event.data.commandId === state.running?.commandId) {
-						const wanted = event.data.kind === "success" && state.running.wanted !== state.active ? state.running.wanted : null;
-						return {
-							...state,
-							wanted,
-							running: null
-						};
-					}
-					if (event.type === "plan/mode") return {
-						...state,
-						active: event.data.active,
-						wanted: null
-					};
-					return state;
-				},
-				wire: {
-					viewSchema: planProjectionSchema,
-					view: (state) => {
-						const wanted = state.running?.wanted ?? state.wanted;
-						return {
-							active: state.active,
-							pending: wanted !== null && wanted !== state.active
-						};
-					}
-				},
-				stateVersion: 2
-			});
-		});
+		ctx.sessionProjections.register(planProjectionDefinition);
 		ctx.inject(["commands"], (commandCtx) => {
 			commandCtx.commands.register({
+				definitionId: brandString("@deepseek-ai/dsh-plan-mode"),
 				name: "plan",
 				description: "Enter or leave plan mode",
 				input: {
 					hint: "[off|message]",
-					images: true
+					attachments: true
 				},
 				handler: ({ agent, rawInput, attachments }) => {
 					const message = rawInput.trim();
 					if (message === "off" && attachments.length > 0) return {
 						kind: "error",
-						text: "Image attachments cannot accompany /plan off."
+						text: "Attachments cannot accompany /plan off."
 					};
 					if (message === "off") switch (this.set(agent, false)) {
 						case "committed": return {
@@ -234,7 +204,7 @@ var PlanModeController = class extends Service {
 							kind: "success",
 							text: "Plan mode entry cancelled."
 						};
-						case "noop": return foldPlanMode(agent.session.events) ? {
+						case "noop": return this.loggedActive(agent.session) ? {
 							kind: "success",
 							text: "Leaving plan mode (applies from the next step)."
 						} : {
@@ -283,7 +253,7 @@ var PlanModeController = class extends Service {
 			execute: async (args, exec) => {
 				const agent = exec.agent;
 				if (agent === void 0) throw new Error(`${EXIT_PLAN_MODE} requires a calling agent (no session to switch)`);
-				if (!foldPlanMode(agent.session.events)) throw new Error(`${EXIT_PLAN_MODE} is only available in plan mode`);
+				if (!this.loggedActive(agent.session)) throw new Error(`${EXIT_PLAN_MODE} is only available in plan mode`);
 				if (!/^#\s+\S/.test(args.plan.trim())) throw new Error(`${EXIT_PLAN_MODE} requires a non-empty markdown plan starting with a # heading`);
 				const interaction = ctx.get("userQuestions");
 				if (interaction === void 0) throw new Error("no user-questions channel is available to review the plan; ask the user to switch the session mode instead");
@@ -302,7 +272,8 @@ var PlanModeController = class extends Service {
 						}],
 						intent: {
 							kind: "plan-review",
-							approve: APPROVE_LABEL
+							approve: APPROVE_LABEL,
+							callId: exec.callId
 						}
 					}],
 					agent,
@@ -340,6 +311,23 @@ var PlanModeController = class extends Service {
 			})
 		}));
 	}
+	loggedActive(session) {
+		return this.planState(session).active;
+	}
+	hasOpenTurn(session) {
+		const state = this.ctx.sessionProjections.stateOf(session, "turnBoundary");
+		if (state === void 0) throw new Error("plan-mode requires the turnBoundary session projection");
+		return state.openTurnStartSeq !== null;
+	}
+	loggedActiveAtLastHeader(session) {
+		return this.planState(session).activeAtLastHeader ?? void 0;
+	}
+	/** Read the required plan projection state or fail at the first service access. */
+	planState(session) {
+		const state = this.ctx.sessionProjections.stateOf(session, "plan");
+		if (state === void 0) throw new Error("plan-mode requires the plan session projection");
+		return state;
+	}
 	/**
 	* Read the logged plan state and any selected state awaiting the next
 	* accepted in-turn pre-step.
@@ -348,7 +336,7 @@ var PlanModeController = class extends Service {
 	* @returns Current logged state plus a pending selection, when present.
 	*/
 	get(agent) {
-		const active = foldPlanMode(agent.session.events);
+		const active = this.loggedActive(agent.session);
 		const pending = this.pendingIntents.get(agent.session);
 		return pending === void 0 ? { active } : {
 			active,
@@ -373,15 +361,15 @@ var PlanModeController = class extends Service {
 	*/
 	set(agent, active) {
 		const session = agent.session;
-		if (active === (this.pendingIntents.get(session)?.active ?? foldPlanMode(session.events))) return "noop";
-		if (hasOpenTurn(session.events)) {
+		if (active === (this.pendingIntents.get(session)?.active ?? this.loggedActive(session))) return "noop";
+		if (this.hasOpenTurn(session)) {
 			this.pendingIntents.set(session, {
 				active,
 				narrate: true
 			});
-			return foldPlanMode(session.events) === active ? "cancelled" : "queued";
+			return this.loggedActive(session) === active ? "cancelled" : "queued";
 		}
-		if (active === foldPlanMode(session.events)) {
+		if (active === this.loggedActive(session)) {
 			this.pendingIntents.delete(session);
 			return "cancelled";
 		}
@@ -396,7 +384,7 @@ var PlanModeController = class extends Service {
 		const pending = this.pendingIntents.get(session);
 		if (pending === void 0) return;
 		const target = pending.active;
-		if (target === foldPlanMode(session.events)) {
+		if (target === this.loggedActive(session)) {
 			this.pendingIntents.delete(session);
 			return;
 		}
@@ -405,7 +393,7 @@ var PlanModeController = class extends Service {
 	}
 	/** Build a user-switch notice when the last logged header described the other mode. */
 	narration(session, target) {
-		const told = planModeAtLastHeader(session.events);
+		const told = this.loggedActiveAtLastHeader(session);
 		if (told === void 0 || told === target) return;
 		const text = target ? "The user switched this session to plan mode." : "The user switched this session back to the default mode.";
 		return createUserMessage({
@@ -414,8 +402,7 @@ var PlanModeController = class extends Service {
 				text
 			}],
 			source: {
-				kind: "plugin",
-				plugin: "plan-mode",
+				kind: "plan-mode",
 				form: "notice",
 				summary: text
 			}
@@ -423,4 +410,4 @@ var PlanModeController = class extends Service {
 	}
 };
 //#endregion
-export { EXIT_PLAN_MODE, PlanModeController, PlanModeController as default, foldPlanMode, resolveConfig };
+export { EXIT_PLAN_MODE, PlanModeController, PlanModeController as default, planProjectionDefinition, resolveConfig };

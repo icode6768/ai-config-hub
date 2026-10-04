@@ -1,8 +1,8 @@
 /**
  * Client mirror of the Host settings document: the one `settings.describe`
  * reader in the browser. Every settings consumer derives from this store —
- * per-namespace scopes through `SettingsScopeBinder.bind`, cross-namespace
- * surfaces through the binder's shared describe face — so startup cost and
+ * shared entry forms through `ConfigForms.get`, cross-namespace
+ * surfaces through the provider's shared describe face — so startup cost and
  * freshness are properties of this class, not of how many features own a
  * preference. The Host stays the fact source: the mirror re-reads on the
  * invalidations its owning plugin subscribes to and folds write answers in
@@ -15,18 +15,19 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
  * so an invalidation arriving mid-read is never lost and never duplicated.
  */
 export class SettingsDescribeMirror {
-    api;
+    ctx;
     persistence;
     store;
     inFlight;
     rerun = false;
     generation = 0;
     /**
-     * @param api - settings wire face.
+     * @param ctx - the providing plugin's context, whose `remote.settings`
+     * namespace answers the describe read.
      * @param persistence - client-selected Host persistence; non-loopback pages may remain process-local.
      */
-    constructor(api, persistence = 'host') {
-        this.api = api;
+    constructor(ctx, persistence = 'host') {
+        this.ctx = ctx;
         this.persistence = persistence;
         this.store = createSnapshotStore({
             status: persistence === 'host' ? 'idle' : 'unavailable',
@@ -123,7 +124,7 @@ export class SettingsDescribeMirror {
                 const generation = ++this.generation;
                 let outcome;
                 try {
-                    const response = await this.api.settings.describe();
+                    const response = await this.ctx.remote.settings.describe();
                     outcome = response.ok
                         ? { view: response.value }
                         : { failure: response.error.message };

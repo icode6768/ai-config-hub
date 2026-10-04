@@ -15,7 +15,7 @@ export function createRequire(base) {
 }
 /** Builtin specifiers the module proxy table answers (without the `node:` prefix). */
 export const builtinModules = [
-    'assert', 'async_hooks', 'buffer', 'child_process', 'crypto', 'events', 'fs', 'http', 'module',
+    'assert', 'assert/strict', 'async_hooks', 'buffer', 'child_process', 'crypto', 'events', 'fs', 'http', 'module',
     'net', 'os', 'path', 'process', 'stream', 'tty', 'url', 'util', 'worker_threads',
 ];
 /**

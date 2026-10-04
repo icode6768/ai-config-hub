@@ -12,13 +12,14 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { DSH_HOME_ENV } from '@deepseek-ai/dsh-home-paths';
+export { packPreviewFixture } from "./preview.js";
 /**
  * Repository directories scanned for workspace and vendored packages. The
  * image only ever materializes runtime packages, which live here. The Landlock
  * package family contributes its unchanged JavaScript entry from `native/`;
  * examples and python never occur on a roster's dependency chain.
  */
-const WORKSPACE_SCAN_ROOTS = ['vendor', 'packages', 'native/landlock-run/packages', 'apps'];
+const WORKSPACE_SCAN_ROOTS = ['vendor', 'packages', 'native/system/packages', 'apps'];
 /** Composition entry point package: the `dsh` CLI, run from source. */
 const CLI_PACKAGE = 'apps/cli';
 /** Composition entry point: the `dsh` CLI, run from source. */
@@ -59,11 +60,11 @@ export function indexWorkspacePackages(repoRoot) {
 }
 /**
  * Compose one profile through the real CLI dump path, leaving `!!js`
- * unevaluated. The dump runs against a throwaway Harness home and default
- * layers only, so the image is the shipped profile: the machine's `$DSH_HOME`
- * — its profile manifest with locally installed bundles, and its patch files —
- * would otherwise leak this machine's plugins into the image and break the
- * same-tree-same-bytes guarantee.
+ * unevaluated. The dump runs against a throwaway Harness home, so the
+ * profile's own layer is the freshly initialized empty patch file and the
+ * machine's `$DSH_HOME` — its profile manifest with locally installed
+ * bundles, and its patch files — would otherwise leak this machine's plugins
+ * into the image and break the same-tree-same-bytes guarantee.
  * @param repoRoot - Absolute repository root.
  * @param profile - Profile name to compose.
  * @returns The composed YAML.
@@ -71,7 +72,14 @@ export function indexWorkspacePackages(repoRoot) {
 export function composeProfile(repoRoot, profile) {
     const home = mkdtempSync(join(tmpdir(), 'dsh-pack-home-'));
     try {
-        return execFileSync(process.execPath, ['--import', 'tsx/esm', join(repoRoot, CLI_ENTRY), '--profile', profile, '--dump-default-config'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, [DSH_HOME_ENV]: home } });
+        return execFileSync(process.execPath, [
+            '--import', 'tsx/esm', join(repoRoot, CLI_ENTRY),
+            '--profile', profile,
+            // `--dump-config` over the throwaway home: the profile's own patch
+            // layer is a freshly initialized empty file, so the dump is the
+            // shipped composition alone.
+            '--dump-config',
+        ], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, [DSH_HOME_ENV]: home } });
     }
     finally {
         rmSync(home, { recursive: true, force: true });

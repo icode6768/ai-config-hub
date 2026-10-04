@@ -6,7 +6,7 @@
  */
 import { Service } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
-export { ESCALATION_TARGETS, WIDER_MODES, approveEscalation, escalationHintMarker, sandboxDenialMarker, validateEscalationArgs, } from "./escalation.js";
+export { ESCALATION_TARGETS, WIDER_MODES, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs, } from "./escalation.js";
 export { canonicalPath, writableRoots } from "./roots.js";
 /**
  * Error code for a requested confined mode when no backend is usable. The
@@ -44,4 +44,5 @@ export class SandboxProvider extends Service {
     }
 }
 export default SandboxProvider;
+export { classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature } from "./diagnostics.js";
 //# sourceMappingURL=index.js.map

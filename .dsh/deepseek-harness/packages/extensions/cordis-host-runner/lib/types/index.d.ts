@@ -7,15 +7,21 @@ import { Context } from '@deepseek-ai/cordis';
 import type { Fiber } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import type { JsonValue } from '@deepseek-ai/dsh-session/types';
+declare module '@deepseek-ai/dsh-llm' {
+    interface MessageSourceMap {
+        'cordis-host-runner': {
+            kind: 'cordis-host-runner';
+        };
+    }
+}
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import type { JsonValue } from '@deepseek-ai/dsh-util-values';
 import type { DynamicCordisDefineReceipt, DynamicCordisDefineRequest, DynamicCordisPackageInspection, DynamicCordisPluginInspection, DynamicCordisReference } from './registry.ts';
 import type { ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, CordisErrorDetails, CordisDynamicRunMode, CordisInspectProviderManifest, CordisInspectQueryResolution, CordisInspectRequestId, CordisInspectResolveAck, DynamicCordisClientSource, DynamicCordisHostHalfResult, DynamicCordisInventoryRow, DynamicCordisInvokeResult, DynamicCordisRenderFailure, DynamicCordisResolveAck, DynamicCordisRunAttempt, DynamicCordisRunResolution, DynamicCordisRunResponse, DynamicCordisStopResponse, DynamicCordisUndefineReceipt } from './types.ts';
 export type * from './types.ts';
 export type { DynamicCordisDefineReceipt, DynamicCordisDefineRequest, DynamicCordisDefinition, DynamicCordisHandler, DynamicCordisPackageInspection, DynamicCordisPlugin, DynamicCordisPluginInspection, DynamicCordisReference, DynamicCordisRun, } from './registry.ts';
 export { CordisInspectRegistryService } from './inspect-registry.ts';
 export type { HostCordisInspectProviderRegistration } from './inspect-registry.ts';
-export { HOST_BUILTIN_INSPECTION } from './sandbox.ts';
 /**
  * Brand a Host-minted Plugin ID.
  * @param id - opaque identifier minted by the Host registry.
@@ -50,6 +56,8 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
     /** Maximum synchronous VM evaluation time in milliseconds. */
     vmTimeoutMs?: number;
+    /** Maximum wait for a valid Client inspect response in milliseconds. */
+    clientInspectTimeoutMs?: number;
 }
 /** Host-only snapshot consumed by inspect and tool result rendering. */
 export interface DynamicCordisSnapshotRow {
@@ -170,11 +178,12 @@ export declare class DynamicCordisRunnerService extends TypertRemoteService {
      */
     syncInspectManifest(providers: readonly CordisInspectProviderManifest[]): null;
     /**
-     * Claim one pending Client inspect query with its live result.
+     * Submit a Client inspect result or failure for a pending query.
      * @param agent - Session that owns the query.
      * @param requestId - exact pending query identity.
      * @param resolution - provider result or structured refusal.
-     * @returns whether this answer won the query.
+     * @returns acknowledgement with accepted true only for a valid success that settles the query;
+     * pending-query failures return { accepted: false } and retain only the first diagnostic.
      */
     resolveInspectQuery(agent: Agent, requestId: CordisInspectRequestId, resolution: CordisInspectQueryResolution): CordisInspectResolveAck;
     /**

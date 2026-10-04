@@ -1,10 +1,13 @@
 /** Local node-pty terminal-process implementation for the subprocess seam. */
 import { PassThrough } from 'node:stream';
 import type { IPty } from 'node-pty';
-import type { SubprocessOutcome, SubprocessTerminalForeground, SubprocessTerminalHandle, SubprocessTerminalSignal } from '@deepseek-ai/dsh-subprocess';
+import type { SubprocessOutcome, SubprocessTerminalActivity, SubprocessTerminalForeground, SubprocessTerminalHandle, SubprocessTerminalSignal } from '@deepseek-ai/dsh-subprocess';
+import type { BoundProcessOwner } from './managed-owner.ts';
 import type { ProcessInspector } from './process-inspector.ts';
+import type { ShellActivity } from './shell-activity.ts';
 /**
- * A local terminal whose process-session ownership stays below the PTY backend.
+ * A local terminal whose native managed range or fallback process-session
+ * ownership stays below the PTY backend.
  * The seam's terminate() promise — no write, inspection, or signal in flight
  * after settlement — holds here without operation tracking only because every
  * handle call completes synchronously under the hood (node-pty write, ps-based
@@ -16,6 +19,11 @@ export declare class LocalTerminalHandle implements SubprocessTerminalHandle {
     private readonly inspector;
     private readonly graceMs;
     private readonly platform;
+    private readonly managedOwner?;
+    private readonly resolveManagedOutcome?;
+    private readonly shellActivity?;
+    private readonly onQuiescence?;
+    private readonly observeShellExit;
     readonly pid: number;
     readonly output: PassThrough;
     readonly done: Promise<SubprocessOutcome>;
@@ -23,8 +31,14 @@ export declare class LocalTerminalHandle implements SubprocessTerminalHandle {
     private readonly dataDisposable;
     private readonly exitDisposable;
     private cleanup;
+    private managedOwnerCleaned;
     private exited;
+    private outputPaused;
     private trackedDescendants;
+    private activityRevision;
+    private activityKey;
+    private quiescent;
+    private managedRangeEmpty;
     /** The spawned shell's start identity; scans stop adopting members once the root pid no longer carries it. */
     private readonly rootIdentity;
     /**
@@ -33,9 +47,13 @@ export declare class LocalTerminalHandle implements SubprocessTerminalHandle {
      * @param graceMs - TERM-to-KILL and exit-wait grace.
      * @param platform - host platform; defaults to the running platform, injectable for deterministic tests.
      */
-    constructor(terminal: IPty, inspector: ProcessInspector, graceMs: number, platform?: NodeJS.Platform);
+    constructor(terminal: IPty, inspector: ProcessInspector, graceMs: number, platform?: NodeJS.Platform, managedOwner?: BoundProcessOwner | undefined, resolveManagedOutcome?: ((outcome: SubprocessOutcome) => SubprocessOutcome) | undefined, shellActivity?: Pick<ShellActivity, "inspect" | "invalidate" | "dispose"> | undefined, onQuiescence?: (() => void) | undefined, observeShellExit?: boolean);
+    /** Whether node-pty has not yet published the top-level exit event. */
+    get running(): boolean;
     write(data: string): Promise<void>;
+    resize(cols: number, rows: number): Promise<void>;
     inspectForeground(): Promise<SubprocessTerminalForeground | undefined>;
+    inspectActivity(): Promise<SubprocessTerminalActivity>;
     signalForeground(signal: SubprocessTerminalSignal): Promise<number>;
     terminate(): Promise<void>;
     /**
@@ -55,6 +73,8 @@ export declare class LocalTerminalHandle implements SubprocessTerminalHandle {
     private stopShellWindows;
     private waitForWindowsShellExit;
     private closeOnce;
+    private cleanupManagedOwner;
+    private closeManagedRange;
     private settleExitIfGone;
 }
 //# sourceMappingURL=terminal.d.ts.map

@@ -1,15 +1,16 @@
 /** Live/persisted logical-corpus resolution for session-query. */
 import { SessionQueryError } from "./config.js";
+import { readColdSessionLog } from "./cold-read.js";
 import { assertSessionHeadersCompatible } from "./sources.js";
 /** Resolves a live-preferred corpus against the persistence service mounted now. */
 export class SessionCorpus {
     _ctx;
-    _persistedInspectConcurrency;
+    _persistedReadConcurrency;
     _persistence;
     _optionalPersistenceFiber;
-    constructor(_ctx, _persistedInspectConcurrency) {
+    constructor(_ctx, _persistedReadConcurrency) {
         this._ctx = _ctx;
-        this._persistedInspectConcurrency = _persistedInspectConcurrency;
+        this._persistedReadConcurrency = _persistedReadConcurrency;
         this._optionalPersistenceFiber = _ctx.inject(['sessionPersistence'], (childCtx) => {
             const service = childCtx.sessionPersistence;
             this._persistence = service;
@@ -81,9 +82,10 @@ export class SessionCorpus {
             signal?.throwIfAborted();
             return snapshot;
         }
-        assertSessionHeadersCompatible(loaded.meta, listed);
+        assertSessionHeadersCompatible(loaded.header, listed);
         const snapshot = {
-            header: structuredClone(loaded.meta),
+            header: structuredClone(loaded.header),
+            inheritedEventCount: loaded.inheritedEventCount,
             events: loaded.events.map(event => structuredClone(event)),
         };
         signal?.throwIfAborted();
@@ -154,9 +156,9 @@ export class SessionCorpus {
                     resolved.set(sessionId, projectSource(sessionId, sourceLive(attached), project, signal));
                     return;
                 }
-                assertSessionHeadersCompatible(loaded.meta, listed);
+                assertSessionHeadersCompatible(loaded.header, listed);
                 resolved.set(sessionId, projectSource(sessionId, {
-                    header: loaded.meta,
+                    header: loaded.header,
                     events: loaded.events,
                 }, project, signal));
             }
@@ -177,7 +179,7 @@ export class SessionCorpus {
                 await resolvePersisted(unresolved[index]);
             }
         };
-        const workerCount = Math.min(this._persistedInspectConcurrency, unresolved.length);
+        const workerCount = Math.min(this._persistedReadConcurrency, unresolved.length);
         const settlements = await Promise.allSettled(Array.from({ length: workerCount }, () => worker()));
         if (signal?.aborted)
             signal.throwIfAborted();
@@ -208,14 +210,16 @@ function projectSource(sessionId, source, project, signal) {
     }
 }
 function sourceLive(session) {
-    return { header: session.header, events: session.events };
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+    return { header: session.header, events: session.snapshotEvents() };
 }
 function orderedResults(ids, resolved) {
     return ids.map(sessionId => resolved.get(sessionId));
 }
 async function listPersisted(persistence, signal) {
     try {
-        return await persistence.list(signal);
+        const snapshots = await persistence.list(signal === undefined ? undefined : { signal });
+        return snapshots.map(snapshot => snapshot.header);
     }
     catch (error) {
         if (signal?.aborted)
@@ -225,7 +229,7 @@ async function listPersisted(persistence, signal) {
 }
 async function inspectPersisted(persistence, sessionId, signal) {
     try {
-        return await persistence.inspect(sessionId, signal);
+        return await readColdSessionLog(persistence, sessionId, signal);
     }
     catch (error) {
         if (signal?.aborted)
@@ -233,13 +237,15 @@ async function inspectPersisted(persistence, sessionId, signal) {
         if (error instanceof Error && error.name === 'SessionPersistenceCorruptionError') {
             throw new SessionQueryError(`stored session "${sessionId}" is corrupt: ${errorMessage(error)}`, 'SESSION_QUERY_CORRUPT_SESSION', { cause: error });
         }
-        throw new SessionQueryError(`failed to inspect session "${sessionId}": ${errorMessage(error)}`, 'SESSION_QUERY_PERSISTENCE_FAILED', { cause: error });
+        throw new SessionQueryError(`failed to read stored session "${sessionId}": ${errorMessage(error)}`, 'SESSION_QUERY_PERSISTENCE_FAILED', { cause: error });
     }
 }
 function snapshotLive(session) {
     return {
         header: structuredClone(session.header),
-        events: session.events.map(event => structuredClone(event)),
+        inheritedEventCount: session.inheritedEventCount,
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+        events: session.snapshotEvents().map(event => structuredClone(event)),
     };
 }
 function compareSessions(a, b) {

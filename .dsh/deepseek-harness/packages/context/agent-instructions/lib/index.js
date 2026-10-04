@@ -1,10 +1,11 @@
 import { isDeepStrictEqual } from "node:util";
-import { assertNever, createUserMessage } from "@deepseek-ai/dsh-llm";
+import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import z from "@deepseek-ai/schemastery";
 import { dshHomeDisplay, resolveDshHome } from "@deepseek-ai/dsh-home-paths";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { assertNever } from "@deepseek-ai/dsh-util-values";
 import { createHash } from "node:crypto";
 //#region lib/types/config.js
 /**
@@ -109,10 +110,10 @@ function trimmedInstructionDigest(content) {
 */
 const SYSTEM_REMINDER_OPEN = "<system-reminder>";
 const SYSTEM_REMINDER_CLOSE = "</system-reminder>";
-const WORKSPACE_CONTEXT_INTRO = "The following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.";
-const REPLACEMENT_WORKSPACE_CONTEXT_INTRO = "This complete workspace instruction baseline replaces all earlier workspace instruction baselines. The following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.";
-const EMPTY_REPLACEMENT_WORKSPACE_CONTEXT_INTRO = "This complete workspace instruction baseline replaces all earlier workspace instruction baselines. No workspace instructions are currently active.";
-const COMPACT_WORKSPACE_CONTEXT_INTRO = "Workspace instructions were omitted or truncated to fit the configured byte budget.";
+const AGENT_INSTRUCTIONS_INTRO = "The following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.";
+const REPLACEMENT_AGENT_INSTRUCTIONS_INTRO = "This complete workspace instruction baseline replaces all earlier workspace instruction baselines. The following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.";
+const EMPTY_REPLACEMENT_AGENT_INSTRUCTIONS_INTRO = "This complete workspace instruction baseline replaces all earlier workspace instruction baselines. No workspace instructions are currently active.";
+const COMPACT_AGENT_INSTRUCTIONS_INTRO = "Workspace instructions were omitted or truncated to fit the configured byte budget.";
 function byteLength(value) {
 	return Buffer.byteLength(value, "utf8");
 }
@@ -198,14 +199,14 @@ function additionalSectionText(file) {
 	].join("\n");
 }
 const BASELINE_RENDER_STYLE = {
-	intro: WORKSPACE_CONTEXT_INTRO,
+	intro: AGENT_INSTRUCTIONS_INTRO,
 	section: sectionText
 };
 function baselineRenderStyle(files, replacePreviousBaseline) {
 	if (replacePreviousBaseline !== true) return BASELINE_RENDER_STYLE;
 	return {
 		...BASELINE_RENDER_STYLE,
-		intro: files.length === 0 ? EMPTY_REPLACEMENT_WORKSPACE_CONTEXT_INTRO : REPLACEMENT_WORKSPACE_CONTEXT_INTRO
+		intro: files.length === 0 ? EMPTY_REPLACEMENT_AGENT_INSTRUCTIONS_INTRO : REPLACEMENT_AGENT_INSTRUCTIONS_INTRO
 	};
 }
 function changedSectionText(item) {
@@ -332,7 +333,7 @@ function renderInstructionContext(files, maxBytes, style) {
 	const originalBytes = byteLength(mostSpecific.content);
 	for (const candidateStyle of [style, {
 		...style,
-		intro: COMPACT_WORKSPACE_CONTEXT_INTRO
+		intro: COMPACT_AGENT_INSTRUCTIONS_INTRO
 	}]) {
 		const truncatedFile = truncateToFit(mostSpecific, [], maxBytes, omitted, candidateStyle);
 		const includedBytes = byteLength(truncatedFile.content);
@@ -376,7 +377,7 @@ function renderInstructionContext(files, maxBytes, style) {
 * @returns bounded public rendering plus files with surviving content, including genuinely empty files.
 * @internal
 */
-function renderWorkspaceInstructionSet(files, options) {
+function renderAgentInstructionSet(files, options) {
 	const style = baselineRenderStyle(files, options.replacePreviousBaseline);
 	const { represented, ...rendered } = renderInstructionContext(files, options.maxBytes, style);
 	return {
@@ -390,8 +391,8 @@ function renderWorkspaceInstructionSet(files, options) {
 * @param options - rendering byte budget and whether this baseline supersedes a visible predecessor.
 * @returns bounded baseline prompt text and budget diagnostics.
 */
-function renderWorkspaceContext(files, options) {
-	return renderWorkspaceInstructionSet(files, options).rendered;
+function renderAgentInstructions(files, options) {
+	return renderAgentInstructionSet(files, options).rendered;
 }
 //#endregion
 //#region lib/types/files.js
@@ -405,6 +406,9 @@ function signalOptions(signal) {
 }
 function isMissingPathError(error) {
 	return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
+}
+function isMissingProviderPathError(error) {
+	return error instanceof Error && "code" in error && error.code === "FS_NOT_FOUND";
 }
 async function nodeStatFile(path, signal) {
 	try {
@@ -448,18 +452,20 @@ async function existsAsMarker(path, fileSystem, signal) {
 	if (fileSystem !== void 0) try {
 		const target = await fileSystem.resolve(path, signalOptions(signal));
 		return await fileSystem.stat(target, signal) !== void 0;
-	} catch {
+	} catch (error) {
 		signal?.throwIfAborted();
-		return false;
+		if (isMissingProviderPathError(error)) return false;
+		throw error;
 	}
 	try {
 		signal?.throwIfAborted();
 		await stat(path);
 		signal?.throwIfAborted();
 		return true;
-	} catch {
+	} catch (error) {
 		signal?.throwIfAborted();
-		return false;
+		if (isMissingPathError(error)) return false;
+		throw error;
 	}
 }
 /**
@@ -469,6 +475,7 @@ async function existsAsMarker(path, fileSystem, signal) {
 * @param fileSystem - optional provider used instead of host filesystem probes.
 * @param signal - cancellation for provider and host probes.
 * @returns the discovered project root, or `cwd` when no marker exists.
+* @throws the original marker metadata error or cancellation reason when a probe is unavailable.
 */
 async function findProjectRoot(cwd, markers, fileSystem, signal) {
 	let current = resolve(cwd);
@@ -577,6 +584,8 @@ async function discoverInstructionFiles(options, fileSystem) {
 * duplicates are collapsed later, once content is read.
 * @param options - cwd, home, root marker, and candidate configuration.
 * @returns path-deduplicated instruction candidates in model precedence order.
+* @throws the original root-marker metadata error or cancellation reason when
+* discovery cannot identify the project root.
 */
 async function discoverBaselineInstructionFiles(options) {
 	return (await discoverInstructionFiles(options)).map(({ absolutePath, displayPath }) => ({
@@ -642,6 +651,8 @@ function dedupInstructionFilesByDirectory(files) {
 * @param options - discovery, source-size, byte-budget, and cancellation configuration.
 * @param fileSystem - optional provider used instead of host filesystem reads.
 * @returns rendered baseline context, or undefined when nothing can be loaded.
+* @throws the original root-marker metadata error or cancellation reason when
+* discovery cannot identify the project root.
 */
 async function loadBaselineInstructions(options, fileSystem) {
 	return (await loadBaselineInstructionSet(options, fileSystem))?.rendered;
@@ -670,7 +681,7 @@ async function loadBaselineInstructionSet(options, fileSystem) {
 	const deduped = dedupInstructionFilesByDirectory(loaded);
 	if (deduped.length === 0) {
 		if (options.replacePreviousBaseline !== true) return void 0;
-		const { rendered, included } = renderWorkspaceInstructionSet([], {
+		const { rendered, included } = renderAgentInstructionSet([], {
 			maxBytes: config.maxBytes,
 			replacePreviousBaseline: true
 		});
@@ -680,7 +691,7 @@ async function loadBaselineInstructionSet(options, fileSystem) {
 			included
 		};
 	}
-	const { rendered, included } = renderWorkspaceInstructionSet(deduped, {
+	const { rendered, included } = renderAgentInstructionSet(deduped, {
 		maxBytes: config.maxBytes,
 		...options.replacePreviousBaseline === void 0 ? {} : { replacePreviousBaseline: options.replacePreviousBaseline }
 	});
@@ -752,7 +763,7 @@ function userGlobalDisplayPath(dshHome) {
 * @module @deepseek-ai/dsh-agent-instructions/state
 */
 const name = "agent-instructions";
-function workspaceContextHook(text, changes) {
+function agentInstructionsHook(text, changes) {
 	return createUserMessage({
 		content: [{
 			type: "text",
@@ -770,19 +781,20 @@ function workspaceContextHook(text, changes) {
 * @param text - complete plugin-owned system-reminder text.
 * @returns a user-role prefix message.
 */
-function workspaceContextMessage(text) {
+function agentInstructionsMessage(text) {
 	return createUserMessage({
 		content: [{
 			type: "text",
 			text
 		}],
 		source: {
-			kind: "plugin",
-			plugin: name
+			kind: name,
+			form: "instructions",
+			changes: []
 		}
 	});
 }
-function isWorkspaceContextSource(source) {
+function isAgentInstructionsSource(source) {
 	return typeof source === "object" && source !== null && "kind" in source && source.kind === "agent-instructions" && "changes" in source && Array.isArray(source.changes);
 }
 function isRecord(value) {
@@ -808,15 +820,15 @@ function sameInstructionChange(a, b) {
 	return a.action === b.action && a.scope === b.scope && a.path === b.path && a.digest === b.digest;
 }
 function visibleInstructionChanges(agent, authorityMessages) {
-	const visibleSeqs = new Set(agent.session.surface.nodes);
 	const visible = /* @__PURE__ */ new Map();
-	for (const [seq, event] of agent.session.events.entries()) {
-		if (event.type !== "user/message" || !isWorkspaceContextSource(event.data.source)) continue;
+	for (const seq of agent.session.surface.nodes) {
+		const event = agent.session.eventAt(seq);
+		if (event?.type !== "user/message" || !isAgentInstructionsSource(event.data.source)) continue;
 		const changes = workspaceInstructionChanges(event.data.source);
-		for (const change of changes) if (visibleSeqs.has(seq)) visible.set(change.scope, change);
+		for (const change of changes) visible.set(change.scope, change);
 	}
 	for (const message of authorityMessages) {
-		if (!isWorkspaceContextSource(message.source)) continue;
+		if (!isAgentInstructionsSource(message.source)) continue;
 		for (const change of workspaceInstructionChanges(message.source)) visible.set(change.scope, change);
 	}
 	return visible;
@@ -913,7 +925,7 @@ async function reconcileInstructionContext(agent, resolved, versionCache, fileSy
 	if (options.includeBaselineScopes) for (const scope of baselineScopes) scopes.add(scope);
 	for (const message of options.scopeMessages) {
 		/* v8 ignore next -- the plugin passes its workspace-only pending projection. */
-		if (!isWorkspaceContextSource(message.source)) continue;
+		if (!isAgentInstructionsSource(message.source)) continue;
 		for (const change of workspaceInstructionChanges(message.source)) {
 			if (!options.includeBaselineScopes && baselineScopes.has(change.scope)) continue;
 			scopes.add(change.scope);
@@ -1041,7 +1053,7 @@ async function reconcileInstructionContext(agent, resolved, versionCache, fileSy
 	const rendered = renderInstructionChanges(items, resolved.maxBytes);
 	if (rendered.text.length === 0 || rendered.changes.length === 0) return void 0;
 	return {
-		context: workspaceContextHook(rendered.text, rendered.changes),
+		context: agentInstructionsHook(rendered.text, rendered.changes),
 		versionUpdates: retainedInstructionVersionUpdates(versionUpdates, rendered.changes)
 	};
 }
@@ -1057,14 +1069,16 @@ async function reconcileInstructionContext(agent, resolved, versionCache, fileSy
 *
 * @module @deepseek-ai/dsh-agent-instructions
 */
+/** Services required by workspace instruction projection. */
+const inject = ["sessionProjections"];
 function visibleBaselineSource(agent, authorityMessages) {
 	for (const message of authorityMessages.toReversed()) if (message.source.kind === "agent-instructions" && message.source.baseline === true) return message.source;
 	for (const seq of agent.session.surface.nodes.toReversed()) {
-		const event = agent.session.events[seq];
+		const event = agent.session.eventAt(seq);
 		if (event?.type === "user/message" && event.data.source.kind === "agent-instructions" && event.data.source.baseline === true) return event.data.source;
 	}
 }
-function isWorkspaceContext(message) {
+function isAgentInstructionsMessage(message) {
 	return message.source.kind === "agent-instructions";
 }
 function sameContextPayload(left, right) {
@@ -1093,7 +1107,6 @@ function apply(ctx, config) {
 		executionTouches.clear();
 	}, "agent-instructions.projectionLifecycle");
 	const projectionTails = /* @__PURE__ */ new WeakMap();
-	const openSteps = /* @__PURE__ */ new WeakMap();
 	const stepTouches = /* @__PURE__ */ new WeakMap();
 	const compose = async (agent, signal, claimed, pending, touchedPaths = []) => {
 		signal.throwIfAborted();
@@ -1145,7 +1158,7 @@ function apply(ctx, config) {
 			}
 			for (const [scope, state] of baseline.versions) versionStates?.set(scope, state);
 			if (!keepVisibleBaseline && instructions !== void 0 && instructions.rendered.text.length > 0) {
-				const baselineContent = workspaceContextMessage(instructions.rendered.text).content;
+				const baselineContent = agentInstructionsMessage(instructions.rendered.text).content;
 				content.push(...baselineContent);
 				const replacementScopes = new Set(baseline.changes.keys());
 				const baselineChanges = [...replacePreviousBaseline ? visibleBaseline.changes.flatMap((change) => change.action === "remove" || replacementScopes.has(change.scope) ? [] : [{
@@ -1196,9 +1209,9 @@ function apply(ctx, config) {
 		});
 	};
 	const syncInbox = (agent, claimed, desired) => {
-		const pending = agent.inbox.nextStep.filter(isWorkspaceContext);
+		const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage);
 		const alreadySupplied = desired !== void 0 && (claimed.some((message) => sameContextPayload(message, desired)) || agent.session.surface.nodes.some((seq) => {
-			const event = agent.session.events[seq];
+			const event = agent.session.eventAt(seq);
 			return event?.type === "user/message" && sameContextPayload(event.data, desired);
 		}));
 		if (desired === void 0 || alreadySupplied) {
@@ -1216,7 +1229,7 @@ function apply(ctx, config) {
 		for (const message of pending.slice(1)) agent.inbox.remove(message.id);
 	};
 	const composeAndSync = async (agent, signal, claimed, touchedPaths = []) => {
-		const desired = await compose(agent, signal, claimed, agent.inbox.nextStep.filter(isWorkspaceContext), touchedPaths);
+		const desired = await compose(agent, signal, claimed, agent.inbox.nextStep.filter(isAgentInstructionsMessage), touchedPaths);
 		signal.throwIfAborted();
 		syncInbox(agent, claimed, desired);
 	};
@@ -1234,13 +1247,9 @@ function apply(ctx, config) {
 		while ((projection = projectionTails.get(agent)) !== void 0) await projection;
 	};
 	const stepIsOpen = (session) => {
-		const known = openSteps.get(session);
-		if (known !== void 0) return known;
-		let open = false;
-		for (const event of session.events) if (event.type === "step/start") open = true;
-		else if (event.type === "step/end" || event.type === "turn/end") open = false;
-		openSteps.set(session, open);
-		return open;
+		const boundary = ctx.sessionProjections.stateOf(session, "turnBoundary");
+		if (boundary === void 0) throw new Error("agent-instructions requires the turnBoundary session projection");
+		return boundary.openTurnStartSeq !== null && boundary.lastStepBoundary?.kind === "start" && boundary.lastStepBoundary.seq > boundary.openTurnStartSeq;
 	};
 	const projectTouch = (touch) => {
 		const session = touch.agent.session;
@@ -1253,16 +1262,7 @@ function apply(ctx, config) {
 		else pending.push(touch);
 	};
 	ctx.on("session/event", (session, event) => {
-		if (event.type === "step/start") {
-			openSteps.set(session, true);
-			return;
-		}
-		if (event.type === "turn/end") {
-			openSteps.set(session, false);
-			return;
-		}
 		if (event.type !== "step/end") return;
-		openSteps.set(session, false);
 		const pending = stepTouches.get(session);
 		if (pending === void 0) return;
 		stepTouches.delete(session);
@@ -1271,7 +1271,7 @@ function apply(ctx, config) {
 	ctx.on("agent/pre-step", async ({ agent, messages, step, signal }, next) => {
 		const decision = await next();
 		await waitForProjections(agent);
-		const pending = agent.inbox.nextStep.filter(isWorkspaceContext);
+		const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage);
 		const desired = await compose(agent, signal, messages, pending);
 		signal.throwIfAborted();
 		if (decision.kind === "reject" || step === 1 && decision.messages.length === 0) {
@@ -1309,4 +1309,4 @@ function apply(ctx, config) {
 	});
 }
 //#endregion
-export { Config, apply, discoverBaselineInstructionFiles, loadBaselineInstructions, name, renderWorkspaceContext };
+export { Config, apply, discoverBaselineInstructionFiles, inject, loadBaselineInstructions, name, renderAgentInstructions };

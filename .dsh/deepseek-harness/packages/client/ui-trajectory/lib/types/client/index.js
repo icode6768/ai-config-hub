@@ -1,4 +1,5 @@
 import { createTrajectoryDurationStore } from "./duration-store.js";
+import { createTrajectoryStringWrappingStore } from "./string-wrapping-store.js";
 import { en, NS, zh } from "./locales.js";
 import { registerTrajectoryAssistantDefinition } from "./trajectory-assistant-definition.js";
 import { registerTrajectoryCompactionDefinitions } from "./trajectory-compaction-definition.js";
@@ -34,6 +35,7 @@ export function apply(ctx) {
     // re-registration.
     const t = ctx.locale.bind(NS);
     const duration = createTrajectoryDurationStore();
+    const stringWrapping = createTrajectoryStringWrappingStore();
     registerTrajectoryMessageDefinitions(ctx);
     registerTrajectoryRequestHeaderDefinition(ctx);
     registerTrajectoryAssistantDefinition(ctx);
@@ -61,6 +63,10 @@ export function apply(ctx) {
             const trajectory = ctx.uiConversation.binding(sessionId).target('trajectory');
             return {
                 hooks: { duration },
+                jsonStringWrapping: {
+                    getDefault: () => stringWrapping.getSnapshot(),
+                    setDefault: (value) => { stringWrapping.set(value); },
+                },
                 loadOlder: async () => {
                     const before = trajectory.getSnapshot();
                     await session.loadOlder();

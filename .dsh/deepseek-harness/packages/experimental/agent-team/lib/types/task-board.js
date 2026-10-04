@@ -3,11 +3,8 @@ import { TeamError } from "./error.js";
 import { resolveActiveMember } from "./roster.js";
 import { assertTaskGraphCandidate, TeamTaskGraphError } from "./task-graph.js";
 import { TeamId, TeamTaskId } from "./types.js";
+import { projectTaskView, taskReady } from "./task-view.js";
 import { requiredText, writeScope } from "./validation.js";
-/** Whether two normalized file or directory prefixes overlap on path components. */
-function scopesOverlap(left, right) {
-    return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
-}
 const TASK_GRAPH_ERROR_CODES = {
     missing: 'TEAM_TASK_NOT_FOUND',
     duplicate: 'TEAM_INVALID_ARGUMENT',
@@ -35,12 +32,12 @@ export class TeamTaskBoard {
         const { root } = membership;
         return this.journal.transact(root.id, async () => {
             const state = this.journal.state(root);
-            const active = [...state.tasks.values()].filter(task => task.status !== 'deleted').length;
+            const active = state.tasks.filter(task => task.status !== 'deleted').length;
             if (active >= this.maxTasks) {
                 throw new TeamError(`Team task limit ${this.maxTasks} reached`, 'TEAM_TASK_LIMIT');
             }
             const id = TeamTaskId(`task-${state.nextTaskNumber}`);
-            if (state.tasks.has(id)) {
+            if (state.tasks.some(task => task.id === id)) {
                 throw new TeamError('Team task id space exhausted', 'TEAM_TASK_LIMIT');
             }
             const task = {
@@ -53,8 +50,8 @@ export class TeamTaskBoard {
                 writeScopes: this.writeScopes(request.writeScopes ?? []),
             };
             this.assertTaskGraph(state, task);
-            await this.journal.appendAndFlush(root, 'team/task', { version: 1, teamId: TeamId(root.id), task });
-            return this.taskView(root, state, task);
+            await this.journal.appendAndFlush(root, 'team/task', { version: 2, teamId: TeamId(root.id), task });
+            return projectTaskView(state, task);
         });
     }
     /**
@@ -66,10 +63,10 @@ export class TeamTaskBoard {
     get(membership, id) {
         const { root } = membership;
         const state = this.journal.state(root);
-        const task = state.tasks.get(id);
+        const task = state.tasks.find(candidate => candidate.id === id);
         if (task === undefined)
             throw new TeamError(`team task "${id}" not found`, 'TEAM_TASK_NOT_FOUND');
-        return this.taskView(root, state, task);
+        return projectTaskView(state, task);
     }
     /**
      * List current non-deleted tasks in numeric creation order.
@@ -79,9 +76,9 @@ export class TeamTaskBoard {
     list(membership) {
         const { root } = membership;
         const state = this.journal.state(root);
-        return [...state.tasks.values()]
+        return state.tasks
             .filter(task => task.status !== 'deleted')
-            .map(task => this.taskView(root, state, task));
+            .map(task => projectTaskView(state, task));
     }
     /**
      * Compare-and-set one authorized task transition.
@@ -94,7 +91,7 @@ export class TeamTaskBoard {
         const root = membership.root;
         return this.journal.transact(root.id, async () => {
             const state = this.journal.state(root);
-            const current = state.tasks.get(request.taskId);
+            const current = state.tasks.find(task => task.id === request.taskId);
             if (current === undefined)
                 throw new TeamError(`team task "${request.taskId}" not found`, 'TEAM_TASK_NOT_FOUND');
             if (current.revision !== request.expectedRevision) {
@@ -114,7 +111,7 @@ export class TeamTaskBoard {
                     if (current.ownerId !== undefined && current.ownerId !== caller.id) {
                         throw new TeamError(`team task "${current.id}" is owned by another member`, 'TEAM_TASK_ALREADY_CLAIMED');
                     }
-                    if (current.status !== 'pending' || !this.taskReady(state, current)) {
+                    if (current.status !== 'pending' || !taskReady(state, current)) {
                         throw new TeamError(`team task "${current.id}" is not ready to claim`, 'TEAM_TASK_BLOCKED');
                     }
                     next = { ...current, status: 'in_progress', ownerId: caller.id };
@@ -167,7 +164,7 @@ export class TeamTaskBoard {
                         next = this.withoutOwner({ ...current, status: 'pending' });
                         break;
                     }
-                    if (!this.taskReady(state, current))
+                    if (!taskReady(state, current))
                         throw new TeamError(`team task "${current.id}" is blocked`, 'TEAM_TASK_BLOCKED');
                     const assignee = resolveActiveMember(root, state, request.owner);
                     next = { ...current, status: 'in_progress', ownerId: assignee.id };
@@ -175,7 +172,7 @@ export class TeamTaskBoard {
                 }
                 case 'delete': {
                     authorizeOwner();
-                    const dependent = [...state.tasks.values()].find(task => task.status !== 'deleted' && task.id !== current.id && task.blockedBy.includes(current.id));
+                    const dependent = state.tasks.find(task => task.status !== 'deleted' && task.id !== current.id && task.blockedBy.includes(current.id));
                     if (dependent !== undefined) {
                         throw new TeamError(`team task "${current.id}" still blocks "${dependent.id}"`, 'TEAM_TASK_HAS_DEPENDENTS');
                     }
@@ -191,8 +188,8 @@ export class TeamTaskBoard {
                 revision: current.revision + 1,
             };
             this.assertTaskGraph(state, task);
-            await this.journal.appendAndFlush(root, 'team/task', { version: 1, teamId: TeamId(root.id), task });
-            return this.taskView(root, state, task);
+            await this.journal.appendAndFlush(root, 'team/task', { version: 2, teamId: TeamId(root.id), task });
+            return projectTaskView(state, task);
         });
     }
     /** Validate and de-duplicate dependency ids against the current task graph. */
@@ -204,7 +201,7 @@ export class TeamTaskBoard {
                 throw new TeamError('a team task cannot block itself', 'TEAM_TASK_DEPENDENCY_CYCLE');
             if (seen.has(id))
                 throw new TeamError(`duplicate blocker "${id}"`, 'TEAM_INVALID_ARGUMENT');
-            const task = state.tasks.get(id);
+            const task = state.tasks.find(candidate => candidate.id === id);
             if (task === undefined || task.status === 'deleted') {
                 throw new TeamError(`blocker task "${id}" not found`, 'TEAM_TASK_NOT_FOUND');
             }
@@ -229,47 +226,10 @@ export class TeamTaskBoard {
             throw new TeamError(error.message, TASK_GRAPH_ERROR_CODES[error.violation], { cause: error });
         }
     }
-    /** Whether all current blockers completed. */
-    taskReady(state, task) {
-        return task.blockedBy.every(id => state.tasks.get(id)?.status === 'completed');
-    }
     /** Remove an optional owner field under exactOptionalPropertyTypes. */
     withoutOwner(task) {
         const { ownerId: _ownerId, ...without } = task;
         return without;
-    }
-    /**
-     * Build one task view with owner name, readiness, and advisory write overlaps.
-     * A committing caller may pass its pre-append fold because `task` supplies the
-     * new value explicitly; owner names, blocker readiness, and other task scopes
-     * do not change when that snapshot is appended.
-     */
-    taskView(root, state, task) {
-        const ownerName = task.ownerId === undefined
-            ? undefined
-            : task.ownerId === root.id
-                ? 'lead'
-                : state.members.get(task.ownerId)?.name;
-        const warnings = new Set();
-        for (const other of state.tasks.values()) {
-            if (other.id === task.id || other.status !== 'in_progress')
-                continue;
-            if (task.writeScopes.some(left => other.writeScopes.some(right => scopesOverlap(left, right)))) {
-                warnings.add(`write scopes overlap with ${other.id}`);
-            }
-        }
-        return {
-            id: task.id,
-            revision: task.revision,
-            subject: task.subject,
-            description: task.description,
-            status: task.status,
-            blockedBy: structuredClone(task.blockedBy),
-            writeScopes: structuredClone(task.writeScopes),
-            ...ownerName === undefined ? {} : { ownerName },
-            ready: task.status === 'pending' && this.taskReady(state, task),
-            writeScopeWarnings: [...warnings],
-        };
     }
 }
 //# sourceMappingURL=task-board.js.map

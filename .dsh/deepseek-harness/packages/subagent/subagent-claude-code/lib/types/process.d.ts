@@ -15,7 +15,7 @@ export declare function sdkEnvironmentOverlay(env: SpawnOptions['env']): NodeJS.
 /**
  * Translate one official SDK spawn request to the shared process owner.
  * @param options - command, arguments, workspace, environment, and forwarded signal from the SDK.
- * @param graceMs - process-tree termination grace.
+ * @param graceMs - managed-range termination grace.
  * @returns the fully explicit shared subprocess request.
  */
 export declare function claudeSpawnSpec(options: SpawnOptions, graceMs: number): SubprocessSpawnSpec;
@@ -32,10 +32,10 @@ export declare class ManagedClaudeCodeProcess implements SpawnedProcess {
     private killRequested;
     /**
      * Project a managed process with piped stdin and stdout.
-     * @param child - shared handle that remains the process-tree authority.
+     * @param child - shared handle that remains the managed-range authority.
      */
     constructor(child: SubprocessHandle);
-    /** Whether the SDK has requested managed tree termination. */
+    /** Whether the SDK has requested managed-range termination. */
     get killed(): boolean;
     /** Direct-child exit code, or null while running or after signal exit. */
     get exitCode(): number | null;
@@ -44,7 +44,7 @@ export declare class ManagedClaudeCodeProcess implements SpawnedProcess {
     /** Exact managed-process outcome after exit, or undefined while running. */
     get outcome(): SubprocessOutcome | undefined;
     /**
-     * Route the SDK's termination request to the tree-scoped process owner.
+     * Route the SDK's termination request to the managed-range process owner.
      * @param _signal - SDK-selected signal; the shared seam owns its escalation ladder.
      * @returns false only after exit or a previous termination request.
      */

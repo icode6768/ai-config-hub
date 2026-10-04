@@ -4,7 +4,6 @@
  * @module @deepseek-ai/dsh-terminal-bash
  */
 import { TerminalBackendCleanupError } from '@deepseek-ai/dsh-terminal';
-import { effectiveSandboxMode } from '@deepseek-ai/dsh-sandbox-policy';
 import { ENCODING_PREAMBLE } from '@deepseek-ai/dsh-pwsh-local';
 import { resolveConfig, validateConfig } from "./config.js";
 import { LocalPtySession } from "./session.js";
@@ -12,17 +11,22 @@ import { CONTROLLED_PROMPT } from "./sanitize.js";
 export { Config } from "./config.js";
 /** Cordis plugin name. */
 export const name = 'terminal-bash';
-/** Required services: PTY registry, shared confinement policy, and process substrate. */
-export const inject = ['terminals', 'sandboxPolicy', 'subprocess'];
+/** Required services: terminal registry, shared confinement policy, projection registry, and process substrate. */
+export const inject = ['terminals', 'sandboxPolicy', 'sessionProjections', 'subprocess'];
 const sandboxModeFences = new WeakMap();
 function ensureSandboxModeFence(ctx, owner) {
     const existing = sandboxModeFences.get(owner);
     if (existing !== undefined) {
         existing.pty = ctx.terminals;
         existing.sandboxPolicy = ctx.sandboxPolicy;
+        existing.sessionProjections = ctx.sessionProjections;
         return;
     }
-    const state = { pty: ctx.terminals, sandboxPolicy: ctx.sandboxPolicy };
+    const state = {
+        pty: ctx.terminals,
+        sandboxPolicy: ctx.sandboxPolicy,
+        sessionProjections: ctx.sessionProjections,
+    };
     sandboxModeFences.set(owner, state);
     owner.ctx.on('internal/dispatch', (_mode, eventName, args) => {
         if (eventName !== 'session/event')
@@ -30,7 +34,8 @@ function ensureSandboxModeFence(ctx, owner) {
         const [session, event] = args;
         if (session !== owner.session || event.type !== 'sandbox/mode')
             return;
-        const currentMode = effectiveSandboxMode(session.events) ?? state.sandboxPolicy.defaultMode;
+        const folded = state.sessionProjections.stateOf(session, 'sandboxMode') ?? null;
+        const currentMode = folded ?? state.sandboxPolicy.defaultMode;
         if (event.data.mode === currentMode || !state.pty.hasOwnerActivity(owner))
             return;
         throw new Error(`cannot change sandbox mode from "${currentMode}" to "${event.data.mode}" while persistent terminal sessions are open or being created; wait for creation to settle and close them first`);
@@ -69,7 +74,7 @@ function childEnvironment(spec, dialect) {
  * input are unreliable under PSReadLine.
  */
 export const PWSH_PROMPT_SETUP = "function prompt { [Console]::Write([char]27 + ']133;D;' + [int]$LASTEXITCODE + [char]7); '" + CONTROLLED_PROMPT + "' }";
-function spawnArgv(ctx, config, policy) {
+async function spawnArgv(ctx, config, policy, signal) {
     const argv = [config.shellPath, ...config.shellArgs];
     if (policy.mode === 'danger-full-access')
         return argv;
@@ -78,7 +83,7 @@ function spawnArgv(ctx, config, policy) {
         throw new Error(`terminal-bash: sandbox mode "${policy.mode}" requires a ctx.sandbox provider in the execution world`);
     }
     // Re-state the discriminant because object spread does not preserve its narrowed type.
-    return sandbox.confine(argv, { ...policy, mode: policy.mode }).argv;
+    return (await sandbox.confine(argv, { ...policy, mode: policy.mode }, signal)).argv;
 }
 // TODO(pty-initialize-race-home): Fold this outer abort race into
 // LocalPtySession.initialize when the send-state consolidation lands; the
@@ -142,6 +147,16 @@ async function startupSession(session, dialect, timeoutMs, signal) {
             signal.removeEventListener('abort', onAbort);
     }
 }
+/** Reject a failed startup only after its unpublished resources reach quiescence. */
+async function rejectAfterStartupCleanup(error, cleanup) {
+    try {
+        await cleanup();
+    }
+    catch (cleanupError) {
+        throw new TerminalBackendCleanupError(error, cleanupError);
+    }
+    throw error;
+}
 /** Local shell backend registered under the configured type. */
 export class BashTerminalBackend {
     ctx;
@@ -160,7 +175,8 @@ export class BashTerminalBackend {
         spec.signal?.throwIfAborted();
         ensureSandboxModeFence(this.ctx, spec.owner);
         const policy = this.ctx.sandboxPolicy.resolve({ session: spec.owner.session });
-        const argv = spawnArgv(this.ctx, this.config, policy);
+        const argv = await spawnArgv(this.ctx, this.config, policy, spec.signal);
+        spec.signal?.throwIfAborted();
         if (argv[0] === undefined)
             throw new Error('terminal-bash: sandbox returned empty argv');
         const terminal = await this.spawnTerminal({
@@ -169,22 +185,23 @@ export class BashTerminalBackend {
             env: childEnvironment(spec, this.config.shellDialect),
             rows: this.config.rows,
             cols: this.config.cols,
+            terminalType: 'dumb',
             graceMs: this.config.disposeGraceMs,
             signal: spec.signal,
         });
-        const session = this.createSession(terminal, this.config);
+        let session;
+        try {
+            session = this.createSession(terminal, this.config);
+        }
+        catch (error) {
+            return rejectAfterStartupCleanup(error, () => terminal.terminate());
+        }
         try {
             await startupSession(session, this.config.shellDialect, this.config.timeoutMs, spec.signal);
             return session;
         }
         catch (error) {
-            try {
-                await session.close('PTY startup failed');
-            }
-            catch (closeError) {
-                throw new TerminalBackendCleanupError(error, closeError);
-            }
-            throw error;
+            return rejectAfterStartupCleanup(error, () => session.close('PTY startup failed'));
         }
     }
 }

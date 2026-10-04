@@ -11,7 +11,7 @@
  */
 import { DeepSeekHarness, type DeepSeekHarnessOptions } from '@deepseek-ai/dsh-sdk-client';
 import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
-import { type TurnEndReason } from '@deepseek-ai/dsh-session';
+import type { TurnEndReason } from '@deepseek-ai/dsh-session';
 import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@deepseek-ai/dsh-subagent';
 /** Resolved spawn spec for an SDK runtime child process (no defaults — see Config). */
 export interface SdkRunSpec {

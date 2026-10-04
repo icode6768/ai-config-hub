@@ -8,8 +8,8 @@ window.__ModuleLoader__.load({
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-workflow-run\src\client\WorkflowRunPanel.module.css.mjs
-		const css = "._9P5pSW_root{width:100%;min-width:0}._9P5pSW_runHeader{box-sizing:border-box;background:var(--dsw-alias-bg-module-platform);border-radius:8px;align-items:center;gap:6px;width:100%;min-width:0;height:32px;padding:0 8px;display:flex}._9P5pSW_runHeader:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}._9P5pSW_runLeading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;margin-right:0;display:inline-flex}._9P5pSW_runTitle{max-width:42%;color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size-secondary,13px);font-weight:510;line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap;flex:none;overflow:hidden}._9P5pSW_runSummary{min-width:0;color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(18px + var(--dsh-content-font-delta-secondary,0px));text-overflow:ellipsis;white-space:nowrap;flex:1;overflow:hidden}._9P5pSW_statusTail{height:20px;color:var(--dsw-alias-label-secondary);white-space:nowrap;flex:none;align-items:center;gap:4px;font-size:11px;font-weight:510;line-height:16px;display:inline-flex;overflow:hidden}._9P5pSW_phaseHeader{box-sizing:border-box;align-items:center;gap:6px;width:100%;min-width:0;height:32px;display:flex}._9P5pSW_phaseHeader:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px;border-radius:4px}._9P5pSW_phaseLeading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;margin-right:0;display:inline-flex}._9P5pSW_phaseTitle{min-width:0;max-width:42%;color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap;flex:0 auto;overflow:hidden}._9P5pSW_phaseCount{min-width:0;color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));text-overflow:ellipsis;white-space:nowrap;flex:1;overflow:hidden}._9P5pSW_phaseStatus{width:calc(132px + var(--dsh-content-font-delta-secondary,0px) * 10);color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));text-align:right;text-overflow:ellipsis;white-space:nowrap;flex:none;overflow:hidden}._9P5pSW_separator{background:var(--dsw-alias-label-tertiary);border-radius:50%;flex:none;width:2px;height:2px}._9P5pSW_phaseList{flex-direction:column;gap:4px;min-width:0;padding:4px 0 0 16px;display:flex}._9P5pSW_phase{min-width:0}._9P5pSW_members{flex-direction:column;gap:2px;min-width:0;padding:0 0 0 16px;display:flex}._9P5pSW_memberRow,._9P5pSW_memberButton{width:100%;min-width:0;min-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;background:0 0;border:0;border-radius:4px;align-items:center;gap:12px;padding:0;display:flex}._9P5pSW_memberButton{cursor:pointer}._9P5pSW_memberButton ._9P5pSW_memberLabel{color:var(--dsw-alias-state-business-primary);text-underline-position:from-font;text-decoration:underline}._9P5pSW_dotSlot{width:16px;height:calc(24px + var(--dsh-content-font-delta,0px));flex:none;justify-content:center;align-items:center;display:inline-flex;overflow:hidden}._9P5pSW_memberButton:focus-visible{outline:none}._9P5pSW_memberButton:focus-visible ._9P5pSW_memberLabelWrap{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}._9P5pSW_memberLabelWrap{min-width:0;height:calc(24px + var(--dsh-content-font-delta,0px));border-radius:4px;flex:1;align-items:center;padding:0 2px;display:flex;overflow:hidden}._9P5pSW_memberLabel{min-width:0;color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap;flex:1;overflow:hidden}._9P5pSW_memberStatus{width:64px;color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));text-align:right;text-overflow:ellipsis;white-space:nowrap;flex:none;overflow:hidden}._9P5pSW_empty{color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));padding:0}@media (width<=560px){._9P5pSW_phaseList,._9P5pSW_members{padding-left:12px}}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-workflow-run\src\client\WorkflowRunPanel.module.css.mjs
+		const css = ".v6kheG_root{width:100%;min-width:0}.v6kheG_runHeader{box-sizing:border-box;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);align-items:center;gap:6px;width:100%;min-width:0;height:32px;padding:0 8px;display:flex}.v6kheG_runHeader:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}.v6kheG_runLeading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:inherit;flex:none;justify-content:center;align-items:center;margin-right:0;display:inline-flex}.v6kheG_runTitle{max-width:42%;color:inherit;font-size:var(--dsh-content-font-size-secondary,13px);font-weight:510;line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap;flex:none;overflow:hidden}.v6kheG_runSummary{min-width:0;color:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(18px + var(--dsh-content-font-delta-secondary,0px));text-overflow:ellipsis;white-space:nowrap;flex:1;overflow:hidden}.v6kheG_statusTail{height:20px;color:inherit;white-space:nowrap;flex:none;align-items:center;gap:4px;font-size:11px;font-weight:510;line-height:16px;display:inline-flex;overflow:hidden}.v6kheG_phaseHeader{box-sizing:border-box;align-items:center;gap:6px;width:100%;min-width:0;height:32px;display:flex}.v6kheG_phaseHeader:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px;border-radius:var(--dsw-radius-md)}.v6kheG_phaseLeading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:inherit;flex:none;justify-content:center;align-items:center;margin-right:0;display:inline-flex}.v6kheG_phaseTitle{min-width:0;max-width:42%;color:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap;flex:0 auto;overflow:hidden}.v6kheG_phaseCount{min-width:0;color:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));text-overflow:ellipsis;white-space:nowrap;flex:1;overflow:hidden}.v6kheG_phaseStatus{width:calc(132px + var(--dsh-content-font-delta-secondary,0px) * 10);color:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));text-align:right;text-overflow:ellipsis;white-space:nowrap;flex:none;overflow:hidden}.v6kheG_separator{corner-shape:round;background:var(--dsw-alias-label-tertiary);border-radius:50%;flex:none;width:2px;height:2px}.v6kheG_phaseList{flex-direction:column;gap:4px;min-width:0;padding:4px 0 0 16px;display:flex}.v6kheG_phase{min-width:0}.v6kheG_members{flex-direction:column;gap:2px;min-width:0;padding:0 0 0 16px;display:flex}.v6kheG_memberRow,.v6kheG_memberButton{width:100%;min-width:0;min-height:calc(24px + var(--dsh-content-font-delta,0px));border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;background:0 0;border:0;align-items:center;gap:12px;padding:0;display:flex}.v6kheG_memberButton{cursor:pointer}.v6kheG_memberButton .v6kheG_memberLabel{color:var(--dsw-alias-link);font-weight:500;text-decoration:none}.v6kheG_memberButton:hover .v6kheG_memberLabel,.v6kheG_memberButton:focus-visible .v6kheG_memberLabel{text-underline-offset:3px;text-decoration:underline dotted}.v6kheG_dotSlot{width:16px;height:calc(24px + var(--dsh-content-font-delta,0px));flex:none;justify-content:center;align-items:center;display:inline-flex;overflow:hidden}.v6kheG_memberButton:focus-visible{outline:none}.v6kheG_memberButton:focus-visible .v6kheG_memberLabelWrap{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}.v6kheG_memberLabelWrap{min-width:0;height:calc(24px + var(--dsh-content-font-delta,0px));border-radius:var(--dsw-radius-sm);flex:1;align-items:center;padding:0 2px;display:flex;overflow:hidden}.v6kheG_memberLabel{min-width:0;color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap;flex:1;overflow:hidden}.v6kheG_memberStatus{width:64px;color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));text-align:right;text-overflow:ellipsis;white-space:nowrap;flex:none;overflow:hidden}.v6kheG_empty{color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));padding:0}@media (width<=560px){.v6kheG_phaseList,.v6kheG_members{padding-left:12px}}.v6kheG_headerContent{flex:1}.v6kheG_headerContentLayout{gap:6px}";
 		const tagId = "@deepseek-ai/dsh-client-ui-workflow-run/WorkflowRunPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -19,28 +19,30 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var WorkflowRunPanel_module_css_default = {
-			"dotSlot": "_9P5pSW_dotSlot",
-			"empty": "_9P5pSW_empty",
-			"memberButton": "_9P5pSW_memberButton",
-			"memberLabel": "_9P5pSW_memberLabel",
-			"memberLabelWrap": "_9P5pSW_memberLabelWrap",
-			"memberRow": "_9P5pSW_memberRow",
-			"memberStatus": "_9P5pSW_memberStatus",
-			"members": "_9P5pSW_members",
-			"phase": "_9P5pSW_phase",
-			"phaseCount": "_9P5pSW_phaseCount",
-			"phaseHeader": "_9P5pSW_phaseHeader",
-			"phaseLeading": "_9P5pSW_phaseLeading",
-			"phaseList": "_9P5pSW_phaseList",
-			"phaseStatus": "_9P5pSW_phaseStatus",
-			"phaseTitle": "_9P5pSW_phaseTitle",
-			"root": "_9P5pSW_root",
-			"runHeader": "_9P5pSW_runHeader",
-			"runLeading": "_9P5pSW_runLeading",
-			"runSummary": "_9P5pSW_runSummary",
-			"runTitle": "_9P5pSW_runTitle",
-			"separator": "_9P5pSW_separator",
-			"statusTail": "_9P5pSW_statusTail"
+			"dotSlot": "v6kheG_dotSlot",
+			"empty": "v6kheG_empty",
+			"headerContent": "v6kheG_headerContent",
+			"headerContentLayout": "v6kheG_headerContentLayout",
+			"memberButton": "v6kheG_memberButton",
+			"memberLabel": "v6kheG_memberLabel",
+			"memberLabelWrap": "v6kheG_memberLabelWrap",
+			"memberRow": "v6kheG_memberRow",
+			"memberStatus": "v6kheG_memberStatus",
+			"members": "v6kheG_members",
+			"phase": "v6kheG_phase",
+			"phaseCount": "v6kheG_phaseCount",
+			"phaseHeader": "v6kheG_phaseHeader",
+			"phaseLeading": "v6kheG_phaseLeading",
+			"phaseList": "v6kheG_phaseList",
+			"phaseStatus": "v6kheG_phaseStatus",
+			"phaseTitle": "v6kheG_phaseTitle",
+			"root": "v6kheG_root",
+			"runHeader": "v6kheG_runHeader",
+			"runLeading": "v6kheG_runLeading",
+			"runSummary": "v6kheG_runSummary",
+			"runTitle": "v6kheG_runTitle",
+			"separator": "v6kheG_separator",
+			"statusTail": "v6kheG_statusTail"
 		};
 		//#endregion
 		//#region lib/types/client/WorkflowRunPanel.js
@@ -168,18 +170,18 @@ window.__ModuleLoader__.load({
 			if (active.length === 0) return statusCount("completed", count("completed"), t);
 			return (active.includes("interrupted") && count("completed") > 0 ? ["completed", ...active] : active).map((status) => statusCount(status, count(status), t)).join(" · ");
 		}
-		function navigableMembers(sessions, phases, parentId) {
-			const ordinary = new Set(sessions.ids);
+		function navigableMembers(sessions, phases, parentId, statuses) {
+			const catalog = sessions.projectionsBySession[parentId];
 			const result = [];
 			for (const phase of phases) for (const member of phase.members) {
-				const summary = sessions.byId[member.childId];
-				if (member.status === "running" && ordinary.has(member.childId) && summary?.origin === "subagent" && summary.parentId === parentId && summary.running) result.push(member.childId);
+				const child = catalog?.values.subagentCatalog?.find((entry) => entry.id === member.childId);
+				if (member.status === "running" && child !== void 0 && (statuses.get(child.id)?.running ?? sessions.byId[child.id]?.running) === true) result.push(member.childId);
 			}
 			return result;
 		}
 		function RunHeader({ children, count, name, onToggle, open, status, t }) {
 			return (0, react_jsx_runtime.jsx)(StatusDisclosure, {
-				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {}),
+				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {}),
 				title: t("run.title", { name }),
 				open,
 				onToggle,
@@ -187,6 +189,8 @@ window.__ModuleLoader__.load({
 				previewChevron: false,
 				keepContentWhenOpen: true,
 				rowClassName: WorkflowRunPanel_module_css_default.runHeader,
+				contentClassName: WorkflowRunPanel_module_css_default.headerContent,
+				contentLayoutClassName: WorkflowRunPanel_module_css_default.headerContentLayout,
 				leadingClassName: WorkflowRunPanel_module_css_default.runLeading,
 				titleClassName: WorkflowRunPanel_module_css_default.runTitle,
 				collapsedContent: (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
@@ -207,7 +211,7 @@ window.__ModuleLoader__.load({
 				children
 			});
 		}
-		function MemberRow({ member, navigable, openSession, t }) {
+		function MemberRow({ member, navigable, openSession, parentSessionId, t }) {
 			const name = readableMember(member.label, t);
 			const [focused, setFocused] = (0, react.useState)(false);
 			const renderButton = navigable || focused;
@@ -250,17 +254,21 @@ window.__ModuleLoader__.load({
 					setFocused(false);
 				},
 				onClick: navigable ? () => {
-					openSession(member.childId);
+					openSession({
+						parentSessionId,
+						childSessionId: member.childId,
+						mode: "one-shot"
+					});
 				} : void 0,
 				children: content
 			});
 		}
-		function PhaseSection({ contentRef, onContentBlur, onToggle, open, pendingCleanCollapse, phase, navigable, openSession, t }) {
+		function PhaseSection({ contentRef, onContentBlur, onToggle, open, pendingCleanCollapse, phase, navigable, openSession, parentSessionId, t }) {
 			return (0, react_jsx_runtime.jsx)("div", {
 				className: WorkflowRunPanel_module_css_default.phase,
 				onMouseDownCapture: pendingCleanCollapse ? preventPendingHeaderFocus : void 0,
 				children: (0, react_jsx_runtime.jsx)(StatusDisclosure, {
-					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {}),
+					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {}),
 					title: readablePhase(phase.phase, t),
 					open,
 					onToggle,
@@ -268,6 +276,8 @@ window.__ModuleLoader__.load({
 					previewChevron: false,
 					keepContentWhenOpen: true,
 					rowClassName: WorkflowRunPanel_module_css_default.phaseHeader,
+					contentClassName: WorkflowRunPanel_module_css_default.headerContent,
+					contentLayoutClassName: WorkflowRunPanel_module_css_default.headerContentLayout,
 					leadingClassName: WorkflowRunPanel_module_css_default.phaseLeading,
 					titleClassName: WorkflowRunPanel_module_css_default.phaseTitle,
 					collapsedContent: (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
@@ -294,6 +304,7 @@ window.__ModuleLoader__.load({
 							member,
 							navigable: navigable.includes(member.childId),
 							openSession,
+							parentSessionId,
 							t
 						}, member.seq))
 					})
@@ -301,7 +312,7 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** Render one durable workflow run with status-driven run and phase disclosure. */
-		function WorkflowRunPanel({ node, sessionId, useSessions, openSession, t }) {
+		function WorkflowRunPanel({ node, sessionId, useSessions, useSessionStatus, openSession, t }) {
 			const phaseFacts = (0, react.useMemo)(() => node.data.phases.map((phase) => [phase.key, phaseDisclosureFacts(phase)]), [node.data.phases]);
 			const runFacts = (0, react.useMemo)(() => runDisclosureFacts(node.data.status, phaseFacts), [node.data.status, phaseFacts]);
 			const totalMembers = runFacts.activityCount;
@@ -311,7 +322,8 @@ window.__ModuleLoader__.load({
 			}));
 			const runContentRef = (0, react.useRef)(null);
 			const phaseContentRefs = (0, react.useRef)(/* @__PURE__ */ new Map());
-			const navigable = useSessions((sessions) => navigableMembers(sessions, node.data.phases, sessionId), _deepseek_ai_dsh_client_store.shallowEqual);
+			const statuses = useSessionStatus((value) => value);
+			const navigable = useSessions((sessions) => navigableMembers(sessions, node.data.phases, sessionId, statuses), _deepseek_ai_dsh_client_store.shallowEqual);
 			(0, react.useLayoutEffect)(() => {
 				setDisclosures((current) => {
 					const phases = /* @__PURE__ */ new Map();
@@ -427,6 +439,7 @@ window.__ModuleLoader__.load({
 								phase,
 								navigable,
 								openSession,
+								parentSessionId: sessionId,
 								t
 							}, phase.key);
 						})
@@ -619,6 +632,7 @@ window.__ModuleLoader__.load({
 		/** Required services for Definition, keyed renderer, navigation, and copy. */
 		const inject = [
 			"uiConversation",
+			"uiWorkspace",
 			"slots",
 			"sessions",
 			"locale"
@@ -634,8 +648,8 @@ window.__ModuleLoader__.load({
 				name: "conversation.chat.node",
 				key: "workflow-run",
 				locale: NS,
-				inject: () => ({ openSession: (id) => {
-					ctx.sessions.open(id);
+				inject: () => ({ openSession: (target) => {
+					ctx.uiWorkspace.openSession(target);
 				} })
 			}, WorkflowRunPanel));
 		}

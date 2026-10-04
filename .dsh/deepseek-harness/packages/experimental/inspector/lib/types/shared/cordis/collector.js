@@ -4,7 +4,7 @@ import { jsonByteLength } from "../json.js";
 import { CORDIS_TREE_SCHEMA_VERSION, } from "./snapshot.js";
 import { RealmObjectRegistry } from "./object-registry.js";
 const SHADOW = Symbol.for('cordis.shadow');
-/** Realm-local collector with a current live-object table. */
+/** Realm-local collector retaining Contexts without Cordis service-call shadow wrappers. */
 export class CordisTreeCollector {
     root;
     limits;
@@ -37,7 +37,7 @@ export class CordisTreeCollector {
                 children: [],
             };
             for (const child of info.children) {
-                if (child.fiber !== undefined && child.fiber.ctx === child.value) {
+                if (child.fiber !== undefined && unwrapContext(child.fiber.ctx) === child.value) {
                     const projected = fiberNode(child.fiber, child);
                     if (projected !== undefined)
                         node.children.push(projected);

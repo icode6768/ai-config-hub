@@ -1,10 +1,15 @@
 /** DeepSeek Files API upload reuse, invalidation, and quota recovery. @module dsh-llm-deepseek/file-store */
 import { LlmError } from '@deepseek-ai/dsh-llm';
 import { DeepSeekFilesClient, isFilesQuotaError } from "./files-api.js";
+import { messagesApiRoot } from "./messages-api.js";
 import { deepSeekFileScope, DeepSeekUploadIndex } from "./upload-index.js";
-/** DeepSeek chat accepts at most 32 MiB per image even when it is referenced by file id. */
-export const MAX_CHAT_IMAGE_BYTES = 32 * 1024 * 1024;
+/** Shared Files-store limit for each request image, including file-id references. */
+export const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 const OWNED_FILE_PREFIX = 'dsh-';
+/** The Files resource's parent URL identifies the upload namespace. */
+function fileScope(connection) {
+    return deepSeekFileScope(messagesApiRoot(connection.baseURL), JSON.stringify(Object.entries(connection.headers).sort(([left], [right]) => left.localeCompare(right))));
+}
 function abortReason(signal) {
     const reason = signal.reason;
     return reason instanceof Error
@@ -82,7 +87,7 @@ export class DeepSeekFileStore {
     client(connection) {
         return new DeepSeekFilesClient({
             baseURL: connection.baseURL,
-            apiKey: connection.apiKey,
+            headers: connection.headers,
             ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
         });
     }
@@ -96,7 +101,7 @@ export class DeepSeekFileStore {
      */
     ensureUploaded(version, connection, policy, signal) {
         signal?.throwIfAborted();
-        const scope = deepSeekFileScope(connection.baseURL, connection.apiKey);
+        const scope = fileScope(connection);
         const key = `${scope}\0${version.variantId}`;
         let active = this.inflight.get(key);
         if (active?.controller.signal.aborted) {
@@ -127,10 +132,10 @@ export class DeepSeekFileStore {
         return waitForUpload(shared, signal);
     }
     async ensureUploadedOnce(version, connection, policy, signal) {
-        if (version.bytes > MAX_CHAT_IMAGE_BYTES) {
-            throw new LlmError('DeepSeek chat image exceeds the 32 MiB per-image limit.', 'INVALID_REQUEST');
+        if (version.bytes > MAX_IMAGE_BYTES) {
+            throw new LlmError('DeepSeek image exceeds the 32 MiB per-image limit.', 'INVALID_REQUEST');
         }
-        const scope = deepSeekFileScope(connection.baseURL, connection.apiKey);
+        const scope = fileScope(connection);
         const now = this.now();
         const marginMs = policy.refreshMarginSeconds * 1_000;
         const cached = await this.index.get(scope, version.variantId, now, marginMs);
@@ -182,13 +187,12 @@ export class DeepSeekFileStore {
         return { record: committed.record, uploaded: committed.accepted };
     }
     /**
-     * Invalidate one exact local mapping after the chat endpoint rejects its remote id.
-     * @param version - request-image version whose remote generation failed.
-     * @param fileId - exact rejected file id.
+     * Invalidate exact local mappings in one index update after a model request rejects their remote ids.
+     * @param generations - request-image variants with the exact file id the request used for each.
      * @param connection - endpoint and API-key snapshot.
      */
-    async invalidate(version, fileId, connection) {
-        await this.index.remove(deepSeekFileScope(connection.baseURL, connection.apiKey), version.variantId, fileId);
+    async invalidate(generations, connection) {
+        await this.index.remove(fileScope(connection), generations);
     }
     /**
      * Delete the indexed remote file for one attachment and remove its local mapping.
@@ -199,12 +203,12 @@ export class DeepSeekFileStore {
      * @returns whether an indexed file existed and was deleted.
      */
     async release(version, connection, policy, signal) {
-        const scope = deepSeekFileScope(connection.baseURL, connection.apiKey);
+        const scope = fileScope(connection);
         const record = await this.index.get(scope, version.variantId, this.now(), policy.refreshMarginSeconds * 1_000);
         if (record === undefined)
             return false;
         await this.client(connection).delete(record.fileId, signal);
-        await this.index.remove(scope, version.variantId, record.fileId);
+        await this.index.remove(scope, [{ variantId: version.variantId, fileId: record.fileId }]);
         return true;
     }
     /**
@@ -218,26 +222,26 @@ export class DeepSeekFileStore {
         const client = this.client(connection);
         let after;
         const owned = [];
-        while (owned.length < count) {
+        while (true) {
             const page = await client.list({
                 ...after === undefined ? {} : { after },
                 limit: 1_000,
-                order: 'asc',
                 ...signal === undefined ? {} : { signal },
             });
             for (const file of page.data) {
                 if (!file.filename.startsWith(OWNED_FILE_PREFIX))
                     continue;
-                owned.push(file.id);
-                if (owned.length === count)
-                    break;
+                owned.push({ id: file.id, createdAt: file.createdAt });
             }
+            // The API offers no ascending-order query; retain the oldest candidates across every page.
+            owned.sort((left, right) => left.createdAt - right.createdAt);
+            owned.splice(count);
             if (!page.hasMore || page.lastId === undefined || page.lastId === after)
                 break;
             after = page.lastId;
         }
-        for (const fileId of owned)
-            await client.delete(fileId, signal);
+        for (const file of owned)
+            await client.delete(file.id, signal);
         return owned.length;
     }
     /**
@@ -254,7 +258,7 @@ export class DeepSeekFileStore {
             if (deleted < 1_000)
                 break;
         }
-        await this.index.clear(deepSeekFileScope(connection.baseURL, connection.apiKey));
+        await this.index.clear(fileScope(connection));
         return total;
     }
 }

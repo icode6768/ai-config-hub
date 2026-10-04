@@ -13,10 +13,10 @@ export declare function PendingSteeringBubble({ content, renderMessageImages, t 
     t: ChatViewSlotProps['t'];
 }): ReactNode;
 /**
- * Render one local submission echo with the exact visual language of the
- * durable user node that replaces it: draft text plus object-URL previews,
- * visible from the submit click until the durable `user/message` (or its
- * queue occurrence) renders.
+ * Render one local transcript or steering submission echo with the same
+ * visual language and surface marker as the Host occurrence that replaces
+ * it: draft text plus object-URL previews, visible from the submit click
+ * until the durable `user/message` or steering occurrence renders.
  * @param props - the session snapshot's pending submission and render seats.
  * @returns the echoed user bubble.
  */
@@ -26,7 +26,7 @@ export declare function PendingSubmissionBubble({ submission, renderMessageImage
     t: ChatViewSlotProps['t'];
 }): ReactNode;
 /** User and admitted-steering keyed Chat renderer. */
-export declare const UserMessageNodeView: import("react").MemoExoticComponent<({ node, renderMessageImages, t, }: ChatNodeViewProps<"user" | "steering">) => import("react").JSX.Element>;
+export declare const UserMessageNodeView: import("react").MemoExoticComponent<({ node, renderMessageImages, openFile, openSkill, t, }: ChatNodeViewProps<"user" | "steering">) => import("react").JSX.Element>;
 /** Injected-context keyed Chat renderer. */
 export declare const ContextMessageNodeView: import("react").MemoExoticComponent<({ node, t }: ChatNodeViewProps<"context">) => import("react").JSX.Element>;
 /** Automatic compaction keyed Chat renderer. */

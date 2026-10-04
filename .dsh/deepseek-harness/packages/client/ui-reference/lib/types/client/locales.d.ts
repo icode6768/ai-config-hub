@@ -10,6 +10,7 @@ export declare const NS = "reference";
  */
 export declare const zh: {
     'section.files': string;
+    'section.subagents': string;
     'section.sessions': string;
     'candidate.noCwd': string;
     'crumb.root': string;
@@ -31,6 +32,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** English dictionary, checked complete against the zh key set. */
 export declare const en: {
     'section.files': string;
+    'section.subagents': string;
     'section.sessions': string;
     'candidate.noCwd': string;
     'crumb.root': string;

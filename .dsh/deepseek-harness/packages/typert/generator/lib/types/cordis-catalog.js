@@ -218,16 +218,18 @@ export class CordisCatalogProjector {
     runtimeTypes(services, events) {
         const declarations = new Map();
         const ambiguous = new Set();
+        const maxDeclarationChars = this.policy.runtimeDeclarationMaxChars ?? DEFAULT_MAX_DECL_CHARS;
         for (const declaration of this.sourceDeclarations) {
-            if (declaration.face !== this.face.face || declaration.kind === 'enum'
-                || !/^packages\/[^/]+\/[^/]+\/src\/.+\.tsx?$/.test(declaration.location.file))
+            if (declaration.face !== this.face.face
+                || (!/^packages\/[^/]+\/[^/]+\/src\/.+\.tsx?$/.test(declaration.location.file)
+                    && !(declaration.kind === 'enum' && /^vendor\/[^/]+\/src\/.+\.ts$/.test(declaration.location.file))))
                 continue;
             if (declarations.has(declaration.name)) {
                 ambiguous.add(declaration.name);
                 continue;
             }
-            declarations.set(declaration.name, declaration.text.length > MAX_DECL_CHARS
-                ? `${declaration.text.slice(0, MAX_DECL_CHARS)} /* …truncated — full shape in source */`
+            declarations.set(declaration.name, declaration.text.length > maxDeclarationChars
+                ? `${declaration.text.slice(0, maxDeclarationChars)} /* …truncated — full shape in source */`
                 : declaration.text);
         }
         for (const name of ambiguous)
@@ -487,7 +489,7 @@ function signatureTypeNames(renderer, signature) {
     return [...names].sort();
 }
 /** Declarations longer than this render as a truncated stub. */
-const MAX_DECL_CHARS = 1500;
+const DEFAULT_MAX_DECL_CHARS = 1_500;
 /** Render one value as a single-quoted TypeScript literal. */
 function quote(value) {
     return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replaceAll('\n', '\\n')}'`;

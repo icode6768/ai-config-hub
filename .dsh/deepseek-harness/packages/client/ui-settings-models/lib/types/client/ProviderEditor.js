@@ -15,9 +15,9 @@ import { jsxs as _jsxs, jsx as _jsx, Fragment as _Fragment } from "react/jsx-run
  * Reasoning effort is deliberately absent: it is a per-MODEL capability, and
  * the models under one provider disagree about it, so a provider-scoped
  * control can only be set to a value some of them reject. The composer's
- * model picker offers each model its own levels; `settings.yaml` keeps the
+ * model picker offers each model its own levels; `cordis.patch.yml` keeps the
  * profile field for a deployment that knows its route. Everything else stays
- * owned by `settings.yaml`. Profile edits land as minimal `settings.mutate`
+ * owned by `cordis.patch.yml`. Profile edits land as minimal `settings.mutate`
  * path ops against the stored section — the card names only the fields it can
  * see instead of rebuilding the whole subtree from a partial descriptor.
  */
@@ -26,10 +26,9 @@ import { DeepSeekModelsEditor, modelDrafts, validateDeepSeekModels, } from "./De
 import { apiKeyFailure } from "./apiKey.js";
 import { EditorFooter } from "./EditorFooter.js";
 import { ModelListEditor } from "./ModelListEditor.js";
-import { deriveKeyRef, messageOf, protocolChoices } from "./store.js";
+import { deriveKeyRef, protocolChoices } from "./store.js";
+import { protocolLabel } from "./protocol-label.js";
 import styles from './ModelsSection.module.css';
-/** The public DeepSeek endpoint shown as the deepseek base-URL placeholder. */
-const DEEPSEEK_PUBLIC_BASE_URL = 'https://api.deepseek.com';
 /** A user-section subtree as a plain draft object (absent → empty). */
 function draftAt(schema, namespace, path) {
     const subtree = schema.getPath(namespace.user, path);
@@ -85,11 +84,14 @@ function refFor(schema, namespace, path, provider) {
  * @returns the editor card.
  */
 export function ProviderEditor(props) {
-    const { namespace, schema, settingsPath, api, t } = props;
+    const { namespace, schema, settingsPath, operations, t } = props;
     const [draft, setDraft] = useState(() => draftAt(schema, namespace, settingsPath));
     const [keyDraft, setKeyDraft] = useState('');
     const [keyState, setKeyState] = useState(undefined);
     const [busy, setBusy] = useState(false);
+    const [listBusy, setListBusy] = useState(false);
+    const { onBusyChange } = props;
+    useEffect(() => { onBusyChange?.(busy || listBusy); }, [busy, listBusy, onBusyChange]);
     const [failure, setFailure] = useState(undefined);
     // A settings success advances both retry baselines immediately. Keeping the
     // derived fields in the draft prevents a pushed namespace refresh from
@@ -100,7 +102,9 @@ export function ProviderEditor(props) {
     const node = useMemo(() => schema.nodeAtPath(root, settingsPath), [root, schema, settingsPath]);
     const fallback = schema.getPath(namespace.value, settingsPath);
     const disabled = props.readOnly || busy;
-    const layout = layoutOf(namespace.ns);
+    const accountProvider = props.provider === 'deepseek-account';
+    // Account settings use a configurable Cordis entry id.
+    const layout = accountProvider ? 'deepseek' : layoutOf(namespace.ns);
     const keyRef = refFor(schema, namespace, settingsPath, props.provider);
     // The same schema read the create card makes, so the choices offered here
     // and there cannot drift apart: both come from the adapter's own `Config`.
@@ -108,19 +112,19 @@ export function ProviderEditor(props) {
     // it rehydrates the whole section schema, so the other layouts skip it.
     const protocols = useMemo(() => layout === 'pi-ai' ? protocolChoices(namespace, schema) : [], [layout, namespace, schema]);
     useEffect(() => {
+        if (accountProvider)
+            return;
         let stale = false;
         setKeyState(undefined);
-        // The key state is a placeholder hint, not a precondition for editing:
-        // neither a business rejection nor a transport failure may reach the
-        // browser as an unhandled rejection, so the card simply renders without
-        // the "already configured" hint.
-        void api.credentials.describe([keyRef]).then((response) => {
-            if (stale || !response.ok)
+        // The key state is a placeholder hint, not a precondition for editing: a
+        // refused describe leaves the card without the "already configured" hint.
+        void operations.describeCredential(keyRef).then((described) => {
+            if (stale)
                 return;
-            setKeyState(response.value[keyRef]);
-        }, () => undefined);
+            setKeyState(described);
+        });
         return () => { stale = true; };
-    }, [api.credentials, keyRef]);
+    }, [operations, keyRef, accountProvider]);
     const stringAt = (source, key) => {
         const value = schema.getPath(source, [key]);
         return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
@@ -128,7 +132,7 @@ export function ProviderEditor(props) {
     const setField = (key, next) => {
         // A value of nothing but whitespace is cleared, not stored: `stringAt`
         // already reports it as absent, so the field would otherwise render empty
-        // while the draft still carried the spaces into `settings.yaml`, where
+        // while the draft still carried the spaces into `cordis.patch.yml`, where
         // both adapters would accept that non-empty string as a real value.
         const value = next === undefined || next.trim().length === 0 ? undefined : next;
         setDraft(current => value === undefined
@@ -203,20 +207,17 @@ export function ProviderEditor(props) {
                 ? [{ op: 'set', path: [...settingsPath], value: {} }]
                 : pathOps(settingsPath, committedOriginal, next);
         if (ops.length > 0) {
-            const response = await api.settings.mutate(ns, ops, expectedRevision);
-            if (!response.ok) {
-                return response.error.code === 'settings-conflict'
-                    ? t('conflict')
-                    : response.error.message;
-            }
-            setCommittedOriginal(schema.getPath(response.value.user, settingsPath));
-            setExpectedRevision(response.value.revision);
+            const written = await operations.writeSettings(ns, ops, expectedRevision);
+            if (written.kind !== 'written')
+                return written.kind === 'conflict' ? t('conflict') : written.message;
+            setCommittedOriginal(schema.getPath(written.view.user, settingsPath));
+            setExpectedRevision(written.view.revision);
             setDraft(next);
         }
         if (keyValue.length > 0) {
-            const stored = await api.credentials.set(keyRef, keyValue);
-            if (!stored.ok)
-                return stored.error.message;
+            const stored = await operations.storeCredential(keyRef, keyValue);
+            if (stored !== undefined)
+                return stored;
         }
         setKeyDraft('');
         return undefined;
@@ -231,12 +232,6 @@ export function ProviderEditor(props) {
                 return;
             }
             props.onClose(true);
-        }
-        catch (error) {
-            // A transport failure (disconnect, a request the host refuses) rejects
-            // rather than answering; without this the card would stay busy forever
-            // with no error shown.
-            setFailure(messageOf(error));
         }
         finally {
             setBusy(false);
@@ -274,6 +269,7 @@ export function ProviderEditor(props) {
         const models = modelDrafts(modelsOverridden ? customModels : inheritedModels());
         const defaultContextWindow = schema.getPath(fallback, ['defaultContextWindow']);
         const defaultMaxTokens = schema.getPath(fallback, ['maxTokens']);
+        const defaultInput = schema.getPath(fallback, ['defaultInput']);
         const keyPlaceholder = keyLocked
             ? t('keyEnvLocked')
             : keyState?.configured === true && props.credentialRequired !== true
@@ -290,7 +286,9 @@ export function ProviderEditor(props) {
             },
             onReset: () => { setDraft(current => schema.deletePath(current, ['models'])); },
         };
-        return (_jsxs(_Fragment, { children: [_jsxs("div", { className: styles['field'], children: [_jsx("span", { className: styles['fieldLabel'], children: t('keyInput') }), _jsx("input", { className: styles['input'], type: "password", autoComplete: "off", value: keyDraft, placeholder: keyPlaceholder, "aria-label": t('keyInput'), "aria-invalid": shownKeyFailure !== undefined, required: props.credentialRequired === true, autoFocus: props.autoFocusCredential === true, disabled: disabled || keyLocked, onChange: (event) => { setKeyDraft(event.target.value); } }), shownKeyFailure === undefined ? null : _jsx("p", { className: styles['error'], children: t(shownKeyFailure) })] }), props.credentialOnly === true ? null : _jsxs("details", { className: styles['customized'], children: [_jsx("summary", { className: styles['customizedSummary'], children: t('customized') }), _jsxs("div", { className: styles['customizedBody'], children: [ownsIdentity
+        if (accountProvider)
+            return _jsx(DeepSeekModelsEditor, { ...catalogProps, defaultContextWindow: typeof defaultContextWindow === 'number' ? defaultContextWindow : undefined, defaultMaxTokens: typeof defaultMaxTokens === 'number' ? defaultMaxTokens : undefined });
+        return (_jsxs(_Fragment, { children: [_jsxs("div", { className: styles['field'], children: [_jsx("span", { className: styles['fieldLabel'], children: t('keyInput') }), _jsx("input", { className: styles['input'], type: "password", autoComplete: "new-password", value: keyDraft, placeholder: keyPlaceholder, "aria-label": t('keyInput'), "aria-invalid": shownKeyFailure !== undefined, required: props.credentialRequired === true, autoFocus: props.autoFocusCredential === true, disabled: disabled || keyLocked, onChange: (event) => { setKeyDraft(event.target.value); } }), shownKeyFailure === undefined ? null : _jsx("p", { className: styles['error'], children: t(shownKeyFailure) })] }), props.credentialOnly === true ? null : _jsxs("details", { className: styles['customized'], children: [_jsx("summary", { className: styles['customizedSummary'], children: t('customized') }), _jsxs("div", { className: styles['customizedBody'], children: [ownsIdentity
                                     ? (_jsxs("div", { className: styles['field'], children: [_jsx("span", { className: styles['fieldLabel'], children: t('customDisplayName') }), _jsx("input", { className: styles['input'], type: "text", value: stringAt(draft, 'displayName') ?? '', 
                                                 // What this route is called the moment the field is
                                                 // cleared, which is the layer beneath the one this field
@@ -302,16 +300,16 @@ export function ProviderEditor(props) {
                                                 placeholder: stringAt(schema.getPath(namespace.base, settingsPath), 'displayName')
                                                     ?? props.provider, "aria-label": t('customDisplayName'), disabled: disabled, onChange: (event) => { setField('displayName', event.target.value); } })] }))
                                     : null, _jsxs("div", { className: styles['field'], children: [_jsx("span", { className: styles['fieldLabel'], children: t('baseUrl') }), _jsx("input", { className: styles['input'], type: "text", value: stringAt(draft, 'baseURL') ?? '', placeholder: family === 'deepseek'
-                                                ? DEEPSEEK_PUBLIC_BASE_URL
-                                                : stringAt(fallback, 'baseURL') ?? t('baseUrlDefault'), "aria-label": t('baseUrl'), disabled: disabled, onChange: (event) => {
+                                                ? t('deepSeekBaseUrl')
+                                                : stringAt(fallback, 'baseURL') ?? t('baseUrlDefault'), "aria-describedby": family === 'deepseek' ? `${props.provider}-endpoint-hint` : undefined, "aria-label": t('baseUrl'), disabled: disabled, onChange: (event) => {
                                                 setField('baseURL', event.target.value === '' ? undefined : event.target.value);
-                                            } })] }), ownsIdentity
-                                    ? (_jsxs("div", { className: styles['field'], children: [_jsx("span", { className: styles['fieldLabel'], children: t('customApi') }), _jsxs("select", { className: `${styles['input']} ${styles['selectInput']}`, value: probeApi ?? '', "aria-label": t('customApi'), disabled: disabled, onChange: (event) => { setField('api', event.target.value); }, children: [probeApi === undefined ? _jsx("option", { value: "", children: t('customApiUnset') }) : null, protocols.map(choice => _jsx("option", { value: choice, children: choice }, choice))] })] }))
+                                            } }), family === 'deepseek' ? _jsx("span", { id: `${props.provider}-endpoint-hint`, className: styles['advancedHint'], children: t('deepSeekEndpointHint') }) : null] }), ownsIdentity
+                                    ? (_jsxs("div", { className: styles['field'], children: [_jsx("span", { className: styles['fieldLabel'], children: t('customApi') }), _jsxs("select", { className: `${styles['input']} ${styles['selectInput']}`, value: probeApi ?? '', "aria-label": t('customApi'), disabled: disabled, onChange: (event) => { setField('api', event.target.value); }, children: [probeApi === undefined ? _jsx("option", { value: "", children: t('customApiUnset') }) : null, protocols.map(choice => _jsx("option", { value: choice, children: protocolLabel(t, choice) }, choice))] })] }))
                                     : null, family === 'deepseek'
                                     ? (_jsx(DeepSeekModelsEditor, { ...catalogProps, defaultContextWindow: typeof defaultContextWindow === 'number'
                                             ? defaultContextWindow
                                             : undefined, defaultMaxTokens: typeof defaultMaxTokens === 'number' ? defaultMaxTokens : undefined }))
-                                    : _jsx(ModelListEditor, { ...catalogProps, probe: probe, probeBlocked: keyFailure, api: api })] })] })] }));
+                                    : (_jsx(ModelListEditor, { ...catalogProps, catalogProvider: props.declared === true ? undefined : props.provider, defaultInput: Array.isArray(defaultInput) ? defaultInput : undefined, probe: probe, probeBlocked: keyFailure, operations: operations, onBusyChange: setListBusy }))] })] })] }));
     };
     return (_jsxs("div", { className: props.credentialOnly === true ? styles['addBlock'] : styles['editor'], children: [props.hideTitle === true
                 ? null
@@ -324,6 +322,6 @@ export function ProviderEditor(props) {
                 : (_jsx("p", { className: styles['advancedHint'], children: `${t('model')} ${String(modelFailure.index + 1)}: ${t(modelFailure.key)}` })), _jsx(EditorFooter, { t: t, busy: busy, submitDisabled: disabled || layout === 'unknown'
                     || (props.credentialOnly !== true && modelFailure !== undefined)
                     || shownKeyFailure !== undefined
-                    || (props.credentialRequired === true && keyValue.length === 0), submitLabelKey: props.submitLabelKey ?? 'apply', submitBusyLabelKey: props.submitBusyLabelKey ?? 'applying', ...props.cancelLabelKey === undefined ? {} : { cancelLabelKey: props.cancelLabelKey }, onCancel: () => { props.onClose(false); }, onSubmit: () => { void apply(); } })] }));
+                    || (props.credentialRequired === true && keyValue.length === 0), submitLabelKey: props.submitLabelKey ?? 'apply', submitBusyLabelKey: props.submitBusyLabelKey ?? 'applying', ...props.cancelLabelKey === undefined ? {} : { cancelLabelKey: props.cancelLabelKey }, onCancel: () => { props.onClose(false); }, onSubmit: () => { props.onSubmitCredential?.(); void apply(); } })] }));
 }
 //# sourceMappingURL=ProviderEditor.js.map

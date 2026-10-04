@@ -2,7 +2,7 @@
 /**
  * Extract searchable semantic text from one first-party session event.
  *
- * Structural boundaries, raw stream chunks, request envelopes, and unknown
+ * Structural boundaries, embedded raw streams, request envelopes, and unknown
  * declaration-merged events contribute no text.
  * @param event - event to inspect.
  * @returns newline-joined semantic text, or an empty string when non-searchable.
@@ -28,7 +28,7 @@ export function extractSessionEventText(event) {
         case 'turn/start':
         case 'step/start':
         case 'step/end':
-        case 'assistant/chunk':
+        case 'assistant/attempt':
         case 'request/header':
             return '';
         // SessionEventMap is merge-extensible. Unknown events remain
@@ -65,8 +65,6 @@ function blockText(block) {
             return [];
         case 'tool-call':
             return [block.name, block.arguments];
-        case 'tool-result':
-            return block.content.flatMap(blockText);
         // ContentBlockMap is merge-extensible. Unknown blocks do not become
         // searchable merely because their payload happens to contain strings.
         default:

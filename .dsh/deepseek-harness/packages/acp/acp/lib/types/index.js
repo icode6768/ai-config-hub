@@ -14,9 +14,9 @@ import { realpath } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import Schema from '@deepseek-ai/schemastery';
+import { brandString } from '@deepseek-ai/dsh-brand';
 import { errorChain } from '@deepseek-ai/dsh-llm';
 import { agent as createAcpAgentApp, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, } from '@agentclientprotocol/sdk';
-import { SessionId } from '@deepseek-ai/dsh-session';
 import { supportsAcpImagePrompts } from "./content.js";
 import { AcpMcpConfigError } from "./mcp.js";
 import { AcpModelConfigError } from "./model-control.js";
@@ -140,11 +140,11 @@ export function apply(ctx, config) {
         async newSession(params, signal) {
             assertOpen();
             validateWorkspaceParams(params);
-            const sessionId = SessionId(randomUUID());
+            const sessionId = brandString(randomUUID());
             // No preset composition: the ACP bundle keeps the model-facing rows in
             // the host plane, so this agent reads them from the global layer. A
             // deployment that configures a roster has to join one here first
-            // (@deepseek-ai/dsh-agent-presets README, "Composing a child agent").
+            // (@deepseek-ai/dsh-agent-preset-registry README, "Composing a child agent").
             let record;
             try {
                 record = await AcpSession.create(ctx, {
@@ -171,7 +171,8 @@ export function apply(ctx, config) {
             try {
                 const configOptions = await record.configOptions(signal);
                 assertOpen();
-                await persistence.ensureMaterialized(record.agent.session);
+                // The attached log writer's flush materializes an empty session durably.
+                await ctx.sessions.flush(record.agent.session);
                 assertOpen();
                 return { sessionId, configOptions };
             }
@@ -184,13 +185,13 @@ export function apply(ctx, config) {
         async resumeSession(params, signal) {
             assertOpen();
             validateWorkspaceParams(params);
-            const sessionId = SessionId(params.sessionId);
+            const sessionId = brandString(params.sessionId);
             if (sessions.has(sessionId) || activating.has(sessionId) || ctx.sessions.get(sessionId) !== undefined) {
                 throw invalidParams(`session is already active: ${sessionId}`);
             }
             activating.add(sessionId);
             return (async () => {
-                const persisted = (await persistence.list(signal)).find(header => header.id === sessionId);
+                const persisted = (await persistence.stat(sessionId, { signal }))?.header;
                 if (persisted === undefined || persisted.origin === 'subagent' || persisted.parentSession !== undefined) {
                     throw invalidParams(`session is not resumable: ${sessionId}`);
                 }
@@ -248,8 +249,8 @@ export function apply(ctx, config) {
             catch (error) {
                 throw invalidParams(error.message);
             }
-            const listed = await persistence.list(signal);
-            const filtered = await Promise.all(listed.map(async (header) => {
+            const listed = await persistence.list({ signal });
+            const filtered = await Promise.all(listed.map(async ({ header }) => {
                 if (sessions.has(header.id)
                     || activating.has(header.id)
                     || ctx.sessions.get(header.id) !== undefined
@@ -278,7 +279,7 @@ export function apply(ctx, config) {
         },
         async setSessionConfigOption(params, signal) {
             assertOpen();
-            const record = requireSession(SessionId(params.sessionId));
+            const record = requireSession(brandString(params.sessionId));
             try {
                 return { configOptions: await record.setConfig(params.configId, params.value, signal) };
             }
@@ -290,7 +291,7 @@ export function apply(ctx, config) {
         },
         async closeSession(params) {
             assertOpen();
-            const sessionId = SessionId(params.sessionId);
+            const sessionId = brandString(params.sessionId);
             const record = requireSession(sessionId);
             try {
                 await record.close('ACP session closed');
@@ -306,11 +307,11 @@ export function apply(ctx, config) {
         },
         async prompt(params, requestSignal) {
             assertOpen();
-            const record = requireSession(SessionId(params.sessionId));
+            const record = requireSession(brandString(params.sessionId));
             return record.prompt(params, imagePromptEnabled, requestSignal);
         },
         cancel(params) {
-            sessions.get(SessionId(params.sessionId))?.cancel();
+            sessions.get(brandString(params.sessionId))?.cancel();
             return Promise.resolve();
         },
     };

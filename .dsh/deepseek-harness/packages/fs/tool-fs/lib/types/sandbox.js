@@ -9,7 +9,7 @@
  *
  * @module @deepseek-ai/dsh-tool-fs/sandbox
  */
-import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox';
+import { ESCALATION_TARGETS, approveEscalation, escalationHintMarker, sandboxDenialMarker, sandboxPermissionsDescription, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox';
 import { FsError } from '@deepseek-ai/dsh-fs';
 /**
  * The filesystem escalation API: advertisement gating, per-call policy
@@ -43,20 +43,20 @@ export class FsSandboxController {
             sandbox_permissions: {
                 type: 'string',
                 enum: [...this.escalationModes],
-                description: 'The wider sandbox mode this file operation needs. Only valid as a one-shot retry '
-                    + 'of an operation the sandbox just denied; requires justification and user approval.',
+                description: sandboxPermissionsDescription('operation'),
             },
             justification: {
                 type: 'string',
                 description: 'Required with sandbox_permissions: one sentence for the user explaining '
-                    + 'why this exact file operation needs the wider access.',
+                    + 'why this exact file operation needs the wider access. Use the language of the user’s current request.',
             },
         };
     }
     /**
      * The policy to stamp onto this mutation: an approved escalation grant (a
      * strictly wider retry resolved through `ctx.approval` before anything
-     * executes), else the session's standing mode. The calling session's cwd is
+     * executes), else the session's standing mode. Repeating the standing mode
+     * requires no approval. The calling session's cwd is
      * always carried as the workspace root. Validates the escalation argument
      * pairing first.
      * @param toolName - the mutating tool's name, for the approval audit trail.

@@ -7,8 +7,126 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-goal\src\client\GoalBar.module.css.mjs
-		const css$1 = ".clJ35q_dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto}.clJ35q_bar{box-sizing:border-box;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-tip);border-radius:12px;align-items:center;gap:10px;height:36px;margin:0 auto;padding:4px 5px 4px 12px;display:flex}.clJ35q_goalGlyph{color:var(--dsw-alias-label-tertiary);flex:none;display:inline-flex}.clJ35q_label{color:var(--dsw-alias-label-primary);flex:none;font-size:13px;font-weight:500;line-height:24px}.clJ35q_objective{min-width:0;color:var(--dsw-alias-label-primary-dimmed);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:13px;line-height:20px;overflow:hidden}.clJ35q_error{min-width:0;color:var(--dsw-alias-state-error-primary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;line-height:20px;overflow:hidden}.clJ35q_objectiveInput{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);min-width:0;height:26px;color:var(--dsw-alias-label-primary);border-radius:6px;outline:none;flex:1;padding:0 8px;font-size:13px;line-height:20px}.clJ35q_objectiveInput:focus{border-color:var(--dsw-alias-state-business-primary)}.clJ35q_objectiveInput::placeholder{color:var(--dsw-alias-label-caption)}.clJ35q_actions{flex:none;align-items:center;gap:10px;display:flex}.clJ35q_iconBtn{width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;justify-content:center;align-items:center;padding:0;display:inline-flex}.clJ35q_iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}.clJ35q_iconBtn:disabled{opacity:.4;cursor:default}";
+		//#region lib/types/client/activation-source.js
+		/** Goal activation observable that orders Remote reads and live activation events. */
+		/** Compare two empty-or-populated activation snapshots by value. */
+		function sameSnapshot(left, right) {
+			return left.id === right.id && left.revision === right.revision && left.activation === right.activation;
+		}
+		/** Return the current active CAS ref, or undefined when the goal is not active. */
+		function activeRef(projection) {
+			return projection?.goal.phase === "active" ? projection.goal : void 0;
+		}
+		/**
+		* Create one registrant-private activation source. The source subscribes only
+		* while a framework hook observes it, so unmount releases the Remote event,
+		* projection, running-snapshot, and reset listeners.
+		* @param deps - projection, session, Remote read, and live-event inputs.
+		* @returns stable snapshot source consumed by `useGoalActivation`.
+		*/
+		function createGoalActivationSource(deps) {
+			let snapshot = {};
+			let subscriptions = 0;
+			let disposers = [];
+			let running = deps.session.getSnapshot().running;
+			let eventEpoch = 0;
+			let projectionEpoch = 0;
+			let readEpoch = 0;
+			const listeners = /* @__PURE__ */ new Set();
+			const publish = (next) => {
+				if (sameSnapshot(snapshot, next)) return;
+				snapshot = next;
+				for (const listener of listeners) listener();
+			};
+			const startRead = (ref) => {
+				if (ref === void 0) return;
+				const read = ++readEpoch;
+				const startedAtEvent = eventEpoch;
+				const startedAtProjection = projectionEpoch;
+				deps.getGoal().then((result) => {
+					if (read !== readEpoch || startedAtEvent !== eventEpoch || startedAtProjection !== projectionEpoch) return;
+					if (!result.ok) return;
+					const goal = result.value;
+					/* v8 ignore next 4 -- projection drive is the authoritative clear edge; an active projection with no live goal is transient. */
+					if (goal === void 0) {
+						if (activeRef(deps.projection.getSnapshot()) === void 0) publish({});
+						return;
+					}
+					publish({
+						id: goal.id,
+						revision: goal.revision,
+						activation: goal.activation
+					});
+				}, (error) => {
+					console.warn("[ui-goal] goal activation read failed:", error);
+				});
+			};
+			const refreshProjection = () => {
+				projectionEpoch++;
+				const ref = activeRef(deps.projection.getSnapshot());
+				if (ref === void 0) {
+					/* v8 ignore next -- clearing an already-empty activation snapshot is idempotent. */
+					if (snapshot.id !== void 0) publish({});
+					return;
+				}
+				if (snapshot.id !== ref.id || snapshot.revision !== ref.revision) publish({
+					id: ref.id,
+					revision: ref.revision
+				});
+				startRead(ref);
+			};
+			const onActivation = (goal) => {
+				eventEpoch++;
+				readEpoch++;
+				publish(goal === void 0 ? {} : {
+					id: goal.id,
+					revision: goal.revision,
+					activation: goal.activation
+				});
+			};
+			const onRunning = () => {
+				const next = deps.session.getSnapshot().running;
+				if (next === running) return;
+				running = next;
+				startRead(activeRef(deps.projection.getSnapshot()));
+			};
+			const onReset = () => {
+				eventEpoch++;
+				projectionEpoch++;
+				startRead(activeRef(deps.projection.getSnapshot()));
+			};
+			const start = () => {
+				disposers = [
+					deps.projection.subscribe(refreshProjection),
+					deps.session.subscribe(onRunning),
+					deps.subscribeActivation(onActivation),
+					deps.subscribeReset(onReset)
+				];
+				running = deps.session.getSnapshot().running;
+				refreshProjection();
+			};
+			const stop = () => {
+				for (const dispose of disposers) dispose();
+				disposers = [];
+				readEpoch++;
+			};
+			return {
+				getSnapshot: () => snapshot,
+				subscribe(listener) {
+					listeners.add(listener);
+					if (subscriptions === 0) start();
+					subscriptions++;
+					return () => {
+						listeners.delete(listener);
+						subscriptions--;
+						if (subscriptions === 0) stop();
+					};
+				}
+			};
+		}
+		//#endregion
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-goal\src\client\GoalBar.module.css.mjs
+		const css$1 = ".Iioxgq_dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto}.Iioxgq_bar{isolation:isolate;box-sizing:border-box;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);height:36px;box-shadow:var(--dsw-elevation-panel);border:0;align-items:center;gap:10px;margin:0 auto;padding:4px 5px 4px 12px;display:flex;position:relative}.Iioxgq_bar:before{z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);content:\"\";pointer-events:none;position:absolute;inset:0}.Iioxgq_goalGlyph{color:var(--dsw-alias-label-tertiary);flex:none;display:inline-flex}.Iioxgq_label{color:var(--dsw-alias-label-primary);flex:none;font-size:13px;font-weight:500;line-height:24px}.Iioxgq_objective{min-width:0;color:var(--dsw-alias-label-primary-dimmed);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:13px;line-height:20px;overflow:hidden}.Iioxgq_error{min-width:0;color:var(--dsw-alias-state-error-primary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;line-height:20px;overflow:hidden}.Iioxgq_editBar{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);align-items:flex-end;height:auto;min-height:36px}.Iioxgq_actions{flex:none;align-items:center;gap:10px;display:flex}.Iioxgq_iconBtn{corner-shape:round;width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;justify-content:center;align-items:center;padding:0;display:inline-flex}.Iioxgq_iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}.Iioxgq_iconBtn:disabled{opacity:.4;cursor:default}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-goal/GoalBar.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -18,26 +136,26 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var GoalBar_module_css_default = {
-			"actions": "clJ35q_actions",
-			"bar": "clJ35q_bar",
-			"dock": "clJ35q_dock",
-			"error": "clJ35q_error",
-			"goalGlyph": "clJ35q_goalGlyph",
-			"iconBtn": "clJ35q_iconBtn",
-			"label": "clJ35q_label",
-			"objective": "clJ35q_objective",
-			"objectiveInput": "clJ35q_objectiveInput"
+			"actions": "Iioxgq_actions",
+			"bar": "Iioxgq_bar",
+			"dock": "Iioxgq_dock",
+			"editBar": "Iioxgq_editBar",
+			"error": "Iioxgq_error",
+			"goalGlyph": "Iioxgq_goalGlyph",
+			"iconBtn": "Iioxgq_iconBtn",
+			"label": "Iioxgq_label",
+			"objective": "Iioxgq_objective"
 		};
 		//#endregion
 		//#region lib/types/client/GoalBar.js
 		/**
 		* GoalBar: the goal indicator docked above the message composer (input dock
 		* strip). A present goal shows a goal glyph, a phase label, the truncated
-		* objective, and icon actions — resume when paused, edit (inline form in the
-		* same strip), and clear. Goal creation lives on the `/goal` command, not
-		* here: loading (undefined), no goal (null), and complete goals render
-		* nothing. Live state arrives as the projected whole snapshot; the verbs are
-		* the injected face.
+		* objective, and icon actions — resume when active-disarmed or paused, edit
+		* (inline form in the same strip), and clear. Goal creation lives on the
+		* `/goal` command, not here: loading (undefined), no goal (null), and complete
+		* goals render nothing. Durable state arrives as the projected whole snapshot;
+		* process-local activation arrives through the injected activation hook.
 		*/
 		/** Strip label keys per visible phase; complete goals render nothing. */
 		const PHASE_LABELS = {
@@ -45,7 +163,12 @@ window.__ModuleLoader__.load({
 			paused: "phase.paused",
 			blocked: "phase.blocked"
 		};
-		function GoalBar({ goal, onEdit, onPause, onResume, onClear, t }) {
+		/** Strip label for an active goal using its process-local activation. */
+		function activeLabel(activation, t) {
+			if (activation === "disarmed") return t("phase.active.disarmed");
+			return t(PHASE_LABELS.active);
+		}
+		function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, t }) {
 			const [editing, setEditing] = (0, react.useState)(false);
 			const [draft, setDraft] = (0, react.useState)("");
 			const [pending, setPending] = (0, react.useState)(false);
@@ -86,21 +209,18 @@ window.__ModuleLoader__.load({
 				className: GoalBar_module_css_default.dock,
 				"data-goal-bar": true,
 				children: (0, react_jsx_runtime.jsxs)("div", {
-					className: GoalBar_module_css_default.bar,
+					className: `${GoalBar_module_css_default.bar} ${GoalBar_module_css_default.editBar}`,
 					children: [
-						(0, react_jsx_runtime.jsx)("input", {
-							className: GoalBar_module_css_default.objectiveInput,
-							type: "text",
-							"aria-label": t("objective.aria"),
+						(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.InlineEditor, {
 							value: draft,
-							onChange: (e) => {
-								setDraft(e.target.value);
+							label: t("objective.aria"),
+							onChange: setDraft,
+							onSave: () => {
+								handleEdit();
 							},
-							onKeyDown: (e) => {
-								if (e.key === "Enter") handleEdit();
-								if (e.key === "Escape") setEditing(false);
-							},
-							autoFocus: true
+							onCancel: () => {
+								setEditing(false);
+							}
 						}),
 						actionError !== null && (0, react_jsx_runtime.jsx)("span", {
 							className: GoalBar_module_css_default.error,
@@ -110,6 +230,7 @@ window.__ModuleLoader__.load({
 						(0, react_jsx_runtime.jsxs)("div", {
 							className: GoalBar_module_css_default.actions,
 							children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+								portal: true,
 								label: t("action.save"),
 								side: "bottom",
 								delayMs: 500,
@@ -121,9 +242,10 @@ window.__ModuleLoader__.load({
 									},
 									disabled: pending || draft.trim() === "",
 									"aria-label": t("action.save"),
-									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, { size: 14 })
+									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 })
 								})
 							}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+								portal: true,
 								label: t("action.cancel"),
 								side: "bottom",
 								delayMs: 500,
@@ -135,7 +257,7 @@ window.__ModuleLoader__.load({
 									},
 									disabled: pending,
 									"aria-label": t("action.cancel"),
-									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseOutline16, { size: 14 })
+									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 14 })
 								})
 							})]
 						})
@@ -143,6 +265,8 @@ window.__ModuleLoader__.load({
 				})
 			});
 			const title = goal.phase === "blocked" ? goal.blockedReason?.message : void 0;
+			const label = goal.phase === "active" ? activeLabel(activation, t) : t(PHASE_LABELS[goal.phase]);
+			const showResume = goal.phase === "paused" || goal.phase === "active" && activation === "disarmed";
 			return (0, react_jsx_runtime.jsx)("div", {
 				className: GoalBar_module_css_default.dock,
 				"data-goal-bar": true,
@@ -152,11 +276,11 @@ window.__ModuleLoader__.load({
 					children: [
 						(0, react_jsx_runtime.jsx)("span", {
 							className: GoalBar_module_css_default.goalGlyph,
-							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconGoalOutline16, { size: 14 })
+							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconGoalOutlineRegular, { size: 14 })
 						}),
 						(0, react_jsx_runtime.jsx)("span", {
 							className: GoalBar_module_css_default.label,
-							children: t(PHASE_LABELS[goal.phase])
+							children: label
 						}),
 						(0, react_jsx_runtime.jsx)("span", {
 							className: GoalBar_module_css_default.objective,
@@ -170,7 +294,8 @@ window.__ModuleLoader__.load({
 						(0, react_jsx_runtime.jsxs)("div", {
 							className: GoalBar_module_css_default.actions,
 							children: [
-								goal.phase === "active" && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+								goal.phase === "active" && activation === "armed" && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+									portal: true,
 									label: t("action.pause"),
 									side: "bottom",
 									delayMs: 500,
@@ -182,10 +307,11 @@ window.__ModuleLoader__.load({
 											runAction(onPause);
 										},
 										"aria-label": t("action.pause"),
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPauseOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPauseOutlineRegular, { size: 14 })
 									})
 								}),
-								goal.phase === "paused" && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+								showResume && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+									portal: true,
 									label: t("action.resume"),
 									side: "bottom",
 									delayMs: 500,
@@ -197,10 +323,11 @@ window.__ModuleLoader__.load({
 											runAction(onResume);
 										},
 										"aria-label": t("action.resume"),
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutlineRegular, { size: 14 })
 									})
 								}),
 								(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+									portal: true,
 									label: t("action.edit"),
 									side: "bottom",
 									delayMs: 500,
@@ -213,10 +340,11 @@ window.__ModuleLoader__.load({
 											setEditing(true);
 										},
 										"aria-label": t("action.edit"),
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEditOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 14 })
 									})
 								}),
 								(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+									portal: true,
 									label: t("action.clear"),
 									side: "bottom",
 									delayMs: 500,
@@ -228,7 +356,7 @@ window.__ModuleLoader__.load({
 											handleClear(goal.id);
 										},
 										"aria-label": t("action.clear"),
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 })
 									})
 								})
 							]
@@ -237,11 +365,16 @@ window.__ModuleLoader__.load({
 				})
 			});
 		}
-		/** Dock adapter: reads the host-computed 'goal' projection (whole value; absent or null renders nothing). */
-		function GoalDock({ useProjection, onEdit, onPause, onResume, onClear, t }) {
+		/** Dock adapter: overlays process-local activation on the durable goal projection. */
+		function GoalDock({ useProjection, useGoalActivation, onEdit, onPause, onResume, onClear, t }) {
 			const projection = useProjection("goal");
+			const goal = projection === void 0 || projection === null ? projection : projection.goal;
+			const goalId = goal?.id;
+			const revision = goal?.revision;
+			const activation = useGoalActivation((next) => next.id === goalId && next.revision === revision ? next.activation : void 0);
 			return (0, react_jsx_runtime.jsx)(GoalBar, {
-				goal: projection === void 0 ? void 0 : projection === null ? null : projection.goal,
+				goal,
+				...activation === void 0 ? {} : { activation },
 				onEdit,
 				onPause,
 				onResume,
@@ -250,42 +383,9 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-goal\src\client\GoalCommandInputView.module.css.mjs
-		const css = ".cfuJSq_row{flex-direction:column;align-items:flex-end;gap:6px;display:flex}.cfuJSq_stack{min-width:0;max-width:min(calc(var(--dsh-chat-content-width,748px) * .702), 82%);flex-direction:column;align-items:flex-end;display:flex}.cfuJSq_bubble{overflow-wrap:anywhere;background:var(--dsw-specific-bubble);max-width:100%;color:var(--dsw-alias-label-primary);font:var(--dsw-font-markdown-code);font-size:var(--dsh-content-font-size,14px);line-height:calc(22px + var(--dsh-content-font-delta,0px));white-space:pre-wrap;border-radius:22px;padding:10px 16px}";
-		const tagId = "@deepseek-ai/dsh-client-ui-goal/GoalCommandInputView.module.css";
-		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
-			const tag = document.createElement("style");
-			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-goal";
-			tag.dataset.pluginCss = tagId;
-			tag.textContent = css;
-			document.head.appendChild(tag);
-		}
-		var GoalCommandInputView_module_css_default = {
-			"bubble": "cfuJSq_bubble",
-			"row": "cfuJSq_row",
-			"stack": "cfuJSq_stack"
-		};
-		//#endregion
-		//#region lib/types/client/GoalCommandInputView.js
-		/** Right-aligned `/goal` input bubble without ordinary message actions. */
-		const GoalCommandInputView = (0, react.memo)(function GoalCommandInputView({ node, t }) {
-			const data = node.data;
-			return (0, react_jsx_runtime.jsx)("div", {
-				className: GoalCommandInputView_module_css_default.row,
-				"data-command-input": "",
-				role: "group",
-				"aria-label": t("commandInput.aria"),
-				children: (0, react_jsx_runtime.jsx)("div", {
-					className: GoalCommandInputView_module_css_default.stack,
-					children: (0, react_jsx_runtime.jsx)("div", {
-						className: GoalCommandInputView_module_css_default.bubble,
-						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MessageText, { text: data.text })
-					})
-				})
-			});
-		});
-		//#endregion
 		//#region lib/types/client/goal-command-input.js
+		/** The command name whose runs this projection owns. */
+		const GOAL_COMMAND = "goal";
 		/**
 		* Derive the visible command line from its structured durable run.
 		* @param event - `/goal` command run.
@@ -331,11 +431,55 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-goal\src\client\GoalCommandInputView.module.css.mjs
+		const css = ".QwrrJa_row{flex-direction:column;align-items:flex-end;gap:6px;display:flex}.QwrrJa_stack{min-width:0;max-width:min(calc(var(--dsh-chat-content-width,748px) * .702), 82%);flex-direction:column;align-items:flex-end;display:flex}.QwrrJa_bubble{overflow-wrap:anywhere;border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-bubble);max-width:100%;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(22px + var(--dsh-content-font-delta,0px));white-space:pre-wrap;padding:10px 16px}";
+		const tagId = "@deepseek-ai/dsh-client-ui-goal/GoalCommandInputView.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-goal";
+			tag.dataset.pluginCss = tagId;
+			tag.textContent = css;
+			document.head.appendChild(tag);
+		}
+		var GoalCommandInputView_module_css_default = {
+			"bubble": "QwrrJa_bubble",
+			"row": "QwrrJa_row",
+			"stack": "QwrrJa_stack"
+		};
+		//#endregion
+		//#region lib/types/client/GoalCommandInputView.js
+		/**
+		* Right-aligned `/goal` input bubble without ordinary message actions. The
+		* echoed line decorates its leading `/goal` token as a command chip — the run
+		* this Node projects is the fact that that token was a command — and keeps
+		* the objective, `/goal` mentions included, as plain text.
+		*/
+		const GoalCommandInputView = (0, react.memo)(function GoalCommandInputView({ node, t }) {
+			const data = node.data;
+			const split = data.text.search(/\s/u);
+			const head = split === -1 ? data.text : data.text.slice(0, split);
+			const rest = split === -1 ? "" : data.text.slice(split);
+			return (0, react_jsx_runtime.jsx)("div", {
+				className: GoalCommandInputView_module_css_default.row,
+				"data-command-input": "",
+				role: "group",
+				"aria-label": t("commandInput.aria"),
+				children: (0, react_jsx_runtime.jsx)("div", {
+					className: GoalCommandInputView_module_css_default.stack,
+					children: (0, react_jsx_runtime.jsxs)("div", {
+						className: GoalCommandInputView_module_css_default.bubble,
+						children: [(0, _deepseek_ai_dsh_client_ui_primitives.projectUserText)(head, [], [GOAL_COMMAND], "command"), rest !== "" && (0, _deepseek_ai_dsh_client_ui_primitives.projectUserText)(rest, [])]
+					})
+				})
+			});
+		});
+		//#endregion
 		//#region lib/types/client/locales.js
 		/** `goal` namespace dictionaries. */
 		/** Simplified Chinese dictionary (the key-set source of truth). */
 		const zh = {
 			"phase.active": "进行中的目标",
+			"phase.active.disarmed": "已暂停的目标",
 			"phase.paused": "已暂停的目标",
 			"phase.blocked": "受阻的目标",
 			"objective.aria": "目标内容",
@@ -350,6 +494,7 @@ window.__ModuleLoader__.load({
 		/** English dictionary, checked complete against the zh key set. */
 		const en = {
 			"phase.active": "Ongoing Goal",
+			"phase.active.disarmed": "Inactive Goal",
 			"phase.paused": "Paused Goal",
 			"phase.blocked": "Blocked Goal",
 			"objective.aria": "Goal objective",
@@ -403,8 +548,7 @@ window.__ModuleLoader__.load({
 				ok: false,
 				error: {
 					code: "no-current-goal",
-					message: "no current goal to mutate",
-					details: {}
+					message: "no current goal to mutate"
 				}
 			};
 			ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
@@ -412,28 +556,48 @@ window.__ModuleLoader__.load({
 				id: "goal",
 				order: 10,
 				locale: NS,
-				inject: (sessionId) => ({
-					onEdit: async (objective) => {
-						const ref = refOf(sessionId);
-						if (ref === void 0) return noCurrentGoal;
-						return await ctx.remote.goals.edit(sessionId, ref, { objective });
-					},
-					onPause: async () => {
-						const ref = refOf(sessionId);
-						if (ref === void 0) return noCurrentGoal;
-						return await ctx.remote.goals.pause(sessionId, ref);
-					},
-					onResume: async () => {
-						const ref = refOf(sessionId);
-						if (ref === void 0) return noCurrentGoal;
-						return await ctx.remote.goals.resume(sessionId, ref);
-					},
-					onClear: async () => {
-						const ref = refOf(sessionId);
-						if (ref === void 0) return noCurrentGoal;
-						return await ctx.remote.goals.clear(sessionId, ref);
-					}
-				})
+				inject: (sessionId) => {
+					const binding = sessions.binding(sessionId);
+					if (binding === void 0) throw new Error(`ui-goal: session "${sessionId}" is unavailable`);
+					return {
+						hooks: { goalActivation: createGoalActivationSource({
+							projection: binding.session.projections.faceOf("goal"),
+							session: binding.session,
+							getGoal: async () => {
+								if (sessions.binding(sessionId) !== binding) throw new Error(`ui-goal: session "${sessionId}" is unavailable`);
+								return sessions.using(sessionId, { source: "goalActivation" }, async (reference) => {
+									const state = reference.binding.session.getSnapshot();
+									if (state.openState !== "open") throw state.openError ?? /* @__PURE__ */ new Error(`session "${sessionId}" is not open`);
+									return ctx.remote.goals.get(sessionId);
+								});
+							},
+							subscribeActivation: (listener) => ctx.remote.$on("goal/activation-changed", (event) => {
+								if (event.sessionId === sessionId) listener(event.goal);
+							}),
+							subscribeReset: (listener) => ctx.on("connection/reset", listener)
+						}) },
+						onEdit: async (objective) => {
+							const ref = refOf(sessionId);
+							if (ref === void 0) return noCurrentGoal;
+							return await ctx.remote.goals.edit(sessionId, ref, { objective });
+						},
+						onPause: async () => {
+							const ref = refOf(sessionId);
+							if (ref === void 0) return noCurrentGoal;
+							return await ctx.remote.goals.pause(sessionId, ref);
+						},
+						onResume: async () => {
+							const ref = refOf(sessionId);
+							if (ref === void 0) return noCurrentGoal;
+							return await ctx.remote.goals.resume(sessionId, ref);
+						},
+						onClear: async () => {
+							const ref = refOf(sessionId);
+							if (ref === void 0) return noCurrentGoal;
+							return await ctx.remote.goals.clear(sessionId, ref);
+						}
+					};
+				}
 			}, GoalDock));
 		}
 		//#endregion

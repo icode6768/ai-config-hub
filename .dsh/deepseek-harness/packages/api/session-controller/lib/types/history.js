@@ -51,10 +51,11 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session';
-import { isChunkRow, packChunkRuns } from '@deepseek-ai/dsh-session/chunk-rows';
+import { Deque } from '@deepseek-ai/dsh-deque';
+import { isAppendSurfaceEvent, SessionLogOffset, SessionSeq, } from '@deepseek-ai/dsh-session';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
-import { TypertRemoteFailure } from '@deepseek-ai/dsh-typert-protocol';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
+import { SessionAssistantStreamAccumulator } from "./assistant-stream.js";
 const DEFAULT_MAX_MESSAGES = 50;
 const MESSAGE_TYPES = new Set(['user/message', 'assistant/message']);
 /** Implements cold-safe history operations delegated by the Session Controller. */
@@ -62,6 +63,7 @@ export class SessionHistoryController {
     ctx;
     promote;
     closeFollowers = new Set();
+    assistantStreams = new Map();
     /**
      * @param ctx - Host context carrying Session query and projection services.
      * @param promote - starts ordinary Session activation after snapshot delivery.
@@ -69,6 +71,17 @@ export class SessionHistoryController {
     constructor(ctx, promote) {
         this.ctx = ctx;
         this.promote = promote;
+        ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+            let stream = this.assistantStreams.get(agent.session.id);
+            if (stream === undefined) {
+                stream = new SessionAssistantStreamAccumulator();
+                this.assistantStreams.set(agent.session.id, stream);
+            }
+            stream.accept(frame, cursorBeforeNext(agent.session.seq));
+        }, { global: true });
+        ctx.on('agent/disposed', ({ agent }) => {
+            this.assistantStreams.delete(agent.session.id);
+        }, { global: true });
         ctx.effect(() => () => {
             for (const close of this.closeFollowers)
                 close();
@@ -85,18 +98,24 @@ export class SessionHistoryController {
         const env_1 = { stack: [], error: void 0, hasError: false };
         try {
             validatePageRequest(request);
+            const throughSeq = request.throughSeq === -1
+                ? -1
+                : SessionSeq(request.throughSeq);
+            const beforeSeq = request.beforeSeq === undefined
+                ? undefined
+                : SessionLogOffset(request.beforeSeq);
             const source = __addDisposableResource(env_1, await this.sourceFor(request.address, signal, false), false);
             signal.throwIfAborted();
             const sourceLog = source.events;
             const sourceCursor = sourceLog.at(-1)?.seq ?? -1;
-            if (request.throughSeq > sourceCursor) {
-                reject('bad-request', `session page through seq ${String(request.throughSeq)} is past cursor ${String(sourceCursor)}`, {});
+            if (throughSeq > sourceCursor) {
+                throw new RemoteError('gateway/bad-request', `session page through seq ${String(throughSeq)} is past cursor ${String(sourceCursor)}`, {});
             }
             /* v8 ignore next -- Session and persistence validation guarantee a dense zero-based event prefix. */
-            if (request.throughSeq >= 0 && sourceLog[request.throughSeq]?.seq !== request.throughSeq) {
-                reject('internal', `session log does not contain through seq ${String(request.throughSeq)}`, {});
+            if (throughSeq >= 0 && sourceLog[throughSeq]?.seq !== throughSeq) {
+                throw new RemoteError('gateway/internal', `session log does not contain through seq ${String(throughSeq)}`, {});
             }
-            const page = paginate(sourceLog, request.beforeSeq, request.maxMessages ?? DEFAULT_MAX_MESSAGES, request.throughSeq);
+            const page = paginate(sourceLog, beforeSeq, request.maxMessages ?? DEFAULT_MAX_MESSAGES, throughSeq, request.turnWindow);
             const records = pageRecords(page.events);
             return {
                 records,
@@ -115,14 +134,15 @@ export class SessionHistoryController {
      * Follow events appended after an initial cursor on one durable address.
      * @param request - durable address and last committed sequence already held by the caller.
      * @param signal - stream cancellation owned by the Remote carrier.
-     * @returns a complete opening snapshot followed by gap-free event frames.
+     * @returns a complete opening snapshot followed by gap-free durable events and opted-in assistant frames.
      */
     async *follow(request, signal) {
-        validateFollowRequest(request);
+        validateHistoryWindow(request);
         const { address } = request;
         const target = addressId(address);
-        const buffered = [];
+        const buffered = new Deque();
         let snapshotCursor;
+        let assistantStreamOrdinal = 0;
         let wake;
         const notify = () => {
             const resume = wake;
@@ -138,7 +158,7 @@ export class SessionHistoryController {
         const disposeEvent = this.ctx.on('session/event', (session, event) => {
             if (session.id !== target)
                 return;
-            buffered.push(event);
+            buffered.pushBack({ type: 'event', event });
             notify();
         }, { global: true });
         const disposeCreated = this.ctx.on('session/created', (session) => {
@@ -147,12 +167,27 @@ export class SessionHistoryController {
             // Constructor seed events have no session/event notification. Normally
             // only the end-seed suffix is new; if persistence advanced after the
             // opening observation, replay everything beyond that snapshot cursor.
-            const suffix = session.events.slice(snapshotCursor === undefined
+            // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+            const suffix = session.snapshotEvents(snapshotCursor === undefined
                 ? session.firstLiveSeq
-                : snapshotCursor + 1);
-            buffered.unshift(...suffix);
+                : SessionLogOffset(snapshotCursor + 1));
+            for (let index = suffix.length - 1; index >= 0; index -= 1) {
+                buffered.pushFront({ type: 'event', event: suffix[index] });
+            }
             notify();
         }, { global: true });
+        const disposeAssistantStream = request.assistantStream !== true
+            ? undefined
+            : this.ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+                if (agent.session.id !== target)
+                    return;
+                buffered.pushBack({
+                    type: 'assistant-stream',
+                    frame: wireAssistantStreamFrame(frame, cursorBeforeNext(agent.session.seq)),
+                    ordinal: ++assistantStreamOrdinal,
+                });
+                notify();
+            }, { global: true });
         const onAbort = () => { notify(); };
         signal.addEventListener('abort', onAbort, { once: true });
         try {
@@ -163,16 +198,25 @@ export class SessionHistoryController {
                 signal.throwIfAborted();
                 const cursor = source.cursor;
                 snapshotCursor = cursor;
-                const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES);
+                const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES, cursor, request.turnWindow);
+                const assistantStream = request.assistantStream === true
+                    ? this.assistantStreams.get(target)?.snapshot() ?? { revision: 0 }
+                    : undefined;
+                // The accumulator snapshot and this watermark are synchronous. Frames
+                // through the cut are represented or superseded by that baseline,
+                // including larger revisions from a retired Agent; later revision
+                // resets reach Client continuity validation.
+                const assistantStreamOrdinalCut = assistantStreamOrdinal;
                 yield {
                     type: 'snapshot',
-                    header: source.header,
+                    header: wireHeader(source.header),
                     cursor,
                     records: pageRecords(page.events),
                     hasMore: page.hasMore,
                     projections: source.projections === undefined
                         ? { asOfSeq: cursor, values: {} }
                         : projectionBlock(source.projections),
+                    ...assistantStream === undefined ? {} : { assistantStream },
                 };
                 if (address.kind === 'session' && source.source === 'prepared') {
                     const promotion = source.retain();
@@ -184,20 +228,27 @@ export class SessionHistoryController {
                         throw error;
                     }
                 }
-                let nextSeq = cursor + 1;
+                let nextOffset = SessionLogOffset(cursor + 1);
                 while (!follower.closed && !signal.aborted) {
-                    const item = buffered.shift();
+                    const item = buffered.popFront();
                     if (item === undefined) {
                         await new Promise((resolve) => { wake = resolve; });
                         continue;
                     }
-                    if (item.seq < nextSeq)
+                    if (item.type === 'assistant-stream') {
+                        if (item.ordinal > assistantStreamOrdinalCut) {
+                            yield { type: 'assistant-stream', frame: item.frame };
+                        }
                         continue;
-                    if (item.seq !== nextSeq) {
-                        reject('internal', `session event stream skipped seq ${String(nextSeq)}`, {});
                     }
-                    nextSeq++;
-                    yield entryFor(item);
+                    const expectedSeq = SessionSeq(nextOffset);
+                    if (item.event.seq < expectedSeq)
+                        continue;
+                    if (item.event.seq !== expectedSeq) {
+                        throw new RemoteError('gateway/internal', `session event stream skipped seq ${String(expectedSeq)}`, {});
+                    }
+                    nextOffset = SessionLogOffset(nextOffset + 1);
+                    yield entryFor(item.event);
                 }
             }
             catch (e_2) {
@@ -213,6 +264,7 @@ export class SessionHistoryController {
             signal.removeEventListener('abort', onAbort);
             disposeCreated();
             disposeEvent();
+            disposeAssistantStream?.();
         }
     }
     async sourceFor(address, signal, withProjections) {
@@ -227,7 +279,7 @@ export class SessionHistoryController {
                 rejectNotFound(address);
             }
             try {
-                validateAddress(address, observation.header, observation.projections);
+                validateAddress(address, observation.header, observation.inheritedEventCount, observation.projections);
             }
             catch (error) {
                 observation[Symbol.dispose]();
@@ -243,6 +295,19 @@ export class SessionHistoryController {
         }
     }
 }
+function cursorBeforeNext(nextSeq) {
+    return nextSeq === 0 ? -1 : SessionSeq(nextSeq - 1);
+}
+function wireAssistantStreamFrame(frame, durableCursor) {
+    if (frame.type === 'start')
+        return { ...frame, startedAfterSeq: durableCursor };
+    if (frame.type === 'end')
+        return frame;
+    return {
+        ...frame,
+        chunk: frame.chunk,
+    };
+}
 function projectionBlock(snapshot) {
     return {
         asOfSeq: snapshot.asOfSeq,
@@ -251,95 +316,117 @@ function projectionBlock(snapshot) {
     };
 }
 function validatePageRequest(request) {
-    if (!Number.isSafeInteger(request.throughSeq) || request.throughSeq < -1) {
-        reject('bad-request', 'throughSeq must be an integer greater than or equal to -1', {});
+    if (!Number.isSafeInteger(request.throughSeq)
+        || request.throughSeq < -1
+        || Object.is(request.throughSeq, -0)) {
+        throw new RemoteError('gateway/bad-request', 'throughSeq must be an integer greater than or equal to -1', {});
     }
     if (request.beforeSeq !== undefined
-        && (!Number.isSafeInteger(request.beforeSeq) || request.beforeSeq < 0)) {
-        reject('bad-request', 'beforeSeq must be a non-negative safe integer', {});
+        && (!Number.isSafeInteger(request.beforeSeq)
+            || request.beforeSeq < 0
+            || Object.is(request.beforeSeq, -0))) {
+        throw new RemoteError('gateway/bad-request', 'beforeSeq must be a non-negative safe integer', {});
     }
-    if (request.maxMessages !== undefined
-        && (!Number.isSafeInteger(request.maxMessages) || request.maxMessages <= 0)) {
-        reject('bad-request', 'maxMessages must be a positive safe integer', {});
-    }
+    validateHistoryWindow(request);
 }
-function validateFollowRequest(request) {
+function validateHistoryWindow(request) {
     if (request.maxMessages !== undefined
         && (!Number.isSafeInteger(request.maxMessages) || request.maxMessages <= 0)) {
-        reject('bad-request', 'maxMessages must be a positive safe integer', {});
+        throw new RemoteError('gateway/bad-request', 'maxMessages must be a positive safe integer', {});
+    }
+    const window = request.turnWindow;
+    if (window !== undefined) {
+        if (!Number.isSafeInteger(window.minMessages) || window.minMessages <= 0
+            || window.minMessages > (request.maxMessages ?? DEFAULT_MAX_MESSAGES)) {
+            throw new RemoteError('gateway/bad-request', 'turnWindow.minMessages must be a positive safe integer no greater than maxMessages', {});
+        }
+        if (!Number.isSafeInteger(window.minTurns) || window.minTurns <= 0) {
+            throw new RemoteError('gateway/bad-request', 'turnWindow.minTurns must be a positive safe integer', {});
+        }
     }
 }
 function addressId(address) {
     return address.kind === 'session' ? address.sessionId : address.childSessionId;
 }
-function validateAddress(address, header, projections) {
+function validateAddress(address, header, inheritedEventCount, projections) {
     if (address.kind === 'session') {
         if (header.origin === 'subagent') {
-            reject('agent-busy', 'subagent Sessions require their durable parent address', {
+            throw new RemoteError('session/agent-busy', 'subagent Sessions require their durable parent address', {
                 reason: 'use subagent delivery for this child session',
             });
         }
         return;
     }
     if (header.origin !== 'subagent' || header.parentSession !== address.parentSessionId) {
-        reject('subagent-unauthorized', 'subagent does not belong to the supplied parent', {
+        throw new RemoteError('subagent/unauthorized', 'subagent does not belong to the supplied parent', {
             childSessionId: address.childSessionId,
         });
     }
     const identity = projections?.values.subagent;
     if (identity === null) {
-        reject('subagent-catalog-diagnostic', 'subagent descriptor is corrupt', {
+        throw new RemoteError('subagent/catalog-diagnostic', 'subagent descriptor is corrupt', {
             parentSessionId: address.parentSessionId,
             childSessionId: address.childSessionId,
             reason: 'corrupt',
         });
     }
-    if (identity === undefined || identity.seq < (header.seedLength ?? 0)) {
-        reject('subagent-catalog-diagnostic', 'subagent descriptor is unavailable', {
+    if (identity === undefined || identity.seq < inheritedEventCount) {
+        throw new RemoteError('subagent/catalog-diagnostic', 'subagent descriptor is unavailable', {
             parentSessionId: address.parentSessionId,
             childSessionId: address.childSessionId,
             reason: 'unsupported',
         });
     }
-    if (identity.mode !== address.mode) {
-        reject('subagent-unauthorized', 'subagent mode does not match the supplied address', {
+    if (address.mode !== 'unknown' && identity.mode !== address.mode) {
+        throw new RemoteError('subagent/unauthorized', 'subagent mode does not match the supplied address', {
             childSessionId: address.childSessionId,
         });
     }
 }
 function rejectNotFound(address) {
     if (address.kind === 'session') {
-        reject('session-not-found', `session "${address.sessionId}" not found`, { sessionId: address.sessionId });
+        throw new RemoteError('session/not-found', `session "${address.sessionId}" not found`, { sessionId: address.sessionId });
     }
-    reject('subagent-not-found', 'subagent is unavailable', {
+    throw new RemoteError('subagent/not-found', 'subagent is unavailable', {
         parentSessionId: address.parentSessionId,
         childSessionId: address.childSessionId,
     });
 }
-function reject(code, message, details) {
-    throw new TypertRemoteFailure({ code, message, details });
-}
-function paginate(events, beforeSeq, maxMessages, throughSeq = events.at(-1)?.seq ?? -1) {
-    const end = Math.min(throughSeq + 1, beforeSeq ?? throughSeq + 1);
+function paginate(events, beforeSeq, maxMessages, throughSeq, turnWindow) {
+    const end = SessionLogOffset(Math.min(throughSeq + 1, beforeSeq ?? throughSeq + 1));
     let count = 0;
-    let cut = 0;
+    let turns = 0;
+    let cut = SessionLogOffset(0);
     for (let index = end - 1; index >= 0; index--) {
         const event = events[index];
+        if (turnWindow !== undefined && event.type === 'turn/start') {
+            turns++;
+            if (count >= turnWindow.minMessages && turns >= turnWindow.minTurns) {
+                cut = SessionLogOffset(index);
+                break;
+            }
+        }
         if (!MESSAGE_TYPES.has(event.type) || !isAppendSurfaceEvent(event))
             continue;
         count++;
         const sources = event.sourceEventSeqs;
         let groupStart = event.seq;
         if (sources !== undefined) {
-            for (const source of sources)
-                groupStart = Math.min(groupStart, source);
+            for (const source of sources) {
+                if (source < groupStart)
+                    groupStart = source;
+            }
         }
         if (count >= maxMessages) {
-            cut = groupStart;
+            cut = SessionLogOffset(groupStart);
             break;
         }
     }
     return { events: events.slice(cut, end), hasMore: cut > 0 };
+}
+/** Translate current logical Session metadata to the browser wire. */
+function wireHeader(header) {
+    return { ...header };
 }
 function entryFor(event) {
     return {
@@ -348,29 +435,8 @@ function entryFor(event) {
         event: event,
     };
 }
-function chunkEntryFor(row) {
-    switch (row.type) {
-        case 'text-chunks':
-            return {
-                type: 'chunks',
-                event: { type: 'chunkrow/text-chunks', seq: row.seq0, time: row.time0, data: row.data },
-            };
-        case 'reasoning-chunks':
-            return {
-                type: 'chunks',
-                event: { type: 'chunkrow/reasoning-chunks', seq: row.seq0, time: row.time0, data: row.data },
-            };
-        case 'tool-call-chunks':
-            return {
-                type: 'chunks',
-                event: { type: 'chunkrow/tool-call-chunks', seq: row.seq0, time: row.time0, data: row.data },
-            };
-    }
-}
 /** Encode one bounded logical page without changing its pagination cut. */
 function pageRecords(events) {
-    return packChunkRuns(events).map(record => isChunkRow(record)
-        ? chunkEntryFor(record)
-        : entryFor(record));
+    return events.map(entryFor);
 }
 //# sourceMappingURL=history.js.map

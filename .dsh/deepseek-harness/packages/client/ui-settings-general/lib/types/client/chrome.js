@@ -5,7 +5,7 @@ import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-run
  * The shell renders the surrounding chrome (button, nav heading row) and
  * reads each entry's `label` option for aria text.
  */
-import { IconSettingsOutline14, IconSettingsOutline16 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconSettingsOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './chrome.module.css';
 /**
  * Render the trigger row content (icon; label only in the wide column).
@@ -13,7 +13,7 @@ import css from './chrome.module.css';
  * @returns the trigger content fragment.
  */
 export function TriggerContent({ wide, t }) {
-    return (_jsxs(_Fragment, { children: [wide ? _jsx(IconSettingsOutline16, { size: 16 }) : _jsx(IconSettingsOutline14, { size: 18 }), wide && _jsx("span", { className: css.triggerLabel, children: t('trigger') })] }));
+    return (_jsxs(_Fragment, { children: [_jsx(IconSettingsOutlineMedium, { size: wide ? 16 : 18 }), wide && _jsx("span", { className: css.triggerLabel, children: t('trigger') })] }));
 }
 /**
  * Render the panel title text.

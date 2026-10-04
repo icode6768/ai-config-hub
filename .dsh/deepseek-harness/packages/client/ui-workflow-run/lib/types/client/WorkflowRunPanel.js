@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useLayoutEffect, useMemo, useRef, useState, } from 'react';
-import { DisclosureRow, IconChevronRightOutline14, StateDot, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { DisclosureRow, IconChevronRightOutlineRegular, StateDot, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { shallowEqual } from '@deepseek-ai/dsh-client-store';
 import css from './WorkflowRunPanel.module.css';
 const STATUS_KEYS = {
@@ -114,17 +114,14 @@ function phaseStatusSummary(members, t) {
         : active;
     return visible.map(status => statusCount(status, count(status), t)).join(' · ');
 }
-function navigableMembers(sessions, phases, parentId) {
-    const ordinary = new Set(sessions.ids);
+function navigableMembers(sessions, phases, parentId, statuses) {
+    const catalog = sessions.projectionsBySession[parentId];
     const result = [];
     for (const phase of phases) {
         for (const member of phase.members) {
-            const summary = sessions.byId[member.childId];
+            const child = catalog?.values.subagentCatalog?.find(entry => entry.id === member.childId);
             if (member.status === 'running'
-                && ordinary.has(member.childId)
-                && summary?.origin === 'subagent'
-                && summary.parentId === parentId
-                && summary.running) {
+                && child !== undefined && (statuses.get(child.id)?.running ?? sessions.byId[child.id]?.running) === true) {
                 result.push(member.childId);
             }
         }
@@ -132,9 +129,9 @@ function navigableMembers(sessions, phases, parentId) {
     return result;
 }
 function RunHeader({ children, count, name, onToggle, open, status, t }) {
-    return (_jsx(StatusDisclosure, { icon: _jsx(IconChevronRightOutline14, {}), title: t('run.title', { name }), open: open, onToggle: onToggle, expandOnRowClick: true, previewChevron: false, keepContentWhenOpen: true, rowClassName: css.runHeader, leadingClassName: css.runLeading, titleClassName: css.runTitle, collapsedContent: (_jsxs(_Fragment, { children: [_jsx("span", { className: css.separator, "aria-hidden": true }), _jsx("span", { className: css.runSummary, children: memberCount(count, t) }), _jsxs("span", { className: css.statusTail, "data-status": status, children: [_jsx(StateDot, { state: dotState(status) }), _jsx("span", { children: t(STATUS_KEYS[status]) })] })] })), children: children }));
+    return (_jsx(StatusDisclosure, { icon: _jsx(IconChevronRightOutlineRegular, {}), title: t('run.title', { name }), open: open, onToggle: onToggle, expandOnRowClick: true, previewChevron: false, keepContentWhenOpen: true, rowClassName: css.runHeader, contentClassName: css.headerContent, contentLayoutClassName: css.headerContentLayout, leadingClassName: css.runLeading, titleClassName: css.runTitle, collapsedContent: (_jsxs(_Fragment, { children: [_jsx("span", { className: css.separator, "aria-hidden": true }), _jsx("span", { className: css.runSummary, children: memberCount(count, t) }), _jsxs("span", { className: css.statusTail, "data-status": status, children: [_jsx(StateDot, { state: dotState(status) }), _jsx("span", { children: t(STATUS_KEYS[status]) })] })] })), children: children }));
 }
-function MemberRow({ member, navigable, openSession, t }) {
+function MemberRow({ member, navigable, openSession, parentSessionId, t }) {
     const name = readableMember(member.label, t);
     const [focused, setFocused] = useState(false);
     const renderButton = navigable || focused;
@@ -142,13 +139,21 @@ function MemberRow({ member, navigable, openSession, t }) {
     if (!renderButton) {
         return _jsx("div", { className: css.memberRow, "data-member-status": member.status, children: content });
     }
-    return (_jsx("button", { type: "button", className: navigable ? css.memberButton : css.memberRow, "data-member-status": member.status, "aria-disabled": navigable ? undefined : true, "aria-label": navigable ? t('member.open', { name }) : name, tabIndex: navigable ? undefined : -1, onFocus: () => { setFocused(true); }, onBlur: () => { setFocused(false); }, onClick: navigable ? () => { openSession(member.childId); } : undefined, children: content }));
+    return (_jsx("button", { type: "button", className: navigable ? css.memberButton : css.memberRow, "data-member-status": member.status, "aria-disabled": navigable ? undefined : true, "aria-label": navigable ? t('member.open', { name }) : name, tabIndex: navigable ? undefined : -1, onFocus: () => { setFocused(true); }, onBlur: () => { setFocused(false); }, onClick: navigable
+            ? () => {
+                openSession({
+                    parentSessionId,
+                    childSessionId: member.childId,
+                    mode: 'one-shot',
+                });
+            }
+            : undefined, children: content }));
 }
-function PhaseSection({ contentRef, onContentBlur, onToggle, open, pendingCleanCollapse, phase, navigable, openSession, t, }) {
-    return (_jsx("div", { className: css.phase, onMouseDownCapture: pendingCleanCollapse ? preventPendingHeaderFocus : undefined, children: _jsx(StatusDisclosure, { icon: _jsx(IconChevronRightOutline14, {}), title: readablePhase(phase.phase, t), open: open, onToggle: onToggle, expandOnRowClick: true, previewChevron: false, keepContentWhenOpen: true, rowClassName: css.phaseHeader, leadingClassName: css.phaseLeading, titleClassName: css.phaseTitle, collapsedContent: (_jsxs(_Fragment, { children: [_jsx("span", { className: css.separator, "aria-hidden": true }), _jsx("span", { className: css.phaseCount, "data-phase-count": true, children: memberCount(phase.members.length, t) }), _jsx("span", { className: css.phaseStatus, "data-phase-status-text": true, children: phaseStatusSummary(phase.members, t) })] })), children: _jsx("div", { ref: contentRef, className: css.members, onBlur: onContentBlur, children: phase.members.map(member => (_jsx(MemberRow, { member: member, navigable: navigable.includes(member.childId), openSession: openSession, t: t }, member.seq))) }) }) }));
+function PhaseSection({ contentRef, onContentBlur, onToggle, open, pendingCleanCollapse, phase, navigable, openSession, parentSessionId, t, }) {
+    return (_jsx("div", { className: css.phase, onMouseDownCapture: pendingCleanCollapse ? preventPendingHeaderFocus : undefined, children: _jsx(StatusDisclosure, { icon: _jsx(IconChevronRightOutlineRegular, {}), title: readablePhase(phase.phase, t), open: open, onToggle: onToggle, expandOnRowClick: true, previewChevron: false, keepContentWhenOpen: true, rowClassName: css.phaseHeader, contentClassName: css.headerContent, contentLayoutClassName: css.headerContentLayout, leadingClassName: css.phaseLeading, titleClassName: css.phaseTitle, collapsedContent: (_jsxs(_Fragment, { children: [_jsx("span", { className: css.separator, "aria-hidden": true }), _jsx("span", { className: css.phaseCount, "data-phase-count": true, children: memberCount(phase.members.length, t) }), _jsx("span", { className: css.phaseStatus, "data-phase-status-text": true, children: phaseStatusSummary(phase.members, t) })] })), children: _jsx("div", { ref: contentRef, className: css.members, onBlur: onContentBlur, children: phase.members.map(member => (_jsx(MemberRow, { member: member, navigable: navigable.includes(member.childId), openSession: openSession, parentSessionId: parentSessionId, t: t }, member.seq))) }) }) }));
 }
 /** Render one durable workflow run with status-driven run and phase disclosure. */
-export function WorkflowRunPanel({ node, sessionId, useSessions, openSession, t }) {
+export function WorkflowRunPanel({ node, sessionId, useSessions, useSessionStatus, openSession, t }) {
     const phaseFacts = useMemo(() => node.data.phases.map(phase => [phase.key, phaseDisclosureFacts(phase)]), [node.data.phases]);
     const runFacts = useMemo(() => runDisclosureFacts(node.data.status, phaseFacts), [node.data.status, phaseFacts]);
     const totalMembers = runFacts.activityCount;
@@ -158,7 +163,8 @@ export function WorkflowRunPanel({ node, sessionId, useSessions, openSession, t 
     }));
     const runContentRef = useRef(null);
     const phaseContentRefs = useRef(new Map());
-    const navigable = useSessions(sessions => navigableMembers(sessions, node.data.phases, sessionId), shallowEqual);
+    const statuses = useSessionStatus(value => value);
+    const navigable = useSessions(sessions => navigableMembers(sessions, node.data.phases, sessionId, statuses), shallowEqual);
     // Outer hiding unmounts Phase content without a dependable blur event, so this edge settles deferred closes.
     useLayoutEffect(() => {
         setDisclosures((current) => {
@@ -240,7 +246,7 @@ export function WorkflowRunPanel({ node, sessionId, useSessions, openSession, t 
                                     phaseContentRefs.current.delete(phase.key);
                                 else
                                     phaseContentRefs.current.set(phase.key, element);
-                            }, onContentBlur: (event) => { settlePhaseBlur(phase.key, event); }, onToggle: () => { togglePhase(phase.key); }, open: disclosure.open, pendingCleanCollapse: disclosure.pendingCleanCollapse, phase: phase, navigable: navigable, openSession: openSession, t: t }, phase.key));
+                            }, onContentBlur: (event) => { settlePhaseBlur(phase.key, event); }, onToggle: () => { togglePhase(phase.key); }, open: disclosure.open, pendingCleanCollapse: disclosure.pendingCleanCollapse, phase: phase, navigable: navigable, openSession: openSession, parentSessionId: sessionId, t: t }, phase.key));
                     }) }) }) }));
 }
 //# sourceMappingURL=WorkflowRunPanel.js.map

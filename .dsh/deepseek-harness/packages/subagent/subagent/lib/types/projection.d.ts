@@ -20,6 +20,8 @@ export interface TimingState {
     pendingTurnStart?: number | undefined;
     /** Whether the fold has crossed a descriptor in this logical log. */
     descriptorSeen: boolean;
+    /** Whether the latest closed post-descriptor turn completed normally; absent while a turn is open or before one closes. */
+    lastTurnCompleted?: boolean | undefined;
 }
 declare module '@deepseek-ai/dsh-session-projection/types' {
     interface SessionProjectionStateMap {
@@ -52,10 +54,13 @@ export declare const subagentTimingProjectionDefinition: {
         } | undefined;
         /** Whether the fold has crossed a descriptor in this logical log. */
         descriptorSeen: boolean;
+        /** Whether the latest closed post-descriptor turn completed normally; absent while a turn is open or before one closes. */
+        lastTurnCompleted?: boolean | undefined;
     };
     wire: {
         viewSchema: z.ZodType<SubagentTimingProjection, unknown, z.core.$ZodTypeInternals<SubagentTimingProjection, unknown>>;
         view: (state: NoInfer<TimingState>) => {
+            lastTurnCompleted?: boolean;
             active?: {
                 since: number;
                 through: number;

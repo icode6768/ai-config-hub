@@ -4,7 +4,9 @@ import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./http-bridge.js";
 import { assertTrustedAuthority } from "./api-request-trust.js";
 import { BrowserAuth } from "./browser-auth.js";
 import { HostConnectionService } from "./rpc-host.js";
+import { ConnectionRecoveryConfigSchema, resolveConnectionConfig } from "./recovery-config.js";
 export { RpcId, transportError } from "./rpc.js";
+export { OperatorPeer } from "./operator-peer.js";
 export { clientRequestSchema, rpcErrorSchema, rpcIdSchema, rpcMessageSchema, rpcResultSchema, serverResponseSchema, } from "./rpc-schema.js";
 export { HostConnectionService } from "./rpc-host.js";
 export { API_PATH } from "./api-path.js";
@@ -23,20 +25,22 @@ function assertImageBodyCapacity(ctx, maxRequestBodyBytes) {
     }
 }
 /** Services required before providing Connection. */
-export const inject = ['webServer', 'credentials'];
+export const inject = ['credentials'];
 export const Config = z.object({
+    recovery: ConnectionRecoveryConfigSchema.default({}),
     trustedHosts: z.array(String).default([]),
     cookieMaxAgeDays: z.natural().min(1).default(30),
     maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
 });
 /**
- * Mounts the API gateway under the browser transport prefix. Every request on
- * the prefix passes the Host/Origin browser-trust fence and persistent browser
- * authentication before dispatch.
+ * Provides carrier-neutral RPC and Fetch registries. When `webServer` is
+ * present, the plugin also mounts the `/api` browser transport with Host/Origin
+ * checks and persistent browser authentication.
  * @param ctx - Host plugin context.
  * @param config - resolved plugin config (schema defaults applied).
  */
 export async function apply(ctx, config) {
+    const recovery = resolveConnectionConfig(config?.recovery);
     // The Loader resolves schema defaults; hand-built test contexts may pass none.
     const trustedHosts = config?.trustedHosts ?? [];
     const cookieMaxAgeDays = config?.cookieMaxAgeDays ?? 30;
@@ -47,21 +51,27 @@ export async function apply(ctx, config) {
         assertTrustedAuthority(entry);
     assertImageBodyCapacity(ctx, maxRequestBodyBytes);
     const connection = new HostConnectionService(ctx, trustedHosts, await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays));
-    const fetchHandler = connection.createSharedFetchHandler(API_PATH);
-    const route = {
-        kind: 'prefix',
-        path: API_PATH,
-        handler: async (req, res) => {
-            const rejection = connection.requestRejection(req);
-            if (rejection !== undefined) {
-                res.writeHead(rejection);
-                res.end(rejection === 401 ? 'unauthorized' : 'forbidden');
-                return;
-            }
-            await bridge(req, res, fetchHandler, maxRequestBodyBytes);
-        },
-    };
-    ctx.effect(() => ctx.webServer.register(route), 'client-connection: /api route');
+    ctx.inject(['webServer'], (webCtx) => {
+        assertImageBodyCapacity(webCtx, maxRequestBodyBytes);
+        webCtx.on('webserver/index-inject', (table) => {
+            table.push({ kind: 'global', name: '__DSH_CONNECTION_RECOVERY__', value: recovery });
+        });
+        const fetchHandler = connection.createSharedFetchHandler(API_PATH);
+        const route = {
+            kind: 'prefix',
+            path: API_PATH,
+            handler: async (req, res) => {
+                const admission = connection.admit(req);
+                if ('rejection' in admission) {
+                    res.writeHead(admission.rejection);
+                    res.end(admission.rejection === 401 ? 'unauthorized' : 'forbidden');
+                    return;
+                }
+                await webCtx.waterfall('connection/request', req, res, () => bridge(req, res, fetchHandler, maxRequestBodyBytes));
+            },
+        };
+        webCtx.effect(() => webCtx.webServer.register(route), 'client-connection: /api route');
+    });
     ctx.inject(['attachments'], (attachmentCtx) => {
         assertImageBodyCapacity(attachmentCtx, maxRequestBodyBytes);
     });

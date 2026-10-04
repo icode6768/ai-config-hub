@@ -4,13 +4,15 @@
  * @module @deepseek-ai/dsh-tool-session-query/workspace-access
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { type SessionEvent, type SessionHeader, type SessionId as SessionIdValue } from '@deepseek-ai/dsh-session';
+import { type SessionHeader, type SessionId as SessionIdValue } from '@deepseek-ai/dsh-session';
+import type { TurnBoundaryProjection } from '@deepseek-ai/dsh-agent';
 import type { SessionLineageNode, SessionRecord } from '@deepseek-ai/dsh-session-query';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 interface Caller {
     readonly id: SessionIdValue;
     readonly header: SessionHeader;
-    readonly events: readonly SessionEvent[];
+    /** The caller's own-session boundary fold (the `turnBoundary` projection). */
+    readonly boundary: TurnBoundaryProjection | undefined;
 }
 interface TitleView {
     readonly text: string;
@@ -28,7 +30,7 @@ interface DescendantVisit {
     readonly depth: number;
     readonly next: DescendantVisit | undefined;
 }
-declare function callerOf(exec: ToolRunContext): Caller;
+declare function callerOf(exec: ToolRunContext, ctx: Context): Caller;
 declare function targetId(args: {
     readonly session_id?: string;
 }, caller: Caller): SessionIdValue;

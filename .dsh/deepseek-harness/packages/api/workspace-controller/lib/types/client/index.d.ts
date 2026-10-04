@@ -2,15 +2,12 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { RemoteSnapshotStream, RemoteStreamCarrierError, type ClientRemote } from '@deepseek-ai/dsh-api-gateway/client';
 import type { WorkspaceFollowFrame, WorkspaceFollowIncrement } from '../types.ts';
-import type { WorkspaceFollowSink, WorkspaceRemote } from './model.ts';
+import type { WorkspaceFollowSink } from './model.ts';
 export { ClientWorkspaceModel } from './model.ts';
 export type { WorkspaceFollowSink, WorkspaceListPhase, WorkspaceRemote, WorkspaceSnapshot, } from './model.ts';
-export { WorkspaceController, WorkspaceCreateError } from './service.ts';
+export { WorkspaceArchiveError, WorkspaceController, WorkspaceCreateError } from './service.ts';
 export type { IWorkspaces, WorkspaceSource } from './service.ts';
-export type { WorkspaceId, WorkspaceView } from '../types.ts';
-type WorkspaceStreamRemote = Pick<ClientRemote, '$stream'> & {
-    readonly workspace: WorkspaceRemote;
-};
+export type { SessionActivity, SessionActivityItem, SessionActivityKind, SessionActivityKindMap, WorkspaceId, WorkspaceView, } from '../types.ts';
 type WorkspaceBaselineFrame = Extract<WorkspaceFollowFrame, {
     type: 'baseline';
 }>;
@@ -40,9 +37,9 @@ export interface WorkspaceStateStreamOptions {
 }
 /**
  * Create the reconnecting Workspace state stream.
- * @param remote - generated Workspace namespace and Gateway stream factory.
+ * @param remote - Client Remote face carrying the Workspace namespace and the stream factory.
  * @param options - Workspace state destinations.
  * @returns an unstarted stream owned by the Client Workspace runtime.
  */
-export declare function createWorkspaceStateStream(remote: WorkspaceStreamRemote, options: WorkspaceStateStreamOptions): WorkspaceStateStream;
+export declare function createWorkspaceStateStream(remote: ClientRemote, options: WorkspaceStateStreamOptions): WorkspaceStateStream;
 //# sourceMappingURL=index.d.ts.map

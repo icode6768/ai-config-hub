@@ -27,9 +27,10 @@ export declare class CredentialsController extends TypertRemoteService {
      * Describe several references for one configuration surface. Batched because
      * a settings page describes every reference its rows name at once, and one
      * round trip keeps those rows from settling separately.
-     * @param refs - reference names, at most {@link MAX_DESCRIBE_REFS}; a name outside the grammar rejects the whole call as `bad-request`.
+     * @param refs - reference names, at most {@link MAX_DESCRIBE_REFS}; a name outside the grammar
+     *   rejects the whole call as `gateway/bad-request`.
      * @returns one view per requested name, keyed by that name.
-     * @throws TypertRemoteFailure when the request is invalid or no credential provider is mounted.
+     * @throws RemoteError when the request is invalid or no credential provider is mounted.
      */
     describe(refs: string[]): Promise<Record<string, CredentialInfo>>;
     /**
@@ -37,19 +38,19 @@ export declare class CredentialsController extends TypertRemoteService {
      * this direction only: no read path returns it.
      * @param ref - reference name to store under.
      * @param value - the non-empty secret value.
-     * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+     * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
      */
     set(ref: string, value: string): Promise<void>;
     /**
      * Remove one reference from a configuration surface.
      * @param ref - reference name to remove.
-     * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+     * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
      */
     unset(ref: string): Promise<void>;
     /** Resolve the optional provider or report how to supply it. */
     private provider;
     /**
-     * Run one remote write and report every refusal as `credential-rejected`
+     * Run one remote write and report every refusal as `credential/rejected`
      * carrying the seam's own message: a read-only source shadowing the reference
      * is what a configuration surface must show verbatim. Callers brand the
      * reference before entering, so a name outside the grammar never reaches this

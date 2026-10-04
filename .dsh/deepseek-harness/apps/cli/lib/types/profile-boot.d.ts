@@ -2,8 +2,7 @@
  * Shared profile boot for every `dsh` surface: resolve the profile, stack its
  * patch layers (bundle layers in `dsh.profile.bundles` order, the profile's
  * own `cordis.patch.yml`, `--patch` overlays, the telemetry switch), mount the
- * tree over the profile's empty root config, apply its selected patch-reload
- * lifecycle, and wire fail-loud plus bounded shutdown.
+ * tree over the profile's empty root config, and wire fail-loud plus bounded shutdown.
  *
  * App flags are not the launcher's business: the invocation's inner arguments
  * are provided to the tree through `ctx.cmdlineArgs`, where any injected app
@@ -11,8 +10,7 @@
  * @module @deepseek-ai/dsh/profile-boot
  */
 import { type Context } from '@deepseek-ai/cordis';
-import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include';
-import { type Profile } from '@deepseek-ai/dsh-app-boot';
+import { type ProfileContext, type Profile } from '@deepseek-ai/dsh-app-boot';
 import { type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment';
 import { type ProcessShutdown } from './process-shutdown.ts';
 /**
@@ -27,17 +25,17 @@ export declare const INSTALL_ANCHOR: string;
 /** Root config filename inside a profile directory. */
 export declare const PROFILE_ROOT_FILENAME = "cordis.yml";
 /**
- * Resolve the telemetry opt-out switch into its boot patch. ANY non-empty
- * value (including `'0'`/`'false'`) disables: a privacy switch prefers
- * off-by-mistake over on-by-mistake. A composition without the telemetry row
- * exports nothing, so the switch is then trivially satisfied and no patch is
- * generated — custom profiles need not mount telemetry to run with the
- * switch set.
- * @param disabledEnv - the raw `DSH_TELEMETRY_DISABLED` value (`undefined` when unset).
- * @param hasRow - whether the composition carries the telemetry row.
- * @returns the disable patch, or `undefined` when no hard-disable patch is required.
+ * Initialize a missing profile from one shipped template. This copies only
+ * the template's bundle list; local state from the
+ * same-named shipped profile is not read, and no inheritance metadata is
+ * persisted. Shipped profile names are reserved, and the target directory is
+ * claimed exclusively so existing or concurrent state is never reused.
+ * @param name - the new profile name.
+ * @param fromDefaultProfile - shipped profile template to copy.
+ * @param home - Harness home containing the profile directory.
+ * @throws when the template is unknown, the target name is shipped, or the target directory exists.
  */
-export declare function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: boolean): PatchOptions | undefined;
+export declare function initializeProfileFromDefault(name: string, fromDefaultProfile: string, home?: string): void;
 /**
  * Load a resolved profile for `name` and (re)write the empty root config. The
  * root is always rewritten: the whole composition is patch layers, and the
@@ -49,25 +47,41 @@ export declare function resolveTelemetryPatch(disabledEnv: string | undefined, h
  * the identical base).
  * @param name - the profile name.
  * @param userLayer - `false` skips parsing `cordis.patch.yml` (the default dump).
+ * @param fromDefaultProfile - shipped template used once to initialize a missing profile.
  * @returns the loaded profile.
+ * @throws when explicit initialization names an unknown template or an existing profile.
  */
-export declare function prepareProfile(name: string, userLayer?: boolean): Profile;
+export declare function prepareProfile(name: string, userLayer?: boolean, fromDefaultProfile?: string): Profile;
+/** An application-owned profile and its independent installation fallback. */
+export interface ResolvedProfileRuntime {
+    /** Profile already loaded from the application's own directory. */
+    profile: Profile;
+    /** Absolute package.json path of the application's dsh installation. */
+    installAnchor: string;
+}
 /** Options for {@link runProfile}. */
 export interface RunProfileOptions {
     /** This run's frozen environment snapshot, provided before any entry mounts. */
     environment: LaunchEnvironmentSnapshot;
     /** The profile name to boot. */
     profile: string;
+    /** Loaded application profile; bypasses named profile initialization when supplied. */
+    resolvedProfile?: ResolvedProfileRuntime | undefined;
+    /** Shipped template used once to initialize a missing profile. */
+    fromDefaultProfile?: string | undefined;
     /** `--patch` overlay paths, in argv order. */
     patchFiles: readonly string[];
     /** The invocation's inner arguments, handed to the tree through `ctx.cmdlineArgs`. */
     args: readonly string[];
+    /** Application-owned package runtime, scoped to plugin package operations. */
+    packageManager?: ProfileContext['packageManager'];
 }
 /**
  * Boot one profile invocation end to end and leave process lifetime to the
  * mounted plugins (or to a one-shot runner the composition mounts).
  * @param options - environment snapshot, profile name, overlays, and the booted app's own arguments.
  * @returns the settled root context and the shutdown controller.
+ * @throws after disposing startup resources; cleanup failures retain the original error.
  */
 export declare function runProfile(options: RunProfileOptions): Promise<{
     ctx: Context;

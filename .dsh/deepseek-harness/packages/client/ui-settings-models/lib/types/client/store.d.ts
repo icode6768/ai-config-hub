@@ -6,14 +6,11 @@
  * single fact source — every mutation writes through the wire and the page
  * re-renders from the next describe, pushed or refetched.
  */
-import type { ClientRemote, CredentialInfo, LlmConfigurableProvider, LlmProviderInfo, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
+import type { CredentialInfo, LlmConfigurableProvider, LlmProviderInfo, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client';
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store';
-import type { SettingsDescribeFace, SettingsRemote } from '@deepseek-ai/dsh-client-ui-settings/client';
+import type { SettingsDescribeFace } from '@deepseek-ai/dsh-client-ui-settings/client';
 import type { SettingsSchemaOperations } from './schema-operations.ts';
-/** The credentials Remote methods the Models page reads and writes through. */
-export type ModelsCredentials = Pick<ClientRemote['credentials'], 'describe' | 'set' | 'unset'>;
-/** LLM Remote methods used by the Models page. */
-export type ModelsLlm = Pick<ClientRemote['llm'], 'discoverModels' | 'listConfigurableProviders' | 'listProviders'>;
 /** One provider row after joining the configurable directory with live routes. */
 export interface ProviderDirectoryEntry {
     readonly provider: string;
@@ -22,27 +19,19 @@ export interface ProviderDirectoryEntry {
     readonly settingsPath: readonly string[];
     readonly active: boolean;
     readonly declared?: boolean;
+    readonly error?: string;
 }
 /**
  * Join declared configurable providers with the currently registered routes.
  * @param registered - live provider routes in registration order.
  * @param directory - declared configurable providers in declaration order.
- * @returns declared rows followed by live routes with no declaration.
+ * @returns account and official routes first, then other routes in their original order.
  */
 export declare function joinProviderDirectory(registered: readonly LlmProviderInfo[], directory: readonly LlmConfigurableProvider[]): ProviderDirectoryEntry[];
-/**
- * Every Remote wire face the Models page reaches.
- */
-export interface ModelsWire {
-    /** The settings Remote namespace: the redacted read and the profile writes. */
-    settings: SettingsRemote;
-    /** Credential state and writes for the references provider profiles name. */
-    credentials: ModelsCredentials;
-    /** Provider directory reads and draft endpoint discovery. */
-    llm: ModelsLlm;
-}
 /** One provider row the page renders. */
 export interface ProviderRow {
+    /** Account route has usable credentials for the configured inference origin. */
+    accountAvailable?: boolean;
     /** The directory entry (route id, display name, settings address, live state). */
     entry: ProviderDirectoryEntry;
     /** Whether any layer configures this provider (its profile resolves). */
@@ -76,14 +65,6 @@ export interface ModelsSettingsState {
     namespaces: ReadonlyMap<string, SettingsNamespaceView>;
 }
 /**
- * Human text for a rejected wire call. A transport failure rejects with an
- * Error; a host or a runtime can reject with anything, and the page still has
- * to say something.
- * @param error - the rejection value.
- * @returns the message to show.
- */
-export declare function messageOf(error: unknown): string;
-/**
  * Derive the conventional credential reference for a provider route: the v1
  * page never asks for an environment-variable name, so a typed key stores
  * under this derived reference and the profile records it as `apiKeyEnv`.
@@ -103,7 +84,7 @@ export declare function deriveKeyRef(provider: string): string;
 export declare function protocolChoices(namespace: SettingsNamespaceView | undefined, schema: SettingsSchemaOperations): string[];
 /** The models settings page controller (one per settings surface). */
 export declare class ModelsSettingsStore {
-    private readonly api;
+    private readonly ctx;
     private readonly schema;
     private readonly describeFace;
     /** The snapshot the section renders from (uSES-safe store). */
@@ -111,10 +92,12 @@ export declare class ModelsSettingsStore {
     /** Latest load wins; an older response never overwrites a newer one. */
     private generation;
     /**
-     * @param api - the page's credentials Remote and LLM wire faces.
+     * @param ctx - the page plugin's context, whose `remote.llm` and
+     * `remote.credentials` namespaces carry the directory and credential reads.
+     * @param schema - settings-owned schema and immutable path operations.
      * @param describeFace - the shared mirror's describe face (namespace views and writability).
      */
-    constructor(api: Pick<ModelsWire, 'credentials' | 'llm'>, schema: SettingsSchemaOperations, describeFace: SettingsDescribeFace);
+    constructor(ctx: ClientContext, schema: SettingsSchemaOperations, describeFace: SettingsDescribeFace);
     /**
      * Refresh the whole page snapshot: the provider directory and the mirror's
      * settings answer in parallel, then one batched credential describe over
@@ -124,6 +107,8 @@ export declare class ModelsSettingsStore {
      * @returns nothing; the snapshot carries the outcome.
      */
     load(): Promise<void>;
+    /** Publish one load's failure text, unless a newer load already took over. */
+    private failLoad;
 }
 /**
  * Whether a joined row can serve model requests as it stands: the route is

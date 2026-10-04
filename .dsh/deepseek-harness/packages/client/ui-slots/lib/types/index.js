@@ -29,6 +29,7 @@ const NO_ENTRIES = Object.freeze([]);
  */
 export class SlotCore {
     records = new Map();
+    factories = new Map();
     mutateListeners = new Set();
     /** Shared-handle scope ledger: handle → the scope it first mounted under + live mount count. */
     handleScopes = new Map();
@@ -51,6 +52,103 @@ export class SlotCore {
         root.spec = { kind: 'single', scope: 'root' };
         root.declaredBy = '(built-in)';
         root.declarationEpoch = 1;
+    }
+    /** Register one reusable Factory definition. */
+    registerFactory = ((rawOptions, component) => {
+        const options = rawOptions;
+        const record = this.factoryRecord(options.name);
+        if (record.definition !== undefined) {
+            throw new Error(`slot factory "${options.name}" already has a definition`);
+        }
+        for (const childKey of Object.keys(options.children ?? {})) {
+            const childRecord = this.records.get(childKey);
+            if (childRecord?.spec !== undefined) {
+                throw new Error(`slot "${childKey}" is already declared (by ${childRecord.declaredBy ?? 'an unknown entry'})`);
+            }
+        }
+        if (options.store !== undefined && typeof options.store !== 'function') {
+            const pinned = this.handleScopes.get(options.store);
+            if (pinned !== undefined && pinned.scope !== options.scope) {
+                throw new Error(`store handle mounted under factory "${options.name}" (scope "${options.scope}") is already mounted under scope "${pinned.scope}" — one handle, one scope`);
+            }
+            if (pinned !== undefined)
+                pinned.count += 1;
+            else
+                this.handleScopes.set(options.store, { scope: options.scope, count: 1 });
+        }
+        const definition = {
+            name: options.name,
+            component,
+            scope: options.scope,
+            ...(options.children === undefined ? {} : { children: options.children }),
+            ...(options.store === undefined ? {} : { store: options.store }),
+            ...(options.inject === undefined ? {} : { inject: options.inject }),
+            ...(options.locale === undefined ? {} : { locale: options.locale }),
+            ...(options.slots === undefined ? {} : { slots: options.slots }),
+            ...(options.registrant === undefined ? {} : { registrant: options.registrant }),
+        };
+        record.definition = definition;
+        this.markFactoryDirty(record);
+        const declarations = [];
+        for (const [childKey, childSpec] of Object.entries(options.children ?? {})) {
+            const childRecord = this.record(childKey);
+            childRecord.spec = childSpec;
+            childRecord.declaredBy = `factory "${options.name}"${options.registrant ? ` (${options.registrant})` : ''}`;
+            childRecord.parent = `factory:${options.name}`;
+            childRecord.declarationEpoch += 1;
+            declarations.push([childKey, childRecord]);
+        }
+        for (const [childKey, childRecord] of declarations)
+            this.markDirty(childKey, childRecord);
+        for (const [, childRecord] of declarations)
+            this.notifyDeclaration(childRecord);
+        return () => {
+            if (record.definition !== definition)
+                return;
+            record.definition = undefined;
+            this.markFactoryDirty(record);
+            if (definition.store !== undefined && typeof definition.store !== 'function') {
+                const pinned = this.handleScopes.get(definition.store);
+                if (pinned !== undefined && --pinned.count === 0)
+                    this.handleScopes.delete(definition.store);
+            }
+            this.releaseChildren(definition.children);
+        };
+    });
+    /**
+     * Read one registered Factory definition.
+     * @param name - Factory name.
+     * @returns the live definition, or `undefined` when absent.
+     */
+    factory(name) {
+        return this.factories.get(name)?.definition;
+    }
+    /**
+     * Read the monotonic definition version for one Factory name.
+     * @param name - Factory name.
+     * @returns the current version.
+     */
+    factoryVersion(name) {
+        return this.factories.get(name)?.version ?? 0;
+    }
+    /**
+     * Subscribe to one Factory definition's registration lifetime.
+     * @param name - Factory name.
+     * @param listener - callback notified after a definition change.
+     * @returns the unsubscribe function.
+     */
+    subscribeFactory(name, listener) {
+        const record = this.factoryRecord(name);
+        record.listeners.add(listener);
+        return () => { record.listeners.delete(listener); };
+    }
+    /**
+     * Return whether a retained Factory definition is still registered.
+     * @param definition - retained definition identity.
+     * @returns whether that exact definition remains live.
+     */
+    isFactoryLive(definition) {
+        return this.factories.get(definition.name)?.definition === definition;
     }
     /* jscpd:ignore-end */
     register(options, component) {
@@ -245,11 +343,13 @@ export class SlotCore {
     }
     /**
      * Export the current declaration topology without components or executable hooks.
-     * @param root - exact Slot key to select; omitted returns every live root.
+     * Factory definitions appear as `factory:<name>` parents of their ordinary
+     * child Slots, matching the parent/child topology of ordinary registrations.
+     * @param root - exact Slot or `factory:<name>` key to select; omitted returns every live root.
      * @returns selected live Slot trees, or an empty array when `root` is unavailable.
      */
     snapshot(root) {
-        const build = (name, seen) => {
+        const buildSlot = (name, seen) => {
             const record = this.records.get(name);
             if (record?.spec === undefined || seen.has(name))
                 return undefined;
@@ -259,10 +359,11 @@ export class SlotCore {
             const children = [...this.records.entries()]
                 .filter(([, candidate]) => candidate.spec !== undefined && candidate.parent === name)
                 .flatMap(([child]) => {
-                const node = build(child, branch);
+                const node = buildSlot(child, branch);
                 return node === undefined ? [] : [node];
             });
             return {
+                type: 'slot',
                 name,
                 kind: record.spec.kind,
                 scope: record.spec.scope,
@@ -278,17 +379,42 @@ export class SlotCore {
                 children,
             };
         };
+        const buildFactory = (name) => {
+            const definition = this.factories.get(name)?.definition;
+            if (definition === undefined)
+                return undefined;
+            const nodeName = `factory:${name}`;
+            const children = [...this.records.entries()]
+                .filter(([, candidate]) => candidate.spec !== undefined && candidate.parent === nodeName)
+                .flatMap(([child]) => {
+                const node = buildSlot(child, new Set([nodeName]));
+                return node === undefined ? [] : [node];
+            });
+            return {
+                type: 'factory',
+                name,
+                scope: definition.scope,
+                ...(definition.registrant === undefined ? {} : { registrant: definition.registrant }),
+                children,
+            };
+        };
         if (root !== undefined) {
-            const node = build(root, new Set());
+            const node = root.startsWith('factory:')
+                ? buildFactory(root.slice('factory:'.length))
+                : buildSlot(root, new Set());
             return node === undefined ? [] : [node];
         }
-        return [...this.records.entries()]
-            .filter(([, record]) => record.spec !== undefined
-            && (record.parent === undefined || this.records.get(record.parent)?.spec === undefined))
+        const slots = [...this.records.entries()]
+            .filter(([, record]) => record.spec !== undefined && record.parent === undefined)
             .flatMap(([name]) => {
-            const node = build(name, new Set());
+            const node = buildSlot(name, new Set());
             return node === undefined ? [] : [node];
         });
+        const factories = [...this.factories.keys()].flatMap((name) => {
+            const node = buildFactory(name);
+            return node === undefined ? [] : [node];
+        });
+        return [...slots, ...factories];
     }
     /**
      * Read the declaration lifetime of a key. Entry additions and removals do
@@ -375,13 +501,22 @@ export class SlotCore {
             fn(key, entry, error, { abdicated: info.abdicate });
     }
     /**
-     * Observe entry boundary crashes (every render-time entry failure the
-     * boundaries contain, abdicating or not) — the supervision seam for hosts
-     * mirroring contribution health. Fires synchronously per report, after the
-     * registry mutated for abdicating crashes (same listener discipline as
-     * {@link SlotCore.onMutate}).
-     * @param fn - called with the slot key, the crashed entry, the crash
-     * cause, and `abdicated`: whether the crash retired the entry from its cell.
+     * Report a contained Factory occurrence crash through the ordinary entry
+     * supervision channel without retiring the shared definition.
+     * @param name - Factory name whose occurrence crashed.
+     * @param registration - Factory definition or caller registration that owns the crashing Component.
+     * @param error - the crash cause, forwarded to listeners verbatim.
+     */
+    reportFactoryError(name, registration, error) {
+        for (const fn of [...this.entryErrorListeners])
+            fn(`factory:${name}`, registration, error, { abdicated: false });
+    }
+    /**
+     * Observe ordinary entry and Factory occurrence crashes. Fires synchronously
+     * per report, after any ordinary-entry abdication mutation. Factory failures
+     * never retire their shared definition.
+     * @param fn - called with the Slot or `factory:<name>` key, the crashed
+     * registration, the cause, and whether an ordinary entry was retired.
      * @returns unsubscribe.
      */
     onEntryError(fn) {
@@ -400,9 +535,12 @@ export class SlotCore {
             if (pinned && --pinned.count === 0)
                 this.handleScopes.delete(entry.store);
         }
-        if (!entry.children)
+        this.releaseChildren(entry.children);
+    }
+    releaseChildren(children) {
+        if (children === undefined)
             return;
-        for (const childKey of Object.keys(entry.children)) {
+        for (const childKey of Object.keys(children)) {
             const childRec = this.records.get(childKey);
             /* v8 ignore next -- defensive: declaring always creates the record */
             if (!childRec)
@@ -435,6 +573,21 @@ export class SlotCore {
             this.records.set(key, rec);
         }
         return rec;
+    }
+    factoryRecord(name) {
+        let record = this.factories.get(name);
+        if (record === undefined) {
+            record = { definition: undefined, version: 0, listeners: new Set() };
+            this.factories.set(name, record);
+        }
+        return record;
+    }
+    markFactoryDirty(record) {
+        record.version += 1;
+        queueMicrotask(() => {
+            for (const listener of [...record.listeners])
+                listener();
+        });
     }
     markDirty(key, rec) {
         rec.version += 1;

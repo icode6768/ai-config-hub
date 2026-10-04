@@ -1,19 +1,29 @@
 /**
  * Models settings section: the provider rows joined from the configurable
  * directory, settings namespaces, and credential states, with one editor
- * card at a time. Rows expose only confirmed API-key state through accessible
+ * card at a time. Rows retain the account-first order supplied by the store
+ * and expose only confirmed API-key state through accessible
  * solid configured or missing dots. A whole-section provider without a
  * configured key renders as its open setup card instead of a row, but only in
  * the first-run posture — no provider on the page can serve requests yet — and
- * only until the user closes that card; the add flow is a card carrying the
- * dormant-provider select. Each card kind owns its own open state, so closing
- * one never discards a draft in another. Every mutation writes through the
- * wire, while a provider removal first requires confirmation; the page
- * re-renders from pushed invalidations or the post-apply reload.
+ * only until the user closes that card. The add flow is one card behind one
+ * button: a mode switch chooses between adopting a dormant directory provider
+ * (the catalog select over the provider editor) and declaring a custom model
+ * API (the create form). A panel mounts the first time its mode is shown and
+ * stays mounted, hidden, while the card is open and its mode stays offered,
+ * so switching modes discards neither draft and an unvisited mode costs
+ * nothing; the switch holds still while either panel has a write or an
+ * endpoint interrogation in flight, since a switch underneath one would
+ * orphan the answer. Each card kind owns its own open state, so closing one
+ * never discards a draft in another. Every
+ * mutation writes through the wire, while a provider removal first requires
+ * confirmation; the page re-renders from pushed invalidations or the
+ * post-apply reload.
  */
 import type { ReactNode } from 'react';
 import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots';
-import type { ModelsSettingsStore, ModelsWire, ProviderRow } from './store.ts';
+import type { ModelsSettingsStore, ProviderRow } from './store.ts';
+import type { ModelsOperations } from './operations.ts';
 import type { SettingsSchemaOperations } from './schema-operations.ts';
 import type { en } from './locales.ts';
 /** Injected dependencies of {@link ModelsSection} (slot `inject`). */
@@ -24,8 +34,8 @@ export interface ModelsSectionInjected {
         /** Page snapshot bound by the UI renderer as useSnapshot. */
         snapshot: ModelsSettingsStore['store'];
     };
-    /** Wire faces the editor writes through. */
-    api: ModelsWire;
+    /** The Host operations the section and its cards invoke. */
+    operations: ModelsOperations;
     /** Settings schema and immutable path callbacks. */
     schema: SettingsSchemaOperations;
     /** Section copy. */
@@ -54,12 +64,12 @@ export interface ProviderIdentity {
  * and the whole operation safely retryable; both unsets are idempotent.
  * The settings removal names the profile rather than rebuilding its whole
  * namespace from a partial view.
- * @param api - settings and credential wire faces.
+ * @param operations - the page's Host operations.
  * @param controller - the page store to refresh.
  * @param target - the provider's settings address and optional managed credential.
  * @returns the failure message, or undefined once the write and reload landed.
  */
-export declare function removeProviderProfile(api: Pick<ModelsWire, 'settings' | 'credentials'>, controller: ModelsSettingsStore, target: {
+export declare function removeProviderProfile(operations: ModelsOperations, controller: ModelsSettingsStore, target: {
     settingsNs: string;
     settingsPath: readonly string[];
     credentialRef?: string;

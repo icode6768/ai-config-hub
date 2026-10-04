@@ -1,7 +1,8 @@
 /** Host registry and HTTP adapter for generic Connection RPC channels. */
 import { Context, Service } from '@deepseek-ai/cordis';
+import type { PeerScope } from '@deepseek-ai/dsh-typert-protocol';
 import type { BrowserAuth } from './browser-auth.ts';
-import type { ConnectionIndexRequest, ConnectionIndexResponse, ConnectionFetchHandler, HostConnectionFetch, ConnectionRequestRejection, ConnectionTrustRequest, HostConnectionHandle, HostConnectionRpc } from './rpc.ts';
+import type { PeerAdmission, ConnectionIndexRequest, ConnectionIndexResponse, ConnectionFetchHandler, HostConnectionFetch, ConnectionRequestRejection, ConnectionTrustRequest, HostConnectionHandle, HostConnectionRpc } from './rpc.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         /** Host Connection transport and RPC registrations. */
@@ -12,6 +13,8 @@ declare module '@deepseek-ai/cordis' {
 export declare class HostConnectionService extends Service implements HostConnectionHandle {
     private readonly trustedHosts;
     private readonly browserAuth;
+    /** The operator Peer every admitted request speaks for. */
+    readonly operator: PeerScope;
     private readonly interceptors;
     private readonly fetchRoutes;
     /**
@@ -27,6 +30,8 @@ export declare class HostConnectionService extends Service implements HostConnec
     get fetch(): HostConnectionFetch;
     /** Apply the configured Host/Origin fence, then browser authentication. */
     requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection;
+    /** A request that passes the fence and authentication speaks for the operator. */
+    admit(request: ConnectionTrustRequest): PeerAdmission;
     /** Authenticate an index request through the process-token exchange or cookie. */
     authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean;
     /** Add this process's launch token to the clean application URL. */

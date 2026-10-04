@@ -12,9 +12,10 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * The menu opens on the staged choice, which starts as the deployment default.
  * Picking stages; the choice reaches a session when one becomes current.
  */
-import { useEffect, useRef, useState } from 'react';
-import { IconAgentPresetOutline16, IconChevronDownOutline14, IconWarningOutline16, Menu, Toast, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { IconAgentPresetOutlineRegular, IconChevronDownOutlineRegular, IconWarningOutlineRegular, Menu, Toast, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { presetDisplayText } from "./locales.js";
+import { requiresCodingTools } from "./settings-store.js";
 import css from './AgentPresetSeat.module.css';
 /* Introduce timeline: the icon eases in first (the CSS animation shares this
    duration); the name's characters start fading up the moment it lands, each
@@ -26,16 +27,7 @@ const INTRO_TEXT_DELAY_MS = 150;
 const INTRO_CHAR_STAGGER_MS = 40;
 const INTRO_TEXT_REVEAL_MS = 200;
 const INTRO_CHAR_FADE_MS = 400;
-/**
- * How long a refused switch holds before fading.
- *
- * Longer than the primitive's default because this banner is the only place
- * the refusal appears. The chip's label has already snapped back to the
- * preset the session still runs, and a preset the host refuses to MOUNT is
- * one discovery reported healthy — its row on the settings page carries no
- * reason to go back and read, because there was nothing to see until the
- * rows actually ran.
- */
+/** Duration of a selection-refusal banner, including a revision becoming unavailable during a pick. */
 const REFUSAL_HOLD_MS = 8000;
 /**
  * Per-character start offset for the introduce reveal.
@@ -50,18 +42,33 @@ function introStaggerMs(count) {
 /**
  * Render the new-session agent-preset chip.
  * @param props - composed slot props.
- * @returns the chip, or null when the deployment composes no presets.
+ * @returns The chip and any pending selection refusal, or null outside the main view.
  */
-export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, t }) {
+export function AgentPresetSeat({ sessionId, useSessionRetainInfo, load, select, dismissRefusal, introduced, useAgentPresetSeat, useDeveloperTools, t, }) {
+    const developerTools = useDeveloperTools(value => value);
     const state = useAgentPresetSeat(snapshot => snapshot);
+    const main = useSessionRetainInfo(info => sessionId === undefined
+        || (info?.retainedBy.mainView ?? 0) > 0);
     const [open, setOpen] = useState(false);
     // The seq keys the banner, so picking the same broken preset twice replays
     // it rather than leaving the first one silently in place.
     const toastSeq = useRef(0);
     const [toast, setToast] = useState(null);
     useEffect(() => {
+        if (state.error !== null && typeof state.error === 'object') {
+            toastSeq.current += 1;
+            setToast({ seq: toastSeq.current, error: state.error });
+        }
+        else
+            setToast(null);
+    }, [state.error]);
+    useEffect(() => {
         void load();
     }, [load]);
+    const options = useMemo(() => state.options.filter(option => developerTools || !requiresCodingTools(option)), [state.options, developerTools]);
+    useEffect(() => {
+        setOpen(false);
+    }, [developerTools, options.length]);
     const chosen = state.options.find(option => option.id === state.current);
     const chosenText = chosen === undefined ? undefined : presetDisplayText(chosen, t);
     const label = chosenText?.name ?? state.current;
@@ -86,9 +93,8 @@ export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, 
         }, INTRO_TEXT_DELAY_MS + (characters.length - 1) * introStaggerMs(characters.length) + INTRO_CHAR_FADE_MS);
         return () => { window.clearTimeout(done); };
     }, [state.introduce, ready, label, introduced]);
-    // Nothing to choose between: the deployment composes no presets and every
-    // session shares the host composition.
-    if (!ready)
+    // A refused initial composition still needs its Toast when there is no chip to show.
+    if (!main)
         return null;
     // One wrapper span: the chip is a flex row with a gap, so loose character
     // spans would each pick up the gap between them.
@@ -97,7 +103,7 @@ export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, 
     const shownLabel = introducing
         ? (_jsx("span", { className: css.introText, children: characters.map((character, index) => (_jsx("span", { className: css.introChar, style: { animationDelay: `${INTRO_TEXT_DELAY_MS + index * stagger}ms` }, children: character }, index))) }))
         : label;
-    return (_jsxs(_Fragment, { children: [_jsx(Menu, { open: open, onClose: () => { setOpen(false); }, items: state.options.map((option) => {
+    return (_jsxs(_Fragment, { children: [ready && _jsx(Menu, { open: open && options.length > 0, onClose: () => { setOpen(false); }, items: options.map((option) => {
                     const text = presetDisplayText(option, t);
                     return {
                         id: option.id,
@@ -107,25 +113,12 @@ export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, 
                     };
                 }), selectedId: state.current, onSelect: (id) => {
                     setOpen(false);
-                    const picked = state.options.find(option => option.id === id);
-                    // The fallback is for the row shape `find` cannot promise; the menu's
-                    // items ARE `state.options`, so an emitted id is always one of them.
-                    /* v8 ignore next */
-                    const name = picked === undefined ? id : presetDisplayText(picked, t).name;
-                    void select(id).then((refusal) => {
-                        // Announced only for a pick a person just made: `apply()` also runs
-                        // when a session becomes current, and a banner over that would
-                        // report a refusal nobody asked for.
-                        if (refusal === undefined)
-                            return;
-                        toastSeq.current += 1;
-                        setToast({ seq: toastSeq.current, text: t('switchRefused', { name, reason: refusal }) });
-                    });
-                }, align: "start", portal: true, anchor: (_jsxs("button", { type: "button", className: css.seat, "aria-haspopup": "menu", "aria-expanded": open, title: state.error ?? t('seatHint'), disabled: state.busy, onClick: () => { setOpen(value => !value); }, children: [_jsx(IconAgentPresetOutline16, { className: introducing ? `${css.seatIcon} ${css.introIcon}` : css.seatIcon }), shownLabel, _jsx(IconChevronDownOutline14, { className: css.chevron })] })) }), toast !== null && (_jsx(Toast, { text: toast.text, icon: _jsx(IconWarningOutline16, {}), holdMs: REFUSAL_HOLD_MS, 
+                    void select(id);
+                }, align: "start", portal: true, className: css.menuAnchor, anchor: (_jsxs("button", { type: "button", className: css.seat, "aria-haspopup": "menu", "aria-expanded": open && options.length > 0, title: (typeof state.error === 'object' ? state.error?.reason : state.error) ?? t('seatHint'), disabled: state.busy || options.length === 0, onClick: () => { setOpen(value => !value); }, children: [_jsx(IconAgentPresetOutlineRegular, { className: introducing ? `${css.seatIcon} ${css.introIcon}` : css.seatIcon }), _jsx("span", { className: css.seatLabel, children: shownLabel }), _jsx(IconChevronDownOutlineRegular, { className: css.chevron })] })) }), toast !== null && (_jsx(Toast, { text: t('switchRefused', { name: presetDisplayText(toast.error.preset, t).name, reason: toast.error.reason }), icon: _jsx(IconWarningOutlineRegular, {}), holdMs: REFUSAL_HOLD_MS, 
                 // The composer card, which is the content column this chip sits
                 // above rather than inside — hence a page query, not `closest`.
                 // Absent, the banner centers on the window, which is off-center
                 // whenever the sidebar is open.
-                anchor: document.querySelector('[data-composer-card]'), onDone: () => { setToast(null); } }, toast.seq))] }));
+                anchor: document.querySelector('[data-composer-card]'), onDone: () => { dismissRefusal(toast.error); } }, toast.seq))] }));
 }
 //# sourceMappingURL=AgentPresetSeat.js.map

@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from 'react';
-import { IconCloseFill14 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconCloseCircleFillRegular, IconPlanOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './PlanModeControl.module.css';
 /**
  * Plan-mode status over the host-computed `plan` projection. The chip renders
@@ -39,6 +39,6 @@ export function PlanChip({ useProjection, locked, exitPlanMode, t }) {
             setError(reason instanceof Error ? reason.message : String(reason));
         });
     };
-    return (_jsxs("span", { className: css.wrap, children: [_jsxs("button", { type: "button", className: css.chip, "aria-label": t('chip.on.aria'), title: t('chip.on.title'), disabled: locked || leaving, onClick: off, children: [t('chip.label'), _jsx("span", { className: css.close, "aria-hidden": true, children: _jsx(IconCloseFill14, { size: 12 }) })] }), error !== null && _jsx("span", { className: css.error, role: "status", title: error, children: t('chip.exitFailed') })] }));
+    return (_jsxs("span", { className: css.wrap, children: [_jsxs("button", { type: "button", className: css.chip, "aria-label": t('chip.on.aria'), title: t('chip.on.title'), disabled: locked || leaving, onClick: off, children: [_jsxs("span", { className: css.glyph, "aria-hidden": true, children: [_jsx(IconPlanOutlineRegular, { className: css.restGlyph, size: 14 }), _jsx(IconCloseCircleFillRegular, { className: css.hoverGlyph, size: 14 })] }), t('chip.label')] }), error !== null && _jsx("span", { className: css.error, role: "status", title: error, children: t('chip.exitFailed') })] }));
 }
 //# sourceMappingURL=PlanModeControl.js.map

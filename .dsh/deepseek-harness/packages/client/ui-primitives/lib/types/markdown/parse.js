@@ -7,6 +7,7 @@
  * begin a math construct (a `$$` block is a paragraph while streaming and a
  * math block once settled, by design).
  */
+import { recoverLocalImages } from "./local-image-syntax.js";
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { mathFromMarkdown } from 'mdast-util-math';
@@ -21,10 +22,10 @@ import { mathCompatibility } from "./mathCompatibility.js";
  * @returns The mdast root.
  */
 export function parseGfm(text) {
-    return fromMarkdown(text, {
+    return recoverLocalImages(fromMarkdown(text, {
         extensions: [gfm(), cjkFriendlyStrong()],
         mdastExtensions: [gfmFromMarkdown()],
-    });
+    }), text);
 }
 /**
  * Parse GFM markdown plus TeX math with the compatibility delimiters
@@ -33,9 +34,9 @@ export function parseGfm(text) {
  * @returns The mdast root.
  */
 export function parseGfmWithMath(text) {
-    return fromMarkdown(text, {
+    return recoverLocalImages(fromMarkdown(text, {
         extensions: [gfm(), cjkFriendlyStrong(), mathCompatibility(), math()],
         mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown()],
-    });
+    }), text);
 }
 //# sourceMappingURL=parse.js.map

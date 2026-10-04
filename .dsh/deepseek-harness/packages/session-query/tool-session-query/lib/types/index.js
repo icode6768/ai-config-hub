@@ -6,14 +6,13 @@
 import z from '@deepseek-ai/schemastery';
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt';
 import { toolInput } from "./input.js";
 import { operations } from "./operations.js";
 import { presentation } from "./presentation.js";
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'tool-session-query';
 /** Capability services required by the model-facing consumer. */
-export const inject = ['tools', 'systemPrompt', 'sessionQuery'];
+export const inject = ['tools', 'systemPrompt', 'sessionQuery', 'sessionProjections'];
 /** Default maximum number of authorized search hits returned by one call. */
 export const DEFAULT_MAX_SEARCH_RESULTS = 100;
 /** Default cooperative deadline for either full-text search tool. */
@@ -35,7 +34,7 @@ export function apply(ctx, config) {
     const resolved = resolveConfig(config);
     ctx.systemPrompt.section({
         name: 'tool:session-query',
-        order: FIRST_PARTY_SECTION_ORDER.TOOL_SESSION_QUERY,
+        order: ctx.systemPrompt.getSectionOrder('TOOL_SESSION_QUERY'),
         text: PROMPT_TEXT,
     });
     ctx.tools.register(defineTool({

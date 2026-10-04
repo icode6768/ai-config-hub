@@ -5,8 +5,8 @@
  *
  * @module
  */
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess';
 /**
  * The subprocess seam's scrubbed parent env (credential-shaped and stale
@@ -33,10 +33,6 @@ export function createTransport(config) {
                 cwd: config.cwd,
             });
         case 'streamable-http':
-            // The MCP SDK's StreamableHTTPClientTransport has optional callback
-            // properties typed without `| undefined` (exactOptionalPropertyTypes
-            // mismatch with the Transport interface); the SDK constructed the
-            // object, so the cast records only that widening.
             return new StreamableHTTPClientTransport(new URL(config.url), { requestInit: { headers: config.headers } });
     }
 }

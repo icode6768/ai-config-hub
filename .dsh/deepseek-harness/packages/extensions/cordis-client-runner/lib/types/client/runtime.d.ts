@@ -15,8 +15,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Loader } from '@deepseek-ai/cordis-plugin-loader';
-import type { CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId } from '@deepseek-ai/dsh-api-remotes/client';
-import type { SessionId } from '@deepseek-ai/dsh-client-connection/client';
+import type { CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, SessionId } from '@deepseek-ai/dsh-api-remotes/client';
 import type { ClientModuleSystem } from '@deepseek-ai/dsh-client-modules/client';
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client';
 /**
@@ -121,7 +120,7 @@ export interface DynamicCordisLivePackage {
     pluginRunId: CordisDynamicPluginRunId;
     /** Label from the define call. */
     name: string;
-    /** Slot names this package registered into here. */
+    /** Slot names and `factory:<name>` definitions this package registered here. */
     slots: string[];
     /** Live injected-style tag count. */
     styleCount: number;

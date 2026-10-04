@@ -1,12 +1,14 @@
 /**
  * The web app's command-line provider: it parses the `dsh --profile web` flag
- * family (`--host`, `--port`, `--trusted-host`, `--no-open`) and its `--help`
- * text, then provides the immutable values as {@link WEB_STARTUP_SERVICE}.
- * Ordinary rows inject that service before reading it from lazy config.
+ * family (`--host`, `--port`, `--public-url`, `--trusted-host`, `--no-open`)
+ * and its `--help` text, then provides the immutable values as
+ * {@link WEB_STARTUP_SERVICE}. Ordinary rows inject that service before
+ * reading it from lazy config.
  * @module @deepseek-ai/dsh-web-app/startup
  */
 import { Command } from 'commander';
 import { parseCmdline } from '@deepseek-ai/dsh-cmdline';
+import { parsePublicUrl } from "./public-url.js";
 /** Stable Cordis plugin name. */
 export const name = 'web-startup';
 /** Services required before the flags can be resolved. */
@@ -25,19 +27,22 @@ function webCommand() {
         .option('--host <host>', 'bind host')
         .option('--no-open', 'do not open the Web UI in the default browser')
         .option('--port <port>', 'listen port; pass 0 to let the OS pick a free one')
+        .option('--public-url <url>', 'advertise this HTTP(S) root in the printed, opened, web-surface, and DSH_WEB_URL forms; grants no trust')
         .option('--trusted-host <authority...>', 'extra authority the /api browser-trust fence accepts (host or host:port; repeatable)')
         .addHelpText('after', `
 Examples:
   dsh --profile web                          serve on the composed host and port
   dsh --profile web --no-open                serve without opening a browser
   dsh --profile web --port 8080              serve on another port
+  dsh --profile web --public-url https://app.example/ui/ --trusted-host app.example
+                                             advertise a prefix-stripping HTTPS proxy entry and admit its authority
 `);
 }
 /**
  * Parse and provide the Web invocation as an ordinary Cordis service. The
- * command's action publishes the flags this invocation named; `--host 0.0.0.0`
- * or a non-numeric `--port` is a usage error, so on rejection (and on `--help`)
- * nothing is provided.
+ * command's action publishes the flags this invocation named; `--host 0.0.0.0`,
+ * a non-numeric `--port`, or a malformed `--public-url` is a usage error, so on
+ * rejection (and on `--help`) nothing is provided.
  * @param ctx - plugin context carrying the command line.
  */
 export function apply(ctx) {
@@ -50,10 +55,19 @@ export function apply(ctx) {
         if (options.port !== undefined && !/^\d+$/.test(options.port)) {
             program.error(`error: --port must be a number, got ${JSON.stringify(options.port)}`);
         }
+        if (options.publicUrl !== undefined) {
+            try {
+                parsePublicUrl(options.publicUrl, '--public-url');
+            }
+            catch (error) {
+                program.error(`error: ${error.message}`);
+            }
+        }
         ctx.provide(WEB_STARTUP_SERVICE, {
             openBrowser: options.open,
             ...options.host !== undefined && { host: options.host },
             ...options.port !== undefined && { port: Number(options.port) },
+            ...options.publicUrl !== undefined && { publicUrl: options.publicUrl },
             trustedHosts: options.trustedHost ?? [],
         });
     });

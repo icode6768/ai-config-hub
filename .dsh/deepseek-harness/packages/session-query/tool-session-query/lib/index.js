@@ -1,10 +1,10 @@
 import z from "@deepseek-ai/schemastery";
 import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
-import { SessionId } from "@deepseek-ai/dsh-session";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { SessionQueryError, extractSessionEventText } from "@deepseek-ai/dsh-session-query";
 import { HarnessError } from "@deepseek-ai/dsh-llm";
+import { SessionSeq } from "@deepseek-ai/dsh-session";
 //#region lib/types/input.js
 /**
 * Model argument schemas, normalization, and filter construction.
@@ -135,7 +135,7 @@ function buildSessionFilters(args) {
 		assertNonEmptyArray("session_ids", args.session_ids);
 		filters.push({
 			kind: "id",
-			values: args.session_ids.map(SessionId)
+			values: args.session_ids.map((value) => brandString(value))
 		});
 	}
 	const created = timestampRange("created_at", args.created_at_from, args.created_at_to);
@@ -155,7 +155,7 @@ function buildSessionFilters(args) {
 function materializeParentSessionIds(values) {
 	if (values === void 0) return void 0;
 	assertNonEmptyArray("parent_session_ids", values);
-	return [...new Set(values.map(SessionId))];
+	return [...new Set(values.map((value) => brandString(value)))];
 }
 function buildEventFilters(input) {
 	const filters = [];
@@ -441,17 +441,17 @@ const serviceBoundary = {
 *
 * @module @deepseek-ai/dsh-tool-session-query/workspace-access
 */
-function callerOf(exec) {
+function callerOf(exec, ctx) {
 	const agent = exec.agent;
 	if (agent === void 0) throw new HarnessError("session query tools require an agent-bound caller", "SESSION_QUERY_TOOL_MISSING_AGENT");
 	return {
 		id: agent.session.id,
 		header: agent.session.header,
-		events: agent.session.events
+		boundary: ctx.sessionProjections.stateOf(agent.session, "turnBoundary")
 	};
 }
 function targetId(args, caller) {
-	return args.session_id === void 0 ? caller.id : SessionId(args.session_id);
+	return args.session_id === void 0 ? caller.id : brandString(args.session_id);
 }
 async function authorizeTarget(ctx, caller, target, signal) {
 	if (target === caller.id) return;
@@ -746,7 +746,7 @@ const presentation = {
 * @module @deepseek-ai/dsh-tool-session-query/operations
 */
 async function executeSessionSearch(ctx, args, exec, maxResults) {
-	const caller = workspaceAccess.callerOf(exec);
+	const caller = workspaceAccess.callerOf(exec, ctx);
 	const cwd = caller.header.cwd;
 	if (cwd === void 0) throw new HarnessError("cross-session search is unavailable because the caller session has no workspace", "SESSION_QUERY_TOOL_UNAUTHORIZED");
 	const query = toolInput.normalizeQuery(args.query);
@@ -786,15 +786,15 @@ async function executeSessionSearch(ctx, args, exec, maxResults) {
 	return presentation.formatSessionSearch(collected, titles, authorizedParents);
 }
 async function executeEventSearch(ctx, args, exec, maxResults) {
-	const caller = workspaceAccess.callerOf(exec);
+	const caller = workspaceAccess.callerOf(exec, ctx);
 	const sessionId = workspaceAccess.targetId(args, caller);
 	await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal);
 	const query = toolInput.normalizeQuery(args.query);
 	const range = toolInput.sequenceRange(args.seq_from, args.seq_to);
 	if (sessionId === caller.id) {
-		const stepStart = caller.events.findLast((event) => event.type === "step/start");
-		if (stepStart === void 0) throw new HarnessError("current-session search requires an active step boundary", "SESSION_QUERY_TOOL_NO_CURRENT_STEP");
-		range.to = Math.min(range.to ?? Number.MAX_SAFE_INTEGER, stepStart.seq - 1);
+		const stepStartSeq = caller.boundary?.lastStepStartSeq;
+		if (stepStartSeq === void 0) throw new HarnessError("current-session search requires an active step boundary", "SESSION_QUERY_TOOL_NO_CURRENT_STEP");
+		range.to = Math.min(range.to ?? Number.MAX_SAFE_INTEGER, (stepStartSeq ?? 0) - 1);
 	}
 	const title = await workspaceAccess.readTitle(ctx, caller, sessionId, exec.signal);
 	if (range.from !== void 0 && range.to !== void 0 && range.from > range.to) return presentation.formatEventSearch(sessionId, title, {
@@ -822,7 +822,7 @@ async function executeEventSearch(ctx, args, exec, maxResults) {
 	return presentation.formatEventSearch(sessionId, title, collected);
 }
 async function executeSessionTrace(ctx, args, exec) {
-	const caller = workspaceAccess.callerOf(exec);
+	const caller = workspaceAccess.callerOf(exec, ctx);
 	const sessionId = workspaceAccess.targetId(args, caller);
 	await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal);
 	const trace = await serviceBoundary.call(ctx, exec.signal, "session lineage trace", () => ctx.sessionQuery.traceSession(sessionId, exec.signal));
@@ -848,12 +848,13 @@ async function executeSessionTrace(ctx, args, exec) {
 }
 async function executeEventTrace(ctx, args, exec) {
 	toolInput.assertNonNegativeSafeInteger("seq", args.seq);
-	const caller = workspaceAccess.callerOf(exec);
+	const seq = SessionSeq(args.seq);
+	const caller = workspaceAccess.callerOf(exec, ctx);
 	const sessionId = workspaceAccess.targetId(args, caller);
 	await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal);
 	const trace = await serviceBoundary.call(ctx, exec.signal, "event trace", () => ctx.sessionQuery.traceEvent({
 		sessionId,
-		seq: args.seq
+		seq
 	}, exec.signal));
 	workspaceAccess.assertObservedTargetAuthorized(caller, sessionId, trace.session);
 	const title = await workspaceAccess.readTitle(ctx, caller, sessionId, exec.signal);
@@ -861,14 +862,15 @@ async function executeEventTrace(ctx, args, exec) {
 }
 async function executeEventRead(ctx, args, exec) {
 	toolInput.assertNonNegativeSafeInteger("seq", args.seq);
+	const seq = SessionSeq(args.seq);
 	if (args.before !== void 0) toolInput.assertNonNegativeSafeInteger("before", args.before);
 	if (args.after !== void 0) toolInput.assertNonNegativeSafeInteger("after", args.after);
-	const caller = workspaceAccess.callerOf(exec);
+	const caller = workspaceAccess.callerOf(exec, ctx);
 	const sessionId = workspaceAccess.targetId(args, caller);
 	await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal);
 	const window = await serviceBoundary.call(ctx, exec.signal, "event read", () => ctx.sessionQuery.readEvent({
 		sessionId,
-		seq: args.seq,
+		seq,
 		...args.before === void 0 ? {} : { before: args.before },
 		...args.after === void 0 ? {} : { after: args.after }
 	}, exec.signal));
@@ -922,7 +924,8 @@ const name = "tool-session-query";
 const inject = [
 	"tools",
 	"systemPrompt",
-	"sessionQuery"
+	"sessionQuery",
+	"sessionProjections"
 ];
 /** Default maximum number of authorized search hits returned by one call. */
 const DEFAULT_MAX_SEARCH_RESULTS = 100;
@@ -946,7 +949,7 @@ function apply(ctx, config) {
 	const resolved = resolveConfig(config);
 	ctx.systemPrompt.section({
 		name: "tool:session-query",
-		order: FIRST_PARTY_SECTION_ORDER.TOOL_SESSION_QUERY,
+		order: ctx.systemPrompt.getSectionOrder("TOOL_SESSION_QUERY"),
 		text: PROMPT_TEXT
 	});
 	ctx.tools.register(defineTool({

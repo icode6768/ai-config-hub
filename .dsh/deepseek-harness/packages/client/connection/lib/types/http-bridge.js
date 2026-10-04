@@ -2,6 +2,7 @@
  * node:http ↔ WHATWG fetch bridge for the /api transport (host side of the
  * web carrier; the fetch-shaped handler itself is transport-agnostic).
  */
+import { Readable } from 'node:stream';
 /** Default carrier cap for all HTTP RPC bodies: sized for the default
  * aggregate image limit (200 MiB) after base64 expansion plus envelope
  * headroom (~267.7 MiB required), rounded up for slack. The bridge buffers
@@ -9,11 +10,11 @@
 export const DEFAULT_MAX_REQUEST_BODY_BYTES = 300 * 1024 * 1024;
 /**
  * Bridge one node:http request to the fetch-shaped handler (client close
- * aborts; response bodies stream out chunk by chunk).
- * @param req - incoming node:http request (fully read before dispatch).
+ * aborts; response writes respect backpressure and stop on disconnect).
+ * @param req - incoming node:http request.
  * @param res - node:http response the bridge writes and owns to completion.
  * @param apiHandler - fetch-shaped API carrier the request is dispatched to.
- * @param maxRequestBodyBytes - maximum body bytes buffered before dispatch.
+ * @param maxRequestBodyBytes - maximum bytes buffered for a buffered route.
  */
 export async function bridge(req, res, apiHandler, maxRequestBodyBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
     const abort = new AbortController();
@@ -26,46 +27,68 @@ export async function bridge(req, res, apiHandler, maxRequestBodyBytes = DEFAULT
         if (!res.writableEnded)
             abort.abort();
     });
-    const declaredLength = req.headers['content-length'];
-    if (declaredLength !== undefined && Number(declaredLength) > maxRequestBodyBytes) {
-        res.writeHead(413, { connection: 'close' });
-        res.end();
-        req.destroy();
-        return;
-    }
-    const chunks = [];
-    let received = 0;
-    for await (const chunk of req) {
-        const buffer = chunk;
-        received += buffer.byteLength;
-        if (received > maxRequestBodyBytes) {
+    /* v8 ignore next 2 -- node:http always sets url/method on server requests. */
+    const url = new URL(req.url ?? '/', 'http://dsh.internal');
+    const method = req.method ?? 'GET';
+    const headers = Object.fromEntries(Object.entries(req.headers).filter(([, value]) => typeof value === 'string'));
+    const bodyMode = apiHandler.requestBodyMode({ method, url });
+    let request;
+    if (bodyMode === 'buffered') {
+        const declaredLength = req.headers['content-length'];
+        if (declaredLength !== undefined && Number(declaredLength) > maxRequestBodyBytes) {
             res.writeHead(413, { connection: 'close' });
             res.end();
             req.destroy();
             return;
         }
-        chunks.push(buffer);
+        const chunks = [];
+        let received = 0;
+        for await (const chunk of req) {
+            const buffer = chunk;
+            received += buffer.byteLength;
+            if (received > maxRequestBodyBytes) {
+                res.writeHead(413, { connection: 'close' });
+                res.end();
+                req.destroy();
+                return;
+            }
+            chunks.push(buffer);
+        }
+        request = new Request(url, {
+            method,
+            headers,
+            ...chunks.length > 0 ? { body: Buffer.concat(chunks) } : {},
+            signal: abort.signal,
+        });
     }
-    /* v8 ignore next 3 -- `??` arms: node:http always sets url/method on server
-    requests; the fields are only optional on the client-side IncomingMessage type */
-    const request = new Request(new URL(req.url ?? '/', 'http://dsh.internal'), {
-        method: req.method ?? 'GET',
-        headers: Object.fromEntries(Object.entries(req.headers).filter(([, v]) => typeof v === 'string')),
-        ...chunks.length > 0 ? { body: Buffer.concat(chunks) } : {},
-        signal: abort.signal,
-    });
+    else {
+        request = new Request(url, {
+            method,
+            headers,
+            body: Readable.toWeb(req),
+            signal: abort.signal,
+            duplex: 'half',
+        });
+    }
     const response = await apiHandler.fetch(request);
-    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+    const requestUnread = bodyMode === 'streaming' && !req.readableEnded;
+    const responseHeaders = Object.fromEntries(response.headers.entries());
+    res.writeHead(response.status, requestUnread ? { ...responseHeaders, connection: 'close' } : responseHeaders);
     if (response.body === null) {
         res.end();
+        if (requestUnread)
+            req.destroy();
         return;
     }
     for await (const chunk of response.body) {
+        // Drain without writing after disconnect: cancelling Node multipart bodies
+        // can race their producer and reject with ERR_INVALID_STATE.
+        if (abort.signal.aborted)
+            continue;
         // Backpressure: a false return means the socket buffer is full — wait for drain
         // instead of buffering unboundedly (slow or suspended consumers). 'close' also
-        // resolves so a mid-wait disconnect can't park this loop forever; the close
-        // handler above aborts the handler stream, which then ends the iteration.
-        if (!res.write(chunk)) {
+        // resolves so a mid-wait disconnect cannot park this loop forever.
+        if (!res.write(chunk) && !res.destroyed) {
             await new Promise((resolve) => {
                 const done = () => {
                     res.off('drain', done);
@@ -78,5 +101,7 @@ export async function bridge(req, res, apiHandler, maxRequestBodyBytes = DEFAULT
         }
     }
     res.end();
+    if (requestUnread)
+        req.destroy();
 }
 //# sourceMappingURL=http-bridge.js.map

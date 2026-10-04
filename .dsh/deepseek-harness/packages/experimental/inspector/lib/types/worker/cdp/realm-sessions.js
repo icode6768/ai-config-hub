@@ -1,24 +1,27 @@
 /** Per-DevTools-connection sessions opened from the shared realm registry. */
 import { randomUUID } from 'node:crypto';
 import { inspectorId } from "../../shared/identity.js";
-/** Owns exactly one backend session per active realm for one DevTools connection. */
+/** Owns one backend session per visible realm for one DevTools connection. */
 export class InspectorRealmSessionSet {
     realms;
+    clientSourceId;
     /** Opaque identity shared by every domain and object table on this DevTools connection. */
     connectionId = inspectorId(randomUUID(), 'connectionId');
     sessions = new Map();
     listeners = new Set();
     unsubscribeRealms;
     closed = false;
-    constructor(realms) {
+    constructor(realms, clientSourceId) {
         this.realms = realms;
+        this.clientSourceId = clientSourceId;
         for (const realm of realms.realms())
-            this.open(realm);
+            if (this.includes(realm))
+                this.open(realm);
         this.unsubscribeRealms = realms.subscribe((event) => { this.receiveRealm(event); });
     }
     /**
      * Return active sessions in the registry's deterministic order.
-     * @returns Host followed by connected Clients.
+     * @returns Host followed by connected Clients included in this connection.
      */
     all() {
         return this.realms.realms()
@@ -83,6 +86,8 @@ export class InspectorRealmSessionSet {
         this.listeners.clear();
     }
     receiveRealm(event) {
+        if (!this.includes(event.realm))
+            return;
         if (event.type === 'opened') {
             const session = this.open(event.realm);
             this.emit({ type: 'opened', session });
@@ -94,6 +99,9 @@ export class InspectorRealmSessionSet {
         this.sessions.delete(event.realm.descriptor.realmId);
         session.close();
         this.emit({ type: 'closed', session });
+    }
+    includes(realm) {
+        return this.clientSourceId === undefined || realm.descriptor.kind === 'host' || realm.descriptor.sourceId === this.clientSourceId;
     }
     open(realm) {
         const session = realm.openSession();

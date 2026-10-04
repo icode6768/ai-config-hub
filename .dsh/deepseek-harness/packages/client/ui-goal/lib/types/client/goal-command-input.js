@@ -1,3 +1,5 @@
+/** The command name whose runs this projection owns. */
+export const GOAL_COMMAND = 'goal';
 /**
  * Derive the visible command line from its structured durable run.
  * @param event - `/goal` command run.
@@ -10,7 +12,7 @@ export function goalCommandText(event) {
 export const goalCommandInputDefinition = {
     kind: 'goal-command-input',
     target: 'chat',
-    match: event => event.type === 'command/run' && event.data.name === 'goal'
+    match: event => event.type === 'command/run' && event.data.name === GOAL_COMMAND
         ? { id: String(event.data.commandId), role: 'start' }
         : null,
     start: (_context, match) => {

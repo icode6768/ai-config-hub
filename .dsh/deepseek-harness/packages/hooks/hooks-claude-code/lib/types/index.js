@@ -4,8 +4,7 @@
  * start/stop. It owns Claude payloads, environment, substitution, and decision
  * mapping; shared execution and parsing live in `dsh-hook-protocol`.
  * `updatedInput` is logged and warned but not honored. Bespoke behavior should
- * use typed native plugins on the same extension points; see the
- * [hook-bridges Agent Note](../../../../.agents/notes/implemented/feature/2026-06-30-hook-bridges.md).
+ * use typed native plugins on the same extension points.
  * @module @deepseek-ai/dsh-hooks-claude-code
  */
 import { readFileSync } from 'node:fs';
@@ -14,9 +13,9 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { appendHookInvoked, appendHookResult, createDetachedRuns, DEFAULT_HOOK_TIMEOUT_MS, DEFAULT_STDERR_SUMMARY_MAX_CHARS, matchesMatcher, mergeHookOutputs, runHook, } from '@deepseek-ai/dsh-hook-protocol';
 import { parseClaudeCodeConfig } from "./config.js";
 export const name = 'hooks-claude-code';
-// `bash` is required to run hooks; the rest are read opportunistically via
-// ctx.get so a deployment can load this bridge without every extension point present.
-export const inject = ['shell'];
+// `shell` runs hooks and `sessionProjections` supplies turn numbers; the rest
+// are read opportunistically via ctx.get so a deployment can omit them.
+export const inject = ['shell', 'sessionProjections'];
 export const Config = z.object({
     configPath: z.string().required(),
     pluginRoot: z.string(),
@@ -29,8 +28,8 @@ let handlerCounter = 0;
 function nextHandlerId(point) {
     return `claude-code:${point}:${++handlerCounter}`;
 }
-/** The `{kind:'plugin'}` source stamped on every context this bridge injects. */
-const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'hooks-claude-code' };
+/** The `{kind:'hooks-claude-code'}` producer source stamped on every context this bridge injects. */
+const CONTEXT_SOURCE = { kind: 'hooks-claude-code' };
 /** The summary cap bounds a persisted event field — a positive integer or the slice misbehaves silently. */
 function assertPositiveInteger(name, value) {
     if (!Number.isInteger(value) || value < 1) {
@@ -130,17 +129,15 @@ export function apply(ctx, config) {
         if (merged.additionalContext.length === 0)
             return undefined;
         const content = merged.additionalContext.map(text => ({ type: 'text', text }));
-        return createUserMessage({ content, source: PLUGIN_SOURCE });
+        return createUserMessage({ content, source: CONTEXT_SOURCE });
     }
     /** Prepend one context without flattening source fields or other downstream metadata. */
     function prependContext(ours, theirs) {
         return [ours, ...theirs ?? []];
     }
-    // SessionStart injects context when its detached hook resolves; a slow hook
-    // may miss the first request.
-    // TODO(session-start-gating): add a startup gate before promising first-turn delivery.
-    ctx.on('agent/session-start', ({ agent, source }) => {
-        detached.track(runPoint('SessionStart', source, sessionStartPayload(ctx, agent, source), { agent, signal: detached.signal })
+    ctx.on('agent/created', async ({ agent, source, signal }) => {
+        const ownerSignal = signal === undefined ? detached.signal : AbortSignal.any([signal, detached.signal]);
+        const run = runPoint('SessionStart', source, sessionStartPayload(agent, source), { agent, signal: ownerSignal })
             .then((merged) => {
             const context = contextFrom(merged);
             if (context)
@@ -148,7 +145,9 @@ export function apply(ctx, config) {
         })
             .catch((error) => {
             ctx.logger.warn(`hooks-claude-code: SessionStart hook failed: ${String(error)}`);
-        }));
+        });
+        detached.track(run);
+        await run;
     });
     // --- UserPromptSubmit → PreStepDecision. The prompt text is the payload; no
     // matcher subject (CC ignores matchers for this event). ---
@@ -156,7 +155,7 @@ export function apply(ctx, config) {
         if (messages.length === 0)
             return next();
         const content = messages.flatMap(message => message.content);
-        const merged = await runPoint('UserPromptSubmit', '', promptPayload(ctx, agent, content), { agent, turn, signal });
+        const merged = await runPoint('UserPromptSubmit', '', promptPayload(agent, content), { agent, turn, signal });
         if (merged.decision === 'deny') {
             return { kind: 'reject' };
         }
@@ -173,8 +172,8 @@ export function apply(ctx, config) {
     });
     // --- PreToolUse → PreToolDecision. Matcher subject is the tool name. ---
     ctx.on('tools/pre-execute', async (exec, next) => {
-        const turn = lastTurn(exec.agent);
-        const merged = await runPoint('PreToolUse', exec.name, preToolPayload(ctx, exec), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal });
+        const turn = lastTurn(ctx, exec.agent);
+        const merged = await runPoint('PreToolUse', exec.name, preToolPayload(exec), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal });
         if (merged.decision === 'deny')
             return { kind: 'deny', reason: merged.reason ?? 'blocked by PreToolUse hook' };
         if (merged.decision === 'ask')
@@ -183,8 +182,8 @@ export function apply(ctx, config) {
     });
     // --- PostToolUse → PostToolDecision. Matcher subject is the tool name. ---
     ctx.on('tools/post-execute', async (exec, result, next) => {
-        const turn = lastTurn(exec.agent);
-        const merged = await runPoint('PostToolUse', exec.name, postToolPayload(ctx, exec, result), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal });
+        const turn = lastTurn(ctx, exec.agent);
+        const merged = await runPoint('PostToolUse', exec.name, postToolPayload(exec, result), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal });
         const context = contextFrom(merged);
         if (merged.decision === 'deny') {
             return { kind: 'block', feedback: [{ type: 'text', text: merged.reason ?? 'blocked by PostToolUse hook' }], ...context ? { additionalContexts: [context] } : {} };
@@ -206,11 +205,11 @@ export function apply(ctx, config) {
     // machine observe pending input and run another step.
     // TODO(stop-loop-guard): cap consecutive forced continuations; hooks must self-limit meanwhile.
     ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
-        const merged = await runPoint('Stop', '', stopPayload(ctx, agent), { agent, turn, signal });
+        const merged = await runPoint('Stop', '', stopPayload(agent), { agent, turn, signal });
         if (merged.decision === 'deny') {
             // A blocking Stop hook forces continuation.
             const text = merged.reason ?? 'continue: blocked by Stop hook';
-            agent.steer(createUserMessage({ content: [{ type: 'text', text }], source: PLUGIN_SOURCE }));
+            agent.steer(createUserMessage({ content: [{ type: 'text', text }], source: CONTEXT_SOURCE }));
         }
     });
     // SubagentStart may inject child context; SubagentStop only observes. Both
@@ -219,7 +218,7 @@ export function apply(ctx, config) {
         const child = ctx.get('agents')?.get(info.id);
         if (child !== undefined)
             subagentChildren.set(info.runId, child);
-        detached.track(runPoint('SubagentStart', SUBAGENT_TYPE, subagentPayload(ctx, 'SubagentStart', info, child), { ...child ? { agent: child } : {}, signal: detached.signal })
+        detached.track(runPoint('SubagentStart', SUBAGENT_TYPE, subagentPayload('SubagentStart', info, child), { ...child ? { agent: child } : {}, signal: detached.signal })
             .then((merged) => {
             const context = contextFrom(merged);
             if (context && child)
@@ -230,7 +229,7 @@ export function apply(ctx, config) {
     ctx.on('subagent/end', (info) => {
         const child = subagentChildren.get(info.runId) ?? ctx.get('agents')?.get(info.id);
         subagentChildren.delete(info.runId);
-        detached.track(runPoint('SubagentStop', SUBAGENT_TYPE, subagentPayload(ctx, 'SubagentStop', info, child), { ...child ? { agent: child } : {}, signal: detached.signal }));
+        detached.track(runPoint('SubagentStop', SUBAGENT_TYPE, subagentPayload('SubagentStop', info, child), { ...child ? { agent: child } : {}, signal: detached.signal }));
     });
 }
 /**
@@ -243,41 +242,40 @@ const SUBAGENT_TYPE = 'general-purpose';
 // --- Per-event stdin payloads (the CC DIALECT shape). Field names match CC's
 // hook input schema; this is the part a bridge owns. ---
 /** The last open turn number in the agent's log, or 0 without an agent. */
-function lastTurn(agent) {
+function lastTurn(ctx, agent) {
     if (!agent)
         return 0;
-    const last = [...agent.session.events].findLast(e => e.type === 'turn/start');
-    /* v8 ignore next -- agent-present callers are tool/stop extension points inside an open turn. */
-    return last?.type === 'turn/start' ? last.data.turn : 0;
+    const boundary = ctx.sessionProjections.stateOf(agent.session, 'turnBoundary');
+    return boundary.lastTurn;
 }
 /** Flatten content blocks to the text a hook payload carries (the common case). */
 function blocksToText(content) {
     return content.filter((b) => b.type === 'text').map(b => b.text).join('');
 }
-function base(ctx, agent, event) {
+function base(agent, event) {
     return {
         session_id: agent?.session.header.id ?? '',
-        transcript_path: agent === undefined
-            ? ''
-            : ctx.get('sessionPersistence')?.locate(agent.session.header)?.path ?? '',
+        // The persistence seam exposes no artifact path; the field stays empty
+        // (a durable consumer gap recorded in this package's README).
+        transcript_path: '',
         cwd: agent?.session.header.cwd ?? process.cwd(),
         hook_event_name: event,
     };
 }
-function sessionStartPayload(ctx, agent, source) {
-    return { ...base(ctx, agent, 'SessionStart'), source };
+function sessionStartPayload(agent, source) {
+    return { ...base(agent, 'SessionStart'), source };
 }
-function promptPayload(ctx, agent, content) {
-    return { ...base(ctx, agent, 'UserPromptSubmit'), prompt: blocksToText(content) };
+function promptPayload(agent, content) {
+    return { ...base(agent, 'UserPromptSubmit'), prompt: blocksToText(content) };
 }
-function preToolPayload(ctx, exec) {
-    return { ...base(ctx, exec.agent, 'PreToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId };
+function preToolPayload(exec) {
+    return { ...base(exec.agent, 'PreToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId };
 }
-function postToolPayload(ctx, exec, result) {
-    return { ...base(ctx, exec.agent, 'PostToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) };
+function postToolPayload(exec, result) {
+    return { ...base(exec.agent, 'PostToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) };
 }
-function stopPayload(ctx, agent) {
-    return { ...base(ctx, agent, 'Stop'), stop_hook_active: false };
+function stopPayload(agent) {
+    return { ...base(agent, 'Stop'), stop_hook_active: false };
 }
 /**
  * Build a SubagentStart/SubagentStop payload from the CC base (the child's
@@ -285,9 +283,9 @@ function stopPayload(ctx, agent) {
  * fields. `agent_type` is the CC-default {@link SUBAGENT_TYPE}; `stop_hook_active`
  * is present on SubagentStop only (the loop-guard flag, always false).
  */
-function subagentPayload(ctx, event, info, child) {
+function subagentPayload(event, info, child) {
     return {
-        ...base(ctx, child, event),
+        ...base(child, event),
         agent_id: info.id,
         agent_type: SUBAGENT_TYPE,
         ...event === 'SubagentStop' ? { stop_hook_active: false } : {},

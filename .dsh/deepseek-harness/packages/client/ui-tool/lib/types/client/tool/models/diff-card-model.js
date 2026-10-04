@@ -1,14 +1,6 @@
-import { parsedToolCall, validEscalationFields } from "./raw-tool-call.js";
-/**
- * Diff-body lines the chat row shows before collapsing the middle — half the
- * primitive's own default, which the details panel keeps. A chat row is a
- * summary surface inside the message flow: the flow must stay scannable across
- * many calls, while the details panel is the single-call reading surface. The
- * same split {@link CHAT_TERMINAL_MAX_LINES} draws for a terminal card, so the
- * two card kinds cap a long body at the same place in the flow. A design
- * constant of this UI's row geometry, not a deployment choice.
- */
-export const CHAT_DIFF_MAX_LINES = 8;
+import { parsedToolCall } from "./raw-tool-call.js";
+/** Room for a path, one removed/added pair, and three context lines on each side. */
+export const CHAT_DIFF_MAX_LINES = 9;
 /**
  * Narrow opaque result metadata's `diffs` to well-formed hunks.
  * @param diffs - the metadata field to validate.
@@ -62,8 +54,6 @@ function intendedDiff(block) {
     }
     const { file_path: path } = parsed.args;
     if (typeof path !== 'string' || path.trim() === '')
-        return null;
-    if (!validEscalationFields(parsed.args))
         return null;
     if (parsed.name === 'write') {
         const { content } = parsed.args;

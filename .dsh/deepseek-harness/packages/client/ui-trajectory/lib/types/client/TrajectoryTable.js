@@ -1,13 +1,14 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 /** Turn-aware trajectory event ledger with a local record inspector. */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { IconChevronRightOutline14, IconSettingsOutline16, IconSparkle16, IconUserOutline16, JsonTree, MarkdownText, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { CodeBlock, FileTypeIcon, fileExtension, fileSizeText, IconCheckOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconWrapLinesOutlineRegular, IconCopyOutlineRegular, IconSettingsOutlineRegular, IconSparkleRegular, IconUserOutlineRegular, JsonTree, MarkdownText, StateDot, Tooltip, writeClipboard, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { structuredPatch } from 'diff';
 import { formatElapsedSeconds, trajectoryRecordId } from "./trajectory-record.js";
 import { groupTrajectoryVirtualRows, trajectoryVirtualRecordKey, } from "./trajectory-virtual-rows.js";
 import { trajectoryPreviewText } from "./trajectory-preview.js";
 import { COMPACTION_INTERRUPTED_ERROR } from "./copy-codes.js";
+import { codeProgram, PTC_TOOL_NAME } from "./code-program.js";
 import css from './TrajectoryTable.module.css';
 const BOTTOM_FOLLOW_THRESHOLD_PX = 2;
 const OLDER_LOAD_THRESHOLD_PX = 48;
@@ -34,11 +35,11 @@ function CompactedIcon() {
     return (_jsxs("svg", { width: "13", height: "13", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", "data-role-icon": "compacted", "aria-hidden": "true", children: [_jsx("path", { d: "m2.5 2.5 3.75 3.75M3 6.25h3.25V3" }), _jsx("path", { d: "m13.5 2.5-3.75 3.75M13 6.25H9.75V3" }), _jsx("path", { d: "m2.5 13.5 3.75-3.75M3 9.75h3.25V13" }), _jsx("path", { d: "m13.5 13.5-3.75-3.75M13 9.75H9.75V13" })] }));
 }
 const KIND_ICON = {
-    system: _jsx(IconSettingsOutline16, { size: 13 }),
-    user: _jsx(IconUserOutline16, { size: 13 }),
+    system: _jsx(IconSettingsOutlineRegular, { size: 13 }),
+    user: _jsx(IconUserOutlineRegular, { size: 13 }),
     context: _jsx(InformationIcon, {}),
     compacted: _jsx(CompactedIcon, {}),
-    message: _jsx(IconSparkle16, { size: 13 }),
+    message: _jsx(IconSparkleRegular, { size: 13 }),
     tool: _jsx(ToolWrenchIcon, {}),
     subtool: _jsx(ToolWrenchIcon, {}),
 };
@@ -88,8 +89,8 @@ function jsonTreeLabels(t) {
         copyCompactJson: t('copy.compactJson'),
         copied: t('copied'),
         copyFailed: t('copy.failed'),
-        collapseNode: t('json.collapseNode'),
-        expandNode: t('json.expandNode'),
+        collapseNode: t('collapse'),
+        expandNode: t('expand'),
         copyButtonTitle: action => t('copy.optionsHint', { action }),
     };
 }
@@ -435,11 +436,11 @@ function UsageRows({ usage, t }) {
 function RequestUsagePanel({ usage, cumulative, t, }) {
     return (_jsxs("div", { className: css.usagePanel, children: [_jsxs("section", { className: css.usageGroup, children: [_jsx("h4", { className: css.usageHeading, children: t('usage.thisRequest') }), _jsx(UsageRows, { usage: usage, t: t })] }), _jsxs("section", { className: css.usageGroup, children: [_jsx("h4", { className: css.usageHeading, children: t('usage.sessionCumulative') }), _jsx(UsageRows, { usage: cumulative, t: t })] })] }));
 }
-function RequestOptions({ options, preview = false, t, }) {
+function RequestOptions({ options, preview = false, stringWrapping, t, }) {
     if (options === undefined) {
         return _jsx("p", { className: css.noPayload, children: t('options.notRecorded') });
     }
-    return (_jsx(JsonTree, { data: options, label: t('options.json'), labels: jsonTreeLabels(t), className: preview ? css.jsonPreview : css.jsonPayload }));
+    return (_jsx(JsonTree, { data: options, stringWrapping: stringWrapping, collapsedStringLines: preview ? 3 : 12, label: t('options.json'), labels: jsonTreeLabels(t), className: preview ? css.jsonPreview : css.jsonPayload }));
 }
 function messageSourceLabel(source, t) {
     if (typeof source !== 'object' || source === null || Array.isArray(source)) {
@@ -449,12 +450,6 @@ function messageSourceLabel(source, t) {
     const kind = properties.kind;
     if (kind === 'user')
         return t('source.user');
-    if (kind === 'plugin') {
-        const plugin = properties.plugin;
-        return typeof plugin === 'string' && plugin !== ''
-            ? t('source.pluginNamed', { plugin })
-            : t('source.plugin');
-    }
     if (kind === 'goal') {
         const round = properties.round;
         return typeof round === 'number' && round > 0
@@ -465,14 +460,14 @@ function messageSourceLabel(source, t) {
         return t('source.unknown');
     return `${kind[0]?.toUpperCase() ?? ''}${kind.slice(1)}`;
 }
-function MessageSource({ record, t }) {
+function MessageSource({ record, stringWrapping, t }) {
     const source = record.cell.messageSource;
     if (source === undefined)
         return _jsx("p", { className: css.noPayload, children: t('source.notRecorded') });
     const data = typeof source === 'object' && source !== null
         ? source
         : { value: source };
-    return (_jsx(JsonTree, { data: data, label: t('source.messageJson'), labels: jsonTreeLabels(t), className: css.jsonPayload }));
+    return (_jsx(JsonTree, { data: data, stringWrapping: stringWrapping, collapsedStringLines: 12, label: t('source.messageJson'), labels: jsonTreeLabels(t), className: css.jsonPayload }));
 }
 function isMarkdownRecord(record) {
     return record.cell.kind === 'user'
@@ -519,6 +514,9 @@ function markdownSource(record) {
 }
 function detailTabs(record) {
     if (record.cell.kind === 'system') {
+        if (record.cell.promptDetail === undefined && record.cell.systemPromptDetail !== undefined) {
+            return SYSTEM_PROMPT_TABS.filter(tab => tab.id === 'system-prompt');
+        }
         return record.cell.previousPromptDetail === undefined
             ? SYSTEM_PROMPT_TABS
             : SYSTEM_UPDATE_TABS;
@@ -541,8 +539,11 @@ function detailTabs(record) {
     }
     return [
         { id: 'overview', labelKey: 'tab.summary' },
-        ...(record.cell.inputDetail ? [{ id: 'input', labelKey: 'tab.payload' }] : []),
-        ...(record.cell.outputDetail ? [{ id: 'output', labelKey: 'tab.result' }] : []),
+        ...(record.cell.inputDetail ? [{
+                id: 'input', labelKey: codeProgram(record.cell) === undefined ? 'tab.payload' : 'code.source',
+            }] : []),
+        ...(record.cell.outputDetail || codeProgram(record.cell) !== undefined
+            ? [{ id: 'output', labelKey: 'tab.result' }] : []),
         { id: 'schema', labelKey: 'tab.schema' },
         { id: 'timing', labelKey: 'tab.timing' },
     ];
@@ -550,6 +551,9 @@ function detailTabs(record) {
 function recordDisplayText(cell, t) {
     if (isToolCallOnly(cell, t))
         return '';
+    const program = codeProgram(cell);
+    if (program !== undefined)
+        return `${PTC_TOOL_NAME} · ${program.description.replace(/\s+/g, ' ')}`;
     if (cell.previewMarkdown !== undefined) {
         const preview = trajectoryPreviewText(cell.previewMarkdown);
         if (cell.text === '')
@@ -570,13 +574,15 @@ function recordResultText(cell) {
         ? cell.result
         : trajectoryPreviewText(cell.resultPreviewMarkdown);
 }
-function toolCallTextParts(kind, text) {
-    if (kind !== 'tool' && kind !== 'subtool')
+function toolCallTextParts(cell, text) {
+    if (cell.kind !== 'tool' && cell.kind !== 'subtool')
         return undefined;
+    const program = cell.toolName === PTC_TOOL_NAME;
     const separator = text.indexOf(' · ');
     if (separator === -1)
-        return { name: text };
+        return { name: text, program };
     return {
+        program,
         name: text.slice(0, separator),
         args: text.slice(separator + 3),
     };
@@ -589,12 +595,12 @@ function isToolCallOnly(cell, t) {
 }
 function RecordPresentation({ cell, children, t, }) {
     const displayText = useMemo(() => recordDisplayText(cell, t), [
-        cell.kind, cell.text, cell.previewMarkdown,
+        cell.kind, cell.text, cell.toolName, cell.previewMarkdown,
         cell.inputDetail, cell.outputDetail, cell.thinkingDetail, t,
     ]);
     const resultText = useMemo(() => recordResultText(cell), [cell.result, cell.resultPreviewMarkdown]);
     const toolCallOnly = isToolCallOnly(cell, t);
-    const toolCallText = toolCallTextParts(cell.kind, displayText);
+    const toolCallText = toolCallTextParts(cell, displayText);
     const listDisplayText = toolCallOnly
         ? t('record.toolCallOnly')
         : toolCallText === undefined
@@ -614,33 +620,59 @@ function RecordListText({ displayText, toolCallOnly, toolCallText, t, }) {
     }
     if (toolCallText === undefined)
         return displayText || '—';
-    return (_jsxs(_Fragment, { children: [_jsx("span", { className: css.toolCallNameTypeface, children: toolCallText.name || '—' }), toolCallText.args !== undefined && (_jsx("span", { className: css.toolCallPayload, children: toolCallText.args }))] }));
+    return (_jsxs(_Fragment, { children: [_jsxs("span", { className: css.toolCallNameTypeface, children: [toolCallText.program && _jsx(IconCodeOutlineRegular, { className: css.programIcon, size: 12 }), toolCallText.name || '—'] }), toolCallText.args !== undefined && (_jsx("span", { className: toolCallText.program ? css.programSummary : css.toolCallPayload, children: toolCallText.args }))] }));
 }
-function MarkdownFragment({ text, rendered, preview, t, }) {
+function MarkdownFragment({ text, rendered, preview, variant = 'body', t, }) {
     const labels = useMemo(() => markdownLabels(t), [t]);
     if (rendered) {
-        return (_jsx("div", { className: preview ? css.markdownPreview : css.markdownPayload, children: _jsx(MarkdownText, { text: text, labels: labels }) }));
+        return (_jsx("div", { className: preview ? css.markdownPreview : css.markdownPayload, children: _jsx(MarkdownText, { text: text, labels: labels, variant: variant }) }));
     }
     return (_jsx("pre", { className: `${css.payload} ${preview ? css.payloadPreview : ''}`, children: text }));
 }
-function SourceBlocks({ blocks, onOpenCall, renderImages, t, }) {
-    return (_jsx("div", { className: css.sourceBlocks, children: blocks.map((block, index) => (_jsxs("section", { className: css.sourceBlock, children: [block.callId !== undefined
-                    ? (_jsxs("button", { type: "button", className: css.sourceBlockJumpTarget, "aria-label": t('block.openSummary', { index: index + 1 }), title: t('block.openSummaryTitle'), onClick: () => {
-                            if (block.callId !== undefined)
-                                onOpenCall(block.callId);
-                        }, children: [_jsx("span", { className: css.sourceBlockLabel, children: t('block.label', { index: index + 1, type: block.type }) }), _jsx(IconChevronRightOutline14, { className: css.sourceBlockJumpIcon, size: 12 })] }))
-                    : (_jsx("div", { className: css.sourceBlockHeader, children: _jsx("span", { className: css.sourceBlockLabel, children: t('block.label', { index: index + 1, type: block.type }) }) })), block.attachment !== undefined
-                    ? renderImages({ images: [{ attachment: block.attachment }], align: 'start' })
-                    : _jsx("pre", { className: css.sourceBlockContent, children: block.content })] }, index))) }));
+function SourceBlocks({ blocks, onOpenCall, t, }) {
+    const attachments = new Map(recordAttachments(blocks, t).map(entry => [entry.index, entry]));
+    return (_jsx("div", { className: css.sourceBlocks, children: blocks.map((block, index) => {
+            const attachment = attachments.get(index);
+            return attachment !== undefined ? (_jsxs("details", { className: css.attachmentDisclosure, children: [_jsxs("summary", { children: [_jsx("span", { className: css.sourceBlockLabel, children: t('block.label', { index: index + 1, type: block.type }) }), _jsx("span", { className: css.attachmentName, title: attachment.name, children: attachment.name })] }), _jsx("pre", { className: css.sourceBlockContent, children: block.content })] }, index))
+                : (_jsxs("section", { className: css.sourceBlock, children: [block.callId !== undefined
+                            ? (_jsxs("button", { type: "button", className: css.sourceBlockJumpTarget, "aria-label": t('block.openSummary', { index: index + 1 }), title: t('block.openSummaryTitle'), onClick: () => {
+                                    if (block.callId !== undefined)
+                                        onOpenCall(block.callId);
+                                }, children: [_jsx("span", { className: css.sourceBlockLabel, children: t('block.label', { index: index + 1, type: block.type }) }), _jsx(IconChevronRightOutlineRegular, { className: css.sourceBlockJumpIcon, size: 12 })] }))
+                            : (_jsx("div", { className: css.sourceBlockHeader, children: _jsx("span", { className: css.sourceBlockLabel, children: t('block.label', { index: index + 1, type: block.type }) }) })), _jsx("pre", { className: css.sourceBlockContent, children: block.content })] }, index));
+        }) }));
 }
-function recordImages(blocks) {
-    return (blocks ?? []).flatMap(block => block.attachment !== undefined ? [{ attachment: block.attachment }] : []);
+function recordAttachments(blocks, t) {
+    let imageIndex = 0;
+    return (blocks ?? []).flatMap((block, index) => {
+        const ref = block.attachment ?? block.file;
+        if (ref === undefined)
+            return [];
+        if (block.attachment !== undefined)
+            imageIndex += 1;
+        return [{
+                block,
+                index,
+                name: ref.name ?? t('attachment.imageName', { index: imageIndex }),
+                metadata: [
+                    block.attachment?.mediaType ?? fileExtension(ref.name ?? '').toUpperCase(),
+                    fileSizeText(ref.bytes),
+                    ...(block.attachment === undefined ? [] : [`${block.attachment.width} × ${block.attachment.height}`]),
+                ].filter(Boolean).join(' · '),
+            }];
+    });
 }
-function MessageImages({ blocks, preview, renderImages, }) {
-    const images = recordImages(blocks);
-    if (images.length === 0)
+function RecordAttachments({ blocks, preview, renderImages, t, }) {
+    const attachments = recordAttachments(blocks, t);
+    if (attachments.length === 0)
         return null;
-    return (_jsx("div", { className: preview ? `${css.messageImages} ${css.messageImagesPreview}` : css.messageImages, children: renderImages({ images, align: 'start' }) }));
+    return (_jsx("ul", { className: preview ? `${css.attachments} ${css.attachmentsPreview}` : css.attachments, "aria-label": t('attachment.list'), children: attachments.map(({ block, index, name, metadata }) => (_jsxs("li", { className: css.attachmentRow, children: [block.attachment !== undefined
+                    ? renderImages({
+                        images: [{ attachment: block.attachment, label: name }],
+                        align: 'start',
+                        thumbnail: true,
+                    })
+                    : _jsx("span", { className: css.attachmentIcon, children: _jsx(FileTypeIcon, { path: name }) }), _jsxs("div", { className: css.attachmentInfo, children: [_jsx("span", { className: css.attachmentName, title: name, children: name }), _jsx("span", { className: css.attachmentMetadata, children: metadata })] })] }, index))) }));
 }
 function AssistantToolCalls({ blocks, preview, onOpenCall, t, }) {
     const calls = blocks?.filter(block => block.type === 'tool-call') ?? [];
@@ -656,10 +688,10 @@ function AssistantToolCalls({ blocks, preview, onOpenCall, t, }) {
 function ToolGlyph() {
     return (_jsx("svg", { className: css.toolCatalogIcon, width: "12", height: "12", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", children: _jsx("path", { d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }) }));
 }
-function ToolCatalog({ tools, t, }) {
+function ToolCatalog({ tools, stringWrapping, t, }) {
     if (tools.length === 0)
         return _jsx("p", { className: css.noPayload, children: t('record.toolsMissing') });
-    return (_jsx("div", { className: css.toolCatalog, children: tools.map((tool, index) => (_jsxs("details", { className: css.toolCatalogItem, children: [_jsxs("summary", { className: css.toolCatalogSummary, children: [_jsx(IconChevronRightOutline14, { className: css.toolCatalogChevron, size: 12 }), _jsx(ToolGlyph, {}), _jsx("span", { className: css.toolCatalogName, children: tool.name }), _jsx("span", { className: css.toolCatalogDescription, children: tool.description })] }), _jsxs("div", { className: css.toolCatalogDefinition, children: [tool.description !== '' && (_jsx("p", { className: css.toolCatalogFullDescription, children: tool.description })), _jsx(JsonTree, { data: tool.parameters, label: t('record.namedParametersJson', { name: tool.name }), labels: jsonTreeLabels(t), className: css.toolCatalogTree })] })] }, `${tool.name}:${index}`))) }));
+    return (_jsx("div", { className: css.toolCatalog, children: tools.map((tool, index) => (_jsxs("details", { className: css.toolCatalogItem, children: [_jsxs("summary", { className: css.toolCatalogSummary, children: [_jsx(IconChevronRightOutlineRegular, { className: css.toolCatalogChevron, size: 12 }), _jsx(ToolGlyph, {}), _jsx("span", { className: css.toolCatalogName, children: tool.name }), _jsx("span", { className: css.toolCatalogDescription, children: tool.description })] }), _jsxs("div", { className: css.toolCatalogDefinition, children: [tool.description !== '' && (_jsx("p", { className: css.toolCatalogFullDescription, children: tool.description })), _jsx(JsonTree, { data: tool.parameters, stringWrapping: stringWrapping, label: t('record.namedParametersJson', { name: tool.name }), labels: jsonTreeLabels(t), className: css.toolCatalogTree })] })] }, `${tool.name}:${index}`))) }));
 }
 function promptDiffLines(before, after) {
     const patch = structuredPatch('', '', before, after, undefined, undefined, { context: 3 });
@@ -704,8 +736,11 @@ function ToolOutputBlocks({ blocks, error, errorDetail, preview, renderImages, }
                     : null))] }));
 }
 function MarkdownRecordContent({ record, rendered, preview = false, thinkingExpanded, onThinkingExpandedChange, onOpenCall, renderImages, t, }) {
+    if (record.cell.sourceBlocks?.length && record.cell.sourceBlocks.every(block => block.type === 'tool-addition' || block.type === 'tool-removal')) {
+        return _jsx("pre", { className: `${css.payload} ${css.toolUpdatePayload}`, children: record.cell.inputDetail });
+    }
     if (!rendered && record.cell.sourceBlocks && record.cell.sourceBlocks.length > 0) {
-        return (_jsx(SourceBlocks, { blocks: record.cell.sourceBlocks, onOpenCall: onOpenCall, renderImages: renderImages, t: t }));
+        return (_jsx(SourceBlocks, { blocks: record.cell.sourceBlocks, onOpenCall: onOpenCall, t: t }));
     }
     if (record.cell.thinkingDetail) {
         if (!rendered) {
@@ -717,40 +752,40 @@ function MarkdownRecordContent({ record, rendered, preview = false, thinkingExpa
         }
         return (_jsxs("div", { className: `${css.assistantContent} ${css.assistantContentRendered}`, children: [_jsxs("div", { className: preview && !record.cell.outputDetail
                         ? `${css.thinkingQuote} ${css.thinkingQuoteOnlyPreview}`
-                        : css.thinkingQuote, children: [_jsxs("button", { type: "button", className: css.thinkingToggle, "aria-expanded": thinkingExpanded, onClick: () => { onThinkingExpandedChange(!thinkingExpanded); }, children: [t('record.thinking'), _jsx(IconChevronRightOutline14, { className: css.thinkingChevron, size: 12 })] }), thinkingExpanded && (_jsx(MarkdownFragment, { text: record.cell.thinkingDetail, rendered: rendered, preview: preview, t: t }))] }), record.cell.outputDetail && (_jsx("div", { className: css.assistantOutput, children: _jsx(MarkdownFragment, { text: record.cell.outputDetail, rendered: rendered, preview: preview, t: t }) })), _jsx(AssistantToolCalls, { blocks: record.cell.sourceBlocks, preview: preview, onOpenCall: onOpenCall, t: t }), _jsx(MessageImages, { blocks: record.cell.sourceBlocks, preview: preview, renderImages: renderImages })] }));
+                        : css.thinkingQuote, children: [_jsxs("button", { type: "button", className: css.thinkingToggle, "aria-expanded": thinkingExpanded, onClick: () => { onThinkingExpandedChange(!thinkingExpanded); }, children: [t('record.thinking'), _jsx(IconChevronRightOutlineRegular, { className: css.thinkingChevron, size: 12 })] }), thinkingExpanded && (_jsx(MarkdownFragment, { text: record.cell.thinkingDetail, rendered: rendered, preview: preview, variant: "compact", t: t }))] }), record.cell.outputDetail && (_jsx("div", { className: css.assistantOutput, children: _jsx(MarkdownFragment, { text: record.cell.outputDetail, rendered: rendered, preview: preview, t: t }) })), _jsx(AssistantToolCalls, { blocks: record.cell.sourceBlocks, preview: preview, onOpenCall: onOpenCall, t: t }), _jsx(RecordAttachments, { blocks: record.cell.sourceBlocks, preview: preview, renderImages: renderImages, t: t })] }));
     }
     const source = markdownSource(record);
-    const hasImages = record.cell.sourceBlocks?.some(block => block.attachment !== undefined) === true;
+    const hasAttachments = record.cell.sourceBlocks?.some(block => block.attachment !== undefined || block.file !== undefined) === true;
     const hasToolCalls = record.cell.kind === 'message'
         && record.cell.sourceBlocks?.some(block => block.type === 'tool-call') === true;
-    if (!source && !hasImages && !hasToolCalls) {
+    if (!source && !hasAttachments && !hasToolCalls) {
         const emptyLabel = isToolCallOnly(record.cell, t)
             ? t('record.toolCallOnly')
             : record.cell.text || t('record.noContent');
         return _jsx("p", { className: css.noPayload, children: emptyLabel });
     }
-    if (!rendered || (!hasImages && !hasToolCalls)) {
+    if (!rendered || (!hasAttachments && !hasToolCalls)) {
         return _jsx(MarkdownFragment, { text: source ?? '', rendered: rendered, preview: preview, t: t });
     }
-    return (_jsxs("div", { children: [source && _jsx(MarkdownFragment, { text: source, rendered: true, preview: preview, t: t }), record.cell.kind === 'message' && (_jsx(AssistantToolCalls, { blocks: record.cell.sourceBlocks, preview: preview, onOpenCall: onOpenCall, t: t })), _jsx(MessageImages, { blocks: record.cell.sourceBlocks, preview: preview, renderImages: renderImages })] }));
+    return (_jsxs("div", { children: [source && _jsx(MarkdownFragment, { text: source, rendered: true, preview: preview, t: t }), record.cell.kind === 'message' && (_jsx(AssistantToolCalls, { blocks: record.cell.sourceBlocks, preview: preview, onOpenCall: onOpenCall, t: t })), _jsx(RecordAttachments, { blocks: record.cell.sourceBlocks, preview: preview, renderImages: renderImages, t: t })] }));
 }
-function RecordTiming({ record, t }) {
+function RecordTiming({ record, preview = false, t, }) {
     return record.cell.kind === 'message' && record.cell.assistantMetrics !== undefined
         ? _jsx(AssistantTimingPanel, { metrics: record.cell.assistantMetrics, t: t })
-        : (_jsxs("dl", { className: css.overview, children: [_jsxs("div", { children: [_jsx("dt", { children: t('timing.started') }), _jsx(StartedAtValue, { timestamp: record.cell.startedAt ?? null, t: t })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(record.cell.timeSeconds, t) })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.source') }), _jsx("dd", { children: record.cell.timeSeconds === null ? t('timing.notAvailable') : t('timing.sessionTimestamps') })] })] }));
+        : (_jsxs("dl", { className: css.overview, children: [_jsxs("div", { children: [_jsx("dt", { children: t('timing.started') }), _jsx(StartedAtValue, { timestamp: record.cell.startedAt ?? null, t: t })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(record.cell.timeSeconds, t) })] }), !preview && (_jsxs("div", { children: [_jsx("dt", { children: t('timing.source') }), _jsx("dd", { children: record.cell.timeSeconds === null ? t('timing.notAvailable') : t('timing.sessionTimestamps') })] }))] }));
 }
-function RequestTiming({ assistant, anchor, request, t, }) {
+function RequestTiming({ assistant, anchor, request, preview = false, t, }) {
     if (assistant !== undefined)
-        return _jsx(RecordTiming, { record: assistant, t: t });
+        return _jsx(RecordTiming, { record: assistant, preview: preview, t: t });
     if (request?.startedAt !== undefined) {
         const duration = request.completedAt === null || request.completedAt === undefined
             ? null
             : Math.max(0, (request.completedAt - request.startedAt) / 1000);
-        return (_jsxs("dl", { className: css.overview, children: [_jsxs("div", { children: [_jsx("dt", { children: t('timing.started') }), _jsx(StartedAtValue, { timestamp: request.startedAt, t: t })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(duration, t) })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.source') }), _jsx("dd", { children: duration === null ? t('timing.sessionTimestampsRunning') : t('timing.sessionTimestamps') })] })] }));
+        return (_jsxs("dl", { className: css.overview, children: [_jsxs("div", { children: [_jsx("dt", { children: t('timing.started') }), _jsx(StartedAtValue, { timestamp: request.startedAt, t: t })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(duration, t) })] }), !preview && (_jsxs("div", { children: [_jsx("dt", { children: t('timing.source') }), _jsx("dd", { children: duration === null ? t('timing.sessionTimestampsRunning') : t('timing.sessionTimestamps') })] }))] }));
     }
     return (_jsxs("dl", { className: css.overview, children: [_jsxs("div", { children: [_jsx("dt", { children: t('timing.started') }), _jsx(StartedAtValue, { timestamp: anchor?.cell.startedAt ?? null, t: t })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(null, t) })] })] }));
 }
-function RecordPayload({ record, direction, preview = false, renderImages, t, }) {
+function RecordPayload({ record, direction, preview = false, renderImages, stringWrapping, t, }) {
     const value = direction === 'input' ? record.cell.inputDetail : record.cell.outputDetail;
     const missing = direction === 'input'
         ? t('record.noPayload')
@@ -765,7 +800,7 @@ function RecordPayload({ record, direction, preview = false, renderImages, t, })
         && record.cell.outputBlocks?.length === 1
         && record.cell.outputBlocks[0]?.type === 'text';
     if (singleTextResult && json !== undefined) {
-        return (_jsx(JsonTree, { data: json, label: t('record.resultJson'), labels: jsonTreeLabels(t), className: payloadClassName }));
+        return (_jsx(JsonTree, { data: json, stringWrapping: stringWrapping, collapsedStringLines: preview ? 3 : 12, label: t('record.resultJson'), labels: jsonTreeLabels(t), className: payloadClassName }));
     }
     if (direction === 'output'
         && record.cell.outputBlocks?.some(block => block.attachment !== undefined || block.content !== '') === true) {
@@ -780,7 +815,7 @@ function RecordPayload({ record, direction, preview = false, renderImages, t, })
             ].filter((className) => className !== undefined).join(' '), children: _jsx(MarkdownText, { text: value, labels: markdownLabels(t) }) }));
     }
     if (json !== undefined) {
-        return (_jsx(JsonTree, { data: json, label: t(direction === 'input' ? 'record.payloadJson' : 'record.outputJson'), labels: jsonTreeLabels(t), className: payloadClassName }));
+        return (_jsx(JsonTree, { data: json, stringWrapping: stringWrapping, collapsedStringLines: preview ? 3 : 12, label: t(direction === 'input' ? 'record.payloadJson' : 'record.outputJson'), labels: jsonTreeLabels(t), className: payloadClassName }));
     }
     return (_jsx("pre", { className: [
             css.payload,
@@ -789,13 +824,13 @@ function RecordPayload({ record, direction, preview = false, renderImages, t, })
             value === t('record.noOutput') ? css.noOutputText : undefined,
         ].filter((value) => value !== undefined).join(' '), children: value }));
 }
-function RecordSchema({ record, preview = false, t, }) {
+function RecordSchema({ record, preview = false, stringWrapping, t, }) {
     if (!record.cell.schemaDetail) {
         return _jsx("p", { className: css.noPayload, children: t('record.schemaUnavailable') });
     }
     const schema = parseToolSchema(record.cell.schemaDetail);
     if (schema !== undefined) {
-        return (_jsxs("div", { className: preview ? `${css.schema} ${css.schemaPreview}` : css.schema, children: [_jsxs("header", { className: css.schemaIntro, children: [_jsx("h3", { className: css.schemaName, children: schema.name }), _jsx("p", { className: css.schemaDescription, children: schema.description })] }), _jsxs("section", { className: css.schemaParameters, children: [_jsx("h4", { className: css.schemaParametersTitle, children: t('record.parameters') }), _jsx(JsonTree, { data: schema.parameters, label: t('record.namedParametersJson', { name: schema.name }), labels: jsonTreeLabels(t), className: css.schemaTree })] })] }));
+        return (_jsxs("div", { className: preview ? `${css.schema} ${css.schemaPreview}` : css.schema, children: [_jsxs("header", { className: css.schemaIntro, children: [_jsx("h3", { className: css.schemaName, children: schema.name }), _jsx("p", { className: css.schemaDescription, children: schema.description })] }), _jsxs("section", { className: css.schemaParameters, children: [_jsx("h4", { className: css.schemaParametersTitle, children: t('record.parameters') }), _jsx(JsonTree, { data: schema.parameters, stringWrapping: stringWrapping, collapsedStringLines: preview ? 3 : 12, label: t('record.namedParametersJson', { name: schema.name }), labels: jsonTreeLabels(t), className: css.schemaTree })] })] }));
     }
     return (_jsx("pre", { className: `${css.payload} ${preview ? css.payloadPreview : ''}`, children: record.cell.schemaDetail }));
 }
@@ -830,8 +865,65 @@ function parseJsonContainer(value) {
         return undefined;
     }
 }
-function OverviewSection({ label, onOpen, children, }) {
-    return (_jsxs("section", { className: css.overviewSection, children: [_jsx("h3", { className: css.overviewHeading, children: _jsxs("button", { type: "button", className: css.overviewTitle, onClick: onOpen, children: [_jsx("span", { children: label }), _jsx(IconChevronRightOutline14, { className: css.overviewTitleIcon, size: 12 })] }) }), _jsx("div", { className: `${css.overviewPreview} ${css.summaryScrollRegion}`, "data-summary-scroll-region": "", children: children })] }));
+function InspectorCopyButton({ text, label, t }) {
+    const [state, setState] = useState('idle');
+    useEffect(() => {
+        if (state === 'idle')
+            return;
+        const timer = setTimeout(() => { setState('idle'); }, 1_500);
+        return () => { clearTimeout(timer); };
+    }, [state]);
+    const title = state === 'idle' ? label : t(state === 'copied' ? 'copied' : 'copy.failed');
+    return (_jsx("button", { type: "button", className: css.programAction, "data-state": state, "aria-label": title, title: title, onClick: () => { void writeClipboard(text).then((ok) => { setState(ok ? 'copied' : 'failed'); }); }, children: state === 'copied' ? _jsx(IconCheckOutlineRegular, { size: 12 }) : _jsx(IconCopyOutlineRegular, { size: 12 }) }));
+}
+function ProgramInput({ program, initialWrapped, stringWrapping, onOpen, t }) {
+    const contentsId = useId();
+    const [wrapped, setWrapped] = useState(initialWrapped);
+    const [showJson, setShowJson] = useState(false);
+    const actions = (_jsxs("span", { className: css.programActions, children: [!showJson && program.language !== undefined && (_jsx("span", { className: css.programLanguage, children: program.language })), !showJson && (_jsx("button", { type: "button", className: css.programAction, "aria-label": t('record.wrapLines'), title: t('record.wrapLines'), "aria-pressed": wrapped, "aria-controls": contentsId, onClick: () => {
+                    const next = !wrapped;
+                    setWrapped(next);
+                    stringWrapping?.setDefault(next);
+                }, children: _jsx(IconWrapLinesOutlineRegular, { size: 12 }) })), onOpen === undefined && (_jsx("button", { type: "button", className: css.programAction, "aria-label": t('code.originalJson'), title: t('code.originalJson'), "aria-pressed": showJson, "aria-controls": contentsId, onClick: () => { setShowJson(value => !value); }, children: _jsxs("svg", { width: "12", height: "12", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true", children: [_jsx("path", { d: "M6 2H5a2 2 0 0 0-2 2v2a2 2 0 0 1-2 2 2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h1" }), _jsx("path", { d: "M10 2h1a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0-2 2v2a2 2 0 0 1-2 2h-1" })] }) })), _jsx(InspectorCopyButton, { text: showJson ? program.rawInput : program.source, label: t(showJson ? 'copy.json' : 'code.copySource'), t: t })] }));
+    const body = (_jsx("div", { id: contentsId, className: css.programContent, "data-wrap": wrapped, children: showJson
+            ? _jsx(JsonTree, { data: program.arguments, label: t('record.parametersJson'), labels: jsonTreeLabels(t), stringWrapping: stringWrapping })
+            : _jsx(CodeBlock, { code: program.source, lang: program.language, lineNumbers: true, showHeader: false, className: css.programSource, copyLabel: t('code.copySource'), copiedLabel: t('copied') }) }));
+    return onOpen === undefined
+        ? (_jsxs("section", { className: css.programPanel, children: [_jsxs("header", { className: css.overviewHeading, children: [_jsx("span", { children: t('code.source') }), actions] }), body] }))
+        : _jsx(OverviewSection, { label: t('code.source'), onOpen: onOpen, actions: actions, children: body });
+}
+function ProgramOutput({ record, stringWrapping, onOpen, t }) {
+    const output = record.cell.outputDetail;
+    const json = output === undefined || record.cell.isError === true ? undefined : parseJsonContainer(output);
+    const actions = output === undefined ? undefined : (_jsx("span", { className: css.programActions, children: _jsx(InspectorCopyButton, { text: output, label: t('code.copyOutput'), t: t }) }));
+    const body = (_jsx("div", { className: css.programContent, children: output === undefined || output === ''
+            ? _jsx("p", { className: css.noPayload, children: t(stateOf(record) === 'running' ? 'code.running' : 'record.noOutput') })
+            : json !== undefined
+                ? _jsx(JsonTree, { data: json, label: t('record.outputJson'), labels: jsonTreeLabels(t), stringWrapping: stringWrapping, collapsedStringLines: onOpen === undefined ? 12 : 3 })
+                : _jsx("pre", { className: `${css.programOutput} ${record.cell.isError === true ? css.programError : ''}`, children: output }) }));
+    return onOpen === undefined
+        ? (_jsxs("section", { className: css.programPanel, children: [_jsxs("header", { className: css.overviewHeading, children: [_jsx("span", { children: t('code.output') }), actions] }), body] }))
+        : _jsx(OverviewSection, { label: t('code.output'), onOpen: onOpen, actions: actions, children: body });
+}
+function OverviewSection({ label, onOpen, actions, children, }) {
+    const previewRef = useRef(null);
+    const [hasMore, setHasMore] = useState(false);
+    const measureOverflow = useCallback((preview) => {
+        setHasMore(preview.scrollHeight - preview.clientHeight - preview.scrollTop > 1);
+    }, []);
+    useLayoutEffect(() => {
+        const preview = previewRef.current;
+        const measure = () => { measureOverflow(preview); };
+        measure();
+        if (typeof ResizeObserver === 'undefined')
+            return;
+        const observer = new ResizeObserver(measure);
+        observer.observe(preview);
+        for (const child of preview.children)
+            observer.observe(child);
+        return () => { observer.disconnect(); };
+    }, [children, measureOverflow]);
+    return (_jsxs("section", { className: css.overviewSection, children: [_jsxs("h3", { className: css.overviewHeading, children: [_jsxs("button", { type: "button", className: css.overviewTitle, onClick: onOpen, children: [_jsx("span", { children: label }), _jsx(IconChevronRightOutlineRegular, { className: css.overviewTitleIcon, size: 12 })] }), actions] }), _jsx("div", { ref: previewRef, className: `${css.overviewPreview} ${css.summaryScrollRegion}`, "data-summary-scroll-region": "", "data-scroll-more": hasMore || undefined, onScroll: (event) => { measureOverflow(event.currentTarget); }, children: children })] }));
 }
 /**
  * Render trajectory events as a dense ledger with turn and step separators.
@@ -839,11 +931,12 @@ function OverviewSection({ label, onOpen, children, }) {
  * @param props - Grouped trajectory data and whole-ledger fold state.
  * @returns The ledger and an optional local record inspector.
  */
-export function TrajectoryTable({ t, renderImages, requestNumbers: sessionRequestNumbers, turns, streamingCells = [], timelineFocusIndexes = null, searchMatchIndexes = null, onSelectedIndexChange, onRecordSelect, recordSelection = null, recordFocus = null, historyLoading = false, olderHistoryLoading = false, historyStartSeq, hasOlderRecords = false, onLoadOlder, onClearSelection, collapsedTurns, onToggleTurn, collapsedAssistants, onToggleAssistant, inspectCallId = null, onInspectApplied, }) {
+export function TrajectoryTable({ t, stringWrapping, renderImages, requestNumbers: sessionRequestNumbers, turns, streamingCells = [], timelineFocusIndexes = null, searchMatchIndexes = null, onSelectedIndexChange, onRecordSelect, recordSelection = null, recordFocus = null, historyLoading = false, olderHistoryLoading = false, historyStartSeq, hasOlderRecords = false, onLoadOlder, onClearSelection, collapsedTurns, onToggleTurn, collapsedAssistants, onToggleAssistant, inspectCallId = null, onInspectApplied, }) {
     const [selectedRecordId, setSelectedRecordId] = useState(null);
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [activeTab, setActiveTab] = useState('overview');
-    const [thinkingExpanded, setThinkingExpanded] = useState(false);
+    const [codeWrappingOnOpen, setCodeWrappingOnOpen] = useState(false);
+    const [thinkingDisclosure, setThinkingDisclosure] = useState();
     const [detailsWidth, setDetailsWidth] = useState(null);
     const [toolRequestOffset, setToolRequestOffset] = useState(null);
     const detailsResizeDrag = useRef(null);
@@ -871,6 +964,16 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
     const selected = selectedTemplate === undefined
         ? undefined
         : currentRecord(selectedTemplate);
+    const selectedProgram = selected === undefined ? undefined : codeProgram(selected.cell);
+    const thinkingExpanded = thinkingDisclosure?.recordId === selectedRecordId
+        ? thinkingDisclosure.expanded
+        : selected?.cell.kind === 'message'
+            && Boolean(selected.cell.thinkingDetail?.trim());
+    const setThinkingExpanded = (expanded) => {
+        if (selectedRecordId !== null) {
+            setThinkingDisclosure({ recordId: selectedRecordId, expanded });
+        }
+    };
     const selectedIndex = selected?.cell.index ?? null;
     useEffect(() => {
         onSelectedIndexChange?.(selectedIndex);
@@ -907,6 +1010,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
         overscan: VIRTUAL_OVERSCAN_ROWS,
         scrollMargin: virtualScrollMargin,
         scrollEndThreshold: BOTTOM_FOLLOW_THRESHOLD_PX,
+        followOnAppend: 'auto',
     });
     const virtualIndexByRecordId = useMemo(() => {
         const indexes = new Map();
@@ -951,7 +1055,8 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
     const selectedPreviousPrompt = selected?.cell.kind === 'system'
         ? selected.cell.previousPromptDetail
         : undefined;
-    const promptSelected = selectedPrompt !== undefined;
+    const selectedSystemPrompt = selectedPrompt?.system ?? selected?.cell.systemPromptDetail;
+    const promptSelected = selectedSystemPrompt !== undefined;
     const selectedState = selected === undefined ? undefined : stateOf(selected);
     const selectedRequestInfo = selectedRequest === null
         ? undefined
@@ -1032,6 +1137,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
             '--trajectory-tool-request-width': `calc(58cqw - ${toolRequestOffset}px)`,
         };
     const activateTab = (tab) => {
+        setCodeWrappingOnOpen(stringWrapping?.getDefault() ?? false);
         tabHistory.current.delete(tab);
         tabHistory.current.add(tab);
         setActiveTab(tab);
@@ -1045,6 +1151,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
         onClearSelection?.();
     };
     const selectRecord = useCallback((index) => {
+        setCodeWrappingOnOpen(stringWrapping?.getDefault() ?? false);
         const record = allRecords.find(candidate => candidate.cell.index === index);
         onRecordSelect?.(index);
         setSelectedRequest(null);
@@ -1055,7 +1162,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
         const available = new Set(tabs.map(tab => tab.id));
         const recent = [...tabHistory.current].reverse().find(tab => available.has(tab));
         setActiveTab(recent ?? tabs[0]?.id ?? 'overview');
-    }, [allRecords, onRecordSelect]);
+    }, [allRecords, onRecordSelect, stringWrapping]);
     useEffect(() => {
         if (recordSelection === null
             || appliedRecordSelection.current === recordSelection)
@@ -1267,9 +1374,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
         }
         if (!followsTableTail.current)
             return;
-        if (virtualizationEnabled)
-            rowVirtualizer.scrollToEnd({ behavior: 'auto' });
-        else
+        if (!virtualizationEnabled)
             pane.scrollTop = pane.scrollHeight;
     }, [
         historyLoading,
@@ -1290,13 +1395,13 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
                 }, onClick: (event) => {
                     if (event.target === event.currentTarget)
                         clearAllSelections();
-                }, children: [showInitialLoading && (_jsx("div", { className: css.historyLoading, role: "status", "aria-live": "polite", children: _jsxs("span", { className: css.historyLoadingBar, children: [_jsx("span", { className: css.historyLoadingSpinner, "aria-hidden": "true" }), t('history.loadingTrajectory')] }) })), _jsxs("table", { className: css.table, "data-scroll-ready": tableScrollReady || undefined, "aria-rowcount": records.length + historyRowOffset, children: [_jsxs("colgroup", { children: [_jsx("col", { className: css.eventColumn }), _jsx("col", { className: css.contentColumn })] }), _jsxs("tbody", { children: [hasOlderRecords && (_jsx("tr", { className: css.historyLoadRow, "data-history-load": "", "aria-rowindex": 1, children: _jsx("td", { colSpan: 2, children: _jsxs("button", { type: "button", className: css.historyLoadButton, disabled: olderBusy || onLoadOlder === undefined, "aria-label": olderBusy
+                }, children: [showInitialLoading && (_jsx("div", { className: css.historyLoading, role: "status", "aria-live": "polite", children: _jsxs("span", { className: css.historyLoadingBar, children: [_jsx(StateDot, { state: "ongoing" }), t('history.loadingTrajectory')] }) })), _jsxs("table", { className: css.table, "data-scroll-ready": tableScrollReady || undefined, "aria-rowcount": records.length + historyRowOffset, children: [_jsxs("colgroup", { children: [_jsx("col", { className: css.eventColumn }), _jsx("col", { className: css.contentColumn })] }), _jsxs("tbody", { children: [hasOlderRecords && (_jsx("tr", { className: css.historyLoadRow, "data-history-load": "", "aria-rowindex": 1, children: _jsx("td", { colSpan: 2, children: _jsxs("button", { type: "button", className: css.historyLoadButton, disabled: olderBusy || onLoadOlder === undefined, "aria-label": olderBusy
                                                     ? t('history.loadingEarlierAria')
                                                     : t('history.loadEarlier'), onClick: () => {
                                                     const pane = tablePaneRef.current;
                                                     if (pane !== null)
                                                         requestOlder(pane, false);
-                                                }, children: [olderBusy && (_jsx("span", { className: css.historyLoadingSpinner, "aria-hidden": "true" })), _jsx("span", { "aria-hidden": "true", children: olderBusy ? t('history.loadingEarlier') : t('history.loadEarlier') }), _jsx("span", { className: css.visuallyHidden, role: "status", "aria-live": "polite", children: olderBusy ? t('history.loadingEarlier') : '' })] }) }) })), virtualTop > 0 && (_jsx("tr", { className: css.virtualSpacer, "data-virtual-spacer": "top", "aria-hidden": "true", children: _jsx("td", { colSpan: 2, style: {
+                                                }, children: [olderBusy && (_jsx(StateDot, { state: "ongoing" })), _jsx("span", { "aria-hidden": "true", children: olderBusy ? t('history.loadingEarlier') : t('history.loadEarlier') }), _jsx("span", { className: css.visuallyHidden, role: "status", "aria-live": "polite", children: olderBusy ? t('history.loadingEarlier') : '' })] }) }) })), virtualTop > 0 && (_jsx("tr", { className: css.virtualSpacer, "data-virtual-spacer": "top", "aria-hidden": "true", children: _jsx("td", { colSpan: 2, style: {
                                                 '--trajectory-virtual-spacer-height': `${virtualTop}px`,
                                             } }) })), renderedRecords.map(({ record, position, terminalRequestBoundary }) => (_jsx(RecordPresentation, { cell: record.cell, t: t, children: ({ displayText, listDisplayText, resultText, toolCallOnly, toolCallText }) => {
                                             const isCollapsedSummary = record.collapsedSummary !== undefined;
@@ -1328,7 +1433,10 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
                                             const sectionActive = record.turn === null
                                                 ? activeSection === record.section
                                                 : activeTurn === record.turn;
-                                            return (_jsxs("tr", { tabIndex: isRequestOnly ? -1 : 0, "aria-rowindex": position + 1 + historyRowOffset, "aria-label": isCollapsedSummary
+                                            const singleToolNotice = record.cell.kind === 'context'
+                                                && record.cell.sourceBlocks?.length === 1
+                                                && record.cell.sourceBlocks.every(block => block.type === 'tool-addition' || block.type === 'tool-removal');
+                                            return (_jsxs("tr", { tabIndex: isRequestOnly || singleToolNotice ? -1 : 0, "aria-rowindex": position + 1 + historyRowOffset, "aria-label": isCollapsedSummary
                                                     ? t('request.collapsedSummary', {
                                                         kind: t(record.collapsedSummaryKind === 'turn'
                                                             ? 'request.collapsedTurn'
@@ -1345,7 +1453,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
                                                     ? record.cell.index
                                                     : undefined, "data-request-only": isRequestOnly || undefined, "data-terminal-request-boundary": terminalRequestBoundary || undefined, "data-group-start": record.groupStart || undefined, "data-turn-start": record.turnStart || undefined, "data-error": record.cell.isError || undefined, "data-running": stateOf(record) === 'running' || undefined, "data-turn-end": record.turnEnd || undefined, "data-collapsed-summary": record.collapsedSummaryKind, "data-selected": !isCollapsedSummary && selectedIndex === record.cell.index || undefined, "data-timeline-focus": isCollapsedSummary || timelineFocusIndexes === null
                                                     ? undefined
-                                                    : timelineFocusIndexes.has(record.cell.index) ? 'inside' : 'outside', onClick: isRequestOnly
+                                                    : timelineFocusIndexes.has(record.cell.index) ? 'inside' : 'outside', onClick: isRequestOnly || singleToolNotice
                                                     ? undefined
                                                     : isCollapsedSummary
                                                         ? () => {
@@ -1356,7 +1464,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
                                                                 onToggleAssistant(trajectoryRecordId(record.cell));
                                                         }
                                                         : () => { selectRecord(record.cell.index); }, onDoubleClick: (event) => {
-                                                    if (isCollapsedSummary || isRequestOnly)
+                                                    if (isCollapsedSummary || isRequestOnly || singleToolNotice)
                                                         return;
                                                     if (record.turn !== null && collapsedTurns.has(record.turn)) {
                                                         event.preventDefault();
@@ -1380,7 +1488,7 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
                                                     event.preventDefault();
                                                     onToggleTurn(record.turn);
                                                 }, onKeyDown: (event) => {
-                                                    if (isRequestOnly)
+                                                    if (isRequestOnly || singleToolNotice)
                                                         return;
                                                     if (event.key !== 'Enter' && event.key !== ' ')
                                                         return;
@@ -1509,7 +1617,9 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
                                                         ? sectionLabel(selected.turn, t)
                                                         : `${sectionLabel(selected.turn, t)} · ${selected.group}` })] })) }), _jsx("button", { type: "button", className: css.close, "aria-label": t('details.close'), onClick: clearInspectorSelection, children: _jsx("span", { "aria-hidden": "true", children: "\u00D7" }) })] }), _jsx("div", { className: css.detailTabs, role: "tablist", "aria-label": t('details.event'), children: selectedTabs.map(tab => (_jsx("button", { id: `trajectory-detail-${tab.id}`, type: "button", role: "tab", "aria-controls": "trajectory-detail-panel", "aria-selected": activeTab === tab.id, className: activeTab === tab.id ? `${css.detailTab} ${css.detailTabActive}` : css.detailTab, onClick: () => { activateTab(tab.id); }, children: t(tab.labelKey) }, tab.id))) }), _jsxs("div", { id: "trajectory-detail-panel", className: activeTab === 'overview'
                             ? `${css.detailBody} ${css.detailBodySummary}`
-                            : css.detailBody, role: "tabpanel", "aria-labelledby": `trajectory-detail-${activeTab}`, children: [selectedRequestInfo !== undefined
+                            : selectedProgram !== undefined && (activeTab === 'input' || activeTab === 'output')
+                                ? `${css.detailBody} ${css.detailBodyProgram}`
+                                : css.detailBody, role: "tabpanel", "aria-labelledby": `trajectory-detail-${activeTab}`, children: [selectedRequestInfo !== undefined
                                 && selectedRequestState !== undefined
                                 && activeTab === 'overview' && (_jsxs(_Fragment, { children: [_jsxs("dl", { className: `${css.overview} ${css.summaryScrollRegion}`, "data-summary-scroll-region": "", children: [_jsxs("div", { children: [_jsx("dt", { children: t('details.status') }), _jsx("dd", { className: selectedRequestState === 'error' ? css.error : undefined, children: statusLabel(selectedRequestState, t) })] }), selectedRequestInfo.purpose === 'compaction' && (_jsxs("div", { children: [_jsx("dt", { children: t('details.purpose') }), _jsx("dd", { children: t('request.compactionPurpose') })] })), (selectedRequestInfo.provider
                                                 ?? selectedRequestInfo.requestConfig?.provider) !== undefined && (_jsxs("div", { children: [_jsx("dt", { children: t('details.provider') }), _jsx("dd", { children: selectedRequestInfo.provider
@@ -1524,25 +1634,31 @@ export function TrajectoryTable({ t, renderImages, requestNumbers: sessionReques
                                                                 openRecordSummary(selectedRequestResult);
                                                             }, children: [_jsx("span", { children: selectedRequestInfo.purpose === 'compaction'
                                                                         ? t('details.compacted')
-                                                                        : t('details.assistantMessage') }), _jsx(IconChevronRightOutline14, { className: css.overviewHierarchyJumpIconTight, size: 11 })] }) })] }))] }), _jsxs("div", { className: css.overviewSections, children: [selectedRequestOptions !== undefined && (_jsx(OverviewSection, { label: t('tab.options'), onOpen: () => { activateTab('options'); }, children: _jsx(RequestOptions, { options: selectedRequestOptions, preview: true, t: t }) })), _jsx(OverviewSection, { label: t('tab.usage'), onOpen: () => { activateTab('usage'); }, children: _jsx(UsageRows, { usage: selectedRequestUsage, t: t }) }), _jsx(OverviewSection, { label: t('tab.timing'), onOpen: () => { activateTab('timing'); }, children: _jsx(RequestTiming, { assistant: selectedRequestAssistant, anchor: selectedRequestAnchor, request: selectedRequestInfo, t: t }) })] })] })), selectedRequestInfo !== undefined && activeTab === 'options' && (_jsx(RequestOptions, { options: selectedRequestOptions, t: t })), selectedRequestInfo !== undefined && activeTab === 'usage' && (_jsx(RequestUsagePanel, { usage: selectedRequestUsage, cumulative: selectedRequestCumulativeUsage, t: t })), selectedRequestInfo !== undefined && activeTab === 'timing' && (_jsx(RequestTiming, { assistant: selectedRequestAssistant, anchor: selectedRequestAnchor, request: selectedRequestInfo, t: t })), promptSelected
+                                                                        : t('details.assistantMessage') }), _jsx(IconChevronRightOutlineRegular, { className: css.overviewHierarchyJumpIconTight, size: 11 })] }) })] }))] }), _jsxs("div", { className: css.overviewSections, children: [selectedRequestOptions !== undefined && (_jsx(OverviewSection, { label: t('tab.options'), onOpen: () => { activateTab('options'); }, children: _jsx(RequestOptions, { options: selectedRequestOptions, preview: true, stringWrapping: stringWrapping, t: t }) })), _jsx(OverviewSection, { label: t('tab.usage'), onOpen: () => { activateTab('usage'); }, children: _jsx(UsageRows, { usage: selectedRequestUsage, t: t }) }), _jsx(OverviewSection, { label: t('tab.timing'), onOpen: () => { activateTab('timing'); }, children: _jsx(RequestTiming, { assistant: selectedRequestAssistant, anchor: selectedRequestAnchor, request: selectedRequestInfo, preview: true, t: t }) })] })] })), selectedRequestInfo !== undefined && activeTab === 'options' && (_jsx(RequestOptions, { options: selectedRequestOptions, stringWrapping: stringWrapping, t: t })), selectedRequestInfo !== undefined && activeTab === 'usage' && (_jsx(RequestUsagePanel, { usage: selectedRequestUsage, cumulative: selectedRequestCumulativeUsage, t: t })), selectedRequestInfo !== undefined && activeTab === 'timing' && (_jsx(RequestTiming, { assistant: selectedRequestAssistant, anchor: selectedRequestAnchor, request: selectedRequestInfo, t: t })), selectedPrompt !== undefined
                                 && selectedPreviousPrompt !== undefined
-                                && activeTab === 'diff' && (_jsx(SystemPromptDiff, { before: selectedPreviousPrompt, after: selectedPrompt, t: t })), promptSelected && activeTab === 'system-prompt' && (selectedPrompt.system === ''
+                                && activeTab === 'diff' && (_jsx(SystemPromptDiff, { before: selectedPreviousPrompt, after: selectedPrompt, t: t })), promptSelected && activeTab === 'system-prompt' && (selectedSystemPrompt === ''
                                 ? _jsx("p", { className: css.noPayload, children: t('record.systemPromptMissing') })
-                                : (_jsx("div", { className: `${css.markdownPayload} ${css.systemPrompt}`, children: _jsx(MarkdownText, { text: selectedPrompt.system, labels: markdownLabels(t) }) }))), promptSelected && activeTab === 'tools' && (_jsx(ToolCatalog, { tools: selectedPrompt.tools, t: t })), !promptSelected
+                                : (_jsx("div", { className: `${css.markdownPayload} ${css.systemPrompt}`, children: _jsx(MarkdownText, { text: selectedSystemPrompt, labels: markdownLabels(t) }) }))), selectedPrompt !== undefined && activeTab === 'tools' && (_jsx(ToolCatalog, { tools: selectedPrompt.tools, stringWrapping: stringWrapping, t: t })), !promptSelected
                                 && selected?.cell.kind === 'compacted'
                                 && selectedState !== undefined
                                 && activeTab === 'overview' && (_jsxs(_Fragment, { children: [_jsxs("dl", { className: `${css.overview} ${css.summaryScrollRegion}`, "data-summary-scroll-region": "", children: [_jsxs("div", { children: [_jsx("dt", { children: t('details.status') }), _jsx("dd", { className: selectedState === 'error' ? css.error : undefined, children: statusLabel(selectedState, t) })] }), _jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(selected.cell.timeSeconds, t) })] }), _jsxs("div", { children: [_jsx("dt", { children: t('usage.tokens') }), _jsx("dd", { children: "\u2014" })] })] }), selected.cell.outputDetail !== undefined && (_jsx("div", { className: `${css.compactedSummary} ${css.summaryScrollRegion}`, "data-summary-scroll-region": "", children: _jsx(MarkdownRecordContent, { record: selected, renderImages: renderImages, rendered: true, thinkingExpanded: thinkingExpanded, onThinkingExpandedChange: setThinkingExpanded, onOpenCall: openCallSummary, t: t }) }))] })), !promptSelected
                                 && selected !== undefined
                                 && selected.cell.kind !== 'compacted'
                                 && selectedState !== undefined
-                                && activeTab === 'overview' && (_jsxs(_Fragment, { children: [_jsxs("dl", { className: `${css.overview} ${css.summaryScrollRegion}`, "data-summary-scroll-region": "", children: [selected.cell.messageSource !== undefined && (_jsxs("div", { children: [_jsx("dt", { children: t('details.source') }), _jsx("dd", { className: css.overviewParentLinks, children: _jsxs("button", { type: "button", className: css.overviewHierarchyNavLink, onClick: () => { activateTab('source'); }, children: [_jsx("span", { children: messageSourceLabel(selected.cell.messageSource, t) }), _jsx(IconChevronRightOutline14, { className: css.overviewHierarchyJumpIconTight, size: 11 })] }) })] })), hasSelectedHierarchy && (_jsxs("div", { children: [_jsx("dt", { children: selectedAssistantRequestTarget !== undefined
+                                && activeTab === 'overview' && (_jsxs(_Fragment, { children: [selectedProgram !== undefined && selectedProgram.description !== '' && (_jsx("p", { className: css.programDescription, children: selectedProgram.description })), _jsxs("dl", { className: `${css.overview} ${css.summaryScrollRegion}`, "data-summary-scroll-region": "", children: [selected.cell.messageSource !== undefined && (_jsxs("div", { children: [_jsx("dt", { children: t('details.source') }), _jsx("dd", { className: css.overviewParentLinks, children: _jsxs("button", { type: "button", className: css.overviewHierarchyNavLink, onClick: () => { activateTab('source'); }, children: [_jsx("span", { children: messageSourceLabel(selected.cell.messageSource, t) }), _jsx(IconChevronRightOutlineRegular, { className: css.overviewHierarchyJumpIconTight, size: 11 })] }) })] })), hasSelectedHierarchy && (_jsxs("div", { children: [_jsx("dt", { children: selectedAssistantRequestTarget !== undefined
                                                             ? t('details.source')
                                                             : t('details.hierarchy') }), _jsxs("dd", { className: css.overviewParentLinks, children: [selectedAssistantRequestTarget !== undefined && (_jsxs("button", { type: "button", className: css.overviewHierarchyNavLink, onClick: () => {
                                                                     selectRequest(selectedAssistantRequestTarget);
-                                                                }, children: [_jsx("span", { children: t('request.label', { request: selectedAssistantRequest ?? '—' }) }), _jsx(IconChevronRightOutline14, { className: css.overviewHierarchyJumpIconTight, size: 11 })] })), selectedParentMessage !== undefined && (_jsxs("button", { type: "button", className: css.overviewHierarchyNavLink, onClick: () => { openRecordSummary(selectedParentMessage); }, children: [_jsx("span", { children: t('details.assistantMessage') }), _jsx(IconChevronRightOutline14, { className: css.overviewHierarchyJumpIconTight, size: 11 })] })), selectedParentTool !== undefined && (_jsxs("button", { type: "button", className: css.overviewHierarchyNavLink, onClick: () => { openRecordSummary(selectedParentTool); }, children: [_jsx("span", { children: t('details.toolCall') }), _jsx(IconChevronRightOutline14, { className: css.overviewHierarchyJumpIconTight, size: 11 })] }))] })] })), _jsxs("div", { children: [_jsx("dt", { children: t('details.status') }), _jsx("dd", { className: selectedState === 'error' ? css.error : undefined, children: statusLabel(selectedState, t) })] }), selected.cell.kind === 'message' && (_jsx(TokenRows, { cell: selected.cell, t: t })), (selected.cell.kind === 'user' || selected.cell.kind === 'context') && (_jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(selected.cell.timeSeconds, t) })] }))] }), _jsxs("div", { className: css.overviewSections, children: [isMarkdownRecord(selected)
-                                                ? (_jsx(_Fragment, { children: _jsx(OverviewSection, { label: t('tab.preview'), onOpen: () => { activateTab('rendered'); }, children: _jsx(MarkdownRecordContent, { record: selected, renderImages: renderImages, rendered: true, preview: true, thinkingExpanded: thinkingExpanded, onThinkingExpandedChange: setThinkingExpanded, onOpenCall: openCallSummary, t: t }) }) }))
-                                                : (_jsxs(_Fragment, { children: [selected.cell.inputDetail && (_jsx(OverviewSection, { label: t('tab.payload'), onOpen: () => { activateTab('input'); }, children: _jsx(RecordPayload, { record: selected, direction: "input", preview: true, renderImages: renderImages, t: t }) })), selected.cell.outputDetail && (_jsx(OverviewSection, { label: t('tab.result'), onOpen: () => { activateTab('output'); }, children: _jsx(RecordPayload, { record: selected, direction: "output", preview: true, renderImages: renderImages, t: t }) })), _jsx(OverviewSection, { label: t('tab.schema'), onOpen: () => { activateTab('schema'); }, children: _jsx(RecordSchema, { record: selected, preview: true, t: t }) })] })), selectedAssistantRequestTarget !== undefined && (_jsx(OverviewSection, { label: t('timing.request'), onOpen: () => {
+                                                                }, children: [_jsx("span", { children: t('request.label', { request: selectedAssistantRequest ?? '—' }) }), _jsx(IconChevronRightOutlineRegular, { className: css.overviewHierarchyJumpIconTight, size: 11 })] })), selectedParentMessage !== undefined && (_jsxs("button", { type: "button", className: css.overviewHierarchyNavLink, onClick: () => { openRecordSummary(selectedParentMessage); }, children: [_jsx("span", { children: t('details.assistantMessage') }), _jsx(IconChevronRightOutlineRegular, { className: css.overviewHierarchyJumpIconTight, size: 11 })] })), selectedParentTool !== undefined && (_jsxs("button", { type: "button", className: css.overviewHierarchyNavLink, onClick: () => { openRecordSummary(selectedParentTool); }, children: [_jsx("span", { children: t('details.toolCall') }), _jsx(IconChevronRightOutlineRegular, { className: css.overviewHierarchyJumpIconTight, size: 11 })] }))] })] })), _jsxs("div", { children: [_jsx("dt", { children: t('details.status') }), _jsx("dd", { className: selectedState === 'error' ? css.error : undefined, children: statusLabel(selectedState, t) })] }), selected.cell.kind === 'message' && (_jsx(TokenRows, { cell: selected.cell, t: t })), (selected.cell.kind === 'user' || selected.cell.kind === 'context') && (_jsxs("div", { children: [_jsx("dt", { children: t('timing.duration') }), _jsx("dd", { children: formatElapsedSeconds(selected.cell.timeSeconds, t) })] }))] }), _jsxs("div", { className: css.overviewSections, children: [selectedProgram !== undefined
+                                                ? (_jsxs(_Fragment, { children: [_jsx(ProgramInput, { program: selectedProgram, initialWrapped: codeWrappingOnOpen, stringWrapping: stringWrapping, onOpen: () => { activateTab('input'); }, t: t }, `preview:${selectedRecordId}`), _jsx(ProgramOutput, { record: selected, stringWrapping: stringWrapping, onOpen: () => { activateTab('output'); }, t: t })] }))
+                                                : isMarkdownRecord(selected)
+                                                    ? (_jsx(_Fragment, { children: _jsx(OverviewSection, { label: t('tab.preview'), onOpen: () => { activateTab('rendered'); }, children: _jsx(MarkdownRecordContent, { record: selected, renderImages: renderImages, rendered: true, preview: true, thinkingExpanded: thinkingExpanded, onThinkingExpandedChange: setThinkingExpanded, onOpenCall: openCallSummary, t: t }) }) }))
+                                                    : (_jsxs(_Fragment, { children: [selected.cell.inputDetail && (_jsx(OverviewSection, { label: t('tab.payload'), onOpen: () => { activateTab('input'); }, children: _jsx(RecordPayload, { record: selected, direction: "input", preview: true, renderImages: renderImages, stringWrapping: stringWrapping, t: t }) })), selected.cell.outputDetail && (_jsx(OverviewSection, { label: t('tab.result'), onOpen: () => { activateTab('output'); }, children: _jsx(RecordPayload, { record: selected, direction: "output", preview: true, renderImages: renderImages, stringWrapping: stringWrapping, t: t }) })), _jsx(OverviewSection, { label: t('tab.schema'), onOpen: () => { activateTab('schema'); }, children: _jsx(RecordSchema, { record: selected, preview: true, stringWrapping: stringWrapping, t: t }) })] })), selectedAssistantRequestTarget !== undefined && (_jsx(OverviewSection, { label: t('timing.request'), onOpen: () => {
                                                     selectRequest(selectedAssistantRequestTarget, 'timing');
-                                                }, children: _jsx(RecordTiming, { record: selected, t: t }) })), (selected.cell.kind === 'tool' || selected.cell.kind === 'subtool') && (_jsx(OverviewSection, { label: t('tab.timing'), onOpen: () => { activateTab('timing'); }, children: _jsx(RecordTiming, { record: selected, t: t }) }))] })] })), !promptSelected && selected !== undefined && activeTab === 'rendered' && (_jsx(MarkdownRecordContent, { record: selected, renderImages: renderImages, rendered: true, thinkingExpanded: thinkingExpanded, onThinkingExpandedChange: setThinkingExpanded, onOpenCall: openCallSummary, t: t })), !promptSelected && selected !== undefined && activeTab === 'raw' && (_jsx(MarkdownRecordContent, { record: selected, renderImages: renderImages, rendered: false, thinkingExpanded: thinkingExpanded, onThinkingExpandedChange: setThinkingExpanded, onOpenCall: openCallSummary, t: t })), !promptSelected && selected !== undefined && activeTab === 'source' && (_jsx(MessageSource, { record: selected, t: t })), !promptSelected && selected !== undefined && activeTab === 'input' && (_jsx(RecordPayload, { record: selected, direction: "input", renderImages: renderImages, t: t })), !promptSelected && selected !== undefined && activeTab === 'output' && (_jsx(RecordPayload, { record: selected, direction: "output", renderImages: renderImages, t: t })), !promptSelected && selected !== undefined && activeTab === 'schema' && (_jsx(RecordSchema, { record: selected, t: t })), !promptSelected && selected !== undefined && activeTab === 'timing' && (_jsx(RecordTiming, { record: selected, t: t }))] })] }))] }));
+                                                }, children: _jsx(RecordTiming, { record: selected, preview: true, t: t }) })), (selected.cell.kind === 'tool' || selected.cell.kind === 'subtool') && (_jsx(OverviewSection, { label: t('tab.timing'), onOpen: () => { activateTab('timing'); }, children: _jsx(RecordTiming, { record: selected, preview: true, t: t }) }))] })] })), !promptSelected && selected !== undefined && activeTab === 'rendered' && (_jsx(MarkdownRecordContent, { record: selected, renderImages: renderImages, rendered: true, thinkingExpanded: thinkingExpanded, onThinkingExpandedChange: setThinkingExpanded, onOpenCall: openCallSummary, t: t })), !promptSelected && selected !== undefined && activeTab === 'raw' && (_jsx(MarkdownRecordContent, { record: selected, renderImages: renderImages, rendered: false, thinkingExpanded: thinkingExpanded, onThinkingExpandedChange: setThinkingExpanded, onOpenCall: openCallSummary, t: t })), !promptSelected && selected !== undefined && activeTab === 'source' && (_jsx(MessageSource, { record: selected, stringWrapping: stringWrapping, t: t })), !promptSelected && selected !== undefined && activeTab === 'input' && (selectedProgram === undefined
+                                ? _jsx(RecordPayload, { record: selected, direction: "input", renderImages: renderImages, stringWrapping: stringWrapping, t: t })
+                                : _jsx(ProgramInput, { program: selectedProgram, initialWrapped: codeWrappingOnOpen, stringWrapping: stringWrapping, t: t }, `input:${selectedRecordId}`)), !promptSelected && selected !== undefined && activeTab === 'output' && (selectedProgram === undefined
+                                ? _jsx(RecordPayload, { record: selected, direction: "output", renderImages: renderImages, stringWrapping: stringWrapping, t: t })
+                                : _jsx(ProgramOutput, { record: selected, stringWrapping: stringWrapping, t: t })), !promptSelected && selected !== undefined && activeTab === 'schema' && (_jsx(RecordSchema, { record: selected, stringWrapping: stringWrapping, t: t })), !promptSelected && selected !== undefined && activeTab === 'timing' && (_jsx(RecordTiming, { record: selected, t: t }))] })] }))] }));
 }
 //# sourceMappingURL=TrajectoryTable.js.map

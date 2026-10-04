@@ -13,7 +13,10 @@ export interface SessionListEntry {
     title?: string;
     updatedAt: number;
     running: boolean;
-    /** Empty-log bit mirrored from the summary; lists hide blank sessions (filtering stays with the consumer). */
+    /**
+     * New Session presentation and reuse eligibility, reconciled with
+     * `sessionListMetadata`; lists hide blank sessions (filtering stays with the consumer).
+     */
     blank: boolean;
     parentSessionId?: SessionId;
     /** Coarse durable origin for navigation filtering; not a continuation capability. */
@@ -21,8 +24,6 @@ export interface SessionListEntry {
     cwd?: string;
     /** Current host-computed projection values for list consumers. */
     projectionValues?: Readonly<Partial<SessionProjectionMap>>;
-    /** Finished running while not selected and not yet opened — the sidebar's green "done" reminder (clears on select or the next run). */
-    completed: boolean;
     /** Lineage indent depth: root = 0; the UI just multiplies by the indent width. */
     depth: number;
 }
@@ -31,8 +32,7 @@ export interface SessionListEntry {
  * follows the established input order; this projection never re-sorts a
  * hydrated list from mutable timestamps.
  * @param summaries - the host's session.list items.
- * @param completed - sessions with a pending completion reminder (manager-owned live fact; absent = false).
  * @returns display rows in render order.
  */
-export declare function flattenLineage(summaries: readonly TitledSessionSummary[], completed?: ReadonlySet<SessionId>): SessionListEntry[];
+export declare function flattenLineage(summaries: readonly TitledSessionSummary[]): SessionListEntry[];
 //# sourceMappingURL=lineage.d.ts.map

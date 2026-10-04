@@ -1,17 +1,29 @@
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives';
+import type { PresentedFile } from '@deepseek-ai/dsh-tool-present/types';
+/** A declared file with its authorized open coordinates. */
+export interface PresentedPath extends PresentedFile {
+    readonly seq: number;
+    readonly index: number;
+}
 interface ProducedPath {
     readonly seq: number;
     readonly path: string;
 }
+/** The latest `workspace/changes` announcement of one Turn; the Host serves its summary by this sequence. */
+export interface ChangesTurnData {
+    readonly seq: number;
+}
 /** Immutable produced-file facts published against one Turn. */
 export interface DeliverablesTurnData {
     readonly produced: readonly ProducedPath[];
+    readonly presented?: readonly PresentedPath[];
+    readonly changes?: ChangesTurnData;
 }
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
     interface ConversationTurnDataMap {
-        /** Successful mutation paths accumulated in this Turn. */
+        /** Successful mutation paths, recorded changed files, and deliveries accumulated in this Turn. */
         deliverables: DeliverablesTurnData;
     }
 }
@@ -46,23 +58,27 @@ export declare function selectProducedFiles(owner: TurnTailOwnerProps): readonly
 /** Turn-local successful mutation accumulator; it publishes no view Node. */
 export declare const deliverablesDefinition: ConversationNodeDefinition<DeliverablesState>;
 /**
- * Trailing path segment, the part that identifies the file at a glance.
- * @param path - Slash- or backslash-separated path.
- * @returns The final segment, or the whole string when separator-free.
+ * The turn's latest change announcement.
+ * @param owner - closing turn.
+ * @returns the announcement, or null when the Host recorded none.
  */
-export declare function basename(path: string): string;
+export declare function changesForClosing(owner: TurnTailOwnerProps): ChangesTurnData | null;
 /**
- * File-mention vocabulary over one turn's produced paths, for the closing
- * message's prose: an inline-code token opens the file it names. A token
- * resolves by exact path, or by being exactly the basename of exactly one
- * produced path — a basename two paths share stays inert rather than
- * guessing, so a mention link can never open the wrong file or 404.
- * @param paths - The turn's produced paths (tool order, already deduped).
+ * Select the latest declaration of each path before the closing reply.
+ * @param owner - closing turn and sequence.
+ * @returns replayable deliveries in first-seen path order.
+ */
+export declare function presentedForClosing(owner: TurnTailOwnerProps): PresentedPath[];
+export { basename } from '../presented.ts';
+/**
+ * Resolves inline-code references against one turn's produced or delivered
+ * paths. Exact paths resolve directly; a basename resolves only when exactly
+ * one supplied path has that basename. Ambiguous and unknown tokens stay inert.
+ * @param paths - The turn's produced or delivered paths, already deduplicated.
  * @param openFile - The chat view's file opener.
  * @param label - Localizes the accessible open-label for a resolved path.
  * @returns The resolver MarkdownText consumes; the full path rides `title`,
  * the same disambiguator the row's chips carry.
  */
 export declare function producedFileMentions(paths: readonly string[], openFile: (path: string) => void, label: (path: string) => string): MarkdownFileMentions;
-export {};
 //# sourceMappingURL=turn-deliverables.d.ts.map

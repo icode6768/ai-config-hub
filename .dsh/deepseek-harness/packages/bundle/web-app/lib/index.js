@@ -1,14 +1,14 @@
+import { t as parsePublicUrl } from "./public-url-D_dMK-yI.js";
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
 import z from "@deepseek-ai/schemastery";
-import { addHarnessSourceSection } from "@deepseek-ai/dsh-app-boot";
+import { addHarnessSourceSection, auditStartupEntries } from "@deepseek-ai/dsh-app-boot";
 import * as FrontendStatic from "@deepseek-ai/dsh-host-frontend-static";
-import { launchEnvironmentOf } from "@deepseek-ai/dsh-launch-environment";
+import { launchEnvironmentOf, launchedThroughSsh } from "@deepseek-ai/dsh-launch-environment";
 import { scrubbedParentEnv } from "@deepseek-ai/dsh-subprocess";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 //#region lib/types/index.js
 /**
 * @deepseek-ai/dsh-web-app — the browser-surface bundle's runtime glue plugin
@@ -17,9 +17,10 @@ import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 * the built frontend dist (workspace knowledge of this bundle, never user
 * config), mounts the `frontend-static` fallback owner over it, registers the
 * harness-source and web-surface prompt sections, the bash-visible web runtime
-* variable, the process-token URL line, and the default-browser handoff. The
-* model and shell retain the clean URL. App command-line values arrive through
-* the `webStartup` service expressions in the bundle patch.
+* variable, the process-token URL line, and the default-browser handoff. An
+* advertised `publicUrl` replaces the published root — the loopback URL
+* otherwise. App command-line values arrive through the `webStartup` service
+* expressions in the bundle patch.
 * @module @deepseek-ai/dsh-web-app
 */
 /** Stable Cordis plugin name. */
@@ -35,21 +36,14 @@ const Config = z.object({
 	openBrowser: z.boolean().default(true),
 	printUrl: z.boolean().default(true),
 	surfaceContext: z.boolean().default(true),
+	publicUrl: z.transform(z.string(), (value) => parsePublicUrl(value).href),
 	trustedHosts: z.array(String).default([])
 });
-/** Environment variable naming the canonical local URL of this Web GUI. */
+/** Environment variable naming the advertised URL of this Web GUI. */
 const DSH_WEB_URL = "DSH_WEB_URL";
 const LOOPBACK_HOST = "127.0.0.1";
 /** The webserver schema's all-interfaces bind literal. */
 const ALL_INTERFACES_HOST = "0.0.0.0";
-/** Whether this process was launched through SSH, including a forwarded-port session. */
-function launchedThroughSsh(ctx) {
-	const environment = launchEnvironmentOf(ctx);
-	return ["SSH_CONNECTION", "SSH_TTY"].some((name) => {
-		const value = environment.getFrom(name, ["process"])?.value;
-		return value !== void 0 && value !== "";
-	});
-}
 const BROWSER_OPENER_MODULE = import.meta.resolve("open");
 const BROWSER_OPENER_PROGRAM = `
 try {
@@ -105,6 +99,10 @@ function localWebUrl(ctx) {
 	const port = ctx.get("webServer")?.port;
 	if (port === void 0) throw new Error("web-app: webServer service missing while resolving Web runtime");
 	return `http://${LOOPBACK_HOST}:${String(port)}`;
+}
+function appRootUrl(ctx, publicUrl) {
+	if (publicUrl !== void 0) return publicUrl;
+	return localWebUrl(ctx);
 }
 /**
 * Dist location is workspace knowledge of this bundle: anchored on the
@@ -180,7 +178,8 @@ const internals = {
 */
 function apply(ctx, config) {
 	const runtime = resolveLanTrust(ctx.webServer.host, config.trustedHosts);
-	const handoffBrowser = config.openBrowser && !launchedThroughSsh(ctx);
+	const publicUrl = config.publicUrl ?? void 0;
+	const handoffBrowser = config.openBrowser && !launchedThroughSsh(launchEnvironmentOf(ctx));
 	ctx.provide(WEB_RUNTIME_SERVICE, runtime);
 	ctx.plugin(FrontendStatic, { distIndex: internals.resolveDistIndex() });
 	if (config.surfaceContext) {
@@ -188,22 +187,22 @@ function apply(ctx, config) {
 			addHarnessSourceSection(promptCtx, SOURCE_ROOT);
 			promptCtx.systemPrompt.section({
 				name: "app:web-surface",
-				order: FIRST_PARTY_SECTION_ORDER.WEB_SURFACE,
-				text: () => webSurfacePrompt(localWebUrl(promptCtx))
+				order: promptCtx.systemPrompt.getSectionOrder("WEB_SURFACE"),
+				text: () => webSurfacePrompt(appRootUrl(promptCtx, publicUrl))
 			});
 		});
 		ctx.inject(["shellEnv"], (runtimeCtx) => {
 			runtimeCtx.shellEnv.register({
 				name: "web-runtime",
-				variables: { [DSH_WEB_URL]: { description: "Canonical local URL of the DeepSeek Harness Web GUI serving this session." } },
-				resolve: () => ({ [DSH_WEB_URL]: localWebUrl(runtimeCtx) })
+				variables: { [DSH_WEB_URL]: { description: "Advertised URL of the DeepSeek Harness Web GUI serving this session." } },
+				resolve: () => ({ [DSH_WEB_URL]: appRootUrl(runtimeCtx, publicUrl) })
 			});
 		});
 	}
 	if (config.printUrl || handoffBrowser) ctx.inject(["connection"], (connectionCtx) => {
 		const announceReady = () => {
 			if (ANNOUNCED_ROOTS.has(connectionCtx.root)) return;
-			const webUrl = localWebUrl(connectionCtx);
+			const webUrl = appRootUrl(connectionCtx, publicUrl);
 			const authenticatedUrl = connectionCtx.connection.authenticatedUrl(webUrl);
 			const lanCandidate = runtime.lanAddresses[0];
 			const port = connectionCtx.webServer.port;
@@ -220,9 +219,10 @@ function apply(ctx, config) {
 		};
 		const settled = connectionCtx.get("loader")?.await();
 		if (settled === void 0) announceReady();
-		else settled.then(() => {
+		else settled.then(async () => {
+			await auditStartupEntries(connectionCtx.root, "dsh web", () => {});
 			if (connectionCtx.get("webServer") !== void 0 && connectionCtx.get("connection") !== void 0) announceReady();
-		}, () => {});
+		}).catch(() => {});
 	});
 }
 //#endregion

@@ -1,3 +1,4 @@
+import { resolveCommand } from "./resolution.js";
 /** One session key's cache cell. */
 class Entry {
     state = 'cold';
@@ -23,16 +24,16 @@ export class CommandDirectory {
         return this.entries.get(sessionId)?.state ?? 'cold';
     }
     /**
-     * Synchronous exact-name lookup over one session's hot snapshot.
+     * Synchronous command lookup over one Session's ready catalog; exact names precede localized aliases.
      * @param sessionId - session key.
-     * @param name - command name without the leading slash.
+     * @param name - typed command spelling without the leading slash.
      * @returns the descriptor, or undefined when absent or the entry is not ready.
      */
     resolve(sessionId, name) {
         const entry = this.entries.get(sessionId);
         if (entry === undefined || entry.state !== 'ready')
             return undefined;
-        return entry.commands.find(c => c.name === name);
+        return resolveCommand(name, entry.commands);
     }
     /** Soft invalidation (commands-changed): background repull on every touched key; ready snapshots keep serving. */
     invalidateAll() {

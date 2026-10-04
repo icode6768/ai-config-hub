@@ -1,4 +1,5 @@
 /** One-shot session-lineage and event-relationship tracing helpers. */
+import { currentSessionMessageProjections } from '@deepseek-ai/dsh-session-format-catalog/message-projections';
 import { foldSurface, isSurfaceEvent, snapshotSessionEvent } from '@deepseek-ai/dsh-session';
 import { SessionQueryError } from "./config.js";
 /**
@@ -125,7 +126,7 @@ export function traceSession(records, sessionId) {
 function analyzeEventLog(sessionId, events) {
     let folded;
     try {
-        folded = foldSurface(events);
+        folded = foldSurface(events, currentSessionMessageProjections);
     }
     catch (error) {
         throw new SessionQueryError(

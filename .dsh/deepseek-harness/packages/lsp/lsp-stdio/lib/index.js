@@ -2,7 +2,7 @@ import z from "@deepseek-ai/schemastery";
 import { LspError, LspProviderId } from "@deepseek-ai/dsh-lsp";
 import { MAX_TIMER_DELAY_MS, deadline, timeoutOf } from "@deepseek-ai/dsh-timeout";
 import { Buffer as Buffer$1 } from "node:buffer";
-import { assertNever } from "@deepseek-ai/dsh-llm";
+import { assertNever } from "@deepseek-ai/dsh-util-values";
 //#region lib/types/abort.js
 /**
 * Shared cancellation helpers for the local LSP provider's host-I/O, queue, and protocol phases.
@@ -229,8 +229,8 @@ function parseContentLength(headerText) {
 * server→client requests: it answers `workspace/configuration` from static
 * config, and rejects `workspace/applyEdit` (this host never applies edits or
 * runs commands). It caps stderr, surfaces framing/decoder failures as a
-* fatal close, and exposes tree-scoped termination through the handle so the
-* instance owns teardown; group/tree mechanics live in the subprocess
+* fatal close, and exposes managed-range termination through the handle so the
+* instance owns teardown; platform mechanics live in the subprocess
 * Service Provider.
 * @module @deepseek-ai/dsh-lsp-stdio/connection
 */
@@ -292,10 +292,6 @@ var LspConnection = class {
 		this.handle.stdout.on("data", (chunk) => {
 			this.onStdout(chunk);
 		});
-	}
-	/** The child's pid, or `-1` when the spawn produced no pid (so signalling is a no-op). */
-	get pid() {
-		return this.handle.pid;
 	}
 	/** The retained stderr tail, for diagnostics on a failed server. */
 	get stderrTail() {
@@ -372,16 +368,16 @@ var LspConnection = class {
 	peekNextId() {
 		return this.nextId;
 	}
-	/** Terminate the server's process tree (the seam's SIGTERM→grace→SIGKILL escalation; idempotent). */
+	/** Terminate the server's provider-managed range (idempotent). */
 	terminate() {
 		this.handle.terminate();
 	}
 	/**
-	* Wait until the owned process tree has exited.
+	* Wait until the owned managed range is empty.
 	* @param signal - optional bound for the wait.
-	* @returns `true` when the tree exited, or `false` when the signal aborted first.
+	* @returns `true` when the range is empty, or `false` when the signal aborted first.
 	*/
-	async waitForProcessTreeExit(signal) {
+	async waitForManagedRangeExit(signal) {
 		return await this.handle.waitForExit(signal);
 	}
 	onStdout(chunk) {
@@ -747,7 +743,7 @@ var LspInstance = class {
 	*/
 	query(request, source, signal) {
 		const run = abortable(this.queue, signal).then(() => this.runQuery(request, source, signal)).catch(async (error) => {
-			if (this.isTransportFailure(error)) await this.startTeardown();
+			if (this.isTransportFailure(error)) await this.awaitTeardownAttempt();
 			throw error;
 		});
 		this.queue = this.queue.then(() => run).then(() => void 0, () => void 0);
@@ -775,7 +771,7 @@ var LspInstance = class {
 		try {
 			await abortable(this.ready, signal);
 		} catch (error) {
-			if (!this.dead) await this.startTeardown();
+			if (!this.dead) await this.awaitTeardownAttempt();
 			throw error;
 		}
 		const capabilities = this.capabilities;
@@ -796,7 +792,7 @@ var LspInstance = class {
 					text: source.text
 				} }), signal);
 			} catch (error) {
-				await this.startTeardown();
+				await this.awaitTeardownAttempt();
 				throw error;
 			}
 			opened = true;
@@ -805,10 +801,8 @@ var LspInstance = class {
 		} finally {
 			if (opened && !this.dead) try {
 				await this.connection.notify("textDocument/didClose", { textDocument: { uri } });
-			} catch {
-				try {
-					await this.startTeardown();
-				} catch {}
+			} catch (_closeFailure) {
+				await this.awaitTeardownAttempt();
 			}
 		}
 	}
@@ -848,7 +842,7 @@ var LspInstance = class {
 					grace.signal.addEventListener("abort", () => {
 						resolve(false);
 					}, { once: true });
-				})])) await this.startTeardown();
+				})])) await this.awaitTeardownAttempt();
 			} finally {
 				grace[Symbol.dispose]();
 			}
@@ -890,6 +884,12 @@ var LspInstance = class {
 		this.teardownPromise ??= this.tearDown();
 		return this.teardownPromise;
 	}
+	/** Await teardown while leaving its memoized failure for provider-level finalization. */
+	async awaitTeardownAttempt() {
+		try {
+			await this.startTeardown();
+		} catch (_teardownFailure) {}
+	}
 	async tearDown() {
 		const shutdownDeadline = deadline(void 0, this.spec.shutdownTimeoutMs, "LSP_SHUTDOWN");
 		try {
@@ -906,14 +906,13 @@ var LspInstance = class {
 		await abortable(this.connection.closed, signal);
 	}
 	/**
-	* Terminate the tree (the seam escalates SIGTERM→`killGraceMs`→SIGKILL),
-	* then await leader and helper exit. The awaits are unbounded on purpose:
-	* the seam's escalation already committed to SIGKILL, so quiescence — not
-	* another timer — is the postcondition disposal owes its callers.
+	* Terminate the provider-managed range, then await the direct server result
+	* and whole-range quiescence. The awaits are unbounded on purpose because
+	* quiescence, not another timer, is the postcondition disposal owes callers.
 	*/
 	async forceTerminate() {
 		this.connection.terminate();
-		await Promise.all([this.connection.closed, this.connection.waitForProcessTreeExit()]);
+		await Promise.all([this.connection.closed, this.connection.waitForManagedRangeExit()]);
 	}
 };
 /** Server→client request methods this host acknowledges with an empty result (no dynamic registration). */
@@ -1109,20 +1108,23 @@ var LocalLspProvider = class {
 			const source = await readHostSource(this.fs, request.filePath, workspace, this.config.maxDocumentBytes, querySignal);
 			this.assertActive(querySignal);
 			let instance = this.instanceFor(workspaceKey, workspace);
-			try {
-				return await instance.query(request, source, querySignal);
-			} catch (error) {
-				if (!instance.isTransportFailure(error)) throw error;
-				await instance.dispose();
-				this.evictIfCurrent(workspaceKey, instance);
-				this.assertActive(querySignal);
-				instance = this.instanceFor(workspaceKey, workspace);
-				return await instance.query(request, source, querySignal);
-			} finally {
+			let canRetryTransport = true;
+			for (;;) {
+				const [queryOutcome] = await Promise.allSettled([instance.query(request, source, querySignal)]);
+				let teardownOutcome;
 				if (instance.dead) {
-					await instance.dispose();
+					[teardownOutcome] = await Promise.allSettled([instance.dispose()]);
 					this.evictIfCurrent(workspaceKey, instance);
 				}
+				if (teardownOutcome?.status === "rejected") {
+					if (queryOutcome.status === "rejected") throw new AggregateError([queryOutcome.reason, teardownOutcome.reason], "LSP operation and teardown failed");
+					throw teardownOutcome.reason;
+				}
+				if (queryOutcome.status === "fulfilled") return queryOutcome.value;
+				if (!canRetryTransport || !instance.isTransportFailure(queryOutcome.reason)) throw queryOutcome.reason;
+				canRetryTransport = false;
+				this.assertActive(querySignal);
+				instance = this.instanceFor(workspaceKey, workspace);
 			}
 		});
 	}

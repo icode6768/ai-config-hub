@@ -466,9 +466,6 @@ function sameJsonValue(left, right) {
 /** File-backed credentials provider (`$DSH_HOME/.credentials.yaml`). */
 export class LocalCredentialProvider extends CredentialProvider {
     config;
-    /* jscpd:ignore-start -- deliberate config-surface and lifecycle symmetry with
-       settings-file (prefer symmetry for parallel values); extracting the shared
-       shape would couple the two providers' teardown semantics across packages. */
     static Config = z.object({
         path: z.string(),
         dshHome: z.string(),
@@ -498,7 +495,6 @@ export class LocalCredentialProvider extends CredentialProvider {
     isClosed() {
         return this.closed;
     }
-    /* jscpd:ignore-end */
     constructor(ctx, config) {
         super(ctx);
         this.config = config;
@@ -530,9 +526,6 @@ export class LocalCredentialProvider extends CredentialProvider {
         await this.loadInitial();
         if (!this.spec.watch)
             return;
-        /* jscpd:ignore-start -- same watcher discipline as settings-file by design:
-           the serialized-refresh and quiesce-on-dispose shape is the reviewed
-           lifecycle contract, not accidental repetition. */
         const watcher = chokidarWatch(await canonicalizeWatchPath(this.spec.filename), {
             ignoreInitial: true,
             awaitWriteFinish: {
@@ -564,7 +557,6 @@ export class LocalCredentialProvider extends CredentialProvider {
             await watcher.close();
             await this.operations;
         };
-        /* jscpd:ignore-end */
     }
     resolve(ref) {
         const inherited = this.inherited(ref);
@@ -677,28 +669,16 @@ export class LocalCredentialProvider extends CredentialProvider {
             }, { waitMs: DOCUMENT_LOCK_WAIT_MS });
         });
     }
-    /* jscpd:ignore-start -- the operation-chain and reload lifecycle is the same
-       reviewed contract as settings-file, deliberately mirrored (prefer symmetry
-       for parallel values); the two providers own different documents and
-       failure policies, so extracting a shared helper would couple their teardown
-       semantics across packages for a handful of lines. */
     /** Queue one exclusive document operation behind every earlier one. */
     enqueue(operation) {
         const task = this.operations.then(operation);
         this.operations = task.then(() => undefined, () => undefined);
         return task;
     }
-    /** Queue a reload; only an invariant violation escaping the fan-out can reject it. */
+    /** Queue a reload; `refresh()` contains its own failures, so the queued task never rejects. */
     queueRefresh() {
-        void this.enqueue(() => this.refresh()).catch((error) => {
-            // Only an invariant violation escaping the update fan-out can reject a
-            // refresh; keep the operation queue alive and surface it as an error so
-            // one poisoned commit cannot silently end hot reloading forever.
-            this.ctx.logger.error('credentials-local: reload commit failed at %s', this.spec.filename);
-            this.ctx.logger.error(error);
-        });
+        void this.enqueue(() => this.refresh());
     }
-    /* jscpd:ignore-end */
     /** Queue one line edit; entry checks reject early, the queue re-judges them at run time. */
     async write(ref, value) {
         const verb = value === undefined ? 'unset' : 'set';
@@ -733,7 +713,7 @@ export class LocalCredentialProvider extends CredentialProvider {
                 else
                     this.values.set(ref, value);
                 // After the commit: a broken observer must never make the durable
-                // write look failed (an INVARIANT failure still rethrows).
+                // write look failed.
                 this.notifyUpdated(ref);
             }, { waitMs: DOCUMENT_LOCK_WAIT_MS });
         });
@@ -802,15 +782,11 @@ export class LocalCredentialProvider extends CredentialProvider {
             return migrated;
         }, { waitMs: DOCUMENT_LOCK_WAIT_MS });
     }
-    /* jscpd:ignore-start -- same deliberate mirror of settings-file's reload and
-       reconcile policy: warn-and-keep on a reload, throw on a write, invariant
-       failures propagate. */
     /**
      * Re-read the document after a watcher event. Unchanged content (including
      * this provider's own writes) is a no-op; an unreadable document keeps the
      * last good snapshot and warns — a live hot-reload must never take the
-     * process down. An invariant violation escaping the fan-out is not a reload
-     * failure and propagates to the queue's error surface.
+     * process down.
      */
     async refresh() {
         if (this.closed)
@@ -819,8 +795,6 @@ export class LocalCredentialProvider extends CredentialProvider {
             await this.reconcileFromDisk();
         }
         catch (error) {
-            if (error?.code === 'INVARIANT')
-                throw error;
             this.ctx.logger.warn('credentials-local: reload failed at %s; keeping the last good document', this.spec.filename);
             this.ctx.logger.warn(error);
         }
@@ -860,7 +834,6 @@ export class LocalCredentialProvider extends CredentialProvider {
         for (const key of changedRecords)
             this.notifyRecordUpdated(key);
     }
-    /* jscpd:ignore-end */
     /** Entries whose stored value changed; the parser has already proven every key addressable. */
     changedRefs(prev, next) {
         const changed = [];

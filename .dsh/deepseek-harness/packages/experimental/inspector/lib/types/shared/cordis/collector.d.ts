@@ -7,7 +7,7 @@ export interface CordisTreeLimits {
     readonly maxNodes: number;
     readonly maxBytes: number;
 }
-/** Realm-local collector with a current live-object table. */
+/** Realm-local collector retaining Contexts without Cordis service-call shadow wrappers. */
 export declare class CordisTreeCollector {
     private readonly root;
     private readonly limits;

@@ -1,11 +1,11 @@
 import Schema from "@deepseek-ai/schemastery";
 import { JsonRpcLineTransport } from "@deepseek-ai/dsh-sdk-protocol";
 import { resolve } from "node:path";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { admitEncodedImages } from "@deepseek-ai/dsh-attachment";
 import { ReasoningEffortId, createUserMessage } from "@deepseek-ai/dsh-llm";
 import { carrierKeyOf } from "@deepseek-ai/dsh-scope";
-import { SessionId } from "@deepseek-ai/dsh-session";
-import * as LlmDeepSeek from "@deepseek-ai/dsh-llm-deepseek";
+import * as LlmDeepSeek from "@deepseek-ai/dsh-llm-deepseek-api-key";
 //#region lib/types/server.js
 /**
 * JSON-RPC methods and notifications for out-of-process harness SDKs.
@@ -97,7 +97,7 @@ var HarnessSdkJsonRpcServer = class {
 				childSessionId: String(info.id),
 				status: successStatus(info.stopReason, serverOptions),
 				stopReason: info.stopReason,
-				...info.lastAssistantMessage === void 0 ? {} : { lastAssistantMessage: info.lastAssistantMessage }
+				...info.lastAssistantMessage === void 0 ? {} : { lastAssistantMessage: [...info.lastAssistantMessage] }
 			};
 			transport.notify("subagent.finished", payload);
 		}));
@@ -116,7 +116,7 @@ var HarnessSdkJsonRpcServer = class {
 		const reasoningEffort = params.reasoningEffort === void 0 ? void 0 : ReasoningEffortId(params.reasoningEffort);
 		if (!this.hasAdapterFor(provider)) {
 			if (provider !== "deepseek-official") throw new Error(`no adapter registered for provider "${provider}"`);
-			this.llmFiber = await this.ctx.plugin(LlmDeepSeek, {});
+			this.llmFiber = await this.ctx.plugin(LlmDeepSeek);
 		}
 		await this.ctx.get("llm").resolveCallConfig({
 			provider,
@@ -217,7 +217,7 @@ var HarnessSdkJsonRpcServer = class {
 	}
 	async createSession(sessionId) {
 		const rec = { handle: await this.ctx.agents.create({
-			sessionId: SessionId(sessionId),
+			sessionId: brandString(sessionId),
 			meta: { cwd: this.cwd },
 			agentOptions: {
 				provider: this.provider,

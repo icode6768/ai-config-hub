@@ -1,5 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
-import { IconChecklistOutline14 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useMemo } from 'react';
+import { IconChecklistOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { registerTodoHistory } from "../models/todo-history.js";
+import { todoDiffModel } from "../models/todo-diff-model.js";
 import { toolRowModel } from "../models/tool-call-model.js";
 import { ToolRow } from "../components/ToolRow.js";
 import { CONVERSATION_NS as NS } from "../../locale.js";
@@ -8,6 +11,8 @@ function isItem(value) {
     return typeof value === 'object' && value !== null;
 }
 function summarize(argsRaw, t) {
+    if (argsRaw === null)
+        return null;
     let parsed;
     try {
         parsed = JSON.parse(argsRaw);
@@ -31,18 +36,27 @@ function summarize(argsRaw, t) {
     };
 }
 /** Summarizes a plan update without presenting a cancelled call as completed. */
-export function TodoRow({ toolName, block, inspect, t }) {
+export function TodoRow({ toolName, block, inspect, useDisclosure, useTodoHistory, useSession, t }) {
+    const baseline = useTodoHistory(snapshot => snapshot?.get(block.callId));
+    const hasMore = useSession(snapshot => snapshot.hasMore);
+    const diff = useMemo(() => todoDiffModel(block, baseline, hasMore, t), [block, baseline, hasMore, t]);
     const model = toolRowModel(toolName, block);
-    const argsRaw = ('kind' in block ? block.call?.argsRaw : block.argsRaw) ?? '';
-    const summary = summarize(argsRaw, t) ?? { text: model.summary, extra: 0 };
-    return (_jsx(ToolRow, { t: t, variant: model.variant, toolName: toolName, icon: _jsx(IconChecklistOutline14, {}), title: t('todo.rowTitle'), summary: summary.text, summarySuffix: summary.extra > 0 ? `+${summary.extra}` : null, body: model.body, output: model.output, errorSummary: model.errorSummary, state: model.state, inspect: inspect }));
+    const summary = summarize(model.bodyRaw, t) ?? { text: model.summary, extra: 0 };
+    return (_jsx(ToolRow, { useDisclosure: useDisclosure, t: t, variant: model.variant, toolName: toolName, icon: _jsx(IconChecklistOutlineRegular, {}), title: t(model.titleKey), summary: summary.text, summarySuffix: [diff?.summary, summary.extra > 0 ? `+${summary.extra}` : null]
+            .filter((part) => part !== null && part !== undefined).join(' · ') || null, bodyRaw: model.bodyRaw, output: model.output, details: diff?.details, errorSummary: model.errorSummary, state: model.state, inspect: inspect }));
 }
 /** Registers the todo conversation row. */
 export const todoToolview = {
     name: 'todo-toolview',
-    inject: ['slots'],
+    inject: ['slots', 'uiConversation'],
     apply(ctx) {
-        ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: 'todo_write', locale: NS }, TodoRow));
+        registerTodoHistory(ctx);
+        ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+            name: 'tool.call.toolview', key: 'todo_write', locale: NS,
+            inject: (sessionId) => ({
+                hooks: { todoHistory: ctx.uiConversation.binding(sessionId).target('tool-todo-history') },
+            }),
+        }, TodoRow));
     },
 };
 //# sourceMappingURL=todo-row.js.map

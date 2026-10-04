@@ -27,7 +27,7 @@ const TAG_CLASS = {
  * @param props - index, kind, text, time, and optional Message metrics.
  * @returns the cell element.
  */
-export function TrajectoryCell({ t, index, kind, text, inputDetail: _inputDetail, promptDetail: _promptDetail, previousPromptDetail: _previousPromptDetail, outputDetail: _outputDetail, thinkingDetail: _thinkingDetail, sourceBlocks: _sourceBlocks, outputBlocks: _outputBlocks, schemaDetail: _schemaDetail, assistantMetrics: _assistantMetrics, result: _result, callId: _callId, isError: _isError, timeSeconds, startedAt: _startedAt, input, output, think, selected = false, className, ...rest }) {
+export function TrajectoryCell({ t, index, kind, text, inputDetail: _inputDetail, promptDetail: _promptDetail, previousPromptDetail: _previousPromptDetail, outputDetail: _outputDetail, thinkingDetail: _thinkingDetail, sourceBlocks: _sourceBlocks, outputBlocks: _outputBlocks, schemaDetail: _schemaDetail, assistantMetrics: _assistantMetrics, result: _result, callId: _callId, toolName: _toolName, isError: _isError, timeSeconds, startedAt: _startedAt, input, output, think, selected = false, className, ...rest }) {
     const rootClass = [
         css.root,
         selected ? css.selected : undefined,

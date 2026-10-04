@@ -7,23 +7,16 @@
  * @module @deepseek-ai/dsh-api-settings-controller
  */
 import { Context } from '@deepseek-ai/cordis';
-import Schema from '@deepseek-ai/schemastery';
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-settings/types';
-import type { JsonValue } from '@deepseek-ai/dsh-session/types';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AgentPresetDirectoryOpenValue, SettingsDocumentOpenValue } from './types.ts';
+import type { JsonValue } from '@deepseek-ai/dsh-util-values';
+import type { SettingsDocumentOpenValue } from './types.ts';
 export { CredentialsController } from './credentials.ts';
 export type * from './types.ts';
-/** Native document-opening policy. */
-export interface Config {
-    /** Override platform desktop-opener detection. */
-    readonly nativeOpen?: boolean;
-}
 /** Host integrations replaceable by direct unit tests. */
 export interface SettingsControllerInternals {
-    readonly openPath?: (path: string, signal: AbortSignal) => Promise<void>;
+    /** Host text-editor integration used to open the settings document. */
     readonly openTextFile?: (path: string, signal: AbortSignal) => Promise<void>;
-    readonly canOpenPath?: () => boolean;
 }
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -36,39 +29,31 @@ declare module '@deepseek-ai/cordis' {
  * remote read uses `redactSecrets: true`, so a `role('secret')` field cannot
  * ride a response. Writes expose the settings service's merge, replacement,
  * and path-addressed operations, and classify every provider refusal as
- * `settings-conflict` or `settings-rejected` with the service's message.
+ * `settings/conflict` or `settings/rejected` with the service's message.
  */
 export declare class SettingsController extends TypertRemoteService {
-    static Config: Schema<Config>;
-    private readonly openPath;
     private readonly openTextFile;
-    private readonly canOpenPath;
     /**
      * Register the settings namespace and mount the credentials namespace beside
      * it. Both namespaces stay registered when a provider is absent so calls can
      * return the configuration API's actionable missing-provider diagnostic.
      * @param ctx - Host context where settings and credential providers may be mounted.
      */
-    constructor(ctx: Context, config?: Config, internals?: SettingsControllerInternals);
+    constructor(ctx: Context, internals?: SettingsControllerInternals);
     /**
      * Describe every registered namespace for a configuration page: redacted
      * layered values plus the serialized schema the page renders its form from.
      * @returns provider writability, local-document presence, and one view per namespace.
-     * @throws TypertRemoteFailure when no settings provider is mounted.
+     * @throws RemoteError when no settings provider is mounted.
      */
     describe(): SettingsDescribeValue;
-    /**
-     * Report whether this deployment can open an authored Agent preset directory natively.
-     * @returns true when the matching open operation is available.
-     */
-    canOpenAgentPresetDirectory(): boolean;
     /**
      * Merge a patch into one namespace's stored user section.
      * @param ns - namespace key to write.
      * @param patch - fields to merge into the user section.
      * @param expectedRevision - revision the caller read; `undefined` writes unconditionally.
      * @returns the namespace's redacted view after the write.
-     * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+     * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
      */
     update(ns: string, patch: Record<string, JsonValue>, expectedRevision: number | undefined): Promise<SettingsNamespaceView>;
     /**
@@ -77,7 +62,7 @@ export declare class SettingsController extends TypertRemoteService {
      * @param section - complete replacement user section.
      * @param expectedRevision - revision the caller read; `undefined` writes unconditionally.
      * @returns the namespace's redacted view after the write.
-     * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+     * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
      */
     replace(ns: string, section: Record<string, JsonValue>, expectedRevision: number | undefined): Promise<SettingsNamespaceView>;
     /**
@@ -88,24 +73,16 @@ export declare class SettingsController extends TypertRemoteService {
      * @param ops - the edits to apply, in order.
      * @param expectedRevision - revision the caller read; `undefined` writes unconditionally.
      * @returns the namespace's redacted view after the write.
-     * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+     * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
      */
     mutate(ns: string, ops: SettingsPathOpView[], expectedRevision: number | undefined): Promise<SettingsNamespaceView>;
     /**
      * Materialize the provider-owned settings document and open it in a native text editor.
      * @param signal - caller lifetime; abort terminates preparation or the native command.
      * @returns confirmation after the native opener accepts the document.
-     * @throws TypertRemoteFailure when no document exists, preparation fails, or opening fails.
+     * @throws RemoteError when no document exists, preparation fails, or opening fails.
      */
     openSettingsDocument(signal: AbortSignal): Promise<SettingsDocumentOpenValue>;
-    /**
-     * Open one user-authored Agent preset directory or return its path when no native opener exists.
-     * @param agentPreset - preset id resolved against Host-owned roots.
-     * @param signal - caller lifetime; abort terminates the native command.
-     * @returns an opened confirmation or the resolved directory for text display.
-     * @throws TypertRemoteFailure when the preset is missing, read-only, invalid, or cannot be opened.
-     */
-    openAgentPresetDirectory(agentPreset: string, signal: AbortSignal): Promise<AgentPresetDirectoryOpenValue>;
     private write;
     /** Resolve the optional provider or report how to supply it. */
     private provider;

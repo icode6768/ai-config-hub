@@ -3,17 +3,19 @@
  *
  * @module @deepseek-ai/dsh-session-query
  */
+import { currentSessionMessageProjections } from '@deepseek-ai/dsh-session-format-catalog/message-projections';
 import { Service } from '@deepseek-ai/cordis';
-import { Session, snapshotSessionEvent } from '@deepseek-ai/dsh-session';
+import { Session, SessionSeq, snapshotSessionEvent, } from '@deepseek-ai/dsh-session';
 import { foldSessionTitle } from '@deepseek-ai/dsh-session-title';
-import { SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY, SESSION_QUERY_READ_WINDOW_MAX, SessionQueryError, } from "./config.js";
+import { SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY, SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE, SESSION_QUERY_READ_WINDOW_MAX, SessionQueryError, } from "./config.js";
 import { SessionCorpus } from "./corpus.js";
 import { SessionObservationReader, } from "./observation.js";
 import { buildSessionEventSearchDocuments } from "./documents.js";
 import { filterSessionEventDocuments, filterSessionResults, materializeSessionEventResultFilters, materializeSessionResultFilters, } from "./filters.js";
 import * as tracing from "./tracing.js";
 export { SessionSearchCursor } from "./cursor.js";
-export { SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY, SESSION_QUERY_READ_WINDOW_MAX, SessionQueryError, } from "./config.js";
+export { SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY, SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE, SESSION_QUERY_READ_WINDOW_MAX, SessionQueryError, } from "./config.js";
+export { readColdSessionLog } from "./cold-read.js";
 export { extractSessionEventText } from "./extraction.js";
 export { buildSessionEventRecords, buildSessionEventSearchDocuments } from "./documents.js";
 export { compileSessionTextFilter, filterSessionEventDocuments, filterSessionResults, materializeSessionEventResultFilters, materializeSessionResultFilters, } from "./filters.js";
@@ -36,13 +38,18 @@ export class SessionQueryEngine extends Service {
         if (!Number.isInteger(this._readWindowMax) || this._readWindowMax < 0) {
             throw new SessionQueryError('session-query: readWindowMax must be a non-negative integer', 'SESSION_QUERY_INVALID_CONFIG');
         }
-        const persistedInspectConcurrency = config.persistedInspectConcurrency
+        const persistedReadConcurrency = config.persistedReadConcurrency
             ?? SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY;
-        if (!Number.isSafeInteger(persistedInspectConcurrency) || persistedInspectConcurrency < 1) {
-            throw new SessionQueryError('session-query: persistedInspectConcurrency must be a positive safe integer', 'SESSION_QUERY_INVALID_CONFIG');
+        if (!Number.isSafeInteger(persistedReadConcurrency) || persistedReadConcurrency < 1) {
+            throw new SessionQueryError('session-query: persistedReadConcurrency must be a positive safe integer', 'SESSION_QUERY_INVALID_CONFIG');
         }
-        this._corpus = new SessionCorpus(ctx, persistedInspectConcurrency);
-        this._observations = new SessionObservationReader(ctx);
+        const preparedSessionCacheSize = config.preparedSessionCacheSize
+            ?? SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE;
+        if (!Number.isSafeInteger(preparedSessionCacheSize) || preparedSessionCacheSize < 1) {
+            throw new SessionQueryError('session-query: preparedSessionCacheSize must be a positive safe integer', 'SESSION_QUERY_INVALID_CONFIG');
+        }
+        this._corpus = new SessionCorpus(ctx, persistedReadConcurrency);
+        this._observations = new SessionObservationReader(ctx, preparedSessionCacheSize);
     }
     /**
      * Observe one exact live or prepared Session without a persistence listing preflight.
@@ -69,9 +76,10 @@ export class SessionQueryEngine extends Service {
      */
     async readSession(sessionId) {
         const loaded = await this._corpus.load(sessionId);
-        Session.create(sessionId, loaded.events, loaded.header);
+        Session.create(sessionId, loaded.events, loaded.header, loaded.inheritedEventCount, currentSessionMessageProjections);
         return {
             session: structuredClone(loaded.header),
+            inheritedEventCount: loaded.inheritedEventCount,
             events: loaded.events.map(snapshotSessionEvent),
         };
     }
@@ -161,6 +169,7 @@ export class SessionQueryEngine extends Service {
         const loaded = await this._corpus.load(sessionId);
         return {
             session: structuredClone(loaded.header),
+            inheritedEventCount: loaded.inheritedEventCount,
             capturedThroughSeq: loaded.events.at(-1)?.seq ?? null,
             events: tracing.currentSurfaceEvents(sessionId, loaded.events),
         };
@@ -212,8 +221,8 @@ export class SessionQueryEngine extends Service {
         if (target === undefined || target.seq !== seq) {
             throw new SessionQueryError(`session "${sessionId}" has no event at seq ${seq}`, 'SESSION_QUERY_EVENT_NOT_FOUND');
         }
-        const startSeq = Math.max(0, seq - before);
-        const endSeq = Math.min(loaded.events.length - 1, seq + after);
+        const startSeq = SessionSeq(Math.max(0, seq - before));
+        const endSeq = SessionSeq(Math.min(loaded.events.length - 1, seq + after));
         const targetSnapshot = snapshotSessionEvent(target);
         const events = loaded.events.slice(startSeq, endSeq + 1)
             .map(event => event === target
@@ -221,6 +230,7 @@ export class SessionQueryEngine extends Service {
             : snapshotSessionEvent(event));
         return {
             session: structuredClone(loaded.header),
+            inheritedEventCount: loaded.inheritedEventCount,
             target: targetSnapshot,
             events,
             startSeq,

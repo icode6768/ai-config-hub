@@ -3,10 +3,10 @@
  *
  * @module @deepseek-ai/dsh-tool-session-query/workspace-access
  */
+import { brandString } from '@deepseek-ai/dsh-brand';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
-import { SessionId, } from '@deepseek-ai/dsh-session';
 import { serviceBoundary } from "./service-boundary.js";
-function callerOf(exec) {
+function callerOf(exec, ctx) {
     const agent = exec.agent;
     if (agent === undefined) {
         throw new HarnessError('session query tools require an agent-bound caller', 'SESSION_QUERY_TOOL_MISSING_AGENT');
@@ -14,11 +14,11 @@ function callerOf(exec) {
     return {
         id: agent.session.id,
         header: agent.session.header,
-        events: agent.session.events,
+        boundary: ctx.sessionProjections.stateOf(agent.session, 'turnBoundary'),
     };
 }
 function targetId(args, caller) {
-    return args.session_id === undefined ? caller.id : SessionId(args.session_id);
+    return args.session_id === undefined ? caller.id : brandString(args.session_id);
 }
 async function authorizeTarget(ctx, caller, target, signal) {
     if (target === caller.id)

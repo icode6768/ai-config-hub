@@ -2,9 +2,7 @@ import { jsx as _jsx } from "react/jsx-runtime";
 /** Internal React bindings for renderer hosts and standard-source scopes. */
 import { createContext, useContext } from 'react';
 import { bindSnapshotSelector } from "./bind.js";
-/** Missing renderer assembly dependency. */
-export class SlotAssemblyError extends Error {
-}
+import { SlotAssemblyError } from "./errors.js";
 /** In-package renderer host context. */
 export const HostContext = createContext(null);
 /**
@@ -38,6 +36,16 @@ export function useScopeBinding() {
     if (binding === null)
         throw new SlotAssemblyError('scoped slot rendered outside its scope provider');
     return binding;
+}
+/**
+ * Publish one resolved scope binding to a renderer subtree.
+ * @param props - provider inputs.
+ * @param props.binding - binding exposed to scoped entries.
+ * @param props.children - subtree that inherits the binding.
+ * @returns the scoped React provider.
+ */
+export function ScopeBindingProvider({ binding, children }) {
+    return _jsx(ScopeBindingContext.Provider, { value: binding, children: children });
 }
 /**
  * Bind one observable source to an identity-stable selector Hook.
@@ -76,22 +84,38 @@ function useAbsentSnapshot(_selector, _equal) {
  * @param source - keyed resolver, or absence for an optional scope.
  * @returns cached keyed selector Hook.
  */
-export function keyedObservableHook(source) {
+export function keyedObservableHook(source, defaultKey) {
     if (source === undefined)
         return absentKeyedHook;
-    let hook = keyedHookCache.get(source);
+    let hooks = keyedHookCache.get(source);
+    if (hooks === undefined) {
+        hooks = new Map();
+        keyedHookCache.set(source, hooks);
+    }
+    const cacheKey = defaultKey ?? NO_DEFAULT_KEY;
+    let hook = hooks.get(cacheKey);
     if (hook === undefined) {
-        hook = (key, selector, equal) => {
-            const useValue = observableHook(source(key) ?? absentSource);
-            return useValue(selector ?? identity, equal);
+        hook = (keyOrSelector, selectorOrEqual, equal) => {
+            const keyed = typeof keyOrSelector === 'string';
+            const key = keyed ? keyOrSelector : defaultKey;
+            const selector = (keyed ? selectorOrEqual : keyOrSelector);
+            const comparison = (keyed ? equal : selectorOrEqual);
+            const useValue = observableHook(key === undefined ? absentSource : source(key) ?? absentSource);
+            return useValue(selector ?? identity, comparison);
         };
-        keyedHookCache.set(source, hook);
+        hooks.set(cacheKey, hook);
     }
     return hook;
 }
+const NO_DEFAULT_KEY = Symbol('no default key');
 const keyedHookCache = new WeakMap();
 const identity = (value) => value;
-const absentKeyedHook = (_key, selector, equal) => observableHook(absentSource)(selector ?? identity, equal);
+const absentKeyedHook = (keyOrSelector, selectorOrEqual, equal) => {
+    const keyed = typeof keyOrSelector === 'string';
+    const selector = (keyed ? selectorOrEqual : keyOrSelector);
+    const comparison = (keyed ? equal : selectorOrEqual);
+    return observableHook(absentSource)(selector ?? identity, comparison);
+};
 /** Subscribe the tree to the atomically assembled root standard-source roster. */
 export function RootStandardProvider({ children }) {
     const host = useHost();

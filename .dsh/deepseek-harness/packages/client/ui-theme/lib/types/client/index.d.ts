@@ -8,7 +8,7 @@
  * settings General section — the theme feature owns its own settings surface.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client';
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client';
 import { type ThemeKey } from './locales.ts';
 import { type ThemePreference, type ThemeSettings } from '../theme-settings.ts';
 export type { AppearanceRowComponentProps, AppearanceRowInjected } from './AppearanceRow.tsx';
@@ -70,7 +70,7 @@ export interface ThemeSnapshot {
 }
 /** One theme token exposed to pre-definition Cordis inspection. */
 export interface ThemeTokenInspection {
-    /** Token name accepted by {@link ThemeService.overrideTokens}. */
+    /** Token name accepted by {@link ThemeRuntime.overrideTokens}. */
     name: string;
     /** Intended visual role. */
     description: string;
@@ -123,7 +123,7 @@ export declare class ThemeRuntime {
      * media-query and scope listeners are released through ctx.effect on dispose).
      * @param host - durable preference scope owned by the same plugin.
      */
-    constructor(ctx: ClientContext, host: SettingsScope<ThemeSettings>);
+    constructor(ctx: ClientContext, host: ConfigForm<ThemeSettings>);
     /**
      * Read the current immutable theme snapshot.
      * @returns the current snapshot (stable reference until the next change).
@@ -189,7 +189,7 @@ export declare class ThemeRuntime {
 /**
  * Required services: settings transport plus slots/locale for the Appearance
  * row. `remote` carries the forwarded settings invalidation that
- * `ctx.settingsScope.bind(spec)` subscribes to on this context.
+ * `ctx.configForms.get(entryId)` subscribes to on this context.
  */
 export declare const inject: string[];
 /**

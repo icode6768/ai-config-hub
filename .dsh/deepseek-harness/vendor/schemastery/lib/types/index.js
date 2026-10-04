@@ -1,4 +1,5 @@
 import { Binary, clone, deepEqual, filterKeys, isNullable, isPlainObject, pick, valueMap } from '@deepseek-ai/cosmokit';
+import { createVolatile, isVolatile } from '@deepseek-ai/cosmokit';
 const kSchema = Symbol.for('schemastery');
 const kValidationError = Symbol.for('ValidationError');
 globalThis.__schemastery_index__ ??= 0;
@@ -187,6 +188,8 @@ Schema.prototype.pattern = function pattern(regexp) {
     return schema;
 };
 Schema.prototype.simplify = function simplify(value) {
+    if (isVolatile(value))
+        value = value.get();
     if (deepEqual(value, this.meta.default, this.type === 'dict'))
         return null;
     if (isNullable(value))
@@ -247,13 +250,59 @@ for (const key of ['default', 'link', 'comment', 'description', 'max', 'min', 's
         },
     });
 }
+Schema.prototype.volatile = function volatile() {
+    if (this.meta.volatile)
+        throw new TypeError('volatile schema is already wrapped');
+    return this.extra('volatile', true);
+};
 const resolvers = {};
+const checkedVolatile = Symbol('checked-volatile-schema');
+function validateVolatileSchema(schema, path = [], blocked = false, seen = new Map()) {
+    const states = seen.get(schema) ?? new Set();
+    if (states.has(blocked))
+        return;
+    states.add(blocked);
+    seen.set(schema, states);
+    if (schema.meta?.volatile && blocked) {
+        throw new ValidationError('volatile fields require a fixed object path without an enclosing volatile field', { path });
+    }
+    const nested = blocked || !!schema.meta?.volatile;
+    if (schema.dict) {
+        for (const [key, child] of Object.entries(schema.dict))
+            validateVolatileSchema(child, [...path, key], nested, seen);
+    }
+    if (schema.sKey)
+        validateVolatileSchema(schema.sKey, [...path, '<key>'], true, seen);
+    if (schema.inner && (schema.type !== 'lazy' || schema.inner[kSchema])) {
+        validateVolatileSchema(schema.inner, [...path, '*'], true, seen);
+    }
+    if (schema.list) {
+        for (let index = 0; index < schema.list.length; index++) {
+            validateVolatileSchema(schema.list[index], [...path, String(index)], true, seen);
+        }
+    }
+}
 Schema.extend = function extend(type, resolve) {
     resolvers[type] = resolve;
 };
 Schema.resolve = function resolve(data, schema, options = {}, strict = false) {
     if (!schema)
         return [data];
+    if (!options[checkedVolatile]) {
+        validateVolatileSchema(schema, options.path);
+        options = { ...options, [checkedVolatile]: true };
+    }
+    if (schema.meta?.volatile) {
+        const inner = Schema(schema);
+        inner.meta = { ...schema.meta, volatile: false };
+        const [value, adapted] = Schema.resolve(data, inner, options, strict);
+        try {
+            return [createVolatile(value), adapted];
+        }
+        catch (error) {
+            throw new ValidationError(error instanceof Error ? error.message : String(error), options);
+        }
+    }
     if (options.ignore?.(data, schema))
         return [data];
     if (isNullable(data) && schema.type !== 'lazy') {
@@ -370,6 +419,7 @@ Schema.extend('lazy', (data, schema, options, strict) => {
     if (!schema.inner[kSchema]) {
         schema.inner = schema.builder();
         schema.inner.meta = { ...schema.meta, ...schema.inner.meta };
+        validateVolatileSchema(schema.inner, options.path, true);
     }
     return Schema.resolve(data, schema.inner, options, strict);
 });
@@ -503,7 +553,7 @@ function property(data, key, schema, options) {
         if (!options?.autofix)
             throw e;
         delete data[key];
-        return schema.meta.default;
+        return schema.meta.volatile ? createVolatile(schema.meta.default) : schema.meta.default;
     }
 }
 Schema.extend('array', (data, { inner, meta }, options) => {

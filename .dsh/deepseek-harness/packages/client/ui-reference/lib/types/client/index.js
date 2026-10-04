@@ -1,11 +1,11 @@
 import { relativeTime } from '@deepseek-ai/dsh-client-ui-primitives';
 import { formatFileMention } from '@deepseek-ai/dsh-file-reference/grammar';
-import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path';
+import { abbreviateHomePath, fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path';
 import { en, NS, zh } from "./locales.js";
 /** Required services: the trigger registry, the Remote namespaces, and the copy. */
 export const inject = [
-    'inputTriggers', 'locale', 'connection', 'sessions', 'remote', 'remote.fileReferences',
-    'remote.sessionReferenceResolver',
+    'inputTriggers', 'locale', 'sessions', 'remote', 'remote.fileReferences',
+    'remote.sessionReferenceResolver', 'sidebarRight',
 ];
 /**
  * Register the combined `@file` / `@session` source.
@@ -14,29 +14,49 @@ export const inject = [
 export function apply(ctx) {
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-reference: dictionaries');
     const t = ctx.locale.bind(NS);
-    const connection = ctx.get('connection');
     const sessions = ctx.get('sessions');
     const source = {
         trigger: '@',
         name: 'reference',
         showGroupTitle: false,
         async candidates(session, { query, quoted, drilled, signal }) {
-            const fileLookup = ctx.remote.fileReferences.list(session.sessionId, query, signal).then(result => result.ok ? result.value : [], () => []);
-            const sessionLookup = quoted === true
-                ? Promise.resolve([])
-                : ctx.remote.sessionReferenceResolver.candidates(session.sessionId, query, signal).then(result => result.ok ? result.value : [], () => []);
-            const [fileItems, sessionItems] = await Promise.all([fileLookup, sessionLookup]);
+            if (sessions.binding(session.sessionId) === undefined) {
+                throw new Error(`reference candidates require a retained session "${session.sessionId}"`);
+            }
+            const [fileItems, sessionItems] = await sessions.using(session.sessionId, { source: 'referenceCandidates', signal }, async (reference) => {
+                signal.throwIfAborted();
+                const state = reference.binding.session.getSnapshot();
+                if (state.openState !== 'open') {
+                    throw state.openError ?? new Error(`session "${session.sessionId}" is not open`);
+                }
+                const fileLookup = ctx.remote.fileReferences.list(session.sessionId, query, signal)
+                    .then(result => result.ok ? result.value : []);
+                const sessionLookup = quoted === true
+                    ? Promise.resolve([])
+                    : ctx.remote.sessionReferenceResolver.candidates(session.sessionId, query, signal)
+                        .then(result => result.ok ? result.value : []);
+                return Promise.all([fileLookup, sessionLookup]);
+            });
             if (signal.aborted)
                 return [];
             // The header already names the directory being listed; rows repeat it only
             // when there is no header to carry it.
             const withLocation = crumbsFor(query, quoted === true, drilled, t) === undefined;
             const now = Date.now();
-            const home = connection.generation.getSnapshot()?.host.home;
+            const home = ctx.remote.$host.home;
             const listed = sessions.list.getSnapshot().byId;
+            const sessionRows = sessionItems.map((candidate) => {
+                const summary = listed[candidate.sessionId];
+                const child = summary?.origin === 'subagent' && summary.parentId === session.sessionId;
+                return {
+                    child,
+                    row: sessionCandidate(candidate, candidate.displayTitle ?? candidate.label, summary?.updatedAt ?? candidate.createdAt, now, home, t(child ? 'section.subagents' : 'section.sessions'), t),
+                };
+            });
             return [
                 ...fileItems.flatMap(candidate => fileCandidate(candidate, quoted === true, withLocation, t)),
-                ...sessionItems.map(candidate => sessionCandidate(candidate, listed[candidate.sessionId]?.updatedAt ?? candidate.createdAt, now, home, t)),
+                ...sessionRows.filter(item => item.child).map(item => item.row),
+                ...sessionRows.filter(item => !item.child).map(item => item.row),
             ];
         },
         header(_session, req) {
@@ -74,6 +94,14 @@ export function apply(ctx) {
                 };
             }
             return undefined;
+        },
+        openReference(session, { ref, appearance }) {
+            if (appearance !== 'file')
+                return false;
+            const path = ref.startsWith('@"') ? ref.slice(2, -1) : ref.slice(1);
+            const cwd = sessions.list.getSnapshot().byId[session.sessionId]?.cwd;
+            ctx.sidebarRight.openResource(fileAddressFor(session.sessionId, cwd, path));
+            return true;
         },
         codec: {
             clipboardText: ref => ref,
@@ -152,7 +180,7 @@ function fileCandidate(candidate, preserveQuote, withLocation, t) {
             ...(directory ? { drill: true } : {}),
         }];
 }
-function sessionCandidate(candidate, updatedAt, now, home, t) {
+function sessionCandidate(candidate, label, updatedAt, now, home, section, t) {
     const { unit, n } = relativeTime(updatedAt, now);
     const age = unit === 'now' ? t('time.now') : t(`time.${unit}`, { n });
     // Candidates are ranked by workspace affinity, so the location only tells
@@ -162,14 +190,14 @@ function sessionCandidate(candidate, updatedAt, now, home, t) {
         : candidate.cwd === undefined ? t('candidate.noCwd') : abbreviateHomePath(candidate.cwd, home);
     const value = {
         kind: 'session',
-        label: candidate.label,
+        label,
         mention: candidate.mention,
     };
     return {
-        name: candidate.label,
+        name: label,
         description: location === undefined ? age : `${location} · ${age}`,
         icon: 'session',
-        section: t('section.sessions'),
+        section,
         value: JSON.stringify(value),
     };
 }

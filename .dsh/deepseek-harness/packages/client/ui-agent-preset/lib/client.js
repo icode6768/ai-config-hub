@@ -8,122 +8,854 @@ window.__ModuleLoader__.load({
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
-		//#region lib/types/client/locales.js
-		/** Locale bundles for the agent-preset settings row, hero chip, header label, and management section. */
-		/** English copy. */
-		const en = {
-			title: "Agent preset",
-			description: "Applies to sessions you start from now on. Running sessions keep the preset they began with.",
-			loading: "Loading presets…",
-			error: "Could not load agent presets.",
-			userTrust: "Custom",
-			seatHint: "Agent preset for the session you are about to start",
-			headerHint: "The agent preset this session runs, fixed when it started",
-			nav: "Agent presets",
-			sectionIntro: "A preset is the plugin composition one session's agent runs — its tools, prompt, and capabilities. Duplicate an existing one and make it yours, or let the agent draft one for you in Creator mode.",
-			builtIn: "Built-in",
-			setDefault: "Set as default",
-			view: "View",
-			presetStandardName: "Standard mode",
-			presetStandardDescription: "Full coding agent with file editing, shell, file and web search, skills, planning, goals, subagents, and workflows.",
-			presetPtcName: "PTC mode",
-			presetPtcDescription: "All Standard mode capabilities, with tools exposed through the PTC mode SDK so the model can combine multi-step operations in one TypeScript program.",
-			presetMinimalName: "Minimal mode",
-			presetMinimalDescription: "Two-tool coding agent with persistent bash and str_replace_editor.",
-			presetCordisName: "Creator mode",
-			presetCordisDescription: "Built for creating custom agent presets, with all Standard mode capabilities plus runtime inspection, plugin experiments, and preset-authoring guidance.",
-			duplicate: "Duplicate",
-			duplicateUnavailable: "This deployment has no writable preset directory",
-			delete: "Delete",
-			presetId: "Identifier",
-			presetIdPlaceholder: "my-agent",
-			displayName: "Name",
-			displayNamePlaceholder: "Shown in the picker; defaults to the identifier",
-			inUse: "In use",
-			builtInGroup: "Built-in",
-			customGroup: "Custom",
-			noDescription: "No description.",
-			brokenBadge: "Failed to load",
-			brokenNoCopy: "A preset that failed to load cannot be duplicated",
-			switchRefused: "Could not switch to {name}: {reason}",
-			copyOf: "Copied from",
-			composition: "Composition (agent.cordis.yml)",
-			cancel: "Cancel",
-			close: "Close",
-			retry: "Retry",
-			copyTitle: "Duplicate preset",
-			copyIntro: "The whole preset is copied on this machine. The identifier becomes its directory name and cannot be changed later; everything else is edited in the preset's own files.",
-			create: "Create",
-			creating: "Creating…",
-			creatorDraft: "Draft a custom preset with Creator mode",
-			openLocation: "Open folder",
-			showLocation: "Show location",
-			revealedPathLabel: "Preset files:",
-			idRequired: "Give the preset an identifier.",
-			idInvalid: "Use lowercase letters, digits, and hyphens, starting with a letter or digit.",
-			idTaken: "A preset with this identifier already exists.",
-			deleteTitle: "Delete this preset?",
-			deleteDescription: "The preset directory is deleted. Sessions already running on it keep working; new sessions cannot select it.",
-			deleteConfirm: "Delete",
-			deleting: "Deleting…"
+		//#region ../../util/values/src/partial-json.ts
+		/**
+		* Lazily scanned view of one JSON object's top-level fields, built from text
+		* that may still be streaming or from an already parsed object. Nothing is
+		* scanned until a reader asks; the view remembers every question it answered
+		* and reports changed answers when the owner refreshes for publication.
+		* Used for model tool-call arguments: a row reads the fields it
+		* cares about at whatever granularity it displays, at every stage of the call.
+		* @module @deepseek-ai/dsh-util-values/src/partial-json
+		*/
+		const SIMPLE_ESCAPES = {
+			"\"": "\"",
+			"\\": "\\",
+			"/": "/",
+			b: "\b",
+			f: "\f",
+			n: "\n",
+			r: "\r",
+			t: "	"
 		};
-		/** Simplified Chinese copy. */
-		const zh = {
-			title: "Agent 预设",
-			description: "对此后新建的会话生效。运行中的会话保持它开始时的预设。",
-			loading: "正在加载预设…",
-			error: "无法加载 Agent 预设。",
-			userTrust: "自定义",
-			seatHint: "即将开始的这个会话所用的 Agent 预设",
-			headerHint: "本会话运行的 Agent 预设，开始时即固定",
-			nav: "Agent 预设",
-			sectionIntro: "预设即一个会话的 Agent 所运行的插件组装 —— 它的工具、提示词与能力。复制一份既有预设改成自己的，或用「创造模式」让 Agent 帮你创建。",
-			builtIn: "内置",
-			setDefault: "设为默认",
-			view: "查看",
-			presetStandardName: "标准模式",
-			presetStandardDescription: "功能完整的编码 Agent，支持文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流。",
-			presetPtcName: "PTC 模式",
-			presetPtcDescription: "具备标准模式的全部能力，并通过 PTC 模式 SDK 呈现工具，让模型用一个 TypeScript 程序组合多步操作。",
-			presetMinimalName: "极简模式",
-			presetMinimalDescription: "仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。",
-			presetCordisName: "创造模式",
-			presetCordisDescription: "用于创建自定义 Agent preset：具备标准模式的全部能力，并提供运行时检查、插件实验和 preset 创作指导。",
-			duplicate: "复制",
-			duplicateUnavailable: "此部署未配置可写的预设目录",
-			delete: "删除",
-			presetId: "标识符",
-			presetIdPlaceholder: "my-agent",
-			displayName: "名称",
-			displayNamePlaceholder: "选择器中显示的名字，缺省用标识符",
-			inUse: "当前使用",
-			builtInGroup: "内置",
-			customGroup: "自定义",
-			noDescription: "暂无描述。",
-			brokenBadge: "加载失败",
-			brokenNoCopy: "预设加载失败，不能复制",
-			switchRefused: "无法切换到「{name}」：{reason}",
-			copyOf: "复制自",
-			composition: "组装（agent.cordis.yml）",
-			cancel: "取消",
-			close: "关闭",
-			retry: "重试",
-			copyTitle: "复制预设",
-			copyIntro: "整个预设会在本机复制一份。标识符将成为目录名，事后无法更改；其余内容之后直接在预设自己的文件里编辑。",
-			create: "创建",
-			creating: "正在创建…",
-			creatorDraft: "用「创造模式」创作自定义预设",
-			openLocation: "打开目录",
-			showLocation: "查看路径",
-			revealedPathLabel: "预设文件：",
-			idRequired: "请填写标识符。",
-			idInvalid: "只能使用小写字母、数字与连字符，且以字母或数字开头。",
-			idTaken: "该标识符已被占用。",
-			deleteTitle: "删除该预设？",
-			deleteDescription: "预设目录将被删除。已在其上运行的会话不受影响；新会话将无法再选择它。",
-			deleteConfirm: "删除",
-			deleting: "正在删除…"
+		const CONTENT_ESCAPE = /[\\\u0000-\u001f]/u;
+		function isWhitespace(c) {
+			return c === " " || c === "\n" || c === "\r" || c === "	";
+		}
+		function isHex(c) {
+			return c >= "0" && c <= "9" || c >= "a" && c <= "f" || c >= "A" && c <= "F";
+		}
+		(class PartialArguments {
+			/** The view of a call with no arguments available. */
+			static EMPTY = PartialArguments.fromObject({});
+			/**
+			* View finished argument text without scanning it until a reader asks.
+			* @param text - the complete argument JSON text.
+			* @returns a sealed view.
+			*/
+			static fromText(text) {
+				const view = new PartialArguments();
+				view.append(text);
+				view.sealed = true;
+				return view;
+			}
+			/**
+			* View an already parsed argument payload, such as a PTC dispatch object.
+			* @param value - the parsed argument value.
+			* @returns a sealed view; a non-object payload has no fields.
+			*/
+			static fromObject(value) {
+				const view = new PartialArguments();
+				view.object = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+				view.sealed = true;
+				return view;
+			}
+			/**
+			* The source: text so far or a parsed object, plus whether it can still grow.
+			* These are the only enumerable fields, so two views over the same source
+			* compare equal structurally however far each has been read.
+			*/
+			chunks = [];
+			object;
+			sealed = false;
+			#ends = [];
+			#size = 0;
+			#consumed = 0;
+			#mode = "root";
+			#escape = false;
+			#keyStart = 0;
+			#keyEscaped = false;
+			#key = "";
+			#current = null;
+			#nestedEnds = [];
+			#nestedInString = false;
+			#invalidAt;
+			#invalidValue = false;
+			#entries = /* @__PURE__ */ new Map();
+			#order = [];
+			#reads = /* @__PURE__ */ new Map();
+			/** Whether this view rejects further appends; does not scan text or register reads. */
+			get isSealed() {
+				return this.sealed;
+			}
+			/** Whether indexing or a content read found invalid JSON; unread value contents are not validated. */
+			get invalid() {
+				this.scan();
+				return this.#mode === "invalid" || this.#invalidValue;
+			}
+			/**
+			* Retain streamed argument text without scanning or comparing observed answers.
+			* @param fragment - the text following every fragment appended before.
+			*/
+			append(fragment) {
+				if (this.sealed) throw new Error("PartialArguments: cannot append to a sealed view");
+				if (fragment.length === 0) return;
+				this.chunks.push(fragment);
+				this.#size += fragment.length;
+				this.#ends.push(this.#size);
+			}
+			/**
+			* Reconcile a streamed prefix with authoritative complete text without joining the fragments.
+			* @param text - the final argument text, which replaces missing or conflicting deltas.
+			* @returns this view sealed with its caches retained when every character matches; otherwise a new sealed view.
+			*/
+			settle(text) {
+				if (this.object !== void 0 || text.length !== this.#size) return PartialArguments.fromText(text);
+				let offset = 0;
+				for (const chunk of this.chunks) {
+					if (!text.startsWith(chunk, offset)) return PartialArguments.fromText(text);
+					offset += chunk.length;
+				}
+				this.chunks = text.length === 0 ? [] : [text];
+				this.#ends = text.length === 0 ? [] : [text.length];
+				this.sealed = true;
+				return this;
+			}
+			/**
+			* Compare observed answers and advance their publication baseline. Unread views remain unscanned.
+			* @returns whether any observed answer changed since its first read or the preceding refresh.
+			*/
+			refresh() {
+				if (this.#reads.size === 0) return false;
+				this.scan();
+				let changed = false;
+				let completions = false;
+				for (const read of this.#reads.values()) {
+					if (read.completion) {
+						completions = true;
+						continue;
+					}
+					changed = this.refreshRead(read) || changed;
+				}
+				if (completions) {
+					for (const read of this.#reads.values()) if (read.completion) changed = this.refreshRead(read) || changed;
+				}
+				if (this.sealed) this.#reads.clear();
+				return changed;
+			}
+			refreshRead(read) {
+				const now = read.answer();
+				if (Object.is(now, read.last)) return false;
+				read.last = now;
+				return true;
+			}
+			/**
+			* Check whether no further fields can arrive.
+			* @returns whether the outer object closed, indexing failed, or the view is sealed; unread values are not validated.
+			*/
+			closed() {
+				return this.remember("closed", "", () => this.closedNow());
+			}
+			/**
+			* List discovered fields in first-appearance order.
+			* @returns top-level keys seen so far, in first-appearance order.
+			*/
+			keys() {
+				return this.remember("keys", "", () => this.keysNow(), (keys) => keys.length);
+			}
+			/**
+			* Check whether a top-level field has appeared.
+			* @param key - argument name.
+			* @returns whether the field has appeared (a string opened or another value began).
+			*/
+			has(key) {
+				return this.remember("has", key, () => this.hasNow(key));
+			}
+			/**
+			* Check whether a field's closing delimiter has arrived, without validating its contents.
+			* @param key - argument name.
+			* @returns whether its delimiter arrived and no content reader has reported an error for this value.
+			*/
+			complete(key) {
+				return this.remember("complete", key, () => this.completeNow(key));
+			}
+			/**
+			* Read string length without materializing its text.
+			* @param key - argument name.
+			* @param options - change granularity for a streaming string.
+			* @returns decoded UTF-16 length of the string field so far; undefined when absent or not a string.
+			*/
+			stringLength(key, options) {
+				const step = Math.max(1, Math.floor(options?.step ?? 1));
+				const offset = options?.offset ?? 0;
+				return this.remember(`length:${step}:${offset}`, key, () => this.lengthNow(key), (length) => length === void 0 ? void 0 : Math.ceil((length + offset) / step));
+			}
+			/**
+			* Check a string against a decoded UTF-16 length limit without materializing it.
+			* @param key - argument name.
+			* @param maxLength - decoded UTF-16 limit, floored to at least zero.
+			* @returns whether the string is longer than the limit; false when absent or not a string.
+			*/
+			stringExceeds(key, maxLength) {
+				const limit = Math.max(0, Math.floor(maxLength));
+				return this.remember(`exceeds:${limit}`, key, () => (this.lengthNow(key, limit + 1) ?? 0) > limit);
+			}
+			/**
+			* Read a decoded string, including a streaming prefix.
+			* @param key - argument name.
+			* @returns the string field's decoded text so far; undefined when absent or not a string.
+			*/
+			text(key) {
+				return this.remember("text", key, () => this.textNow(key));
+			}
+			/**
+			* Read at most the first decoded UTF-16 units of a string.
+			* @param key - argument name.
+			* @param maxLength - maximum decoded UTF-16 length, floored to at least one.
+			* @returns the bounded string prefix; undefined when absent or not a string.
+			*/
+			textPrefix(key, maxLength) {
+				const limit = Math.max(1, Math.floor(maxLength));
+				return this.remember(`prefix:${limit}`, key, () => this.textPrefixNow(key, limit));
+			}
+			/**
+			* Read a completed non-string argument.
+			* @param key - argument name.
+			* @returns the parsed non-string value once it closed; undefined while open, absent, or a string.
+			*/
+			value(key) {
+				return this.remember("value", key, () => this.valueNow(key));
+			}
+			/** Answer a question and, on a streaming view, remember it for change detection. */
+			remember(kind, key, read, comparison) {
+				this.scan();
+				const result = read();
+				if (!this.sealed) {
+					const id = `${kind}/${key}`;
+					if (!this.#reads.has(id)) this.#reads.set(id, {
+						completion: kind === "complete",
+						answer: comparison === void 0 ? read : () => comparison(read()),
+						last: comparison === void 0 ? result : comparison(result)
+					});
+				}
+				return result;
+			}
+			closedNow() {
+				return this.sealed || this.#mode === "closed" || this.#mode === "invalid";
+			}
+			keysNow() {
+				return this.object === void 0 ? this.#order : Object.keys(this.object);
+			}
+			hasNow(key) {
+				return this.object === void 0 ? this.#entries.has(key) : Object.hasOwn(this.object, key);
+			}
+			completeNow(key) {
+				if (this.object !== void 0) return Object.hasOwn(this.object, key);
+				const entry = this.#entries.get(key);
+				return entry !== void 0 && entry.end >= 0 && (entry.kind === "string" ? entry.invalidAt === void 0 : !entry.invalid);
+			}
+			lengthNow(key, limit = Number.POSITIVE_INFINITY) {
+				if (this.object !== void 0) {
+					const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+					return typeof field === "string" ? field.length : void 0;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "string") return void 0;
+				if (entry.text !== void 0 && entry.text.at === entry.end) return entry.text.length;
+				const read = entry.length ??= {
+					at: entry.start,
+					length: 0,
+					text: ""
+				};
+				this.readString(entry, read, limit, false);
+				return read.length;
+			}
+			textNow(key) {
+				if (this.object !== void 0) {
+					const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+					return typeof field === "string" ? field : void 0;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "string") return void 0;
+				if (entry.text === void 0 && entry.end >= 0 && entry.needsDecoding && entry.invalidAt === void 0) {
+					let text;
+					try {
+						text = JSON.parse(`"${this.slice(entry.start, entry.end)}"`);
+					} catch (_error) {}
+					if (text !== void 0) entry.text = {
+						at: entry.end,
+						length: text.length,
+						text
+					};
+				}
+				const read = entry.text ??= {
+					at: entry.start,
+					length: 0,
+					text: ""
+				};
+				this.readString(entry, read, Number.POSITIVE_INFINITY, true);
+				return read.text;
+			}
+			textPrefixNow(key, maxLength) {
+				if (this.object !== void 0) {
+					const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+					return typeof field === "string" ? field.slice(0, maxLength) : void 0;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "string") return void 0;
+				const prefixes = entry.prefixes ??= /* @__PURE__ */ new Map();
+				let read = prefixes.get(maxLength);
+				if (read === void 0) {
+					read = {
+						at: entry.start,
+						length: 0,
+						text: ""
+					};
+					prefixes.set(maxLength, read);
+				}
+				this.readString(entry, read, maxLength, true);
+				return read.text;
+			}
+			valueNow(key) {
+				if (this.object !== void 0) {
+					if (!Object.hasOwn(this.object, key)) return void 0;
+					const field = this.object[key];
+					return typeof field === "string" ? void 0 : field;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "value" || entry.end < 0 || entry.invalid) return void 0;
+				if (entry.parsed === void 0) try {
+					entry.parsed = JSON.parse(this.slice(entry.start, entry.end));
+				} catch (_error) {
+					entry.invalid = true;
+					this.#invalidValue = true;
+				}
+				return entry.parsed;
+			}
+			chunkAt(at) {
+				let low = 0;
+				let high = this.#ends.length;
+				while (low < high) {
+					const mid = low + high >>> 1;
+					if (this.#ends[mid] <= at) low = mid + 1;
+					else high = mid;
+				}
+				return low;
+			}
+			/** Materialize only a requested range, never the cumulative source. */
+			slice(start, end) {
+				if (start >= end) return "";
+				const first = this.chunkAt(start);
+				const last = this.chunkAt(end - 1);
+				const base = first === 0 ? 0 : this.#ends[first - 1];
+				if (first === last) return this.chunks[first].slice(start - base, end - base);
+				const parts = [this.chunks[first].slice(start - base)];
+				for (let i = first + 1; i < last; i++) parts.push(this.chunks[i]);
+				parts.push(this.chunks[last].slice(0, end - this.#ends[last - 1]));
+				return parts.join("");
+			}
+			readString(entry, read, limit, materialize) {
+				const end = Math.min(entry.end < 0 ? this.#consumed : entry.end, entry.invalidAt ?? Number.POSITIVE_INFINITY, this.#invalidAt ?? Number.POSITIVE_INFINITY);
+				if (!entry.needsDecoding) {
+					const length = Math.min(end - read.at, limit - read.length);
+					if (length <= 0) return;
+					if (materialize) read.text += this.slice(read.at, read.at + length);
+					read.at += length;
+					read.length += length;
+					return;
+				}
+				let chunkIndex = this.chunkAt(read.at);
+				while (read.at < end && read.length < limit) {
+					const base = chunkIndex === 0 ? 0 : this.#ends[chunkIndex - 1];
+					const chunk = this.chunks[chunkIndex];
+					const remaining = chunk.slice(read.at - base, Math.min(chunk.length, end - base));
+					const boundary = remaining.search(CONTENT_ESCAPE);
+					const length = Math.min(boundary < 0 ? remaining.length : boundary, limit - read.length);
+					if (length > 0) {
+						if (materialize) read.text += remaining.slice(0, length);
+						read.at += length;
+						read.length += length;
+						if (read.at === base + chunk.length) chunkIndex++;
+						continue;
+					}
+					const type = remaining.length > 1 ? remaining[1] : read.at + 1 < end ? this.chunks[chunkIndex + 1][0] : void 0;
+					let decoded;
+					let width = 2;
+					if (remaining[0] === "\\" && type === void 0 && entry.end < 0) return;
+					if (remaining[0] === "\\" && type === "u") {
+						const hex = this.slice(read.at + 2, Math.min(end, read.at + 6));
+						let valid = true;
+						for (let i = 0; i < hex.length; i++) if (!isHex(hex[i])) valid = false;
+						if (valid) {
+							if (hex.length < 4 && entry.end < 0) return;
+							if (hex.length === 4) decoded = String.fromCharCode(Number.parseInt(hex, 16));
+						}
+						width = 6;
+					} else if (remaining[0] === "\\" && type !== void 0) decoded = SIMPLE_ESCAPES[type];
+					if (decoded === void 0) {
+						entry.invalidAt = read.at;
+						this.#invalidValue = true;
+						return;
+					}
+					if (materialize) read.text += decoded;
+					read.length++;
+					read.at += width;
+					while (chunkIndex < this.chunks.length && read.at >= this.#ends[chunkIndex]) chunkIndex++;
+				}
+			}
+			/** Locate new field ranges without decoding or parsing their contents. */
+			scan() {
+				if (this.object !== void 0 || this.#consumed === this.#size) return;
+				for (let i = this.chunkAt(this.#consumed); i < this.chunks.length && this.#invalidAt === void 0; i++) {
+					const pending = this.chunks[i];
+					const base = i === 0 ? 0 : this.#ends[i - 1];
+					for (let index = this.#consumed - base; index < pending.length && this.#mode !== "invalid"; index++) {
+						if (this.#mode === "string" || this.#mode === "nested" && this.#nestedInString) {
+							const end = this.stringBoundary(pending, index);
+							this.#consumed += end - index;
+							index = end;
+							if (index === pending.length) break;
+						}
+						this.step(pending[index], this.#consumed);
+						this.#consumed++;
+					}
+				}
+			}
+			/** Only raw quotes and their preceding backslash runs can terminate a string. */
+			stringBoundary(fragment, start) {
+				let at = start;
+				while (true) {
+					const quote = fragment.indexOf("\"", at);
+					const end = quote < 0 ? fragment.length : quote;
+					if (this.#mode === "string") {
+						const entry = this.#current;
+						if (!entry.needsDecoding && CONTENT_ESCAPE.test(fragment.slice(at, end))) entry.needsDecoding = true;
+					}
+					let slashStart = end;
+					while (slashStart > at && fragment[slashStart - 1] === "\\") slashStart--;
+					const escaped = (end - slashStart) % 2 === 1 !== (slashStart === at && this.#escape);
+					this.#escape = quote < 0 && escaped;
+					if (quote < 0 || !escaped) return end;
+					at = quote + 1;
+				}
+			}
+			step(c, at) {
+				switch (this.#mode) {
+					case "root":
+						if (isWhitespace(c)) return;
+						if (c === "{") {
+							this.#mode = "key-or-end";
+							return;
+						}
+						this.fail();
+						return;
+					case "key-or-end":
+						if (isWhitespace(c)) return;
+						if (c === "}") {
+							this.#mode = "closed";
+							return;
+						}
+						if (c === "\"") {
+							this.beginKey(at);
+							return;
+						}
+						this.fail();
+						return;
+					case "key-only":
+						if (isWhitespace(c)) return;
+						if (c === "\"") {
+							this.beginKey(at);
+							return;
+						}
+						this.fail();
+						return;
+					case "key":
+						this.stepKey(c, at);
+						return;
+					case "colon":
+						if (isWhitespace(c)) return;
+						if (c === ":") {
+							this.#mode = "value";
+							return;
+						}
+						this.fail();
+						return;
+					case "value":
+						this.beginValue(c, at);
+						return;
+					case "string": {
+						const entry = this.#current;
+						entry.end = at;
+						this.#current = null;
+						this.#mode = "comma-or-end";
+						return;
+					}
+					case "scalar":
+						this.stepScalar(c, at);
+						return;
+					case "nested":
+						this.stepNested(c, at);
+						return;
+					case "comma-or-end":
+						if (isWhitespace(c)) return;
+						if (c === ",") {
+							this.#mode = "key-only";
+							return;
+						}
+						if (c === "}") {
+							this.#mode = "closed";
+							return;
+						}
+						this.fail();
+						return;
+					case "closed":
+						if (isWhitespace(c)) return;
+						this.fail();
+						return;
+					/* v8 ignore next 2 -- scan() stops stepping once the view is invalid. */
+					case "invalid": return;
+					/* v8 ignore next 2 -- Every scanner mode has a handler above. */
+					default: assertNever(this.#mode);
+				}
+			}
+			fail() {
+				this.#invalidAt = this.#consumed;
+				this.#mode = "invalid";
+				this.#current = null;
+			}
+			beginKey(at) {
+				this.#mode = "key";
+				this.#keyStart = at + 1;
+				this.#keyEscaped = false;
+				this.#escape = false;
+			}
+			stepKey(c, at) {
+				if (c < " ") {
+					this.fail();
+					return;
+				}
+				if (this.#escape) {
+					this.#escape = false;
+					return;
+				}
+				if (c === "\\") {
+					this.#escape = true;
+					this.#keyEscaped = true;
+					return;
+				}
+				if (c !== "\"") return;
+				const raw = this.slice(this.#keyStart, at);
+				if (this.#keyEscaped) try {
+					this.#key = JSON.parse(`"${raw}"`);
+				} catch (_error) {
+					this.fail();
+					return;
+				}
+				else this.#key = raw;
+				this.#mode = "colon";
+			}
+			open(entry) {
+				if (!this.#entries.has(this.#key)) this.#order.push(this.#key);
+				this.#entries.set(this.#key, entry);
+				this.#current = entry;
+			}
+			beginValue(c, at) {
+				if (isWhitespace(c)) return;
+				if (c === "\"") {
+					this.open({
+						kind: "string",
+						start: at + 1,
+						end: -1,
+						needsDecoding: false,
+						invalidAt: void 0,
+						length: void 0,
+						text: void 0,
+						prefixes: void 0
+					});
+					this.#escape = false;
+					this.#mode = "string";
+					return;
+				}
+				if (c === "}" || c === "," || c === ":" || c === "]") {
+					this.fail();
+					return;
+				}
+				this.open({
+					kind: "value",
+					start: at,
+					end: -1,
+					parsed: void 0,
+					invalid: false
+				});
+				if (c === "{" || c === "[") {
+					this.#mode = "nested";
+					this.#nestedEnds = [c === "{" ? "}" : "]"];
+					this.#nestedInString = false;
+					this.#escape = false;
+					return;
+				}
+				this.#mode = "scalar";
+			}
+			stepScalar(c, at) {
+				if (c !== "," && c !== "}" && !isWhitespace(c)) return;
+				this.closeValue(at);
+				this.#mode = c === "," ? "key-only" : c === "}" ? "closed" : "comma-or-end";
+			}
+			stepNested(c, at) {
+				if (this.#nestedInString) {
+					this.#nestedInString = false;
+					return;
+				}
+				if (c === "\"") {
+					this.#nestedInString = true;
+					return;
+				}
+				if (c === "{" || c === "[") {
+					this.#nestedEnds.push(c === "{" ? "}" : "]");
+					return;
+				}
+				if (c === "}" || c === "]") {
+					if (this.#nestedEnds.pop() !== c) {
+						this.fail();
+						return;
+					}
+					if (this.#nestedEnds.length === 0) {
+						this.closeValue(at + 1);
+						this.#mode = "comma-or-end";
+					}
+				}
+			}
+			closeValue(end) {
+				const entry = this.#current;
+				entry.end = end;
+				this.#current = null;
+			}
+		});
+		//#endregion
+		//#region ../../util/values/src/index.ts
+		/**
+		* Mark an unreachable closed-union branch.
+		* @param value - impossible value; an unhandled typed variant fails at the call site.
+		* @param context - optional switch-site label included in the failure message.
+		* @returns never; a runtime value that escaped its type always throws.
+		*/
+		function assertNever(value, context) {
+			const rendered = JSON.stringify(value) ?? String(value);
+			throw new Error(`unreachable variant${context ? ` in ${context}` : ""}: ${rendered}`);
+		}
+		/**
+		* Weak-key lookup with a strongly retained iterable set of associated values.
+		*
+		* Each value must belong to only one key. The container performs no automatic
+		* cleanup; owners delete associations or clear the container at lifecycle end.
+		*/
+		var WeakMapWithValues = class {
+			keys = /* @__PURE__ */ new WeakMap();
+			valueSet = /* @__PURE__ */ new Set();
+			/** Live strongly retained values in insertion order. */
+			values = this.valueSet;
+			/**
+			* Read the value associated with a key.
+			* @param key - weakly held lookup key.
+			* @returns the associated value, or absence.
+			*/
+			get(key) {
+				return this.keys.get(key);
+			}
+			/**
+			* Test whether a key has an association.
+			* @param key - weakly held lookup key.
+			* @returns whether the key is present.
+			*/
+			has(key) {
+				return this.keys.has(key);
+			}
+			/**
+			* Associate one key with one caller-unique value.
+			* @param key - weakly held lookup key.
+			* @param value - strongly retained value that belongs to no other key.
+			* @returns this container.
+			*/
+			set(key, value) {
+				if (this.keys.has(key)) {
+					const previous = this.keys.get(key);
+					if (previous === value) return this;
+					this.valueSet.delete(previous);
+				}
+				this.keys.set(key, value);
+				this.valueSet.add(value);
+				return this;
+			}
+			/**
+			* Remove one association and its strongly retained value.
+			* @param key - weakly held lookup key.
+			* @returns whether an association was removed.
+			*/
+			delete(key) {
+				if (!this.keys.has(key)) return false;
+				const value = this.keys.get(key);
+				const deleted = this.keys.delete(key);
+				this.valueSet.delete(value);
+				return deleted;
+			}
+			/** Remove every association and strongly retained value. */
+			clear() {
+				this.keys = /* @__PURE__ */ new WeakMap();
+				this.valueSet.clear();
+			}
 		};
+		//#endregion
+		//#region lib/types/client/guide-locales.js
+		/** Curated help for shipped presets, kept separate from their short picker copy. */
+		const guideEn = {
+			modeExplanation: "Mode details",
+			howToUse: "How to use",
+			guideSections: "Guide sections",
+			guideExampleTask: "Example task",
+			guideCopy: "Copy",
+			guideCopied: "Copied",
+			guideFootnotes: "Footnotes",
+			guideStandardIntro: "Choose Standard mode when starting a new task. Describe what you want to accomplish, point to the relevant files, and explain how to check the result.",
+			guideStandardExplanation: [
+				"### How it works",
+				"The agent calls tools directly to read and edit files, search, and run terminal commands. It includes Skills, planning, goals, subagents, workflows, and context compaction.",
+				"### When to choose it",
+				"Start here for everyday coding, file work, and research. Standard mode can also write scripts and process files in batches. PTC changes how tool calls are organized; it is not required for batch tasks."
+			].join("\n\n"),
+			guideStandardUsage: [
+				"### Fix a bug",
+				"> Find out why submitting the search form twice makes the results disappear. Fix it and run the relevant tests. Explain the cause and what changed.",
+				"Expected output: a code change, the relevant test results, and an explanation of the cause.",
+				"### Organize project notes",
+				"> Read the Markdown notes in this project. Summarize the agreed decisions and open questions, with links to the source files.",
+				"Expected output: a summary with references that you can check against the original notes."
+			].join("\n\n"),
+			guidePtcIntro: "Choose PTC mode when starting a new task. Specify the input files, processing rules, and output format. The agent writes the code.",
+			guidePtcExplanation: [
+				"### How tools are called",
+				"PTC means Programmatic Tool Calling. In this built-in preset, the agent uses run_code to write a TypeScript program that calls tools through a generated SDK. The program can use loops, conditions, error handling, and concurrent calls where appropriate.",
+				"### What reaches the model",
+				"Tool results first reach the program, which can filter and combine them. The model receives what the program prints or returns; image results are attached separately. Nested tool calls are still recorded and remain subject to tool permissions.",
+				"### Compared with Standard mode",
+				"Both modes can handle coding and batch tasks. Standard mode exposes individual tools directly; PTC organizes tool calls in code. The current PTC preset leaves the workflow tool disabled. Speed and token use depend on the task and how the program handles its results."
+			].join("\n\n"),
+			guidePtcUsage: [
+				"### Check a set of configuration files",
+				"> Check all JSON files in configs/. List missing required fields and invalid values against schema.json. Save a CSV with one row per issue. Include unreadable files in the report and keep checking the rest. Leave the original files unchanged.",
+				"Expected output: an issue summary and a CSV report. The program can repeat the same checks, handle individual failures, and collect the results.",
+				"### Summarize error logs",
+				"> Analyze the log files in logs/. Group errors by service and error type. Show the ten most frequent groups and one example from each. Save the full counts to a CSV.",
+				"Expected output: the top error groups and a complete count table. Intermediate data can be aggregated in the program before the summary reaches the model."
+			].join("\n\n"),
+			guideMinimalIntro: "Choose Minimal mode for a new task. For a comparison, hold the model, permissions, input, and starting workspace state constant across runs.",
+			guideMinimalExplanation: [
+				"### What is included",
+				"One persistent shell tool and a fixed system prompt. The built-in preset does not load Skills, planning, context compaction, or the standard runtime context.",
+				"### When to choose it",
+				"Use it as a baseline for experiments and comparisons. It can still read files and execute scripts through shell commands, but offers fewer built-in ways to manage a long task. Fewer tools does not necessarily make it easier for a beginner."
+			].join("\n\n"),
+			guideMinimalUsage: [
+				"### Compare performance on a small bug fix",
+				"> Run the tests for this project, find the cause of the failure, and make the smallest fix. Run the relevant tests again and report the result.",
+				"Run the same task separately in Standard and Minimal modes from the same starting state. Compare task completion, tool calls, and the resulting changes. Minimal mode performs the work through terminal commands."
+			].join("\n\n"),
+			guideCordisIntro: "Choose Creator mode for a new task. Describe the capability you want, where it should appear, and how you will verify it.",
+			guideCordisExplanation: [
+				"### What you can create",
+				"Creator mode includes the standard task tools plus runtime inspection, persistent plugin management, and guidance for authoring Cordis plugins and agent presets. It can create a plugin that adds a capability or UI, or a preset that combines tools and prompts for a particular job.",
+				"### Plugins and modes",
+				"A plugin adds capabilities to DSH, such as a tool, a service connection, or a UI entry. A mode is an agent preset that selects tools and defines how the agent works in a task. A plugin can be included in a custom preset.",
+				"### How the result takes effect",
+				"Ask the agent to install and verify the result, not just generate source code. A plugin may load immediately or require a restart, depending on what it changes. A newly created preset is selected when starting a new task."
+			].join("\n\n"),
+			guideCordisUsage: [
+				"### Add a UI",
+				"> Create a DSH plugin that adds a project notes entry to the sidebar. Let me browse the Markdown files in this workspace and preview a selected note. Install it and verify that the page opens.",
+				"Expected output: an installed plugin with a working entry and preview page, plus any remaining activation steps.",
+				"### Add a tool",
+				"> Create a plugin with a tool that reads this project’s test report and summarizes the failed tests. Register it and verify it with a sample report.",
+				"Expected output: a plugin with a callable tool and a verified sample call.",
+				"### Create my own mode",
+				"> Create a “Code review” mode based on Standard mode. Have it prioritize potential bugs and test gaps, cite file paths and lines, and ask before modifying files. Save it as a selectable preset.",
+				"Expected output: a custom preset for new tasks. These review instructions guide the agent; permission settings determine which actions it can execute."
+			].join("\n\n")
+		};
+		/** Simplified Chinese help. Examples describe suggested tasks, not recorded runs. */
+		const guideZh = {
+			modeExplanation: "模式说明",
+			howToUse: "如何使用",
+			guideSections: "帮助内容",
+			guideExampleTask: "示例任务",
+			guideCopy: "复制",
+			guideCopied: "已复制",
+			guideFootnotes: "脚注",
+			guideStandardIntro: "新建任务时选择「标准模式」，说明要完成什么、相关文件在哪里，以及怎样判断任务完成。",
+			guideStandardExplanation: [
+				"### 工作方式",
+				"Agent 直接调用工具来读写文件、检索资料和执行终端命令。包含 Skills、计划、目标、子 Agent、工作流和上下文压缩等能力。",
+				"### 什么时候选",
+				"日常编程、文件处理和资料整理可以从这里开始。标准模式也能编写脚本、批量处理文件；PTC 改变的是工具调用方式，批量任务并不必须使用 PTC。"
+			].join("\n\n"),
+			guideStandardUsage: [
+				"### 修复一个问题",
+				"> 搜索表单连续提交两次后，结果会消失。请定位原因、修复问题并运行相关测试，最后说明原因和修改内容。",
+				"预期产出：代码修改、相关测试结果，以及问题原因说明。",
+				"### 整理项目资料",
+				"> 阅读项目中的 Markdown 记录，整理已经达成的结论和仍待确认的问题，并附上对应文件链接。",
+				"预期产出：一份带来源引用的总结，方便回到原文核对。"
+			].join("\n\n"),
+			guidePtcIntro: "新建任务时选择「PTC 模式」，说明输入文件、处理规则和输出格式。代码由 Agent 编写。",
+			guidePtcExplanation: [
+				"### 怎样调用工具",
+				"PTC 是 Programmatic Tool Calling，即通过程序调用工具。当前内置预设让 Agent 通过 run_code 编写 TypeScript 程序，使用生成的工具 SDK 发起调用。程序可以组织循环、条件判断、错误处理，以及适合并发执行的调用。",
+				"### 哪些结果交给模型",
+				"工具返回的数据先交给程序，经过筛选、计算或合并，再通过输出或返回值交给模型；图片结果会另行附加。程序中的工具调用仍会被记录，也仍受工具权限约束。",
+				"### 与标准模式的区别",
+				"两种模式都能编程、批量处理文件。标准模式直接向模型提供各个工具；PTC 让模型用代码组织工具调用。当前 PTC 预设未启用 workflow 工具。速度和 token 用量取决于具体任务与结果处理方式。"
+			].join("\n\n"),
+			guidePtcUsage: [
+				"### 批量检查配置文件",
+				"> 检查 configs/ 下所有 JSON 文件，按照 schema.json 找出缺失字段和不合法的值。每个问题写成 CSV 中的一行；读取失败的文件也记入报告，继续检查其余文件。保留原文件。",
+				"预期产出：问题汇总和一份 CSV 报告。程序可以对多份文件执行相同检查，处理单个文件的失败，再汇总结果。",
+				"### 汇总错误日志",
+				"> 分析 logs/ 下的日志，按服务和错误类型统计次数，列出出现最多的十类错误，每类保留一条示例。完整统计另存为 CSV。",
+				"预期产出：高频错误摘要和完整统计表。中间数据可以先在程序中聚合，再把汇总交给模型。"
+			].join("\n\n"),
+			guideMinimalIntro: "新建任务时选择「极简模式」。做对照测试时，保持模型、权限、任务输入和工作区起始状态一致。",
+			guideMinimalExplanation: [
+				"### 保留哪些能力",
+				"仅提供一个持久 Shell 工具，并使用固定系统提示词。内置预设不加载 Skills、计划、上下文压缩，也不注入标准运行时上下文。",
+				"### 什么时候选",
+				"适合作为实验和对照测试的基线。Agent 仍能通过终端命令读写文件、运行脚本，但缺少管理长任务的内置辅助能力。工具少，不代表对新手更容易。"
+			].join("\n\n"),
+			guideMinimalUsage: [
+				"### 对比基础修复表现",
+				"> 运行这个项目的测试，找出失败原因，做最小修复，再运行相关测试并报告结果。",
+				"分别用标准模式和极简模式，从相同的工作区状态执行这条任务，对比完成情况、工具调用和最终修改。极简模式会通过终端命令完成这些操作。"
+			].join("\n\n"),
+			guideCordisIntro: "新建任务时选择「创造模式」，说明希望增加什么能力、从哪里使用，以及怎样验证效果。",
+			guideCordisExplanation: [
+				"### 可以创造什么",
+				"创造模式具备标准任务工具，并增加运行时检查、持久化插件管理，以及 Cordis 插件和 Agent 预设的开发指引。可以编写插件来添加功能或界面，也可以组合工具和提示词，创建适合特定任务的模式。",
+				"### 插件与模式的关系",
+				"插件为 DSH 增加能力，例如工具、服务连接或界面入口。模式是一份 Agent 预设，用来选择任务可用的工具，并约定 Agent 的工作方式。自定义模式中也可以使用自己开发的插件。",
+				"### 怎样让成果生效",
+				"可以要求 Agent 完成安装并验证实际效果。插件可能即时加载，也可能需要重启，取决于修改内容；新建的模式在创建新任务时选择。"
+			].join("\n\n"),
+			guideCordisUsage: [
+				"### 添加一个界面",
+				"> 帮我写一个 DSH 插件，在侧栏增加「项目笔记」入口，列出当前工作区的 Markdown 文件，点击后能预览内容。完成安装并验证页面能打开。",
+				"预期产出：带侧栏入口和预览页的插件，以及仍需完成的生效步骤。",
+				"### 添加一个工具",
+				"> 写一个插件，提供读取项目测试报告、汇总失败用例的工具。注册工具，并用一份示例报告验证调用结果。",
+				"预期产出：可调用的新工具，以及一次示例调用的验证结果。",
+				"### 创建自己的模式",
+				"> 基于标准模式创建「代码审查」模式，优先检查潜在错误和测试缺口，指出文件与行号，修改文件前先询问我。保存成可选择的预设。",
+				"预期产出：可在新任务中选择的自定义模式。审查要求用于指导 Agent，实际可执行的操作仍由权限设置决定。"
+			].join("\n\n")
+		};
+		//#endregion
+		//#region ../../preset/agent-preset-registry/src/display.ts
 		const BUILT_IN_PRESET_KEYS = {
 			standard: {
 				name: "presetStandardName",
@@ -143,13 +875,22 @@ window.__ModuleLoader__.load({
 			}
 		};
 		/**
+		* Whether a roster row is one of the shipped presets whose copy the dictionaries carry.
+		* A shipped preset publishes no `name`; a declaration that names itself owns its copy.
+		* @param preset - roster row.
+		* @returns true for a shipped preset id without a published name.
+		*/
+		function isBuiltInPreset(preset) {
+			return preset.name === void 0 && BUILT_IN_PRESET_KEYS[preset.id] !== void 0;
+		}
+		/**
 		* Resolve preset display copy without making user-authored metadata translatable.
 		* @param preset - roster row whose copy is being rendered.
-		* @param t - active Web locale lookup.
-		* @returns localized copy for a known shipped preset, otherwise file metadata.
+		* @param t - active locale lookup covering {@link BuiltInPresetCopyKey}.
+		* @returns localized copy for a known shipped preset, otherwise declaration metadata.
 		*/
 		function presetDisplayText(preset, t) {
-			const keys = preset.trust === "system" ? BUILT_IN_PRESET_KEYS[preset.id] : void 0;
+			const keys = isBuiltInPreset(preset) ? BUILT_IN_PRESET_KEYS[preset.id] : void 0;
 			if (keys !== void 0) return {
 				name: t(keys.name),
 				description: t(keys.description)
@@ -160,19 +901,86 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-agent-preset\src\client\AgentPresetLabel.module.css.mjs
-		const css$3 = ".PgpcLa_label{background:var(--dsw-alias-fill-tsp-secondary);max-width:180px;height:22px;color:var(--dsw-alias-label-secondary);white-space:nowrap;text-overflow:ellipsis;border-radius:6px;align-items:center;gap:4px;padding:0 2px 0 0;font-size:12px;line-height:22px;display:inline-flex;overflow:hidden}.PgpcLa_icon{opacity:.7;flex:none}";
-		const tagId$3 = "@deepseek-ai/dsh-client-ui-agent-preset/AgentPresetLabel.module.css";
-		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
+		//#region lib/types/client/locales.js
+		/** Locale bundles for the agent-preset hero chip, header label, and management section. */
+		/** English copy. */
+		const en = {
+			...guideEn,
+			builtInGroup: "Built-in",
+			customGroup: "Custom",
+			sectionIntro: "Choose the agent’s tools and how it works. Use Standard mode for everyday tasks, or Creator mode to add capabilities to DSH.",
+			seatHint: "Choose the agent preset for your new task",
+			headerHint: "The agent preset chosen when this task started",
+			nav: "Agent presets",
+			setDefault: "Set as new task default",
+			view: "View configuration",
+			presetStandardName: "Standard mode",
+			presetStandardDescription: "Work with code, files, and information. Suitable for most tasks, with search, editing, terminal commands, and other tools available as needed.",
+			presetPtcName: "PTC mode",
+			presetPtcDescription: "Includes all Standard mode capabilities. Better suited to tasks that call tools in batches and then filter, organize, deduplicate, count, or summarize the results.",
+			presetMinimalName: "Minimal mode",
+			presetMinimalDescription: "The agent works using only a terminal tool. Useful for testing and comparing its basic performance.",
+			presetCordisName: "Creator mode",
+			presetCordisDescription: "Customize DSH through conversation. Let the agent write plugins that add features or UI, or combine tools and prompts to create your own mode.",
+			inUse: "New task default",
+			noDescription: "No description.",
+			brokenBadge: "Failed to load",
+			switchRefused: "Could not switch to {name}: {reason}",
+			standardUnavailable: "Standard mode is unavailable. Restore it or choose another available mode.",
+			close: "Close",
+			creatorDraft: "Let the agent help me create a preset",
+			createPlugin: "Let the agent create a plugin",
+			createPluginDescription: "Enter Creator mode and make your own DSH plugin",
+			createPluginChecking: "Checking whether Creator mode is available",
+			createPluginUnavailable: "Temporarily unavailable. Reopen this menu to retry",
+			createPluginMissing: "Creator mode is not included in this configuration"
+		};
+		/** Simplified Chinese copy. */
+		const zh = {
+			...guideZh,
+			builtInGroup: "内置",
+			customGroup: "自定义",
+			sectionIntro: "选择 Agent 的工具和工作方式。日常任务用「标准模式」，扩展 DSH 的能力用「创造模式」。",
+			seatHint: "选择新任务使用的 Agent 预设",
+			headerHint: "本任务的 Agent 预设，在任务开始时确定",
+			nav: "Agent 预设",
+			setDefault: "设为新任务默认",
+			view: "查看配置",
+			presetStandardName: "标准模式",
+			presetStandardDescription: "处理代码、文件和资料，适合大多数任务。Agent 会按需使用检索、编辑和终端等工具。",
+			presetPtcName: "PTC 模式",
+			presetPtcDescription: "包含标准模式的所有能力，更适合批量调用工具，并对结果进行筛选、整理、去重、统计或汇总的任务。",
+			presetMinimalName: "极简模式",
+			presetMinimalDescription: "Agent 仅使用终端工具完成任务，适合测试和对比其基础表现。",
+			presetCordisName: "创造模式",
+			presetCordisDescription: "用对话定制 DSH：让 Agent 编写插件，添加新功能或界面；也能组合工具和提示词，创建自己的模式。",
+			inUse: "新任务默认",
+			noDescription: "暂无描述。",
+			brokenBadge: "加载失败",
+			switchRefused: "无法切换到「{name}」：{reason}",
+			standardUnavailable: "标准模式不可用，请恢复该模式或选择其他可用模式。",
+			close: "关闭",
+			creatorDraft: "让 Agent 帮我创建预设模式",
+			createPlugin: "让 Agent 创建插件",
+			createPluginDescription: "进入创造模式，制作属于你的 DSH 插件",
+			createPluginChecking: "正在确认创造模式是否可用",
+			createPluginUnavailable: "暂时不可用，请重新打开菜单重试",
+			createPluginMissing: "当前配置未提供创造模式"
+		};
+		//#endregion
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-agent-preset\src\client\AgentPresetLabel.module.css.mjs
+		const css$4 = ".VigtAa_label{border-radius:var(--dsw-radius-xs);background:var(--dsw-alias-fill-tsp-secondary);max-width:180px;height:22px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;text-overflow:ellipsis;align-items:center;gap:4px;padding:0 2px 0 0;font-size:12px;line-height:22px;display:inline-flex;overflow:hidden}.VigtAa_icon{opacity:.7;flex:none}@container (width<=540px){.VigtAa_label{display:none}}";
+		const tagId$4 = "@deepseek-ai/dsh-client-ui-agent-preset/AgentPresetLabel.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$4) + "]") === null) {
 			const tag = document.createElement("style");
 			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-agent-preset";
-			tag.dataset.pluginCss = tagId$3;
-			tag.textContent = css$3;
+			tag.dataset.pluginCss = tagId$4;
+			tag.textContent = css$4;
 			document.head.appendChild(tag);
 		}
 		var AgentPresetLabel_module_css_default = {
-			"icon": "PgpcLa_icon",
-			"label": "PgpcLa_label"
+			"icon": "VigtAa_icon",
+			"label": "VigtAa_label"
 		};
 		//#endregion
 		//#region lib/types/client/AgentPresetLabel.js
@@ -205,66 +1013,215 @@ window.__ModuleLoader__.load({
 			return (0, react_jsx_runtime.jsxs)("span", {
 				className: AgentPresetLabel_module_css_default.label,
 				title: text?.description ?? t("headerHint"),
-				children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconAgentPresetOutline16, {
+				children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconAgentPresetOutlineRegular, {
 					size: 14,
 					className: AgentPresetLabel_module_css_default.icon
 				}), text?.name ?? preset]
 			});
 		}
 		//#endregion
-		//#region lib/types/client/PresetMenu.js
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-agent-preset\src\client\CreatePluginMenuItem.module.css.mjs
+		const css$3 = "._5FLRDG_copy{white-space:normal;flex-direction:column;gap:2px;min-width:0;display:flex}._5FLRDG_description{overflow-wrap:anywhere;max-height:36px;color:var(--dsw-alias-label-secondary);-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:12px;line-height:18px;display:-webkit-box;overflow:hidden}";
+		const tagId$3 = "@deepseek-ai/dsh-client-ui-agent-preset/CreatePluginMenuItem.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-agent-preset";
+			tag.dataset.pluginCss = tagId$3;
+			tag.textContent = css$3;
+			document.head.appendChild(tag);
+		}
+		var CreatePluginMenuItem_module_css_default = {
+			"copy": "_5FLRDG_copy",
+			"description": "_5FLRDG_description"
+		};
+		//#endregion
+		//#region lib/types/client/CreatePluginMenuItem.js
+		/** Create a plugin through the existing Creator flow from the Add plugin menu. */
 		/**
-		* The preset picker both surfaces render: a menu of presets over a button
-		* naming the current one.
-		*
-		* The settings row and the composer seat differ in where they sit, what they
-		* call the current value, and when they refuse a pick — not in how the picker
-		* itself behaves. Trust is the one thing the list always says: a locally
-		* authored preset is exactly as privileged as the plugins it names, so the
-		* label marks it rather than presenting every preset as shipped and vetted.
+		* Close the Add plugin menu before opening Creator without sending a message.
+		* @param props - locale, roster, dismissal and navigation callbacks.
+		* @returns a stable menu item that explains why Creator is unavailable.
 		*/
-		/**
-		* Render the preset picker.
-		* @param props - the calling surface's copy, styling, and handlers.
-		* @returns the menu and its trigger.
-		*/
-		function PresetMenu({ options, selectedId, label, t, buttonClassName, chevronClassName, disabled, open, onOpenChange, onSelect }) {
-			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Menu, {
-				open,
-				onClose: () => {
-					onOpenChange(false);
+		function CreatePluginMenuItem({ t, useAgentPresets, load, onDismiss, startCreatorDraft }) {
+			const roster = useAgentPresets((state) => state);
+			const enabled = roster.status === "ready" && roster.options.some((option) => option.id === "cordis");
+			(0, react.useEffect)(() => {
+				load();
+			}, [load]);
+			let description = t("createPluginDescription");
+			if (roster.status === "idle" || roster.status === "loading") description = t("createPluginChecking");
+			else if (roster.status === "error" || roster.status === "unavailable") description = t("createPluginUnavailable");
+			else if (!enabled) description = t("createPluginMissing");
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MenuItemButton, {
+				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconAgentPresetOutlineRegular, { size: 14 }),
+				disabled: !enabled,
+				onSelect: () => {
+					onDismiss();
+					startCreatorDraft();
 				},
-				items: options.map((option) => {
-					const name = presetDisplayText(option, t).name;
-					return {
-						id: option.id,
-						label: option.trust === "user" ? `${name} · ${t("userTrust")}` : name
-					};
-				}),
-				selectedId,
-				onSelect: (id) => {
-					onOpenChange(false);
-					onSelect(id);
-				},
-				align: "end",
-				portal: true,
-				anchor: (0, react_jsx_runtime.jsxs)("button", {
-					type: "button",
-					className: buttonClassName,
-					"aria-haspopup": "menu",
-					"aria-expanded": open,
-					disabled,
-					onClick: () => {
-						onOpenChange(!open);
-					},
-					children: [label, (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, { className: chevronClassName })]
+				children: (0, react_jsx_runtime.jsxs)("span", {
+					className: CreatePluginMenuItem_module_css_default.copy,
+					children: [(0, react_jsx_runtime.jsx)("span", { children: t("createPlugin") }), (0, react_jsx_runtime.jsx)("span", {
+						className: CreatePluginMenuItem_module_css_default.description,
+						title: description,
+						children: description
+					})]
 				})
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-agent-preset\src\client\AgentPresetRow.module.css.mjs
-		const css$2 = ".apvf6q_row{border-bottom:1px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.apvf6q_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}.apvf6q_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.apvf6q_desc{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:18px}.apvf6q_selector{background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;border-radius:18px;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.apvf6q_selector:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.apvf6q_selector:disabled{cursor:default}.apvf6q_chevron{flex:none}";
-		const tagId$2 = "@deepseek-ai/dsh-client-ui-agent-preset/AgentPresetRow.module.css";
+		//#region lib/types/client/settings-store.js
+		/**
+		* Agent-preset roster store shared by the display surfaces.
+		*
+		* Options come from one `agentPresets.list` call. Writes target the settings
+		* namespace fields the host resolves at creation; the management section is
+		* the surface that writes them.
+		*/
+		/** The agent-preset settings namespace on the host wire. */
+		const AGENT_PRESET_SETTINGS_NS = "agent-preset-registry";
+		/**
+		* Persist one preset as the default for sessions created later.
+		*
+		* The default is a settings field rather than a preset property; the
+		* management section writes it here — one home for which namespace and field
+		* the host resolves at session creation.
+		* @param ctx - the browser plugin context carrying the Remote namespaces.
+		* @param id - the preset to make default.
+		* @param expectedRevision - optional fence for an automatic correction based on a previous settings read.
+		* @returns the failure message, or undefined once the write landed.
+		*/
+		async function writeDefaultPreset(ctx, id, expectedRevision) {
+			const response = await ctx.remote.settings.update(AGENT_PRESET_SETTINGS_NS, { selectedDefault: id }, expectedRevision);
+			return response.ok ? void 0 : response.error.message;
+		}
+		/** Whether a shipped preset requires the Coding Tools preference.
+		* @param preset Roster entry; named custom overrides keep their own behavior.
+		* @returns True only for the built-in PTC and Minimal presets.
+		*/
+		function requiresCodingTools(preset) {
+			return preset !== void 0 && isBuiltInPreset(preset) && (preset.id === "ptc" || preset.id === "minimal");
+		}
+		const EMPTY_ROSTER = { presets: [] };
+		/**
+		* Read the roster, turning a refusal into the message every surface shows.
+		* @param ctx - the browser plugin context carrying the Remote namespaces.
+		* @returns the roster, or the message to show in its place.
+		*/
+		async function readRoster(ctx) {
+			const result = await ctx.remote.agentPresets.list();
+			if (result.ok) return {
+				ok: true,
+				value: result.value
+			};
+			if (result.error.code === "gateway/invocation-unavailable") return {
+				ok: true,
+				value: EMPTY_ROSTER
+			};
+			return {
+				ok: false,
+				error: result.error.message
+			};
+		}
+		/**
+		* The opening move every roster-backed surface makes: refuse a read that is
+		* already in flight, mark the store loading, then read.
+		*
+		* A surface that gets `undefined` returns without touching its snapshot
+		* further — either another read owns it, or this one already wrote the
+		* failure. What differs between surfaces starts after this.
+		* @param ctx - the browser plugin context carrying the Remote namespaces.
+		* @param store - the surface's own snapshot store.
+		* @returns the roster, or undefined when the caller should return.
+		*/
+		async function beginRosterRead(ctx, store) {
+			const before = store.getSnapshot();
+			if (before.status === "loading") return void 0;
+			store.set({
+				...before,
+				status: "loading",
+				error: null
+			});
+			const roster = await readRoster(ctx);
+			if (roster.ok) return roster.value;
+			store.set({
+				...store.getSnapshot(),
+				status: "error",
+				error: roster.error
+			});
+		}
+		/**
+		* The roster entries as the pickers render them: healthy presets only.
+		*
+		* The chip exists to choose the NEXT session's composition, and a broken
+		* preset cannot compose one — offering it would defer the discovery of that
+		* fact to a failed session start. The management section renders the full
+		* roster (broken rows included) from its own store instead.
+		*
+		* The chip, the header label, and the management section all show the same
+		* facts, and `exactOptionalPropertyTypes` makes "absent" and "present as
+		* undefined" different shapes — so the spread dance belongs in one place rather than
+		* once per store.
+		* @param presets - the roster the host answered with.
+		* @returns one option per selectable preset, in roster order.
+		*/
+		function presetOptions(presets) {
+			return presets.filter((preset) => preset.broken === void 0).map((preset) => ({
+				id: preset.id,
+				...preset.name === void 0 ? {} : { name: preset.name },
+				...preset.description === void 0 ? {} : { description: preset.description }
+			}));
+		}
+		const INITIAL$2 = {
+			status: "idle",
+			error: null,
+			options: []
+		};
+		/** Reads the roster for the surfaces that only display it. */
+		var AgentPresetSettingsController = class {
+			ctx;
+			/** Roster snapshot the renderer subscribes to. */
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(INITIAL$2);
+			/**
+			* @param ctx - the browser plugin context (the roster read).
+			*/
+			constructor(ctx) {
+				this.ctx = ctx;
+			}
+			set(patch) {
+				this.store.set({
+					...this.store.getSnapshot(),
+					...patch
+				});
+			}
+			/**
+			* Load the roster. An empty roster means the deployment composes no
+			* presets, which is a valid deployment rather than a failure — the
+			* surfaces report `unavailable` and render nothing.
+			* @returns once the snapshot reflects the host.
+			*/
+			async load() {
+				const roster = await beginRosterRead(this.ctx, this.store);
+				if (roster === void 0) return;
+				const { presets } = roster;
+				if (presets.length === 0) {
+					this.set({
+						status: "unavailable",
+						options: []
+					});
+					return;
+				}
+				this.set({
+					status: "ready",
+					error: null,
+					options: presetOptions(presets)
+				});
+			}
+		};
+		//#endregion
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-agent-preset\src\client\AgentPresetSeat.module.css.mjs
+		const css$2 = ".FzNuaW_menuAnchor{min-width:54px;max-width:100%}.FzNuaW_seat{border-radius:var(--dsw-radius-sm);min-width:0;max-width:min(100%,240px);min-height:28px;color:var(--dsw-alias-label-primary);white-space:nowrap;cursor:pointer;background:0 0;border:none;align-items:center;gap:4px;padding:0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.FzNuaW_seat:not(:disabled):hover,.FzNuaW_seat[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}.FzNuaW_seat:disabled{cursor:default;color:var(--dsw-alias-label-quaternary)}.FzNuaW_seatIcon{color:var(--dsw-alias-label-primary);flex:none}.FzNuaW_seatLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.FzNuaW_introIcon{animation:.15s cubic-bezier(.16,1,.3,1) both FzNuaW_seat-icon-in}@keyframes FzNuaW_seat-icon-in{0%{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}.FzNuaW_introText{white-space:pre;display:inline-block}.FzNuaW_introChar{white-space:pre;opacity:0;animation:.4s ease-out forwards FzNuaW_seat-char-in;display:inline-block}@keyframes FzNuaW_seat-char-in{0%{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:reduce){.FzNuaW_introIcon,.FzNuaW_introChar{opacity:1;animation:none}}.FzNuaW_chevron{color:var(--dsw-alias-label-caption);flex:none}.FzNuaW_item{flex-direction:column;gap:2px;max-width:280px;display:flex}.FzNuaW_itemName{color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}.FzNuaW_itemDesc{color:var(--dsw-alias-label-caption);white-space:normal;font-size:12px;line-height:16px}";
+		const tagId$2 = "@deepseek-ai/dsh-client-ui-agent-preset/AgentPresetSeat.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
 			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-agent-preset";
@@ -272,93 +1229,20 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$2;
 			document.head.appendChild(tag);
 		}
-		var AgentPresetRow_module_css_default = {
-			"chevron": "apvf6q_chevron",
-			"desc": "apvf6q_desc",
-			"row": "apvf6q_row",
-			"rowText": "apvf6q_rowText",
-			"selector": "apvf6q_selector",
-			"title": "apvf6q_title"
-		};
-		//#endregion
-		//#region lib/types/client/AgentPresetRow.js
-		/**
-		* Agent-preset preference row: the preset new sessions are composed from.
-		* A running session keeps the composition it began with, so this row never
-		* disturbs work in progress.
-		*/
-		/**
-		* Render the new-session agent-preset selector.
-		* @param props - composed slot props.
-		* @returns the row, or null when the deployment composes no presets.
-		*/
-		function AgentPresetRow({ load, select, useAgentPreset, t }) {
-			const state = useAgentPreset((snapshot) => snapshot);
-			const [open, setOpen] = (0, react.useState)(false);
-			(0, react.useEffect)(() => {
-				load();
-			}, [load]);
-			(0, react.useEffect)(() => {
-				if (state.writable && state.status !== "unavailable") return;
-				setOpen(false);
-			}, [state.status, state.writable]);
-			if (state.status === "unavailable") return null;
-			const busy = state.status === "loading" || state.status === "saving";
-			const chosen = state.options.find((option) => option.id === state.currentValue);
-			const chosenText = chosen === void 0 ? void 0 : presetDisplayText(chosen, t);
-			const label = state.currentValue === "" ? t("loading") : chosenText?.name ?? state.currentValue;
-			const description = state.error ?? t("description");
-			return (0, react_jsx_runtime.jsxs)("div", {
-				className: AgentPresetRow_module_css_default.row,
-				children: [(0, react_jsx_runtime.jsxs)("div", {
-					className: AgentPresetRow_module_css_default.rowText,
-					children: [(0, react_jsx_runtime.jsx)("div", {
-						className: AgentPresetRow_module_css_default.title,
-						children: t("title")
-					}), (0, react_jsx_runtime.jsx)("div", {
-						className: AgentPresetRow_module_css_default.desc,
-						role: state.error === null ? void 0 : "alert",
-						children: description
-					})]
-				}), (0, react_jsx_runtime.jsx)(PresetMenu, {
-					options: state.options,
-					selectedId: state.currentValue,
-					label,
-					t,
-					buttonClassName: AgentPresetRow_module_css_default.selector,
-					chevronClassName: AgentPresetRow_module_css_default.chevron,
-					disabled: busy || !state.writable || state.options.length === 0,
-					open,
-					onOpenChange: setOpen,
-					onSelect: (id) => {
-						select(id);
-					}
-				})]
-			});
-		}
-		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-agent-preset\src\client\AgentPresetSeat.module.css.mjs
-		const css$1 = ".thQQkW_seat{max-width:min(100%,240px);min-height:28px;color:var(--dsw-alias-label-primary);white-space:nowrap;text-overflow:ellipsis;cursor:pointer;background:0 0;border:none;border-radius:16px;align-items:center;gap:4px;padding:0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex;overflow:hidden}.thQQkW_seat:not(:disabled):hover,.thQQkW_seat[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}.thQQkW_seat:disabled{cursor:default;color:var(--dsw-alias-label-quaternary)}.thQQkW_seatIcon{color:var(--dsw-alias-label-primary);flex:none}.thQQkW_introIcon{animation:.15s cubic-bezier(.16,1,.3,1) both thQQkW_seat-icon-in}@keyframes thQQkW_seat-icon-in{0%{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}.thQQkW_introText{white-space:pre;display:inline-block}.thQQkW_introChar{white-space:pre;opacity:0;animation:.4s ease-out forwards thQQkW_seat-char-in;display:inline-block}@keyframes thQQkW_seat-char-in{0%{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:reduce){.thQQkW_introIcon,.thQQkW_introChar{opacity:1;animation:none}}.thQQkW_chevron{color:var(--dsw-alias-label-caption);flex:none}.thQQkW_item{flex-direction:column;gap:2px;max-width:280px;display:flex}.thQQkW_itemName{color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}.thQQkW_itemDesc{color:var(--dsw-alias-label-caption);white-space:normal;font-size:12px;line-height:16px}";
-		const tagId$1 = "@deepseek-ai/dsh-client-ui-agent-preset/AgentPresetSeat.module.css";
-		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
-			const tag = document.createElement("style");
-			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-agent-preset";
-			tag.dataset.pluginCss = tagId$1;
-			tag.textContent = css$1;
-			document.head.appendChild(tag);
-		}
 		var AgentPresetSeat_module_css_default = {
-			"chevron": "thQQkW_chevron",
-			"introChar": "thQQkW_introChar",
-			"introIcon": "thQQkW_introIcon",
-			"introText": "thQQkW_introText",
-			"item": "thQQkW_item",
-			"itemDesc": "thQQkW_itemDesc",
-			"itemName": "thQQkW_itemName",
-			"seat": "thQQkW_seat",
-			"seat-char-in": "thQQkW_seat-char-in",
-			"seat-icon-in": "thQQkW_seat-icon-in",
-			"seatIcon": "thQQkW_seatIcon"
+			"chevron": "FzNuaW_chevron",
+			"introChar": "FzNuaW_introChar",
+			"introIcon": "FzNuaW_introIcon",
+			"introText": "FzNuaW_introText",
+			"item": "FzNuaW_item",
+			"itemDesc": "FzNuaW_itemDesc",
+			"itemName": "FzNuaW_itemName",
+			"menuAnchor": "FzNuaW_menuAnchor",
+			"seat": "FzNuaW_seat",
+			"seat-char-in": "FzNuaW_seat-char-in",
+			"seat-icon-in": "FzNuaW_seat-icon-in",
+			"seatIcon": "FzNuaW_seatIcon",
+			"seatLabel": "FzNuaW_seatLabel"
 		};
 		//#endregion
 		//#region lib/types/client/AgentPresetSeat.js
@@ -379,16 +1263,7 @@ window.__ModuleLoader__.load({
 		const INTRO_CHAR_STAGGER_MS = 40;
 		const INTRO_TEXT_REVEAL_MS = 200;
 		const INTRO_CHAR_FADE_MS = 400;
-		/**
-		* How long a refused switch holds before fading.
-		*
-		* Longer than the primitive's default because this banner is the only place
-		* the refusal appears. The chip's label has already snapped back to the
-		* preset the session still runs, and a preset the host refuses to MOUNT is
-		* one discovery reported healthy — its row on the settings page carries no
-		* reason to go back and read, because there was nothing to see until the
-		* rows actually ran.
-		*/
+		/** Duration of a selection-refusal banner, including a revision becoming unavailable during a pick. */
 		const REFUSAL_HOLD_MS = 8e3;
 		/**
 		* Per-character start offset for the introduce reveal.
@@ -402,16 +1277,31 @@ window.__ModuleLoader__.load({
 		/**
 		* Render the new-session agent-preset chip.
 		* @param props - composed slot props.
-		* @returns the chip, or null when the deployment composes no presets.
+		* @returns The chip and any pending selection refusal, or null outside the main view.
 		*/
-		function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, t }) {
+		function AgentPresetSeat({ sessionId, useSessionRetainInfo, load, select, dismissRefusal, introduced, useAgentPresetSeat, useDeveloperTools, t }) {
+			const developerTools = useDeveloperTools((value) => value);
 			const state = useAgentPresetSeat((snapshot) => snapshot);
+			const main = useSessionRetainInfo((info) => sessionId === void 0 || (info?.retainedBy.mainView ?? 0) > 0);
 			const [open, setOpen] = (0, react.useState)(false);
 			const toastSeq = (0, react.useRef)(0);
 			const [toast, setToast] = (0, react.useState)(null);
 			(0, react.useEffect)(() => {
+				if (state.error !== null && typeof state.error === "object") {
+					toastSeq.current += 1;
+					setToast({
+						seq: toastSeq.current,
+						error: state.error
+					});
+				} else setToast(null);
+			}, [state.error]);
+			(0, react.useEffect)(() => {
 				load();
 			}, [load]);
+			const options = (0, react.useMemo)(() => state.options.filter((option) => developerTools || !requiresCodingTools(option)), [state.options, developerTools]);
+			(0, react.useEffect)(() => {
+				setOpen(false);
+			}, [developerTools, options.length]);
 			const chosen = state.options.find((option) => option.id === state.current);
 			const label = (chosen === void 0 ? void 0 : presetDisplayText(chosen, t))?.name ?? state.current;
 			const ready = state.options.length > 0 && state.current !== "";
@@ -437,7 +1327,7 @@ window.__ModuleLoader__.load({
 				label,
 				introduced
 			]);
-			if (!ready) return null;
+			if (!main) return null;
 			const characters = Array.from(label);
 			const stagger = introStaggerMs(characters.length);
 			const shownLabel = introducing ? (0, react_jsx_runtime.jsx)("span", {
@@ -448,12 +1338,12 @@ window.__ModuleLoader__.load({
 					children: character
 				}, index))
 			}) : label;
-			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Menu, {
-				open,
+			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [ready && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Menu, {
+				open: open && options.length > 0,
 				onClose: () => {
 					setOpen(false);
 				},
-				items: state.options.map((option) => {
+				items: options.map((option) => {
 					const text = presetDisplayText(option, t);
 					return {
 						id: option.id,
@@ -472,555 +1362,256 @@ window.__ModuleLoader__.load({
 				selectedId: state.current,
 				onSelect: (id) => {
 					setOpen(false);
-					const picked = state.options.find((option) => option.id === id);
-					/* v8 ignore next */
-					const name = picked === void 0 ? id : presetDisplayText(picked, t).name;
-					select(id).then((refusal) => {
-						if (refusal === void 0) return;
-						toastSeq.current += 1;
-						setToast({
-							seq: toastSeq.current,
-							text: t("switchRefused", {
-								name,
-								reason: refusal
-							})
-						});
-					});
+					select(id);
 				},
 				align: "start",
 				portal: true,
+				className: AgentPresetSeat_module_css_default.menuAnchor,
 				anchor: (0, react_jsx_runtime.jsxs)("button", {
 					type: "button",
 					className: AgentPresetSeat_module_css_default.seat,
 					"aria-haspopup": "menu",
-					"aria-expanded": open,
-					title: state.error ?? t("seatHint"),
-					disabled: state.busy,
+					"aria-expanded": open && options.length > 0,
+					title: (typeof state.error === "object" ? state.error?.reason : state.error) ?? t("seatHint"),
+					disabled: state.busy || options.length === 0,
 					onClick: () => {
 						setOpen((value) => !value);
 					},
 					children: [
-						(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconAgentPresetOutline16, { className: introducing ? `${AgentPresetSeat_module_css_default.seatIcon} ${AgentPresetSeat_module_css_default.introIcon}` : AgentPresetSeat_module_css_default.seatIcon }),
-						shownLabel,
-						(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, { className: AgentPresetSeat_module_css_default.chevron })
+						(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconAgentPresetOutlineRegular, { className: introducing ? `${AgentPresetSeat_module_css_default.seatIcon} ${AgentPresetSeat_module_css_default.introIcon}` : AgentPresetSeat_module_css_default.seatIcon }),
+						(0, react_jsx_runtime.jsx)("span", {
+							className: AgentPresetSeat_module_css_default.seatLabel,
+							children: shownLabel
+						}),
+						(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { className: AgentPresetSeat_module_css_default.chevron })
 					]
 				})
 			}), toast !== null && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Toast, {
-				text: toast.text,
-				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconWarningOutline16, {}),
+				text: t("switchRefused", {
+					name: presetDisplayText(toast.error.preset, t).name,
+					reason: toast.error.reason
+				}),
+				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconWarningOutlineRegular, {}),
 				holdMs: REFUSAL_HOLD_MS,
 				anchor: document.querySelector("[data-composer-card]"),
 				onDone: () => {
-					setToast(null);
+					dismissRefusal(toast.error);
 				}
 			}, toast.seq)] });
 		}
 		//#endregion
-		//#region lib/types/client/settings-store.js
-		/**
-		* Agent-preset default-settings controller.
-		*
-		* Options and the current default both come from one `agentPresets.list` call:
-		* the roster already reports which id a session with no explicit choice gets,
-		* so the row needs no schema introspection. Writes target the settings
-		* namespace's `default` field, which is what the host resolves at creation.
-		*/
-		/** The agent-preset settings namespace on the host wire. */
-		const AGENT_PRESET_SETTINGS_NS = "agent-presets";
-		/**
-		* Human text for a rejected wire call. A transport failure rejects with an
-		* Error; a host or a runtime can reject with anything, and the surface still
-		* has to say something.
-		* @param error - the rejection value.
-		* @returns the message to show.
-		*/
-		function messageOf(error) {
-			return error instanceof Error ? error.message : String(error);
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-agent-preset\src\client\PresetGuideDialog.module.css.mjs
+		const css$1 = "._7RM3pq_guideDialog{box-sizing:border-box;gap:0;width:min(640px,100%);height:min(600px,100%);max-height:100%;padding:0}._7RM3pq_guideLayout{flex-direction:column;height:100%;min-height:0;display:flex}._7RM3pq_guideHeader{flex:none;padding:24px 24px 20px 28px}._7RM3pq_guideTitleRow{justify-content:space-between;align-items:center;gap:16px;display:flex}._7RM3pq_guideTitle{margin:0;font-size:20px;font-weight:600;line-height:28px}._7RM3pq_guideIntro{color:var(--dsw-alias-label-secondary);margin:8px 0 0;font-size:14px;line-height:22px}._7RM3pq_guideClose{border-radius:var(--dsw-radius-md);width:32px;height:32px;min-height:32px;color:var(--dsw-alias-label-tertiary);padding:0}._7RM3pq_guideTabs{flex:none;margin:0 28px 22px}._7RM3pq_guidePanel{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);overscroll-behavior:contain;scrollbar-gutter:stable;min-height:0;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;flex:1;padding:0 24px 24px 28px;font-size:16px;overflow-y:auto}._7RM3pq_guidePanel:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}._7RM3pq_guidePanel h3{margin:28px 0 10px;font-size:16px;font-weight:600;line-height:24px}._7RM3pq_guidePanel h3:first-child{margin-top:0}._7RM3pq_guidePanel p{color:var(--dsw-alias-label-primary);margin:0 0 16px;font-size:16px;line-height:1.625}._7RM3pq_guidePanel blockquote{border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-module-platform);border:0;margin:10px 0 14px;padding:14px 16px}._7RM3pq_guidePanel blockquote p{color:var(--dsw-alias-label-primary);margin:0}._7RM3pq_guidePanel[data-guide-page=usage] p{color:var(--dsw-alias-label-secondary);margin-bottom:12px;font-size:14px;line-height:22px}._7RM3pq_guidePanel[data-guide-page=usage] h3{margin:0}._7RM3pq_guideExample+._7RM3pq_guideExample{margin-top:28px}._7RM3pq_guideExampleHeader{flex-wrap:wrap;align-items:center;gap:8px 10px;margin-bottom:8px;display:flex}._7RM3pq_guideExampleTag{flex-shrink:0;gap:4px}._7RM3pq_guidePanel[data-guide-page=usage] blockquote{margin:8px 0;padding:12px 16px}._7RM3pq_guidePanel[data-guide-page=usage] blockquote p{color:var(--dsw-alias-label-primary);margin:0;font-size:16px;line-height:26px}";
+		const tagId$1 = "@deepseek-ai/dsh-client-ui-agent-preset/PresetGuideDialog.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-agent-preset";
+			tag.dataset.pluginCss = tagId$1;
+			tag.textContent = css$1;
+			document.head.appendChild(tag);
 		}
-		/**
-		* Persist one preset as the default for sessions created later.
-		*
-		* The default is a settings field rather than a preset property, so both the
-		* General row and the management section write it here — one home for which
-		* namespace and field the host resolves at session creation.
-		* @param api - the settings wire face.
-		* @param id - the preset to make default.
-		* @returns the failure message, or undefined once the write landed.
-		*/
-		async function writeDefaultPreset(api, id) {
-			let response;
-			try {
-				response = await api.settings.update(AGENT_PRESET_SETTINGS_NS, { default: id }, void 0);
-			} catch (error) {
-				return messageOf(error);
-			}
-			return response.ok ? void 0 : response.error.message;
-		}
-		const EMPTY_ROSTER = {
-			presets: [],
-			authorable: false
-		};
-		/**
-		* Read the roster, folding both refusal shapes into one message.
-		*
-		* The wire refuses in two ways — the transport rejects, or it answers an
-		* `ok: false` envelope — and every surface treats them identically. Folding
-		* them here keeps each store's `load` about what it does with a roster rather
-		* than about how the call can fail.
-		* @param remote - the agent-preset Remote namespace.
-		* @returns the roster, or the message to show in its place.
-		*/
-		async function readRoster(remote) {
-			try {
-				const result = await remote.agentPresets.list();
-				if (result.ok) return {
-					ok: true,
-					value: result.value
-				};
-				if (result.error.code === "invocation-unavailable") return {
-					ok: true,
-					value: EMPTY_ROSTER
-				};
-				return {
-					ok: false,
-					error: result.error.message
-				};
-			} catch (error) {
-				return {
-					ok: false,
-					error: messageOf(error)
-				};
-			}
-		}
-		/**
-		* The opening move every roster-backed surface makes: refuse a read that is
-		* already in flight, mark the store loading, then read.
-		*
-		* A surface that gets `undefined` returns without touching its snapshot
-		* further — either another read owns it, or this one already wrote the
-		* failure. What differs between surfaces starts after this.
-		* @param remote - the agent-preset Remote namespace.
-		* @param store - the surface's own snapshot store.
-		* @returns the roster, or undefined when the caller should return.
-		*/
-		async function beginRosterRead(remote, store) {
-			const before = store.getSnapshot();
-			if (before.status === "loading") return void 0;
-			store.set({
-				...before,
-				status: "loading",
-				error: null
-			});
-			const roster = await readRoster(remote);
-			if (roster.ok) return roster.value;
-			store.set({
-				...store.getSnapshot(),
-				status: "error",
-				error: roster.error
-			});
-		}
-		/**
-		* The roster entries as the pickers render them: healthy presets only.
-		*
-		* The chip and the row exist to choose the NEXT session's composition, and a
-		* broken preset cannot compose one — offering it would defer the discovery
-		* of that fact to a failed session start. The management section renders the
-		* full roster (broken rows included) from its own store instead.
-		*
-		* The chip, the row, and the management section all show the same facts, and
-		* `exactOptionalPropertyTypes` makes "absent" and "present as undefined"
-		* different shapes — so the spread dance belongs in one place rather than
-		* once per store.
-		* @param presets - the roster the host answered with.
-		* @returns one option per selectable preset, in roster order.
-		*/
-		function presetOptions(presets) {
-			return presets.filter((preset) => preset.broken === void 0).map((preset) => ({
-				id: preset.id,
-				trust: preset.trust,
-				...preset.name === void 0 ? {} : { name: preset.name },
-				...preset.description === void 0 ? {} : { description: preset.description }
-			}));
-		}
-		const INITIAL$2 = {
-			status: "idle",
-			error: null,
-			writable: true,
-			currentValue: "",
-			options: []
-		};
-		/** Reads the roster and persists the chosen default. */
-		var AgentPresetSettingsController = class {
-			api;
-			remote;
-			describeFace;
-			/** Row snapshot the renderer subscribes to. */
-			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(INITIAL$2);
-			/**
-			* @param api - the settings wire face (the default write).
-			* @param remote - the agent-preset Remote namespace (the roster read).
-			* @param describeFace - the shared mirror's describe face (writability source).
-			*/
-			constructor(api, remote, describeFace) {
-				this.api = api;
-				this.remote = remote;
-				this.describeFace = describeFace;
-			}
-			set(patch) {
-				this.store.set({
-					...this.store.getSnapshot(),
-					...patch
-				});
-			}
-			/**
-			* Load the roster. An empty roster means the deployment composes no
-			* presets, which is a valid deployment rather than a failure — the row
-			* reports `unavailable` and renders nothing.
-			* @returns once the snapshot reflects the host.
-			*/
-			async load() {
-				const roster = await beginRosterRead(this.remote, this.store);
-				if (roster === void 0) return;
-				const { presets } = roster;
-				const [first] = presets;
-				if (first === void 0) {
-					this.set({
-						status: "unavailable",
-						options: [],
-						currentValue: ""
-					});
-					return;
-				}
-				await this.describeFace.ensure();
-				this.set({
-					status: "ready",
-					error: null,
-					writable: this.describeFace.getSnapshot().view?.writable ?? false,
-					options: presetOptions(presets),
-					currentValue: presets.find((preset) => preset.isDefault)?.id ?? first.id
-				});
-			}
-			/**
-			* Persist one preset as the default for sessions created later. Running
-			* sessions keep the composition they were created with, so this never
-			* disturbs work in progress.
-			* @param id - the preset to make default.
-			* @returns once the write settled and the roster was re-read.
-			*/
-			async select(id) {
-				const before = this.store.getSnapshot();
-				if (before.status === "saving" || id === before.currentValue) return;
-				this.set({
-					status: "saving",
-					error: null,
-					currentValue: id
-				});
-				const failure = await writeDefaultPreset(this.api, id);
-				if (failure !== void 0) {
-					this.set({
-						status: "ready",
-						currentValue: before.currentValue,
-						error: failure
-					});
-					return;
-				}
-				await this.load();
-			}
+		var PresetGuideDialog_module_css_default = {
+			"guideClose": "_7RM3pq_guideClose",
+			"guideDialog": "_7RM3pq_guideDialog",
+			"guideExample": "_7RM3pq_guideExample",
+			"guideExampleHeader": "_7RM3pq_guideExampleHeader",
+			"guideExampleTag": "_7RM3pq_guideExampleTag",
+			"guideHeader": "_7RM3pq_guideHeader",
+			"guideIntro": "_7RM3pq_guideIntro",
+			"guideLayout": "_7RM3pq_guideLayout",
+			"guidePanel": "_7RM3pq_guidePanel",
+			"guideTabs": "_7RM3pq_guideTabs",
+			"guideTitle": "_7RM3pq_guideTitle",
+			"guideTitleRow": "_7RM3pq_guideTitleRow"
 		};
 		//#endregion
-		//#region lib/types/client/section-store.js
+		//#region lib/types/client/PresetGuideDialog.js
+		/** Read-only help stays local to Settings and never changes the selected preset. */
+		const guides = new Map([
+			["standard", {
+				name: "presetStandardName",
+				intro: "guideStandardIntro",
+				explanation: "guideStandardExplanation",
+				usage: "guideStandardUsage"
+			}],
+			["ptc", {
+				name: "presetPtcName",
+				intro: "guidePtcIntro",
+				explanation: "guidePtcExplanation",
+				usage: "guidePtcUsage"
+			}],
+			["minimal", {
+				name: "presetMinimalName",
+				intro: "guideMinimalIntro",
+				explanation: "guideMinimalExplanation",
+				usage: "guideMinimalUsage"
+			}],
+			["cordis", {
+				name: "presetCordisName",
+				intro: "guideCordisIntro",
+				explanation: "guideCordisExplanation",
+				usage: "guideCordisUsage"
+			}]
+		]);
 		/**
-		* Agent-preset management controller: the roster as a list, a copy dialog as
-		* the only way a preset is created, and a read-only viewer over the shipped
-		* compositions.
-		*
-		* The browser edits no composition text. A new preset is a host-side copy of
-		* an existing one (`{ from, id, name? }` is all that crosses the wire), and
-		* everything after creation happens in the preset's own files — which is why
-		* the page's other job is getting the user TO those files: open the directory
-		* where the host has a desktop, show its path where it does not.
-		*
-		* The host stays the single fact source. Every mutation writes through the
-		* wire and the page re-reads the roster afterwards, because a copy changes
-		* more than the row it targeted.
+		* Look up help only for known, shipped presets.
+		* @param id - preset identifier from the roster.
+		* @param trust - roster source; custom presets own their capability claims.
+		* @returns the shipped guide, or undefined for unknown and custom presets.
 		*/
-		/** Ids a preset directory may be named, mirroring the host's own rule. */
-		const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/;
-		const INITIAL$1 = {
-			status: "idle",
-			error: null,
-			authorable: false,
-			hasDocument: false,
-			rows: [],
-			copy: null,
-			view: null,
-			pendingDelete: null,
-			deleting: false,
-			revealedPaths: {}
-		};
-		/**
-		* Why this copy cannot be submitted yet, as a locale key, or undefined when
-		* it can. Client-side only: the host re-checks the id and its answer is what
-		* the dialog reports on failure.
-		* @param draft - the open copy dialog.
-		* @param rows - the roster, for the collision check.
-		* @returns the blocking reason's locale key, or undefined when submittable.
-		*/
-		function draftBlocker(draft, rows) {
-			if (draft.id === "") return "idRequired";
-			if (!PRESET_ID.test(draft.id)) return "idInvalid";
-			if (rows.some((row) => row.id === draft.id)) return "idTaken";
+		function presetGuide(id, trust) {
+			return trust === "system" ? guides.get(id) : void 0;
 		}
-		/** Reads the roster and drives the copy dialog, viewer, and location reveals. */
-		var AgentPresetSectionController = class {
-			remote;
-			rosterChanged;
-			/** Page snapshot the renderer subscribes to. */
-			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(INITIAL$1);
-			constructor(remote, rosterChanged = () => {}) {
-				this.remote = remote;
-				this.rosterChanged = rosterChanged;
+		/** Keep keyboard focus inside a preset reader while Tab moves through its controls.
+		* @param event Keyboard event from the active reader.
+		*/
+		function trapPresetReaderTab(event) {
+			if (event.key !== "Tab") return;
+			const targets = Array.from(event.currentTarget.querySelectorAll("button:not([disabled]):not([tabindex=\"-1\"]), [tabindex=\"0\"]")).filter((element) => !element.closest("[hidden]"));
+			const first = targets[0];
+			const last = targets[targets.length - 1];
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault();
+				last?.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault();
+				first?.focus();
 			}
-			set(patch) {
-				this.store.set({
-					...this.store.getSnapshot(),
-					...patch
-				});
-			}
-			patchCopy(patch) {
-				const { copy } = this.store.getSnapshot();
-				if (copy === null) return;
-				this.set({ copy: {
-					...copy,
-					...patch
-				} });
-			}
-			/**
-			* Load the roster. An empty roster means the deployment composes no
-			* presets, which is a valid deployment rather than a failure — the section
-			* reports `unavailable` and renders nothing.
-			* @returns once the snapshot reflects the host.
-			*/
-			async load() {
-				const opener = this.remote.settings.canOpenAgentPresetDirectory();
-				const roster = await beginRosterRead(this.remote, this.store);
-				const described = await opener.catch(() => void 0);
-				if (roster === void 0) return;
-				const { presets, authorable } = roster;
-				const hasDocument = described?.ok === true && described.value;
-				if (presets.length === 0) {
-					this.set({
-						status: "unavailable",
-						rows: [],
-						authorable,
-						hasDocument,
-						copy: null,
-						view: null
-					});
-					return;
-				}
-				const revealed = this.store.getSnapshot().revealedPaths;
-				const kept = Object.fromEntries(Object.entries(revealed).filter(([id]) => presets.some((preset) => preset.id === id)));
-				this.set({
-					status: "ready",
-					error: null,
-					authorable,
-					hasDocument,
-					rows: presets.map((preset) => ({ ...preset })),
-					revealedPaths: kept
-				});
-			}
-			/**
-			* Open one shipped preset's composition in the read-only viewer.
-			* @param id - the preset to view.
-			* @returns once the composition loaded or the failure is on the page.
-			*/
-			async view(id) {
-				this.set({ error: null });
-				try {
-					const result = await this.remote.agentPresets.read(id);
-					if (!result.ok) {
-						this.set({ error: result.error.message });
-						return;
+		}
+		/** Curated usage dictionaries contain only level-three example sections. */
+		function GuideUsage({ text, t }) {
+			const labels = {
+				code: {
+					copyLabel: t("guideCopy"),
+					copiedLabel: t("guideCopied"),
+					toolbarLabels: {
+						codeLabel: t("codeBlock.title"),
+						wrapLabel: t("codeBlock.wrap"),
+						unwrapLabel: t("codeBlock.unwrap")
 					}
-					const { name, content } = result.value;
-					this.set({ view: {
-						id,
-						title: name ?? id,
-						content
-					} });
-				} catch (error) {
-					this.set({ error: messageOf(error) });
-				}
-			}
-			/** Close the read-only viewer. */
-			closeView() {
-				this.set({ view: null });
-			}
-			/**
-			* Open the copy dialog over one preset.
-			* @param from - the preset the copy will start from.
-			*/
-			beginCopy(from) {
-				const row = this.store.getSnapshot().rows.find((candidate) => candidate.id === from);
-				this.set({
-					error: null,
-					copy: {
-						from,
-						fromTitle: row?.name ?? from,
-						id: "",
-						name: "",
-						saving: false,
-						error: null
-					}
-				});
-			}
-			/** Close the copy dialog, discarding whatever was typed. */
-			cancelCopy() {
-				this.set({ copy: null });
-			}
-			/**
-			* Name the preset the copy creates.
-			* @param id - the id typed into the dialog.
-			*/
-			setCopyId(id) {
-				this.patchCopy({
-					id,
-					error: null
-				});
-			}
-			/**
-			* Name the copy's display name.
-			* @param name - the display name typed into the dialog.
-			*/
-			setCopyName(name) {
-				this.patchCopy({
-					name,
-					error: null
-				});
-			}
-			/**
-			* Submit the copy, re-read the roster, then take the user to the new
-			* preset's files — the directory opens where the host has a desktop, and
-			* its path appears on the new row where it does not.
-			* @returns once the copy settled and the page reflects it.
-			*/
-			async confirmCopy() {
-				const draft = this.store.getSnapshot().copy;
-				if (draft === null || draft.saving) return;
-				if (draftBlocker(draft, this.store.getSnapshot().rows) !== void 0) return;
-				this.patchCopy({
-					saving: true,
-					error: null
-				});
-				try {
-					const name = draft.name.trim();
-					const result = await this.remote.agentPresets.copy(draft.from, draft.id, name === "" ? void 0 : name);
-					if (!result.ok) {
-						this.patchCopy({
-							saving: false,
-							error: result.error.message
-						});
-						return;
-					}
-					this.set({ copy: null });
-					await this.load();
-					this.rosterChanged();
-					await this.openLocation(draft.id);
-				} catch (error) {
-					this.patchCopy({
-						saving: false,
-						error: messageOf(error)
-					});
-				}
-			}
-			/**
-			* Open one preset's directory on the host desktop, or reveal its path on
-			* the row where the deployment has no opener to hand it to.
-			* @param id - the preset whose files the user wants.
-			* @returns once the host answered and the page reflects it.
-			*/
-			async openLocation(id) {
-				try {
-					const result = await this.remote.settings.openAgentPresetDirectory(id);
-					if (!result.ok) {
-						this.set({ error: result.error.message });
-						return;
-					}
-					if (result.value.opened) return;
-					const { path } = result.value;
-					this.set({ revealedPaths: {
-						...this.store.getSnapshot().revealedPaths,
-						[id]: path
-					} });
-				} catch (error) {
-					this.set({ error: messageOf(error) });
-				}
-			}
-			/**
-			* Ask for confirmation before deleting one preset.
-			* @param id - the preset to delete, or null to dismiss the confirmation.
-			*/
-			confirmDelete(id) {
-				if (this.store.getSnapshot().deleting) return;
-				this.set({ pendingDelete: id });
-			}
-			/**
-			* Delete the preset awaiting confirmation, then re-read the roster.
-			*
-			* A session already composed from it keeps running: its composition was
-			* mounted at creation and nothing re-reads the file.
-			* @returns once the delete settled and the page reflects it.
-			*/
-			async remove() {
-				const { pendingDelete, deleting } = this.store.getSnapshot();
-				if (pendingDelete === null || deleting) return;
-				this.set({
-					deleting: true,
-					error: null
-				});
-				try {
-					const result = await this.remote.agentPresets.deletePreset(pendingDelete);
-					if (!result.ok) {
-						this.set({
-							deleting: false,
-							pendingDelete: null,
-							error: result.error.message
-						});
-						return;
-					}
-					this.set({
-						deleting: false,
-						pendingDelete: null
-					});
-					await this.load();
-					this.rosterChanged();
-				} catch (error) {
-					this.set({
-						deleting: false,
-						pendingDelete: null,
-						error: messageOf(error)
-					});
-				}
-			}
-			/**
-			* Make one preset the default for sessions created later. Running sessions
-			* keep the composition they began with, so this never disturbs work.
-			* @param id - the preset to make default.
-			* @returns once the write settled and the roster was re-read.
-			*/
-			async makeDefault(id) {
-				const failure = await writeDefaultPreset(this.remote, id);
-				if (failure !== void 0) {
-					this.set({ error: failure });
-					return;
-				}
-				await this.load();
-			}
-		};
+				},
+				footnotes: t("guideFootnotes")
+			};
+			return text.split(/(?=^### )/m).map((section) => {
+				const headingEnd = section.indexOf("\n");
+				const title = section.slice(4, headingEnd);
+				return (0, react_jsx_runtime.jsxs)("section", {
+					className: PresetGuideDialog_module_css_default.guideExample,
+					children: [(0, react_jsx_runtime.jsxs)("div", {
+						className: PresetGuideDialog_module_css_default.guideExampleHeader,
+						children: [(0, react_jsx_runtime.jsx)("h3", { children: title }), (0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.Tag, {
+							tone: "neutral",
+							className: PresetGuideDialog_module_css_default.guideExampleTag,
+							children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconListPenOutlineRegular, { size: 12 }), t("guideExampleTask")]
+						})]
+					}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {
+						text: section.slice(headingEnd + 1),
+						labels
+					})]
+				}, title);
+			});
+		}
+		/**
+		* Open read-only help without changing the selected preset.
+		* @param props - localized guide, initial page, and close callback.
+		* @returns the modal reader with independent scroll positions for each page.
+		*/
+		function PresetGuideDialog({ guide, initialPage, t, onClose }) {
+			const [page, setPage] = (0, react.useState)(initialPage);
+			const guideId = (0, react.useId)();
+			const content = (0, react.useRef)(null);
+			(0, react.useLayoutEffect)(() => {
+				content.current?.querySelector("[role=\"tab\"][aria-selected=\"true\"]")?.focus();
+			}, []);
+			const onKeyDown = (event) => {
+				if (event.key === "Escape") {
+					event.preventDefault();
+					event.stopPropagation();
+					onClose();
+				} else trapPresetReaderTab(event);
+			};
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
+				open: true,
+				headless: true,
+				onClose,
+				title: t(guide.name),
+				className: PresetGuideDialog_module_css_default.guideDialog,
+				children: (0, react_jsx_runtime.jsxs)("div", {
+					ref: content,
+					className: PresetGuideDialog_module_css_default.guideLayout,
+					role: "presentation",
+					onKeyDownCapture: onKeyDown,
+					children: [
+						(0, react_jsx_runtime.jsxs)("div", {
+							className: PresetGuideDialog_module_css_default.guideHeader,
+							children: [(0, react_jsx_runtime.jsxs)("div", {
+								className: PresetGuideDialog_module_css_default.guideTitleRow,
+								children: [(0, react_jsx_runtime.jsx)("h2", {
+									className: PresetGuideDialog_module_css_default.guideTitle,
+									children: t(guide.name)
+								}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+									variant: "ghost",
+									className: PresetGuideDialog_module_css_default.guideClose,
+									"aria-label": t("close"),
+									onClick: onClose,
+									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 18 })
+								})]
+							}), (0, react_jsx_runtime.jsx)("p", {
+								className: PresetGuideDialog_module_css_default.guideIntro,
+								children: t(guide.intro)
+							})]
+						}),
+						(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.SegmentedTabs, {
+							className: PresetGuideDialog_module_css_default.guideTabs,
+							label: t("guideSections"),
+							value: page,
+							onChange: setPage,
+							items: [{
+								value: "explanation",
+								label: t("modeExplanation"),
+								id: `${guideId}-explanation-tab`,
+								panelId: `${guideId}-explanation-panel`
+							}, {
+								value: "usage",
+								label: t("howToUse"),
+								id: `${guideId}-usage-tab`,
+								panelId: `${guideId}-usage-panel`
+							}]
+						}),
+						["explanation", "usage"].map((section) => (0, react_jsx_runtime.jsx)("div", {
+							id: `${guideId}-${section}-panel`,
+							role: "tabpanel",
+							"aria-labelledby": `${guideId}-${section}-tab`,
+							className: PresetGuideDialog_module_css_default.guidePanel,
+							"data-guide-page": section,
+							hidden: page !== section,
+							tabIndex: 0,
+							children: section === "usage" ? (0, react_jsx_runtime.jsx)(GuideUsage, {
+								text: t(guide.usage),
+								t
+							}) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {
+								text: t(guide.explanation),
+								labels: {
+									code: {
+										copyLabel: t("guideCopy"),
+										copiedLabel: t("guideCopied"),
+										toolbarLabels: {
+											codeLabel: t("codeBlock.title"),
+											wrapLabel: t("codeBlock.wrap"),
+											unwrapLabel: t("codeBlock.unwrap")
+										}
+									},
+									footnotes: t("guideFootnotes")
+								}
+							})
+						}, section))
+					]
+				})
+			});
+		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-agent-preset\src\client\AgentPresetSection.module.css.mjs
-		const css = ".x2Bjra_section{max-width:720px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}.x2Bjra_title{margin:0;font-size:18px;font-weight:600}.x2Bjra_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px}.x2Bjra_group{flex-direction:column;gap:10px;display:flex}.x2Bjra_group+.x2Bjra_group{margin-top:20px}.x2Bjra_groupHead{letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;font-weight:600}.x2Bjra_cards{grid-template-columns:repeat(auto-fill,minmax(268px,1fr));grid-auto-rows:1fr;gap:12px;margin:0;padding:0;list-style:none;display:grid}.x2Bjra_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;flex-direction:column;transition:border-color .16s,background .16s;display:flex}.x2Bjra_card:hover:not(.x2Bjra_cardActive){border-color:var(--dsw-alias-label-dimmed)}.x2Bjra_cardActive{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-primary)}.x2Bjra_cardBroken,.x2Bjra_cardBroken:hover{border-color:var(--dsw-alias-state-error-primary)}.x2Bjra_brokenBadge{white-space:nowrap;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-bg-layer-3);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.x2Bjra_brokenTip{z-index:1;background:var(--dsw-alias-label-primary);width:max-content;max-width:100%;color:var(--dsw-alias-bg-layer-3);text-align:left;white-space:pre-line;overflow-wrap:anywhere;opacity:0;pointer-events:none;border-radius:6px;padding:6px 8px;font-size:11px;font-weight:400;line-height:1.5;transition:opacity .12s;position:absolute;top:calc(100% + 6px);left:0}.x2Bjra_brokenBadge:hover .x2Bjra_brokenTip,.x2Bjra_cardMain:focus-visible .x2Bjra_brokenTip{opacity:1}.x2Bjra_cardMain[aria-disabled=true]{cursor:default}.x2Bjra_cardBrokenReason{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}.x2Bjra_cardMain{appearance:none;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px 12px 0 0;flex-direction:column;flex:1;gap:8px;padding:14px 16px 12px;display:flex}.x2Bjra_cardMain:disabled{cursor:default}.x2Bjra_cardMain:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.x2Bjra_cardHead{align-items:center;gap:8px;display:flex;position:relative}.x2Bjra_cardName{font-size:15px;font-weight:600;line-height:1.4}.x2Bjra_badge,.x2Bjra_inUse{white-space:nowrap;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.x2Bjra_badge{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary)}.x2Bjra_inUse{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3);margin-left:auto}.x2Bjra_cardDesc{color:var(--dsw-alias-label-secondary);-webkit-line-clamp:4;overflow-wrap:anywhere;-webkit-box-orient:vertical;min-height:42px;font-size:13px;line-height:1.55;display:-webkit-box;overflow:hidden}.x2Bjra_cardId{font-family:var(--dsw-font-mono,ui-monospace, SFMono-Regular, Menlo, monospace);color:var(--dsw-alias-label-dimmed);margin-top:auto;font-size:11px}.x2Bjra_cardFoot{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;gap:2px;padding:6px 10px;display:flex}.x2Bjra_iconButton{appearance:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;border-radius:7px;align-items:center;padding:6px;display:inline-flex;position:relative}.x2Bjra_iconButton:disabled{opacity:.4;cursor:default}.x2Bjra_iconButton:hover:not(:disabled){background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}.x2Bjra_iconButton:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}.x2Bjra_iconButton:after{content:attr(data-tip);background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3);white-space:nowrap;opacity:0;pointer-events:none;border-radius:6px;padding:3px 8px;font-size:11px;line-height:17px;transition:opacity .12s;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translate(-50%)}.x2Bjra_iconButton:hover:after,.x2Bjra_iconButton:focus-visible:after{opacity:1}.x2Bjra_iconDanger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}.x2Bjra_revealedPath{color:var(--dsw-alias-label-tertiary);align-items:baseline;gap:6px;margin:0;padding:6px 16px 10px;font-size:11px;display:flex}.x2Bjra_revealedPath code{font-family:var(--dsw-font-mono,ui-monospace, SFMono-Regular, Menlo, monospace);color:var(--dsw-alias-label-secondary);user-select:all;overflow-wrap:anywhere}.x2Bjra_revealedPathLabel{white-space:nowrap}.x2Bjra_secondaryButton{color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:7px;padding:5px 8px;font-size:12.5px}.x2Bjra_secondaryButton:hover:not(:disabled){background:var(--dsw-alias-bg-layer-1)}.x2Bjra_secondaryButton:disabled{opacity:.5;cursor:default}.x2Bjra_field{flex-direction:column;gap:6px;display:flex}.x2Bjra_fieldLabel{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500}.x2Bjra_input{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);font:inherit;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:10px;padding:9px 12px;font-size:13px}.x2Bjra_input:focus{border-color:var(--dsw-alias-brand-primary);outline:none}.x2Bjra_input::placeholder{color:var(--dsw-alias-label-dimmed)}.x2Bjra_dialog{width:min(560px,100%)}.x2Bjra_dialogFields{flex-direction:column;gap:12px;display:flex}.x2Bjra_viewerCode{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);max-height:min(52vh,480px);color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-mono,ui-monospace, SFMono-Regular, Menlo, monospace);white-space:pre;tab-size:2;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:10px;margin:0;padding:12px;font-size:12.5px;line-height:1.5;overflow:auto}.x2Bjra_error{color:var(--dsw-alias-state-error-primary);margin:0;font-size:12px}.x2Bjra_deleteDialog{width:min(480px,100%)}.x2Bjra_deleteConfirm:not(:disabled){border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}.x2Bjra_deleteConfirm:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.x2Bjra_creatorButton{box-sizing:border-box;border:1px dashed var(--dsw-alias-border-l3);height:44px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border-radius:12px;justify-content:center;align-self:stretch;align-items:center;gap:6px;font-size:14px;line-height:22px;display:flex}.x2Bjra_creatorButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.x2Bjra_creatorButton:disabled{opacity:.4;cursor:default}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-agent-preset\src\client\AgentPresetSection.module.css.mjs
+		const css = ".mo0E1W_section{max-width:720px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}.mo0E1W_title{margin:0;font-size:18px;font-weight:600}.mo0E1W_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px}.mo0E1W_group{flex-direction:column;gap:10px;display:flex}.mo0E1W_group+.mo0E1W_group{margin-top:20px}.mo0E1W_groupHead{letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;font-weight:600}.mo0E1W_cards{grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:12px;margin:0;padding:0;list-style:none;display:grid}.mo0E1W_card{border:.5px solid var(--dsw-alias-settings-card-stroke);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-settings-card-fill);flex-direction:column;transition:border-color .16s,background .16s;display:flex}.mo0E1W_card:hover:not(.mo0E1W_cardActive){background:var(--dsw-alias-interactive-bg-hover)}.mo0E1W_cardActive{background:var(--dsw-alias-bg-module-platform);border-color:var(--dsw-static-neutral-bluish-400)}.mo0E1W_cardBroken,.mo0E1W_cardBroken:hover{border-color:var(--dsw-alias-state-error-primary)}.mo0E1W_brokenBadge{corner-shape:round;white-space:nowrap;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-bg-layer-3);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.mo0E1W_brokenTip{z-index:1;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-label-primary);width:max-content;max-width:100%;color:var(--dsw-alias-bg-layer-3);text-align:left;white-space:pre-line;overflow-wrap:anywhere;opacity:0;pointer-events:none;padding:6px 8px;font-size:11px;font-weight:400;line-height:1.5;transition:opacity .12s;position:absolute;top:calc(100% + 6px);left:0}.mo0E1W_brokenBadge:hover .mo0E1W_brokenTip,.mo0E1W_cardMain:focus-visible .mo0E1W_brokenTip{opacity:1}.mo0E1W_cardMain[aria-disabled=true]{cursor:default}.mo0E1W_cardBrokenReason{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}.mo0E1W_cardMain{appearance:none;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:var(--dsw-radius-xl) var(--dsw-radius-xl) 0 0;background:0 0;border:0;flex-direction:column;flex:1;gap:12px;padding:14px 16px 12px;display:flex}.mo0E1W_cardMain:disabled{cursor:default}.mo0E1W_cardMain:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}.mo0E1W_cardHead{align-items:flex-start;gap:12px;display:flex;position:relative}.mo0E1W_cardIdentity{flex:1;align-items:center;gap:6px;min-width:0;display:flex}.mo0E1W_cardName{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:15px;font-weight:600;line-height:1.4;overflow:hidden}.mo0E1W_cardDesc{color:var(--dsw-alias-label-secondary);-webkit-line-clamp:4;overflow-wrap:anywhere;-webkit-box-orient:vertical;margin-block:auto;font-size:13px;line-height:1.55;display:-webkit-box;overflow:hidden}.mo0E1W_cardId{max-width:35%;font-family:var(--dsw-font-mono,ui-monospace, SFMono-Regular, Menlo, monospace);color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;font-size:11px;line-height:21px;overflow:hidden}.mo0E1W_cardFoot{border-top:.5px solid var(--dsw-alias-border-l2);flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:2px;padding:6px 10px;display:flex}.mo0E1W_cardHelp{align-items:center;gap:4px;margin-right:auto;display:flex}.mo0E1W_helpButton{min-height:28px;color:var(--dsw-alias-label-tertiary);padding:5px 6px;font-size:12px;font-weight:400}.mo0E1W_helpButton:hover,.mo0E1W_helpButton:focus-visible{color:var(--dsw-alias-label-primary)}.mo0E1W_iconButton{appearance:none;border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;align-items:center;padding:6px;display:inline-flex;position:relative}.mo0E1W_iconButton:hover{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}.mo0E1W_iconButton:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}.mo0E1W_iconButton:after{content:attr(data-tip);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3);white-space:nowrap;opacity:0;pointer-events:none;padding:3px 8px;font-size:11px;line-height:17px;transition:opacity .12s;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translate(-50%)}.mo0E1W_iconButton:hover:after,.mo0E1W_iconButton:focus-visible:after{opacity:1}.mo0E1W_dialog{width:min(720px,100%)}.mo0E1W_viewerCode{border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-2);max-height:min(60vh,560px);color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-mono,ui-monospace, SFMono-Regular, Menlo, monospace);white-space:pre;tab-size:2;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);margin:0;padding:12px;font-size:12.5px;line-height:1.5;overflow:auto}.mo0E1W_error{color:var(--dsw-alias-state-error-primary);margin:0;font-size:12px}.mo0E1W_creatorButton{box-sizing:border-box;border:1px dashed var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-lg);height:44px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;justify-content:center;align-self:stretch;align-items:center;gap:6px;font-size:14px;line-height:22px;display:flex}.mo0E1W_creatorButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.mo0E1W_creatorButton:disabled{opacity:.4;cursor:default}";
 		const tagId = "@deepseek-ai/dsh-client-ui-agent-preset/AgentPresetSection.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1030,134 +1621,35 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var AgentPresetSection_module_css_default = {
-			"badge": "x2Bjra_badge",
-			"brokenBadge": "x2Bjra_brokenBadge",
-			"brokenTip": "x2Bjra_brokenTip",
-			"card": "x2Bjra_card",
-			"cardActive": "x2Bjra_cardActive",
-			"cardBroken": "x2Bjra_cardBroken",
-			"cardBrokenReason": "x2Bjra_cardBrokenReason",
-			"cardDesc": "x2Bjra_cardDesc",
-			"cardFoot": "x2Bjra_cardFoot",
-			"cardHead": "x2Bjra_cardHead",
-			"cardId": "x2Bjra_cardId",
-			"cardMain": "x2Bjra_cardMain",
-			"cardName": "x2Bjra_cardName",
-			"cards": "x2Bjra_cards",
-			"creatorButton": "x2Bjra_creatorButton",
-			"deleteConfirm": "x2Bjra_deleteConfirm",
-			"deleteDialog": "x2Bjra_deleteDialog",
-			"dialog": "x2Bjra_dialog",
-			"dialogFields": "x2Bjra_dialogFields",
-			"error": "x2Bjra_error",
-			"field": "x2Bjra_field",
-			"fieldLabel": "x2Bjra_fieldLabel",
-			"group": "x2Bjra_group",
-			"groupHead": "x2Bjra_groupHead",
-			"iconButton": "x2Bjra_iconButton",
-			"iconDanger": "x2Bjra_iconDanger",
-			"inUse": "x2Bjra_inUse",
-			"input": "x2Bjra_input",
-			"intro": "x2Bjra_intro",
-			"revealedPath": "x2Bjra_revealedPath",
-			"revealedPathLabel": "x2Bjra_revealedPathLabel",
-			"secondaryButton": "x2Bjra_secondaryButton",
-			"section": "x2Bjra_section",
-			"title": "x2Bjra_title",
-			"viewerCode": "x2Bjra_viewerCode"
+			"brokenBadge": "mo0E1W_brokenBadge",
+			"brokenTip": "mo0E1W_brokenTip",
+			"card": "mo0E1W_card",
+			"cardActive": "mo0E1W_cardActive",
+			"cardBroken": "mo0E1W_cardBroken",
+			"cardBrokenReason": "mo0E1W_cardBrokenReason",
+			"cardDesc": "mo0E1W_cardDesc",
+			"cardFoot": "mo0E1W_cardFoot",
+			"cardHead": "mo0E1W_cardHead",
+			"cardHelp": "mo0E1W_cardHelp",
+			"cardId": "mo0E1W_cardId",
+			"cardIdentity": "mo0E1W_cardIdentity",
+			"cardMain": "mo0E1W_cardMain",
+			"cardName": "mo0E1W_cardName",
+			"cards": "mo0E1W_cards",
+			"creatorButton": "mo0E1W_creatorButton",
+			"dialog": "mo0E1W_dialog",
+			"error": "mo0E1W_error",
+			"group": "mo0E1W_group",
+			"groupHead": "mo0E1W_groupHead",
+			"helpButton": "mo0E1W_helpButton",
+			"iconButton": "mo0E1W_iconButton",
+			"intro": "mo0E1W_intro",
+			"section": "mo0E1W_section",
+			"title": "mo0E1W_title",
+			"viewerCode": "mo0E1W_viewerCode"
 		};
 		//#endregion
 		//#region lib/types/client/AgentPresetSection.js
-		/**
-		* Agent-presets settings section: the roster as cards, a copy dialog as the
-		* only way a preset is created, and a read-only viewer over the shipped
-		* compositions.
-		*
-		* The browser edits no composition text — a shipped preset opens read-only to
-		* be READ (it is the known-good composition a copy starts from), and a custom
-		* preset is edited in its own files, which is what the location action leads
-		* to. Deleting a preset leaves running sessions alone: a composition is
-		* mounted once at session creation and nothing re-reads the file.
-		*/
-		function CopyDialog({ state, t, actions }) {
-			const draft = state.copy;
-			const blocker = draft === null ? void 0 : draftBlocker(draft, state.rows);
-			const message = draft === null ? null : draft.error ?? (blocker === void 0 ? null : t(blocker));
-			const source = draft === null ? void 0 : state.rows.find((row) => row.id === draft.from);
-			const sourceTitle = source === void 0 ? draft?.fromTitle : presetDisplayText(source, t).name;
-			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
-				open: draft !== null,
-				onClose: () => {
-					actions.cancelCopy();
-				},
-				title: draft === null ? t("copyTitle") : `${t("copyTitle")} · ${t("copyOf")} ${sourceTitle}`,
-				closeLabel: t("close"),
-				description: t("copyIntro"),
-				className: AgentPresetSection_module_css_default.dialog,
-				footer: (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-					variant: "outline",
-					disabled: draft?.saving === true,
-					onClick: () => {
-						actions.cancelCopy();
-					},
-					children: t("cancel")
-				}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-					disabled: draft === null || draft.saving || blocker !== void 0,
-					onClick: () => {
-						actions.confirmCopy();
-					},
-					children: draft?.saving === true ? t("creating") : t("create")
-				})] }),
-				children: draft === null ? null : (0, react_jsx_runtime.jsxs)("div", {
-					className: AgentPresetSection_module_css_default.dialogFields,
-					children: [
-						(0, react_jsx_runtime.jsxs)("label", {
-							className: AgentPresetSection_module_css_default.field,
-							children: [(0, react_jsx_runtime.jsx)("span", {
-								className: AgentPresetSection_module_css_default.fieldLabel,
-								children: t("presetId")
-							}), (0, react_jsx_runtime.jsx)("input", {
-								className: AgentPresetSection_module_css_default.input,
-								value: draft.id,
-								autoFocus: true,
-								spellCheck: false,
-								placeholder: t("presetIdPlaceholder"),
-								onChange: (event) => {
-									actions.setCopyId(event.target.value);
-								}
-							})]
-						}),
-						(0, react_jsx_runtime.jsxs)("label", {
-							className: AgentPresetSection_module_css_default.field,
-							children: [(0, react_jsx_runtime.jsx)("span", {
-								className: AgentPresetSection_module_css_default.fieldLabel,
-								children: t("displayName")
-							}), (0, react_jsx_runtime.jsx)("input", {
-								className: AgentPresetSection_module_css_default.input,
-								value: draft.name,
-								spellCheck: false,
-								placeholder: t("displayNamePlaceholder"),
-								onChange: (event) => {
-									actions.setCopyName(event.target.value);
-								}
-							})]
-						}),
-						message === null ? null : (0, react_jsx_runtime.jsx)("p", {
-							className: AgentPresetSection_module_css_default.error,
-							role: "alert",
-							children: message
-						})
-					]
-				})
-			});
-		}
-		/**
-		* Render one card's description, clamped by CSS and offered in full on hover.
-		* The tooltip is attached only while the text is actually cut off, so a short
-		* description does not answer a hover with a bubble repeating the card.
-		* @param props.text - the description as rendered, already localized.
-		* @returns the description element, tooltip-anchored while it overflows.
-		*/
 		function CardDescription({ text }) {
 			const ref = (0, react.useRef)(null);
 			const [truncated, setTruncated] = (0, react.useState)(false);
@@ -1190,52 +1682,44 @@ window.__ModuleLoader__.load({
 				})
 			});
 		}
-		/**
-		* Render the Agent presets section content column.
-		* @param props - composed slot props.
-		* @returns the section, or null when the deployment composes no presets.
+		/** Render the roster with its default, mode help, composition viewer, and the guidance to Creator mode.
+		* @param props Settings actions, snapshot hooks and localized text.
+		* @returns The preset settings section.
 		*/
-		function AgentPresetSection(props) {
-			const { useAgentPresetSection, t, load } = props;
-			const state = useAgentPresetSection((snapshot) => snapshot);
-			const viewedId = state.view?.id;
-			const viewedRow = viewedId === void 0 ? void 0 : state.rows.find((row) => row.id === viewedId);
-			const viewedTitle = state.view === null ? "" : viewedRow === void 0 ? state.view.title : presetDisplayText(viewedRow, t).name;
+		function AgentPresetSection({ useAgentPresetSection, load, view, closeView, makeDefault, startCreatorDraft, close: closeSettings, useDeveloperTools, t }) {
+			const state = useAgentPresetSection((value) => value);
+			const developerTools = useDeveloperTools((enabled) => enabled);
+			const [guide, setGuide] = (0, react.useState)(null);
+			const viewTrigger = (0, react.useRef)(null);
+			const closeViewOnUnmount = (0, react.useRef)(closeView);
 			(0, react.useEffect)(() => {
 				load();
 			}, [load]);
-			if (state.status === "unavailable") return null;
-			if (state.status === "error") {
-				/* v8 ignore next -- an error status always carries text; the fallback satisfies the nullable type */
-				const detail = state.error ?? "";
-				return (0, react_jsx_runtime.jsxs)("div", {
-					className: AgentPresetSection_module_css_default.section,
-					children: [(0, react_jsx_runtime.jsx)("p", {
-						className: AgentPresetSection_module_css_default.error,
-						role: "alert",
-						children: `${t("error")} ${detail}`
-					}), (0, react_jsx_runtime.jsx)("button", {
-						type: "button",
-						className: AgentPresetSection_module_css_default.secondaryButton,
-						onClick: () => {
-							load();
-						},
-						children: t("retry")
-					})]
-				});
-			}
-			const creatorButton = props.startCreatorDraft !== void 0 && state.rows.some((row) => row.id === "cordis") ? (0, react_jsx_runtime.jsxs)("button", {
+			(0, react.useLayoutEffect)(() => {
+				closeViewOnUnmount.current = closeView;
+			}, [closeView]);
+			(0, react.useEffect)(() => () => {
+				closeViewOnUnmount.current();
+			}, []);
+			const closeViewer = () => {
+				closeView();
+				viewTrigger.current?.focus();
+			};
+			const viewed = state.view;
+			const viewedRow = viewed === null ? void 0 : state.rows.find((row) => row.id === viewed.id);
+			const viewedTitle = viewed === null ? "" : viewedRow === void 0 ? viewed.title : presetDisplayText(viewedRow, t).name;
+			const creator = startCreatorDraft !== void 0 && state.rows.some((row) => row.id === "cordis") ? startCreatorDraft : void 0;
+			const creatorButton = creator === void 0 ? null : (0, react_jsx_runtime.jsxs)("button", {
 				type: "button",
 				className: AgentPresetSection_module_css_default.creatorButton,
-				disabled: !state.authorable,
-				title: state.authorable ? void 0 : t("duplicateUnavailable"),
+				disabled: state.saving,
 				onClick: () => {
-					props.startCreatorDraft?.();
-					props.close();
+					creator();
+					closeSettings();
 				},
-				children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutline16, { size: 14 }), t("creatorDraft")]
-			}) : null;
-			return (0, react_jsx_runtime.jsxs)("div", {
+				children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), t("creatorDraft")]
+			});
+			return (0, react_jsx_runtime.jsxs)("section", {
 				className: AgentPresetSection_module_css_default.section,
 				children: [
 					(0, react_jsx_runtime.jsx)("h2", {
@@ -1251,192 +1735,155 @@ window.__ModuleLoader__.load({
 						role: "alert",
 						children: state.error
 					}),
-					[["system", t("builtInGroup")], ["user", t("customGroup")]].map(([trust, heading]) => {
-						const group = state.rows.filter((row) => row.trust === trust).map((row) => ({
-							row,
-							text: presetDisplayText(row, t)
-						}));
-						const tail = trust === "user" ? creatorButton : null;
-						if (group.length === 0 && tail === null) return null;
+					[true, false].map((builtIn) => {
+						const rows = state.rows.filter((row) => isBuiltInPreset(row) === builtIn && (developerTools || !requiresCodingTools(row)));
+						const entry = builtIn ? null : creatorButton;
+						if (rows.length === 0 && entry === null) return null;
 						return (0, react_jsx_runtime.jsxs)("section", {
 							className: AgentPresetSection_module_css_default.group,
 							children: [
 								(0, react_jsx_runtime.jsx)("h3", {
 									className: AgentPresetSection_module_css_default.groupHead,
-									children: heading
+									children: t(builtIn ? "builtInGroup" : "customGroup")
 								}),
-								group.length === 0 ? null : (0, react_jsx_runtime.jsx)("ul", {
+								rows.length === 0 ? null : (0, react_jsx_runtime.jsx)("ul", {
 									className: AgentPresetSection_module_css_default.cards,
-									children: group.map(({ row, text }) => (0, react_jsx_runtime.jsxs)("li", {
-										className: row.broken !== void 0 ? `${AgentPresetSection_module_css_default.card} ${AgentPresetSection_module_css_default.cardBroken}` : row.isDefault ? `${AgentPresetSection_module_css_default.card} ${AgentPresetSection_module_css_default.cardActive}` : AgentPresetSection_module_css_default.card,
-										children: [
-											(0, react_jsx_runtime.jsxs)("button", {
+									children: rows.map((row) => {
+										const display = presetDisplayText(row, t);
+										const help = presetGuide(row.id, builtIn ? "system" : "user");
+										const selectionAction = row.broken !== void 0 ? t("brokenBadge") : t(row.isDefault ? "inUse" : "setDefault");
+										return (0, react_jsx_runtime.jsxs)("li", {
+											"data-agent-preset-id": row.id,
+											className: [
+												AgentPresetSection_module_css_default.card,
+												row.broken === void 0 ? void 0 : AgentPresetSection_module_css_default.cardBroken,
+												row.isDefault ? AgentPresetSection_module_css_default.cardActive : void 0
+											].filter(Boolean).join(" "),
+											children: [(0, react_jsx_runtime.jsxs)("button", {
 												type: "button",
 												className: AgentPresetSection_module_css_default.cardMain,
 												"aria-pressed": row.isDefault,
-												disabled: row.isDefault,
+												disabled: row.isDefault || row.broken === void 0 && state.saving,
 												"aria-disabled": row.broken !== void 0,
-												"aria-label": `${row.broken !== void 0 ? t("brokenBadge") : row.isDefault ? t("inUse") : t("setDefault")}: ${text.name}`,
-												title: row.broken !== void 0 ? t("brokenBadge") : row.isDefault ? t("inUse") : t("setDefault"),
+												"aria-label": `${selectionAction}: ${display.name}`,
+												title: selectionAction,
 												onClick: () => {
-													if (row.broken !== void 0) return;
-													props.makeDefault(row.id);
+													if (row.broken === void 0) makeDefault(row.id);
 												},
 												children: [
 													(0, react_jsx_runtime.jsxs)("span", {
 														className: AgentPresetSection_module_css_default.cardHead,
-														children: [
-															(0, react_jsx_runtime.jsx)("span", {
-																className: AgentPresetSection_module_css_default.cardName,
-																children: text.name
-															}),
-															row.broken !== void 0 ? (0, react_jsx_runtime.jsxs)("span", {
-																className: AgentPresetSection_module_css_default.brokenBadge,
-																children: [t("brokenBadge"), (0, react_jsx_runtime.jsx)("span", {
-																	className: AgentPresetSection_module_css_default.brokenTip,
-																	"aria-hidden": "true",
-																	children: row.broken
-																})]
-															}) : null,
-															(0, react_jsx_runtime.jsx)("span", {
-																className: AgentPresetSection_module_css_default.badge,
-																children: row.trust === "user" ? t("userTrust") : t("builtIn")
-															}),
-															row.isDefault ? (0, react_jsx_runtime.jsx)("span", {
-																className: AgentPresetSection_module_css_default.inUse,
-																children: t("inUse")
-															}) : null
-														]
+														children: [(0, react_jsx_runtime.jsxs)("span", {
+															className: AgentPresetSection_module_css_default.cardIdentity,
+															children: [
+																(0, react_jsx_runtime.jsx)("span", {
+																	className: AgentPresetSection_module_css_default.cardName,
+																	title: display.name,
+																	children: display.name
+																}),
+																row.broken === void 0 ? null : (0, react_jsx_runtime.jsxs)("span", {
+																	className: AgentPresetSection_module_css_default.brokenBadge,
+																	children: [t("brokenBadge"), (0, react_jsx_runtime.jsx)("span", {
+																		className: AgentPresetSection_module_css_default.brokenTip,
+																		"aria-hidden": "true",
+																		children: row.broken
+																	})]
+																}),
+																(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tag, {
+																	tone: row.isDefault ? "solid" : "outline",
+																	children: row.isDefault ? t("inUse") : t(builtIn ? "builtInGroup" : "customGroup")
+																})
+															]
+														}), (0, react_jsx_runtime.jsx)("code", {
+															className: AgentPresetSection_module_css_default.cardId,
+															title: row.id,
+															children: row.id
+														})]
 													}),
-													(0, react_jsx_runtime.jsx)(CardDescription, { text: text.description ?? t("noDescription") }),
+													(0, react_jsx_runtime.jsx)(CardDescription, { text: display.description ?? t("noDescription") }),
 													row.broken === void 0 ? null : (0, react_jsx_runtime.jsx)("span", {
 														className: AgentPresetSection_module_css_default.cardBrokenReason,
 														role: "alert",
 														children: row.broken
-													}),
-													(0, react_jsx_runtime.jsx)("code", {
-														className: AgentPresetSection_module_css_default.cardId,
-														children: row.id
 													})
 												]
-											}),
-											(0, react_jsx_runtime.jsxs)("div", {
+											}), (0, react_jsx_runtime.jsxs)("div", {
 												className: AgentPresetSection_module_css_default.cardFoot,
-												children: [
-													row.trust === "system" ? row.broken === void 0 ? (0, react_jsx_runtime.jsx)("button", {
-														type: "button",
-														className: AgentPresetSection_module_css_default.iconButton,
-														"data-tip": t("view"),
-														"aria-label": `${t("view")}: ${text.name}`,
+												children: [help === void 0 ? null : (0, react_jsx_runtime.jsxs)("div", {
+													className: AgentPresetSection_module_css_default.cardHelp,
+													children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+														variant: "ghost",
+														className: AgentPresetSection_module_css_default.helpButton,
+														"aria-label": `${t("modeExplanation")}: ${display.name}`,
 														onClick: () => {
-															props.view(row.id);
+															setGuide({
+																content: help,
+																page: "explanation"
+															});
 														},
-														children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBrowseOutline16, {})
-													}) : null : (0, react_jsx_runtime.jsx)("button", {
-														type: "button",
-														className: AgentPresetSection_module_css_default.iconButton,
-														"data-tip": state.hasDocument ? t("openLocation") : t("showLocation"),
-														"aria-label": `${state.hasDocument ? t("openLocation") : t("showLocation")}: ${text.name}`,
+														children: t("modeExplanation")
+													}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+														variant: "ghost",
+														className: AgentPresetSection_module_css_default.helpButton,
+														"aria-label": `${t("howToUse")}: ${display.name}`,
 														onClick: () => {
-															props.openLocation(row.id);
+															setGuide({
+																content: help,
+																page: "usage"
+															});
 														},
-														children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconFolderOpenOutline16, {})
-													}),
-													(0, react_jsx_runtime.jsx)("button", {
-														type: "button",
-														className: AgentPresetSection_module_css_default.iconButton,
-														disabled: !state.authorable || row.broken !== void 0,
-														"data-tip": row.broken !== void 0 ? t("brokenNoCopy") : state.authorable ? t("duplicate") : t("duplicateUnavailable"),
-														"aria-label": `${t("duplicate")}: ${text.name}`,
-														onClick: () => {
-															props.beginCopy(row.id);
-														},
-														children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCopyOutline16, {})
-													}),
-													row.trust === "user" ? (0, react_jsx_runtime.jsx)("button", {
-														type: "button",
-														className: `${AgentPresetSection_module_css_default.iconButton} ${AgentPresetSection_module_css_default.iconDanger}`,
-														"data-tip": t("delete"),
-														"aria-label": `${t("delete")}: ${text.name}`,
-														onClick: () => {
-															props.confirmDelete(row.id);
-														},
-														children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, {})
-													}) : null
-												]
-											}),
-											state.revealedPaths[row.id] === void 0 ? null : (0, react_jsx_runtime.jsxs)("p", {
-												className: AgentPresetSection_module_css_default.revealedPath,
-												children: [(0, react_jsx_runtime.jsx)("span", {
-													className: AgentPresetSection_module_css_default.revealedPathLabel,
-													children: t("revealedPathLabel")
-												}), (0, react_jsx_runtime.jsx)("code", { children: state.revealedPaths[row.id] })]
-											})
-										]
-									}, row.id))
+														children: t("howToUse")
+													})]
+												}), (0, react_jsx_runtime.jsx)("button", {
+													type: "button",
+													className: AgentPresetSection_module_css_default.iconButton,
+													"data-tip": t("view"),
+													"aria-label": `${t("view")}: ${display.name}`,
+													onClick: (event) => {
+														viewTrigger.current = event.currentTarget;
+														view(row.id);
+													},
+													children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBrowseOutlineRegular, {})
+												})]
+											})]
+										}, row.id);
+									})
 								}),
-								tail
+								entry
 							]
-						}, trust);
+						}, String(builtIn));
 					}),
-					(0, react_jsx_runtime.jsx)(CopyDialog, {
-						state,
+					guide === null ? null : (0, react_jsx_runtime.jsx)(PresetGuideDialog, {
+						guide: guide.content,
+						initialPage: guide.page,
 						t,
-						actions: {
-							cancelCopy: props.cancelCopy,
-							confirmCopy: props.confirmCopy,
-							setCopyId: props.setCopyId,
-							setCopyName: props.setCopyName
+						onClose: () => {
+							setGuide(null);
 						}
 					}),
 					(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
-						open: state.view !== null,
-						onClose: () => {
-							props.closeView();
-						},
-						title: state.view === null ? "" : `${t("view")} · ${viewedTitle}`,
+						open: viewed !== null,
+						onClose: closeViewer,
 						closeLabel: t("close"),
-						description: t("composition"),
+						onKeyDownCapture: (event) => {
+							if (event.key === "Escape") {
+								event.preventDefault();
+								event.stopPropagation();
+								closeViewer();
+							} else trapPresetReaderTab(event);
+						},
+						title: viewed === null ? "" : `${t("view")} · ${viewedTitle}`,
 						className: AgentPresetSection_module_css_default.dialog,
 						footer: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
 							variant: "outline",
 							autoFocus: true,
-							onClick: () => {
-								props.closeView();
-							},
+							onClick: closeViewer,
 							children: t("close")
 						}),
-						children: state.view === null ? null : (0, react_jsx_runtime.jsx)("pre", {
+						children: viewed === null ? null : (0, react_jsx_runtime.jsx)("pre", {
 							className: AgentPresetSection_module_css_default.viewerCode,
-							children: state.view.content
+							children: viewed.content
 						})
-					}),
-					(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
-						open: state.pendingDelete !== null,
-						onClose: () => {
-							props.confirmDelete(null);
-						},
-						title: t("deleteTitle"),
-						closeLabel: t("close"),
-						description: t("deleteDescription"),
-						className: AgentPresetSection_module_css_default.deleteDialog,
-						footer: (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-							variant: "outline",
-							autoFocus: true,
-							disabled: state.deleting,
-							onClick: () => {
-								props.confirmDelete(null);
-							},
-							children: t("cancel")
-						}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-							variant: "outline",
-							className: AgentPresetSection_module_css_default.deleteConfirm,
-							disabled: state.deleting,
-							onClick: () => {
-								props.remove();
-							},
-							children: state.deleting ? t("deleting") : t("deleteConfirm")
-						})] })
 					})
 				]
 			});
@@ -1451,10 +1898,10 @@ window.__ModuleLoader__.load({
 		* whether the workspace connect created it or reused an existing blank one,
 		* which is why staging cannot simply ride along on `sessions.create`.
 		*
-		* The stage is forgotten once applied: the next new session starts from the
-		* deployment default again, matching the workspace picker beside it.
+		* The stage is forgotten once applied. The next new session starts from the
+		* Host-effective default again.
 		*/
-		const INITIAL = {
+		const INITIAL$1 = {
 			options: [],
 			current: "",
 			error: null,
@@ -1463,20 +1910,27 @@ window.__ModuleLoader__.load({
 		};
 		/** Stages the next session's preset and applies it when one appears. */
 		var AgentPresetSeatController = class {
-			remote;
+			ctx;
 			currentSession;
+			staged;
 			/** Chip snapshot the renderer subscribes to. */
-			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(INITIAL);
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(INITIAL$1);
 			/**
-			* The deployment default, so a consumed stage can fall back to it without
+			* The Host-effective default, so a consumed stage can fall back to it without
 			* re-reading the roster.
 			*/
 			fallback = "";
-			/** Set while a pick is waiting for a session; cleared once applied. */
-			staged;
-			constructor(remote, currentSession) {
-				this.remote = remote;
+			/** Only the newest roster read may publish after overlapping refreshes. */
+			loadGeneration = 0;
+			/** Completion of the active Host selection; Settings choices wait before staging. */
+			pendingSelection;
+			constructor(ctx, currentSession, staged = {
+				id: void 0,
+				introduce: false
+			}) {
+				this.ctx = ctx;
 				this.currentSession = currentSession;
+				this.staged = staged;
 			}
 			set(patch) {
 				this.store.set({
@@ -1484,14 +1938,21 @@ window.__ModuleLoader__.load({
 					...patch
 				});
 			}
+			clearStage() {
+				this.staged.id = void 0;
+				this.staged.introduce = false;
+			}
 			/**
-			* Read the roster and open the chip on the deployment default.
+			* Read the roster and open the chip on the Host-effective default.
 			* @returns once the snapshot reflects the host.
 			*/
 			async load() {
-				const roster = await readRoster(this.remote);
+				const generation = ++this.loadGeneration;
+				const roster = await readRoster(this.ctx);
+				if (generation !== this.loadGeneration) return;
+				const error = this.store.getSnapshot().error;
 				if (!roster.ok) {
-					this.set({ error: roster.error });
+					if (typeof error !== "object" || error === null) this.set({ error: roster.error });
 					return;
 				}
 				const { presets } = roster.value;
@@ -1499,27 +1960,25 @@ window.__ModuleLoader__.load({
 				const session = this.currentSession();
 				this.set({
 					options: presetOptions(presets),
-					current: this.staged ?? (session === void 0 ? this.fallback : presetOf(session) ?? ""),
-					error: null
+					current: this.staged.id ?? (session === void 0 ? this.fallback : presetOf(session) ?? ""),
+					error: typeof error === "object" ? error : null,
+					introduce: this.staged.introduce
 				});
+				await this.apply();
 			}
 			/**
 			* Stage one preset for the next session, applying it immediately when a
 			* blank session is already current.
 			*
-			* The refusal is returned as well as stored, because the two readers need
-			* different things from it: the chip's own label carries the standing state,
-			* while the caller that made this pick is the one that has to say why the
-			* label came back — and only it knows the pick was a person's, not the
-			* applier catching up with a session that just became current.
+			* The refusal is stored for the chip's announcement and returned to callers
+			* such as Settings that also report the result of their own write.
 			* @param id - the preset to stage.
 			* @returns the refusal text, or undefined once the pick settled.
 			*/
 			async select(id) {
 				if (this.store.getSnapshot().busy) return void 0;
 				this.stage(id);
-				await this.apply();
-				return this.store.getSnapshot().error ?? void 0;
+				return await this.apply();
 			}
 			/**
 			* Stage a pick WITHOUT the immediate apply, for a flow that starts the
@@ -1533,16 +1992,46 @@ window.__ModuleLoader__.load({
 			* chip should announce itself on the session it lands on.
 			*/
 			stage(id, introduce = false) {
-				this.staged = id;
+				this.staged.id = id;
+				this.staged.introduce = introduce;
 				this.set({
 					current: id,
 					error: null,
 					introduce
 				});
 			}
+			/** Acknowledge a displayed refusal without dismissing a newer attempt.
+			* @param refusal - the selection error whose Toast finished.
+			*/
+			dismissRefusal(refusal) {
+				if (refusal !== null && typeof refusal === "object" && this.store.getSnapshot().error === refusal) this.set({ error: refusal.reason });
+			}
+			/**
+			* Capture the exact blank Session a Settings action may bring along.
+			* @returns its id, or undefined outside a blank Session.
+			*/
+			blankSessionId() {
+				const session = this.currentSession();
+				return session?.blank === true ? session.id : void 0;
+			}
+			/**
+			* Apply a Settings choice only if its captured Session is still current and
+			* blank after any pending selection settles. The selection uses the existing stage/apply path.
+			* @param expectedSessionId - blank Session captured before the Settings write.
+			* @param id - the effective default that the write persisted.
+			* @returns the Host refusal text, or undefined when applied or no longer relevant.
+			*/
+			async syncBlankSession(expectedSessionId, id) {
+				while (this.pendingSelection !== void 0) await this.pendingSelection;
+				const session = this.currentSession();
+				if (session === void 0 || !session.blank || session.id !== expectedSessionId) return void 0;
+				this.stage(id);
+				return await this.apply();
+			}
 			/** Acknowledge the introduction cue once the chip has played it. */
 			introduced() {
 				if (!this.store.getSnapshot().introduce) return;
+				this.staged.introduce = false;
 				this.set({ introduce: false });
 			}
 			/**
@@ -1550,10 +2039,12 @@ window.__ModuleLoader__.load({
 			*
 			* Called both by `select()` and by whoever observes the current session
 			* changing, because the session may appear either before or after the pick.
-			* @returns once the switch settled, or immediately when there is nothing to do.
+			* List updates do not repeat a selection while its response is pending.
+			* @returns this attempt's Host refusal, or undefined when successful or no switch starts.
 			*/
 			async apply() {
-				const staged = this.staged;
+				if (this.store.getSnapshot().busy) return;
+				const staged = this.staged.id;
 				const session = this.currentSession();
 				if (staged === void 0) {
 					const current = session === void 0 ? this.fallback : presetOf(session) ?? "";
@@ -1562,36 +2053,39 @@ window.__ModuleLoader__.load({
 				}
 				if (session === void 0) return;
 				if (!session.blank || presetOf(session) === staged) {
-					this.staged = void 0;
+					this.clearStage();
 					return;
 				}
-				this.set({
-					busy: true,
-					error: null
-				});
+				const completion = Promise.withResolvers();
+				this.pendingSelection = completion.promise;
+				this.clearStage();
+				const refuse = (reason) => {
+					this.set({
+						error: {
+							reason,
+							preset: this.store.getSnapshot().options.find((option) => option.id === staged) ?? { id: staged }
+						},
+						current: this.staged.id ?? presetOf(session) ?? ""
+					});
+					return reason;
+				};
 				try {
-					const result = await this.remote.agentPresets.select(session.id, staged);
-					this.staged = void 0;
+					this.set({
+						busy: true,
+						error: null
+					});
+					const result = await this.ctx.remote.agentPresets.select(session.id, staged);
 					if (!result.ok) {
 						const { error } = result;
-						this.set({
-							busy: false,
-							error: "reason" in error.details && typeof error.details.reason === "string" ? error.details.reason : error.message,
-							current: presetOf(session) ?? ""
-						});
-						return;
+						return refuse("reason" in error.details && typeof error.details.reason === "string" ? error.details.reason : error.message);
 					}
-					this.set({
-						busy: false,
-						current: result.value
-					});
+					this.set({ current: this.staged.id ?? result.value });
 				} catch (error) {
-					this.staged = void 0;
-					this.set({
-						busy: false,
-						error: messageOf(error),
-						current: presetOf(session) ?? ""
-					});
+					return refuse(error instanceof Error ? error.message : String(error));
+				} finally {
+					this.pendingSelection = void 0;
+					this.set({ busy: false });
+					completion.resolve(void 0);
 				}
 			}
 		};
@@ -1600,61 +2094,269 @@ window.__ModuleLoader__.load({
 			return typeof value === "string" ? value : void 0;
 		}
 		//#endregion
+		//#region lib/types/client/section-store.js
+		const INITIAL = {
+			status: "idle",
+			error: null,
+			saving: false,
+			rows: [],
+			view: null
+		};
+		const message = (error) => error instanceof Error ? error.message : String(error);
+		/** Loads the roster, writes the default, and reads one composition at a time. */
+		var AgentPresetSectionController = class {
+			ctx;
+			/** Observable roster, selection and viewer state. */
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(INITIAL);
+			loading;
+			pendingSave;
+			viewRequest = 0;
+			constructor(ctx) {
+				this.ctx = ctx;
+			}
+			set(patch) {
+				this.store.set({
+					...this.store.getSnapshot(),
+					...patch
+				});
+			}
+			/** Refresh the roster; concurrent calls share one read.
+			* @returns Once the roster read settles.
+			*/
+			load() {
+				return this.loading ??= this.readRoster().finally(() => {
+					this.loading = void 0;
+				});
+			}
+			async readRoster() {
+				try {
+					const result = await this.ctx.remote.agentPresets.list();
+					if (!result.ok) throw new Error(result.error.message);
+					this.set({
+						status: "ready",
+						error: null,
+						rows: result.value.presets
+					});
+				} catch (error) {
+					this.set({
+						status: "error",
+						error: message(error)
+					});
+				}
+			}
+			/** Open one preset's declared composition in the viewer.
+			* @param id Preset to read.
+			* @returns Once the read settles; a current failure lands in `error`, while a read superseded by close or another read is ignored.
+			*/
+			async view(id) {
+				const request = ++this.viewRequest;
+				this.set({
+					error: null,
+					view: null
+				});
+				try {
+					const result = await this.ctx.remote.agentPresets.read(id);
+					if (request !== this.viewRequest) return;
+					if (!result.ok) throw new Error(result.error.message);
+					const { name, content } = result.value;
+					this.set({ view: {
+						id,
+						title: name ?? id,
+						content
+					} });
+				} catch (error) {
+					if (request === this.viewRequest) this.set({ error: message(error) });
+				}
+			}
+			/** Close the viewer. */
+			closeView() {
+				this.viewRequest++;
+				this.set({ view: null });
+			}
+			/** Set the default and synchronize the current blank task when supplied.
+			* @param id Selected default.
+			* @param sync Blank-session synchronization callback.
+			* @returns Once saved and refreshed.
+			*/
+			async makeDefault(id, sync) {
+				await this.save(() => writeDefaultPreset(this.ctx, id), sync);
+			}
+			/** Replace a hidden built-in default after accepted Coding Tools changes.
+			* @param shouldReset Rechecked after waiting; false when tools are enabled or this owner is disposed.
+			* @returns Once the conditional save settles; errors remain visible in the section.
+			*/
+			async reconcileCodingTools(shouldReset) {
+				while (this.pendingSave !== void 0) await this.pendingSave;
+				if (!shouldReset()) return;
+				const settings = this.ctx.configForms.get(AGENT_PRESET_SETTINGS_NS).getSnapshot();
+				if (settings.mode !== "host" || settings.status !== "ready" || !settings.writable || settings.revision === void 0) return;
+				await this.load();
+				if (!shouldReset() || this.store.getSnapshot().status !== "ready") return;
+				const rows = this.store.getSnapshot().rows;
+				if (!requiresCodingTools(rows.find((row) => row.isDefault))) return;
+				if (!rows.some((row) => row.id === "standard" && row.broken === void 0)) {
+					this.set({ error: this.ctx.locale.bind("settings.agentPreset")("standardUnavailable") });
+					return;
+				}
+				await this.save(() => writeDefaultPreset(this.ctx, "standard", settings.revision));
+			}
+			async save(write, sync) {
+				if (this.store.getSnapshot().saving) return;
+				const completion = Promise.withResolvers();
+				this.pendingSave = completion.promise;
+				this.set({
+					saving: true,
+					error: null
+				});
+				try {
+					const error = await write();
+					await this.load();
+					if (error !== void 0) throw new Error(error);
+					const selected = this.store.getSnapshot().rows.find((row) => row.isDefault);
+					if (selected !== void 0) {
+						const error = await sync?.(selected.id);
+						if (error !== void 0) throw new Error(error);
+					}
+				} catch (error) {
+					this.set({ error: message(error) });
+				} finally {
+					this.pendingSave = void 0;
+					this.set({ saving: false });
+					completion.resolve();
+				}
+			}
+		};
+		//#endregion
 		//#region lib/types/client/index.js
 		/**
-		* Agent-preset surface plugin, browser half — four surfaces over one roster:
-		* a General-settings row for the default preset, a chip on the new-session
-		* screen for the session about to start, a read-only label in the session
-		* header, and a settings section that manages the roster (copy, delete,
-		* default, and the way into a preset's own files).
+		* Agent-preset surface plugin, browser half — three surfaces over one roster:
+		* a chip on the new-session screen for the session about to start, a
+		* read-only label in the session header, and a settings section that lists
+		* the roster (selection, the new-task default, a read-only view of each
+		* declared composition, and the way into Creator mode).
 		*
 		* A running session keeps the composition it began with (the host refuses to
 		* adopt an existing session under a different preset). That is what splits
-		* the choice from the display: the General row and the hero chip are both
-		* before-the-fact, while the header only reports what a session already runs.
+		* the choice from the display: the hero chip is before-the-fact, while the
+		* header only reports what a session already runs. The default preset is
+		* edited where the roster is visible — the settings section's "make default"
+		* — so General settings carries no duplicate control for the same field.
+		*
+		* Coding Tools (General settings) hide PTC and Minimal from the hero menu
+		* and Settings roster when off. Hidden saved defaults fall back to Standard;
+		* the existing gate clears staged choices while existing sessions keep their composition.
 		*/
 		/** Required services (cordis fiber inject). */
 		const inject = [
 			"slots",
+			"sessions",
 			"locale",
 			"remote",
 			"remote.agentPresets",
 			"remote.settings",
-			"settingsScope"
+			"configForms"
 		];
 		/**
-		* Mount the General-settings row.
+		* Mount the roster surfaces: hero chip, session-header label, settings section.
 		* @param ctx - the browser plugin context.
 		*/
 		function apply(ctx) {
-			const controller = new AgentPresetSettingsController({ settings: ctx.remote.settings }, ctx.remote, ctx.settingsScope.describe());
-			const rosterReaders = /* @__PURE__ */ new Set();
-			const section = new AgentPresetSectionController(ctx.remote, () => {
-				controller.load();
-				for (const read of rosterReaders) read();
-			});
+			const toolsSettings = ctx.configForms.get("ui-settings");
+			const presetSettings = ctx.configForms.get(AGENT_PRESET_SETTINGS_NS);
+			let active = true;
+			const codingToolsDisabled = () => active && toolsSettings.getSnapshot().mode === "host" && toolsSettings.getSnapshot().value?.enabled === false;
+			const controller = new AgentPresetSettingsController(ctx);
+			const staged = {
+				id: void 0,
+				introduce: false
+			};
+			const seats = new WeakMapWithValues();
+			const boundSeatDisposers = /* @__PURE__ */ new Set();
+			ctx.effect(() => async () => {
+				await Promise.all([...boundSeatDisposers].map((dispose) => dispose()));
+			}, "ui-agent-preset: bound selections");
+			const unboundSeat = new AgentPresetSeatController(ctx, () => void 0, staged);
+			const seatFor = (binding) => {
+				const existing = seats.get(binding);
+				if (existing !== void 0) return existing;
+				const seat = new AgentPresetSeatController(ctx, () => {
+					if (ctx.sessions.binding(binding.sessionId) !== binding) return void 0;
+					const summary = ctx.sessions.list.getSnapshot().byId[binding.sessionId];
+					return summary !== void 0 && (ctx.sessions.retainInfo(binding.sessionId).getSnapshot().retainedBy.mainView ?? 0) > 0 ? summary : void 0;
+				}, staged);
+				seats.set(binding, seat);
+				const dispose = binding.ctx.effect(() => {
+					const stop = ctx.sessions.list.subscribe(() => {
+						seat.apply();
+					});
+					return () => {
+						stop();
+						seats.delete(binding);
+						boundSeatDisposers.delete(dispose);
+					};
+				}, "ui-agent-preset: Provider binding");
+				boundSeatDisposers.add(dispose);
+				return seat;
+			};
+			const section = new AgentPresetSectionController(ctx);
+			const developerTools = ctx.configForms.developerTools.enabled;
+			ctx.effect(() => developerTools.subscribe(() => {
+				if (developerTools.getSnapshot()) return;
+				staged.id = void 0;
+				staged.introduce = false;
+				unboundSeat.apply();
+				for (const seat of seats.values) seat.apply();
+			}), "ui-agent-preset: Developer tools gate");
+			const mainBlankSeat = () => {
+				const summary = Object.values(ctx.sessions.list.getSnapshot().byId).find((session) => {
+					/* v8 ignore next -- retained source counts omit zero-valued entries. */
+					return session.blank && (session.retainedBy.mainView ?? 0) > 0;
+				});
+				const binding = summary === void 0 ? void 0 : ctx.sessions.binding(summary.id);
+				return binding === void 0 ? void 0 : seatFor(binding);
+			};
 			ctx.effect(() => ctx.locale.register("settings.agentPreset", {
 				zh,
 				en
 			}), "ui-agent-preset: settings row dictionaries");
-			const injected = () => ({
-				hooks: { agentPreset: controller.store },
-				load: () => controller.load(),
-				select: (id) => controller.select(id)
-			});
 			ctx.effect(() => {
+				let requested = 0;
+				let pending;
+				const reconcile = () => {
+					requested++;
+					pending ??= Promise.resolve().then(async () => {
+						try {
+							for (;;) {
+								const revision = requested;
+								await section.reconcileCodingTools(codingToolsDisabled);
+								if (!active || requested === revision) return;
+							}
+						} finally {
+							pending = void 0;
+						}
+					});
+				};
 				const refresh = () => {
 					controller.load();
 					if (section.store.getSnapshot().status !== "idle") section.load();
+					unboundSeat.load();
+					for (const seat of seats.values) seat.load();
+					reconcile();
 				};
-				const disposers = [ctx.remote.$on("settings/document-updated", (ns) => {
-					if (ns !== "agent-presets") return;
-					refresh();
-				}), ctx.on("connection/reset", () => {
-					refresh();
-				})];
-				return () => {
+				const disposers = [
+					toolsSettings.subscribe(reconcile),
+					presetSettings.subscribe(reconcile),
+					ctx.remote.$on("settings/document-updated", (ns) => {
+						if (ns !== "agent-preset-registry") return;
+						refresh();
+					}),
+					ctx.on("connection/reset", refresh)
+				];
+				reconcile();
+				return async () => {
+					active = false;
 					for (const dispose of disposers) dispose();
+					await pending;
 				};
 			}, "ui-agent-preset: settings refresh");
 			let creatorDraft;
@@ -1664,38 +2366,36 @@ window.__ModuleLoader__.load({
 				"sessions",
 				"uiWorkspace"
 			], (scope) => {
-				const seat = new AgentPresetSeatController(scope.remote, () => {
-					const state = scope.sessions.list.getSnapshot();
-					return state.current === void 0 ? void 0 : state.byId[state.current];
-				});
-				const seatInjected = () => ({
-					hooks: { agentPresetSeat: seat.store },
-					load: () => seat.load(),
-					select: (id) => seat.select(id),
-					introduced: () => {
-						seat.introduced();
-					}
-				});
+				const seatInjected = (sessionId) => {
+					const binding = sessionId === void 0 ? void 0 : ctx.sessions.binding(sessionId);
+					const seat = binding === void 0 ? unboundSeat : seatFor(binding);
+					return {
+						hooks: {
+							agentPresetSeat: seat.store,
+							developerTools: ctx.configForms.developerTools.enabled
+						},
+						load: () => seat.load(),
+						select: (id) => seat.select(id),
+						dismissRefusal: (error) => {
+							seat.dismissRefusal(error);
+						},
+						introduced: () => {
+							seat.introduced();
+						}
+					};
+				};
 				const labelInjected = () => ({
 					hooks: { agentPresets: controller.store },
 					load: () => controller.load()
 				});
+				const startCreatorDraft = () => {
+					const seat = mainBlankSeat() ?? unboundSeat;
+					seat.stage("cordis", true);
+					scope.uiWorkspace.startSession();
+					seat.apply();
+				};
 				scope.effect(() => {
-					const stop = scope.sessions.list.subscribe(() => {
-						seat.apply();
-					});
-					const settingsMoved = scope.remote.$on("settings/document-updated", (ns) => {
-						if (ns !== "agent-presets") return;
-						seat.load();
-					});
-					const readRoster = () => {
-						seat.load();
-					};
-					rosterReaders.add(readRoster);
-					creatorDraft = () => {
-						seat.stage("cordis", true);
-						scope.uiWorkspace.startSession();
-					};
+					creatorDraft = startCreatorDraft;
 					const chip = scope.slots.register({
 						name: "conversation.hero.agentPreset",
 						locale: "settings.agentPreset",
@@ -1709,50 +2409,46 @@ window.__ModuleLoader__.load({
 						inject: labelInjected
 					}, AgentPresetLabel);
 					return () => {
-						stop();
-						settingsMoved();
-						rosterReaders.delete(readRoster);
 						creatorDraft = void 0;
 						chip();
 						label();
 					};
 				}, "ui-agent-preset: new-session chip and header label");
+				scope.slots.inject("plugins.add.actions", () => scope.slots.register({
+					name: "plugins.add.actions",
+					id: "create-plugin",
+					locale: "settings.agentPreset",
+					inject: () => ({
+						hooks: { agentPresets: controller.store },
+						load: () => controller.load(),
+						startCreatorDraft
+					})
+				}, CreatePluginMenuItem));
 			});
+			/** Capture the exact blank Session one Settings action may update. */
+			const captureBlankSessionSync = () => {
+				const summary = Object.values(ctx.sessions.list.getSnapshot().byId).find((session) => session.blank && (session.retainedBy.mainView ?? 0) > 0);
+				const binding = summary === void 0 ? void 0 : ctx.sessions.binding(summary.id);
+				const seat = binding === void 0 ? void 0 : seatFor(binding);
+				const sessionId = seat?.blankSessionId();
+				return async (id) => {
+					if (seat === void 0 || sessionId === void 0 || binding === void 0 || seats.get(binding) !== seat) return void 0;
+					return await seat.syncBlankSession(sessionId, id);
+				};
+			};
 			const sectionInjected = () => ({
-				hooks: { agentPresetSection: section.store },
+				hooks: {
+					agentPresetSection: section.store,
+					developerTools: ctx.configForms.developerTools.enabled
+				},
 				load: () => section.load(),
 				view: (id) => section.view(id),
 				closeView: () => {
 					section.closeView();
 				},
-				beginCopy: (from) => {
-					section.beginCopy(from);
-				},
-				cancelCopy: () => {
-					section.cancelCopy();
-				},
-				setCopyId: (id) => {
-					section.setCopyId(id);
-				},
-				setCopyName: (name) => {
-					section.setCopyName(name);
-				},
-				confirmCopy: () => section.confirmCopy(),
-				openLocation: (id) => section.openLocation(id),
 				...creatorDraft === void 0 ? {} : { startCreatorDraft: creatorDraft },
-				confirmDelete: (id) => {
-					section.confirmDelete(id);
-				},
-				remove: () => section.remove(),
-				makeDefault: (id) => section.makeDefault(id)
+				makeDefault: (id) => section.makeDefault(id, captureBlankSessionSync())
 			});
-			ctx.slots.inject("settings.general.item", () => ctx.slots.register({
-				name: "settings.general.item",
-				id: "agent-preset",
-				order: -25,
-				locale: "settings.agentPreset",
-				inject: injected
-			}, AgentPresetRow));
 			ctx.slots.inject("settings.section", () => ctx.slots.register({
 				name: "settings.section",
 				id: "agent-presets",
@@ -1765,7 +2461,6 @@ window.__ModuleLoader__.load({
 		//#endregion
 		exports.AGENT_PRESET_SETTINGS_NS = AGENT_PRESET_SETTINGS_NS;
 		exports.apply = apply;
-		exports.draftBlocker = draftBlocker;
 		exports.inject = inject;
 		exports.writeDefaultPreset = writeDefaultPreset;
 		return module.exports;

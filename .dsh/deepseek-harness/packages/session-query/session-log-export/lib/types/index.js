@@ -1,12 +1,12 @@
 /** Session-log download command and Host-owned streaming route. */
 import Schema from '@deepseek-ai/schemastery';
-import { SessionId } from '@deepseek-ai/dsh-session/types';
-import { DEFAULT_SESSION_LOG_COMPRESSION_LEVEL, flushLiveSessionLog, sessionLogExportDeps, sessionLogZipFilename, streamSessionLogZip, } from "./archive.js";
-export { DEFAULT_SESSION_LOG_COMPRESSION_LEVEL, flushLiveSessionLog, sessionLogExportDeps, sessionLogZipEntries, sessionLogZipFilename, streamSessionLogZip, } from "./archive.js";
+import { brandString } from '@deepseek-ai/dsh-brand';
+import { DEFAULT_SESSION_LOG_COMPRESSION_LEVEL, flushLiveSessionLog, readSessionLogText, sessionLogExportDeps, sessionLogZipFilename, streamSessionLogZip, } from "./archive.js";
+import { SESSION_LOG_EXPORT_PATH } from "./routes.js";
+export { DEFAULT_SESSION_LOG_COMPRESSION_LEVEL, flushLiveSessionLog, readSessionLogText, serializeSessionLog, SESSION_LOG_FILENAME, sessionLogExportDeps, sessionLogZipEntries, sessionLogZipFilename, streamSessionLogZip, } from "./archive.js";
 export const name = 'session-log-download';
 export const inject = ['commands', 'connection'];
-/** Stable browser download path retained across the transport migration. */
-export const SESSION_LOG_EXPORT_PATH = '/api/session.export';
+export { SESSION_LOG_EXPORT_PATH } from "./routes.js";
 /** Validate Session-log archive configuration. */
 export const Config = Schema.object({
     compressionLevel: Schema.number().step(1).min(0).max(9)
@@ -23,6 +23,7 @@ const REQUESTED = {
  */
 export function apply(ctx, config = {}) {
     ctx.effect(() => ctx.commands.register({
+        definitionId: brandString('@deepseek-ai/dsh-session-log-export'),
         name: 'export',
         description: 'Download this Session log as a ZIP archive',
         handler: invocation => Promise.resolve(invocation.rawInput.trim() === ''
@@ -32,6 +33,7 @@ export function apply(ctx, config = {}) {
     connectionOf(ctx).fetch.register({
         path: SESSION_LOG_EXPORT_PATH,
         methods: ['GET', 'HEAD'],
+        requestBody: 'buffered',
         fetch: async (request) => {
             const response = await sessionLogExportResponse(ctx, request, config.compressionLevel ?? DEFAULT_SESSION_LOG_COMPRESSION_LEVEL);
             if (request.method === 'GET')
@@ -53,15 +55,12 @@ async function sessionLogExportResponse(ctx, request, compressionLevel) {
         || (descendantsValue !== undefined && descendantsValue !== 'true' && descendantsValue !== 'false')) {
         return new Response('missing or invalid sessionId query parameter', { status: 400 });
     }
-    const sessionId = SessionId(sessionIdValue);
+    const sessionId = brandString(sessionIdValue);
     const deps = sessionLogExportDeps(ctx);
     if (deps.sessionQuery === undefined
         || deps.sessionPersistence === undefined
         || deps.attachments === undefined) {
         return new Response('session log export is unavailable: missing session-query, session-persistence, or attachments service', { status: 500 });
-    }
-    if (!deps.sessionPersistence.supportsRawArtifacts) {
-        return new Response('session log export is unavailable: the persistence backend does not expose per-session raw artifacts', { status: 501 });
     }
     const ready = {
         sessionQuery: deps.sessionQuery,
@@ -69,19 +68,23 @@ async function sessionLogExportResponse(ctx, request, compressionLevel) {
         attachments: deps.attachments,
         sessions: deps.sessions,
     };
-    let root;
+    let rootContent;
     try {
         await flushLiveSessionLog(deps, sessionId, request.signal);
-        root = await deps.sessionPersistence.readRaw(sessionId, request.signal);
+        rootContent = await readSessionLogText(deps.sessionPersistence, sessionId, request.signal);
         request.signal.throwIfAborted();
     }
     catch {
         request.signal.throwIfAborted();
-        return new Response('session log export failed to prepare the stored artifact', { status: 500 });
+        // Root preparation failure (flush, open, or read): answer 500 without
+        // echoing the error, which may carry absolute host paths into the
+        // browser error bar.
+        return new Response('session log export failed to read the stored log', { status: 500 });
     }
-    if (root === undefined)
+    if (rootContent === undefined) {
         return new Response('session not found', { status: 404 });
-    const response = new Response(streamSessionLogZip(ready, root, sessionId, descendantsValue === 'true', compressionLevel, request.signal), {
+    }
+    const response = new Response(streamSessionLogZip(ready, rootContent, sessionId, descendantsValue === 'true', compressionLevel, request.signal), {
         headers: {
             'content-type': 'application/zip',
             'content-disposition': `attachment; filename="${sessionLogZipFilename(sessionId)}"`,

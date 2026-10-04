@@ -192,8 +192,8 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 		* lifecycle-safe verbs plus optional `ctx.get()` lookup and declared-service
 		* property access, with
 		* framework internals withheld and Context-valued returns denied. Two seats
-		* carry extra machinery: `slots`, where the register proxy assigns the
-		* shadowing priority and ledgers the registration — invoking the service with
+		* carry extra machinery: `slots`, where the registration proxy assigns any
+		* shadowing priority and ledgers ordinary entries or Factory definitions — invoking the service with
 		* the traced receiver so the effect lands on the CALLING plugin's fiber
 		* (SlotRegistry.register must stay a prototype method for exactly that
 		* reason) — and `theme`, whose override source is pinned to the package id.
@@ -245,12 +245,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 		}
 		/**
 		* The slots seat: automatic shadowing priority and ledger recording around the
-		* traced service's own register.
+		* traced service's own Slot and Factory registration methods.
 		*/
 		function guardedSlots(slots, env) {
 			return new Proxy(slots, { get(target, prop) {
 				const value = Reflect.get(target, prop, target);
-				if (prop !== "register") {
+				if (prop !== "register" && prop !== "registerFactory") {
 					if (typeof value !== "function") return denyContext(value, "slots", env);
 					return (...args) => denyContext(Reflect.apply(value, target, args), "slots", env);
 				}
@@ -258,7 +258,16 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					if (typeof rawOptions !== "object" || rawOptions === null) return rejectGuard(env, "slots.register(options, component) needs an options object with a `name`");
 					const options = { ...rawOptions };
 					const slot = options.name;
-					if (typeof slot !== "string" || slot.length === 0) return rejectGuard(env, "slots.register options need a string `name` (the target slot key)");
+					if (typeof slot !== "string" || slot.length === 0) return rejectGuard(env, `slots.${prop} options need a string \`name\``);
+					if (prop === "registerFactory") {
+						const dispose = Reflect.apply(value, target, [options, component]);
+						env.ledger.push({
+							slot: `factory:${slot}`,
+							priority: void 0
+						});
+						env.claim(component);
+						return dispose;
+					}
 					if (slot === "tool.view.cordis") {
 						if (options.key !== "self") return rejectGuard(env, "tool.view.cordis only accepts key \"self\"; the runtime binds it to this Package");
 						options.key = `${env.pkg.pluginId}.${env.pkg.packageId}`;
@@ -625,7 +634,9 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			async teardown(id, entryId, styles) {
 				this.live.delete(id);
 				this.failures.delete(id);
-				await this.env.loader.remove(entryId);
+				const disposal = this.env.loader.resolve(entryId).fiber?.dispose();
+				this.env.loader.remove(entryId);
+				await disposal;
 				this.env.modules.invalidate(moduleIdOf(id));
 				styles.dispose();
 			}
@@ -670,7 +681,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 		*/
 		function renderFailureMessage(slot, message) {
 			const redirect = Object.entries(DYNAMIC_CLIENT_REDIRECTS).find(([name, text]) => message.includes(name) && !message.includes(text))?.[1];
-			return `your entry in slot "${slot}" crashed while React rendered it: ${message}` + (redirect === void 0 ? "" : `\n${redirect}`);
+			return `${slot.startsWith("factory:") ? `your component in Factory "${slot.slice(8)}"` : `your entry in slot "${slot}"`} crashed while React rendered it: ${message}` + (redirect === void 0 ? "" : `\n${redirect}`);
 		}
 		//#endregion
 		//#region lib/types/client/orchestrator.js
@@ -1114,22 +1125,43 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 		const SERVICE_API = [
 			{
 				key: "layout",
-				summary: "The outward layout face (`ctx.layout`): the panel transitions other plugins may trigger — and exactly what a test fake must supply.",
-				description: "The outward layout face (`ctx.layout`): the panel transitions other plugins may trigger — and exactly what a test fake must supply. The attachPanels wiring hook stays on the concrete class (root-entry assembly only).",
+				summary: "Panel navigation and geometry actions exposed through ctx.layout.",
+				description: "Panel navigation and geometry actions exposed through ctx.layout.",
 				methods: [
+					{
+						signature: "selectPanel(panelId: MainPanelId | null): void",
+						description: "Select a global central panel without changing the current Session.",
+						parameters: [{
+							name: "panelId",
+							description: "registered main key, or null to show the Conversation."
+						}],
+						throws: ["if the selected main key is not registered; preserves the current selection."]
+					},
+					{
+						signature: "beginNavigation(): AbortSignal",
+						description: "Start an asynchronous navigation, superseding any earlier pending navigation.",
+						parameters: [],
+						returns: "a signal aborted by the next navigation or layout disposal; check it before committing UI state."
+					},
 					{
 						signature: "toggleSidebar(): void",
 						description: "Toggle the sidebar panel (closed ⟷ contract default width).",
 						parameters: []
 					},
 					{
-						signature: "openDetails(): void",
-						description: "Open the details panel (no-op when already open).",
-						parameters: []
+						signature: "openRightbar(track: boolean, fullscreen: boolean): void",
+						description: "Report the right panel's presentation without changing its expanded state.",
+						parameters: [{
+							name: "track",
+							description: "whether the normal panel width reserves a grid track, including beneath a fullscreen overlay."
+						}, {
+							name: "fullscreen",
+							description: "whether the panel covers the frame and hides its outer resize handle; independent of the underlying grid track."
+						}]
 					},
 					{
-						signature: "closeDetails(): void",
-						description: "Close the details panel.",
+						signature: "closeRightbar(): void",
+						description: "Report the right panel as hidden: no track, no handle.",
 						parameters: []
 					}
 				]
@@ -1236,43 +1268,56 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				description: "The sessions-service face injected as `ctx.sessions`.",
 				methods: [
 					{
-						signature: "open(id: SessionId): void",
-						description: "Select a session as current.",
+						signature: "retain(target: SessionTarget, options: SessionRetainOptions): SessionReference",
+						description: "Retain an exact Client generation and start its shared initial history opening.",
+						parameters: [{
+							name: "target",
+							description: "known identity or durable direct-parent address."
+						}, {
+							name: "options",
+							description: "required consumer source and optional independent waiter cancellation."
+						}],
+						returns: "an owned reference immediately; await `reference.ready` when the initial open attempt must settle first."
+					},
+					{
+						signature: "using<T>(target: SessionTarget, options: SessionRetainOptions, operation: (reference: SessionReference) => T | Promise<T>): Promise<T>",
+						description: "Hold one reference through callback settlement, including synchronous and asynchronous failures.",
+						parameters: [
+							{
+								name: "target",
+								description: "Session to acquire."
+							},
+							{
+								name: "options",
+								description: "source and acquisition cancellation."
+							},
+							{
+								name: "operation",
+								description: "callback using the reference only until its returned value or Promise settles."
+							}
+						],
+						returns: "the callback result after release; acquisition and callback failures propagate unchanged."
+					},
+					{
+						signature: "retainInfo(id: SessionId): ObservableSnapshot<SessionRetainInfo>",
+						description: "Observe local reference counts without retaining, creating a scope, or opening history. The returned source keeps stable identity across same-id generations and remains allocated until the Client root is disposed, even after its final subscriber leaves.",
 						parameters: [{
 							name: "id",
-							description: "session id (must exist in the list; unknown ids fail loud)."
-						}]
+							description: "explicit Session identity; Host existence is not implied."
+						}],
+						returns: "a stable read-only source across same-id generations, with zero counts when none is live."
 					},
 					{
-						signature: "openSubagent(address: SubagentAddress): void",
-						description: "Open a healthy catalog child through its exact direct-parent address.",
+						signature: "refreshProjections(sessionId: SessionId): Promise<void>",
+						description: "Load all Session projections once per connection; retry an unsuccessful initial read.",
 						parameters: [{
-							name: "address",
-							description: "catalog-derived parent and child ids."
-						}]
-					},
-					{
-						signature: "setSubagentCatalogOpen(parentSessionId: SessionId, open: boolean): void",
-						description: "Mark whether a catalog menu is consuming live membership updates.",
-						parameters: [{
-							name: "parentSessionId",
-							description: "catalog owner."
-						}, {
-							name: "open",
-							description: "current menu state."
-						}]
-					},
-					{
-						signature: "refreshSubagents(parentSessionId: SessionId): Promise<void>",
-						description: "Refresh one direct-child catalog.",
-						parameters: [{
-							name: "parentSessionId",
-							description: "catalog owner."
+							name: "sessionId",
+							description: "Session to inspect without opening its conversation."
 						}],
 						returns: "completion of the current or newly started refresh."
 					},
 					{
-						signature: "search( query: string, signal: AbortSignal, ): Promise<ClientResult<{ items: SessionSearchResultItem[]; hasMore: boolean }>>",
+						signature: "search( query: string, signal: AbortSignal, ): Promise<RemoteResult<{ items: SessionSearchResultItem[]; hasMore: boolean }>>",
 						description: "Search the Host's visible message-content index. Results stay request-local; the list snapshot remains the metadata authority.",
 						parameters: [{
 							name: "query",
@@ -1284,32 +1329,32 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						returns: "bounded results, or a business/transport error."
 					},
 					{
-						signature: "fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId>",
-						description: "Fork a session from a completed-turn prefix of the source; on resolution the child is in the list store and `open()` can target it.",
+						signature: "fork(opts: { sessionId: SessionId atSeq?: number increaseTitle?: boolean onCreated?: (childId: SessionId) => void }): Promise<SessionId>",
+						description: "Fork a session from an exact inclusive prefix of the source; on resolution the child is catalogued and can be explicitly retained.",
 						parameters: [{
 							name: "opts",
-							description: "source session id, the optional event seq anchoring the cut (the boundary is the first turn/end at or after it; an in-log anchor in an open turn is unavailable rather than clipped backward), and whether to increment an inherited durable title before resolving."
+							description: "source session id, the optional exact inclusive boundary seq (a real event seq the caller already knows; a cut inside an open turn is balanced Host-side with synthetic closers, and omission selects the latest completed-turn prefix), and whether to increment an inherited durable title before resolving. `onCreated` observes the catalogued child before that optional rename."
 						}],
 						returns: "the child session id.",
 						throws: ["when the fork fails, or when a requested child-title rename fails after creation."]
 					},
 					{
 						signature: "scope(id: SessionId): AgentContext | undefined",
-						description: "Resolve an Agent-scoped context view (use-and-discard).",
+						description: "Borrow an already-retained Agent-scoped Context without extending its lifetime.",
 						parameters: [{
 							name: "id",
 							description: "session id."
 						}],
-						returns: "scoped ctx, or undefined for a session neither listed nor already scoped."
+						returns: "the live scoped Context, or undefined without a retained generation."
 					},
 					{
 						signature: "binding(id: SessionId): SessionBinding | undefined",
-						description: "Resolve the stable session binding (scope-addressed assembly feed).",
+						description: "Borrow an already-retained Session binding without extending its lifetime.",
 						parameters: [{
 							name: "id",
 							description: "session id."
 						}],
-						returns: "binding, or undefined for a session neither listed nor already scoped."
+						returns: "the live binding, or undefined without a retained generation."
 					}
 				]
 			},
@@ -1317,23 +1362,38 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				key: "slots",
 				summary: "cordis Service layer of the slot system; see the module doc for the split with SlotCore.",
 				description: "cordis Service layer of the slot system; see the module doc for the split with SlotCore.",
-				methods: [{
-					signature: "declare readonly register: SlotCore['register']",
-					description: "The single registration API. The typed face IS the core's register (both overloads reused verbatim — one authority, no structural copy; see SlotCore.register for children declaration, store seat, inject face, load-time validation, and the unload cascade). This layer adds: disposal through the caller's ctx.effect (fiber unload = cascade), exclusive-factory minting (`store: createXxxStore` becomes a per-entry handle), the registrant diagnostics stamp, and store-instance lifecycle on the entry axis.\n\nDeclared here, implemented by prototype assignment below the class: it MUST stay a prototype method (never an instance arrow) — the cordis service proxy binds `this.ctx` to the CALLER's context at call time, which is what routes the effect (and the unload cascade) into the caller's fiber. An arrow property would freeze `this` to the service's own root ctx and silently break per-plugin disposal.",
-					parameters: []
-				}, {
-					signature: "inject(key: keyof SlotMap & string, callback: () => SlotInjectionEffect): () => void",
-					description: "Install an effect for each declaration lifetime of a slot. The callback runs synchronously when the declaration already exists; otherwise it runs inside the declaring `register()` call after the declaration is committed. Collapse disposes the effect and a later declaration runs it again. Callback effects are synchronous disposers; iterable effects install transactionally and dispose in reverse order. The controller belongs to the caller's fiber, so plugin unload cancels a pending wait and removes any active contribution.",
-					parameters: [{
-						name: "key",
-						description: "declared SlotMap key to depend on."
-					}, {
-						name: "callback",
-						description: "creates one disposer or an iterable of disposers."
-					}],
-					returns: "idempotent disposer for the wait and active effect.",
-					throws: ["callback setup failures synchronously when the slot is already declared."]
-				}]
+				methods: [
+					{
+						signature: "declare readonly register: SlotCore['register']",
+						description: "The ordinary Slot registration API. The typed face IS the core's register (both overloads reused verbatim — one authority, no structural copy; see SlotCore.register for children declaration, store seat, inject face, load-time validation, and the unload cascade). This layer adds: disposal through the caller's ctx.effect (fiber unload = cascade), exclusive-factory minting (`store: createXxxStore` becomes a per-entry handle), the registrant diagnostics stamp, and store-instance lifecycle on the entry axis.\n\nDeclared here, implemented by prototype assignment below the class: it MUST stay a prototype method (never an instance arrow) — the cordis service proxy binds `this.ctx` to the CALLER's context at call time, which is what routes the effect (and the unload cascade) into the caller's fiber. An arrow property would freeze `this` to the service's own root ctx and silently break per-plugin disposal.",
+						parameters: []
+					},
+					{
+						signature: "declare readonly registerFactory: RegisterFactory",
+						description: "Register one reusable Component Factory under the caller's effect lifetime. A Store factory mints one handle per rendered occurrence rather than per definition. Like SlotRegistry.register, this remains a prototype method so the Cordis proxy binds `this.ctx` to the caller's Context.",
+						parameters: [{
+							name: "options",
+							description: "runtime definition checked against `SlotFactoryMap`."
+						}, {
+							name: "component",
+							description: "reusable Factory Component."
+						}],
+						returns: "the idempotent definition disposer."
+					},
+					{
+						signature: "inject(key: keyof SlotMap & string, callback: () => SlotInjectionEffect): () => void",
+						description: "Install an effect for each declaration lifetime of a slot. The callback runs synchronously when the declaration already exists; otherwise it runs inside the declaring `register()` call after the declaration is committed. Collapse disposes the effect and a later declaration runs it again. Callback effects are synchronous disposers; iterable effects install transactionally and dispose in reverse order. The controller belongs to the caller's fiber, so plugin unload cancels a pending wait and removes any active contribution.",
+						parameters: [{
+							name: "key",
+							description: "declared SlotMap key to depend on."
+						}, {
+							name: "callback",
+							description: "creates one disposer or an iterable of disposers."
+						}],
+						returns: "idempotent disposer for the wait and active effect.",
+						throws: ["callback setup failures synchronously when the slot is already declared."]
+					}
+				]
 			},
 			{
 				key: "theme",
@@ -1428,6 +1488,39 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				description: "Workspace archive and directory operations consumed by Client UI domains.",
 				methods: [
 					{
+						signature: "openSession(target: SessionTarget): void",
+						description: "Select a Session and show its Conversation as one UI navigation action.",
+						parameters: [{
+							name: "target",
+							description: "known Session identity or durable direct-parent subagent address to display."
+						}]
+					},
+					{
+						signature: "openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void>",
+						description: "Connect a Workspace and open its Session unless a later navigation supersedes it.",
+						parameters: [{
+							name: "workspaceId",
+							description: "target Workspace."
+						}, {
+							name: "beforeOpen",
+							description: "optional synchronous preparation for the selected Session, skipped after supersession; a throw aborts the open and releases the retained reference."
+						}],
+						returns: "completion; a superseded request may create a Session but does not open it.",
+						throws: ["on failure; a refused creation is also shown through the Workspace notice unless a later navigation or disposal superseded the request."]
+					},
+					{
+						signature: "forkSession(sessionId: SessionId, onCreated?: (childId: SessionId) => void): Promise<SessionId>",
+						description: "Fork a Session without changing the current selection.",
+						parameters: [{
+							name: "sessionId",
+							description: "source Session."
+						}, {
+							name: "onCreated",
+							description: "observer before the optional child-title update."
+						}],
+						returns: "the child SessionId after creation and inherited-title increment."
+					},
+					{
 						signature: "connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>",
 						description: "Resolve the reusable or newly created blank Session for a Workspace.",
 						parameters: [{
@@ -1437,19 +1530,33 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						returns: "a Session already addressable through the Session Controller."
 					},
 					{
-						signature: "startSession(workspaceId?: WorkspaceId): void",
-						description: "Start a New Session flow and navigate to its Session.",
+						signature: "startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void",
+						description: "Start a New Session flow and navigate to its Session; a creation the Host refuses is shown through the Workspace notice and leaves the selection as it was.",
 						parameters: [{
 							name: "workspaceId",
 							description: "explicit target; absent inherits the current or most recent Workspace."
+						}, {
+							name: "options",
+							description: "initial content; existing text or attachments are preserved unless clearPreviousDraft is true."
 						}]
 					},
 					{
-						signature: "archiveSession(sessionId: SessionId): Promise<void>",
+						signature: "archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>",
 						description: "Archive a Session and clear it when it is the current selection.",
 						parameters: [{
 							name: "sessionId",
 							description: "Session to archive."
+						}, {
+							name: "options",
+							description: "`stopActivity` asks the Host to stop the Session's running work instead of refusing."
+						}]
+					},
+					{
+						signature: "unarchiveSession(sessionId: SessionId): Promise<void>",
+						description: "Unarchive a Session, restoring it to its recorded Workspace position.",
+						parameters: [{
+							name: "sessionId",
+							description: "Session to unarchive."
 						}]
 					},
 					{
@@ -1519,11 +1626,23 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						}]
 					},
 					{
-						signature: "archiveSession(sessionId: SessionId): Promise<void>",
+						signature: "archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>",
 						description: "Archive a Session from Workspace grouping surfaces.",
 						parameters: [{
 							name: "sessionId",
 							description: "Session to archive."
+						}, {
+							name: "options",
+							description: "`stopActivity` asks the Host to stop the Session's running work instead of refusing."
+						}],
+						throws: ["{WorkspaceArchiveError} when the Host refuses; without `stopActivity` a Session with running work fails as `workspace/session-active`, its details naming what runs."]
+					},
+					{
+						signature: "unarchiveSession(sessionId: SessionId): Promise<void>",
+						description: "Unarchive a Session from the archived Session list.",
+						parameters: [{
+							name: "sessionId",
+							description: "Session to unarchive."
 						}]
 					},
 					{
@@ -1573,8 +1692,8 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				name: "slots/changed",
 				mode: "emit",
 				signature: "'slots/changed'(key: string): void",
-				summary: "A slot declaration or registration set changed.",
-				description: "A slot declaration or registration set changed.",
+				summary: "An ordinary Slot declaration or entry registration set changed.",
+				description: "An ordinary Slot declaration or entry registration set changed. Factory definitions publish through `subscribeFactory()` instead.",
 				parameters: [{
 					name: "key",
 					description: "mutated SlotMap key."
@@ -1603,12 +1722,16 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export type AgentContext = Omit<Context, 'remote'> & {\n    readonly remote: ClientRemote & TypertRemoteScopeApi<'agent'>;\n};"
 			},
 			{
+				name: "AssistantLiveChunkEvent",
+				declaration: "export interface AssistantLiveChunkEvent {\n    readonly type: 'assistant/live-chunk';\n    readonly seq: number;\n    readonly time: number;\n    readonly data: {\n        readonly attemptId: LlmAttemptId;\n        readonly turn: number;\n        readonly step: number;\n        readonly chunk: StreamChunk;\n    };\n}"
+			},
+			{
 				name: "BakedActions",
 				declaration: "export type BakedActions<T, A extends ActionsDecl<T>> = {\n    [K in keyof A]: A[K] extends (draft: T, ...params: infer P) => void ? (...params: P) => void : never;\n};"
 			},
 			{
 				name: "BeginSubmissionInput",
-				declaration: "export interface BeginSubmissionInput {\n    readonly text: string;\n    readonly images: readonly PendingSubmissionImage[];\n    readonly onRetire?: (retirement: PendingSubmissionRetirement) => void;\n}"
+				declaration: "export interface BeginSubmissionInput {\n    readonly mode: 'queue' | 'steer';\n    readonly text: string;\n    readonly attachments: readonly PendingSubmissionAttachment[];\n    readonly onRetire?: (retirement: PendingSubmissionRetirement) => void;\n}"
 			},
 			{
 				name: "BoundActions",
@@ -1631,16 +1754,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export type ChildrenDecl = {\n    [P in keyof SlotMap & string]?: SlotSpec<SlotMap[P]>;\n};"
 			},
 			{
-				name: "ChunkRowEvent",
-				declaration: "export type ChunkRowEvent = {\n    [Kind in ChunkRow['type']]: {\n        readonly type: `chunkrow/${Kind}`;\n        readonly seq: number;\n        readonly time: number;\n        readonly data: Extract<ChunkRow, {\n            readonly type: Kind;\n        }>['data'];\n    };\n}[ChunkRow['type']];"
-			},
-			{
 				name: "ClientConnectionRpc",
-				declaration: "export interface ClientConnectionRpc {\n    call(channel: string, endpoint: string, payload: unknown, signal?: AbortSignal): Promise<ConnectionRpcResult<unknown>>;\n    readonly open?: (channel: string, endpoint: string, payload: unknown, signal: AbortSignal) => AsyncIterable<unknown>;\n}"
+				declaration: "export interface ClientConnectionRpc {\n    call(channel: string, endpoint: string, payload: unknown, signal?: AbortSignal): Promise<ConnectionRpcResult<unknown>>;\n    readonly open?: (channel: string, endpoint: string, payload: unknown, signal: AbortSignal, uplink?: AsyncIterable<unknown>) => AsyncIterable<unknown>;\n}"
 			},
 			{
 				name: "ClientRemote",
-				declaration: "export interface ClientRemote extends TypertClientRemote {\n    $stream<Item>(options: RemoteStreamOptions<Item>): RemoteStream<Item>;\n}"
+				declaration: "export interface ClientRemote extends TypertClientRemote {\n    $stream<Item>(options: RemoteStreamOptions<Item>): RemoteStream<Item>;\n    readonly $host: RemoteHostFacts;\n}"
 			},
 			{
 				name: "CommonKeyOf",
@@ -1648,11 +1767,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "ComposedProps",
-				declaration: "export type ComposedProps<K extends keyof SlotMap & string, EntryKey extends EntryKeyOf<K>, S extends keyof SlotMap & string, H, I extends object, M = never, N = undefined> = PropsRuntime<K, EntryKey> & PropsRenderSlots<S> & PropsStore<H> & InjectFace<I> & MatchedShare<SlotMap[K], M> & PropsLocale<N>;"
-			},
-			{
-				name: "ConnectionConfig",
-				declaration: "export interface ConnectionConfig {\n    backoffBaseMs?: number;\n    backoffFactor?: number;\n    backoffMaxMs?: number;\n    generationReadyTimeoutMs?: number;\n}"
+				declaration: "export type ComposedProps<K extends keyof SlotMap & string, EntryKey extends EntryKeyOf<K>, S extends keyof SlotMap & string, H, I extends object, M = never, N = undefined> = PropsRuntime<K, EntryKey> & PropsRenderSlots<S> & PropsRenderFactories & PropsStore<H> & InjectFace<I> & MatchedShare<SlotMap[K], M> & PropsLocale<N>;"
 			},
 			{
 				name: "ConnectionGeneration",
@@ -1668,11 +1783,19 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "ConnectionHandle",
-				declaration: "export interface ConnectionHandle {\n    readonly isLoopback: boolean;\n    readonly generation: ConnectionGenerationState;\n    readonly rpc: ClientConnectionRpc;\n    registerGenerationSource(source: ConnectionGenerationSource): () => void;\n    start(sinks: ConnectionSinks, config?: ConnectionConfig): {\n        stop(): void;\n    };\n}"
+				declaration: "export interface ConnectionHandle {\n    readonly isLoopback: boolean;\n    readonly generation: ConnectionGenerationState;\n    readonly state: ConnectionStateSource;\n    readonly rpc: ClientConnectionRpc;\n    reconnect(): void;\n    registerGenerationSource(source: ConnectionGenerationSource): () => void;\n    start(sinks: ConnectionSinks, config?: ConnectionRecoveryConfig): ConnectionLoop;\n}"
 			},
 			{
 				name: "ConnectionHostInfo",
 				declaration: "export interface ConnectionHostInfo {\n    readonly home: string;\n}"
+			},
+			{
+				name: "ConnectionLoop",
+				declaration: "export interface ConnectionLoop {\n    stop(): void;\n}"
+			},
+			{
+				name: "ConnectionRecoveryConfig",
+				declaration: "export interface ConnectionRecoveryConfig {\n    backoffBaseMs?: number;\n    backoffFactor?: number;\n    backoffMaxMs?: number;\n    generationReadyWarnMs?: number;\n    generationReadyTimeoutMs?: number;\n}"
 			},
 			{
 				name: "ConnectionRpcFailure",
@@ -1684,15 +1807,43 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "ConnectionSinks",
-				declaration: "export interface ConnectionSinks {\n    onConnected?: (host: ConnectionHostInfo) => void;\n    onStateChange?: (state: ConnectionState) => void;\n}"
+				declaration: "export interface ConnectionSinks {\n    onConnected?: (host: ConnectionHostInfo) => void;\n    onStateChange?: (state: ConnectionState) => void;\n    onReconnectRequested?: () => void;\n}"
 			},
 			{
 				name: "ConnectionState",
-				declaration: "export type ConnectionState = 'connected' | 'reconnecting';"
+				declaration: "export type ConnectionState = 'connected' | 'disconnected' | 'connecting';"
+			},
+			{
+				name: "ConnectionStateSource",
+				declaration: "export interface ConnectionStateSource {\n    getSnapshot(): ConnectionState | undefined;\n    subscribe(listener: () => void): () => void;\n}"
+			},
+			{
+				name: "DraftInitializationOptions",
+				declaration: "export interface DraftInitializationOptions {\n    readonly prompt?: string;\n    readonly clearPreviousDraft?: boolean;\n}"
 			},
 			{
 				name: "EntryKeyOf",
 				declaration: "export type EntryKeyOf<K extends keyof SlotMap & string> = SlotMap[K] extends {\n    kind: 'keyed';\n    keyProps: infer P extends object;\n} ? keyof P & string : string;"
+			},
+			{
+				name: "FactoryComponentPropsOf",
+				declaration: "export type FactoryComponentPropsOf<F extends keyof SlotFactoryMap & string> = FactoryInputPropsOf<F> & FactoryRegistrationPropsOf<F> & ScopeStandardProps<FactoryDefOf<F>['scope']> & {\n    useFactorySlot: UseFactorySlot<F>;\n};"
+			},
+			{
+				name: "FactoryInjectParams",
+				declaration: "export type FactoryInjectParams<F extends keyof SlotFactoryMap & string> = FactoryDefOf<F>['scope'] extends 'session' ? ([\n    FactoryStoreOf<F>\n] extends [\n    StoreDecl\n] ? [\n    sessionId: SessionIdOf,\n    actions: BoundActions<FactoryStoreOf<F>>\n] : [\n    sessionId: SessionIdOf\n]) : FactoryDefOf<F>['scope'] extends 'session-maybe' ? ([\n    FactoryStoreOf<F>\n] extends [\n    StoreDecl\n] ? [\n    sessionId: SessionIdOf | undefined,\n    actions: BoundActions<FactoryStoreOf<F>> | undefined\n] : [\n    sessionId: SessionIdOf | undefined\n]) : ([\n    FactoryStoreOf<F>\n] extends [\n    StoreDecl\n] ? [\n    actions: BoundActions<FactoryStoreOf<F>>\n] : [\n]);"
+			},
+			{
+				name: "FactoryLocalComponent",
+				declaration: "export type FactoryLocalComponent<F extends keyof SlotFactoryMap & string, N extends FactoryLocalNameOf<F>> = SlotComponent<FactoryLocalComponentPropsOf<F, N>>;"
+			},
+			{
+				name: "FactoryLocalComponentPropsOf",
+				declaration: "export type FactoryLocalComponentPropsOf<F extends keyof SlotFactoryMap & string, N extends FactoryLocalNameOf<F>> = FactoryLocalInputPropsOf<F, N> & FactoryRegistrationPropsOf<F> & ScopeStandardProps<FactoryLocalDefOf<F, N>['scope']>;"
+			},
+			{
+				name: "FactoryRegistrationPropsOf",
+				declaration: "export type FactoryRegistrationPropsOf<F extends keyof SlotFactoryMap & string> = FactoryRenderPropsOf<F> & PropsStore<FactoryStoreOf<F>> & InjectFace<FactoryInjectOf<F>> & PropsLocale<FactoryLocaleOf<F>> & PropsRenderFactories;"
 			},
 			{
 				name: "GlobalStandardProps",
@@ -1712,7 +1863,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "InjectFace",
-				declaration: "export type InjectFace<I extends object> = I extends {\n    hooks: infer HS extends HooksSources;\n} ? Omit<I, 'hooks'> & PropsHooks<HS> : I;"
+				declaration: "export type InjectFace<I extends object> = I extends {\n    hooks: infer HS extends HooksSources;\n} ? I extends {\n    keyedHooks: infer KS extends KeyedHooksSources;\n} ? Omit<I, 'hooks' | 'keyedHooks'> & PropsHooks<HS> & PropsKeyedHooks<KS> : Omit<I, 'hooks'> & PropsHooks<HS> : I extends {\n    keyedHooks: infer KS extends KeyedHooksSources;\n} ? Omit<I, 'keyedHooks'> & PropsKeyedHooks<KS> : I;"
 			},
 			{
 				name: "InjectParams",
@@ -1720,7 +1871,19 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "ISession",
-				declaration: "export interface ISession {\n    readonly sessionId: SessionId;\n    readonly projections: ProjectionsFace;\n    beginSubmission(input: BeginSubmissionInput): SubmissionHandle;\n    prompt(content: PromptContentPart[], mode: 'queue' | 'steer', signal?: AbortSignal, requestId?: SessionRequestId): Promise<ClientResult<{\n        accepted: true;\n    }>>;\n    readAttachment(attachmentId: AttachmentIdType): Promise<ClientResult<{\n        attachment: ImageAttachmentRef;\n        data: Uint8Array;\n    }>>;\n    updateQueue(itemId: MessageId, action: QueueAction): Promise<ClientResult<{\n        accepted: true;\n    }>>;\n    cancel(): Promise<ClientResult<{\n        accepted: true;\n    }>>;\n    rename(title: string): Promise<ClientResult<{\n        title: string;\n        seq: number;\n    }>>;\n    loadOlder(): Promise<void>;\n    command(line: string): Promise<RemoteResult<{\n        matched: boolean;\n    }>>;\n}"
+				declaration: "export interface ISession {\n    readonly sessionId: SessionId;\n    readonly projections: ProjectionsFace;\n    beginSubmission(input: BeginSubmissionInput): SubmissionHandle;\n    prompt(content: PromptContentPart[], mode: 'queue' | 'steer', signal?: AbortSignal, requestId?: SessionRequestId): Promise<RemoteResult<{\n        accepted: true;\n    }>>;\n    readAttachment(attachmentId: AttachmentIdType): Promise<RemoteResult<{\n        attachment: ImageAttachmentRef;\n        data: Uint8Array;\n    }>>;\n    updateQueue(itemId: MessageId, action: QueueAction): Promise<RemoteResult<{\n        accepted: true;\n    }>>;\n    cancel(): Promise<RemoteResult<{\n        accepted: true;\n    }>>;\n    rename(title: string): Promise<RemoteResult<{\n        title: string;\n        seq: SessionSeq;\n    }>>;\n    loadOlder(): Promise<void>;\n    loadThrough(seq: SessionSeq): Promise<void>;\n    command(line: string): Promise<RemoteResult<{\n        matched: boolean;\n    }>>;\n}"
+			},
+			{
+				name: "KeyedHooksSources",
+				declaration: "export type KeyedHooksSources = Record<string, KeyedStandardSource>;"
+			},
+			{
+				name: "KeyedSnapshotSelectorHook",
+				declaration: "export type KeyedSnapshotSelectorHook<Snapshot> = {\n    (key: string): Snapshot | undefined;\n    <Selected>(key: string, selector: (value: Snapshot | undefined) => Selected, equal?: (left: Selected, right: Selected) => boolean): Selected;\n};"
+			},
+			{
+				name: "KeyedStandardSource",
+				declaration: "export type KeyedStandardSource = (key: string) => HostObservable<unknown> | undefined;"
 			},
 			{
 				name: "KeyPropsOf",
@@ -1729,6 +1892,22 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			{
 				name: "LanguageRegistration",
 				declaration: "export interface LanguageRegistration {\n    id: LocaleId;\n    label: string;\n    fallback: LocaleId;\n}"
+			},
+			{
+				name: "LiveCompositionNode",
+				declaration: "export type LiveCompositionNode = LiveSlotNode | LiveFactoryNode;"
+			},
+			{
+				name: "LiveFactoryNode",
+				declaration: "export interface LiveFactoryNode {\n    type: 'factory';\n    name: string;\n    scope: SlotScope;\n    registrant?: string;\n    children: LiveSlotNode[];\n}"
+			},
+			{
+				name: "LiveSlotNode",
+				declaration: "export interface LiveSlotNode {\n    type: 'slot';\n    name: string;\n    kind: SlotKind;\n    scope: SlotScope;\n    declaredBy?: string;\n    occupants: LiveSlotOccupant[];\n    children: LiveSlotNode[];\n}"
+			},
+			{
+				name: "LiveSlotOccupant",
+				declaration: "export interface LiveSlotOccupant {\n    registrant?: string;\n    key?: string;\n    id?: string;\n    order?: number;\n    priority: number;\n    active: boolean;\n}"
 			},
 			{
 				name: "LocaleDefinition",
@@ -1759,6 +1938,10 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export interface LocaleSnapshot {\n    active: LocaleId;\n    locales: readonly LocaleDefinition[];\n    revision: number;\n}"
 			},
 			{
+				name: "MainPanelId",
+				declaration: "export type MainPanelId = Branded<'MainPanelId'>;"
+			},
+			{
 				name: "MatchedShare",
 				declaration: "export type MatchedShare<E extends SlotEntryDef, M> = E['kind'] extends 'chain' ? {\n    matched: M;\n} : object;"
 			},
@@ -1776,15 +1959,31 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "PendingSubmission",
-				declaration: "export interface PendingSubmission {\n    readonly requestId: SessionRequestId;\n    readonly time: number;\n    readonly text: string;\n    readonly images: readonly PendingSubmissionImage[];\n}"
+				declaration: "export interface PendingSubmission {\n    readonly requestId: SessionRequestId;\n    readonly placement: PendingSubmissionPlacement;\n    readonly time: number;\n    readonly text: string;\n    readonly attachments: readonly PendingSubmissionAttachment[];\n}"
+			},
+			{
+				name: "PendingSubmissionAttachment",
+				declaration: "export type PendingSubmissionAttachment = PendingSubmissionImageAttachment | PendingSubmissionFileAttachment;"
+			},
+			{
+				name: "PendingSubmissionFileAttachment",
+				declaration: "export interface PendingSubmissionFileAttachment {\n    readonly type: 'file';\n    readonly value: FileAttachmentRef;\n}"
 			},
 			{
 				name: "PendingSubmissionImage",
 				declaration: "export interface PendingSubmissionImage {\n    readonly previewUrl: string;\n    readonly name?: string;\n    readonly width?: number;\n    readonly height?: number;\n}"
 			},
 			{
+				name: "PendingSubmissionImageAttachment",
+				declaration: "export interface PendingSubmissionImageAttachment {\n    readonly type: 'image';\n    readonly value: PendingSubmissionImage;\n}"
+			},
+			{
+				name: "PendingSubmissionPlacement",
+				declaration: "export type PendingSubmissionPlacement = 'transcript' | 'queued' | 'steering';"
+			},
+			{
 				name: "PendingSubmissionRetirement",
-				declaration: "export type PendingSubmissionRetirement = {\n    readonly reason: 'observed';\n    readonly attachments: readonly ImageAttachmentRef[];\n} | {\n    readonly reason: 'failed';\n};"
+				declaration: "export type PendingSubmissionRetirement = {\n    readonly reason: 'observed';\n    readonly attachments: readonly (ImageAttachmentRef | FileAttachmentRef)[];\n} | {\n    readonly reason: 'failed';\n};"
 			},
 			{
 				name: "ProjectionsFace",
@@ -1792,27 +1991,35 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "PromptContentPart",
-				declaration: "export type PromptContentPart = {\n    readonly type: 'text';\n    readonly text: string;\n} | {\n    readonly type: 'image';\n    readonly mediaType: ImageMediaType;\n    readonly data: string;\n    readonly name?: string;\n};"
+				declaration: "export type PromptContentPart = {\n    readonly type: 'text';\n    readonly text: string;\n} | {\n    readonly type: 'image';\n    readonly mediaType: ImageMediaType;\n    readonly data: string;\n    readonly name?: string;\n} | {\n    readonly type: 'file';\n    readonly receiptId: Branded<'file-upload-receipt-id'>;\n};"
 			},
 			{
 				name: "PromptError",
-				declaration: "export interface PromptError {\n    readonly op: 'send' | 'stop';\n    readonly error: ClientFailure;\n}"
+				declaration: "export interface PromptError {\n    readonly op: 'send' | 'stop';\n    readonly error: RemoteFailure;\n}"
 			},
 			{
 				name: "PropsHooks",
 				declaration: "export type PropsHooks<HS extends HooksSources> = {\n    [N in keyof HS & string as `use${Capitalize<N>}`]: SnapshotSelectorHook<HS[N] extends HostObservable<infer T> ? T : never>;\n};"
 			},
 			{
+				name: "PropsKeyedHooks",
+				declaration: "export type PropsKeyedHooks<HS extends KeyedHooksSources> = {\n    [N in keyof HS & string as `use${Capitalize<N>}`]: KeyedSnapshotSelectorHook<HS[N] extends (key: string) => HostObservable<infer T> | undefined ? T : never>;\n};"
+			},
+			{
 				name: "PropsLocale",
 				declaration: "export type PropsLocale<N> = N extends keyof LocaleNamespaceMap & string ? {\n    t: TranslateNS<N>;\n} : object;"
 			},
 			{
+				name: "PropsRenderFactories",
+				declaration: "export interface PropsRenderFactories {\n    renderFactorySlot: RenderFactorySlot;\n}"
+			},
+			{
 				name: "PropsRenderSlots",
-				declaration: "export type PropsRenderSlots<S extends keyof SlotMap & string> = {\n    renderSlot: RenderSlotFn<Exclude<S, ChainKeysOf<S>>>;\n    readonly __renders?: ((key: S) => void) | undefined;\n} & ([\n    ChainKeysOf<S>\n] extends [\n    never\n] ? object : {\n    renderSlotChain: <K extends ChainKeysOf<S>>(key: K, owner: OwnerOf<K>, opts?: ChainRenderOpts) => ReactNode;\n}) & ('session' extends ScopeOf<S> ? {\n    SessionProvider: SessionProviderComponent;\n} : object);"
+				declaration: "export type PropsRenderSlots<S extends keyof SlotMap & string> = {\n    renderSlot: RenderSlotFn<Exclude<S, ChainKeysOf<S>>>;\n    readonly __renders?: ((key: S) => void) | undefined;\n} & ([\n    ChainKeysOf<S>\n] extends [\n    never\n] ? object : {\n    renderSlotChain: <K extends ChainKeysOf<S>>(key: K, owner: OwnerOf<K>, opts?: ChainRenderOpts) => ReactNode;\n}) & ([\n    Extract<ScopeOf<S>, 'session' | 'session-maybe'>\n] extends [\n    never\n] ? object : {\n    SessionProvider: SessionProviderComponent;\n});"
 			},
 			{
 				name: "PropsRuntime",
-				declaration: "export type PropsRuntime<K extends keyof SlotMap & string, EntryKey extends EntryKeyOf<K> = EntryKeyOf<K>> = OwnerOf<K> & KeyPropsOf<K, EntryKey> & SlotInjectFace<SlotInjectOf<K>> & (ScopeOf<K> extends 'session' ? SessionStandardProps : ScopeOf<K> extends 'session-maybe' ? SessionMaybeStandardProps : object) & GlobalStandardProps;"
+				declaration: "export type PropsRuntime<K extends keyof SlotMap & string, EntryKey extends EntryKeyOf<K> = EntryKeyOf<K>> = OwnerOf<K> & KeyPropsOf<K, EntryKey> & SlotInjectFace<SlotInjectOf<K>> & ScopeStandardProps<ScopeOf<K>>;"
 			},
 			{
 				name: "PropsSlotHooks",
@@ -1821,6 +2028,22 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			{
 				name: "PropsStore",
 				declaration: "export type PropsStore<H> = H extends StoreHandle<infer T, infer A> ? {\n    useStore: SnapshotSelectorHook<T>;\n    actions: BakedActions<T, A>;\n} : object;"
+			},
+			{
+				name: "QueueAction",
+				declaration: "export type QueueAction = {\n    readonly kind: 'edit';\n    readonly content: readonly TextBlock[];\n} | {\n    readonly kind: 'remove';\n} | {\n    readonly kind: 'steer';\n};"
+			},
+			{
+				name: "RegisterFactory",
+				declaration: "export interface RegisterFactory {\n    <F extends keyof SlotFactoryMap & string>(options: RegisterFactoryOptions<F>, component: SlotComponent<FactoryComponentPropsOf<F>>): () => void;\n}"
+			},
+			{
+				name: "RegisterFactoryOptions",
+				declaration: "export type RegisterFactoryOptions<F extends keyof SlotFactoryMap & string> = {\n    name: F;\n    scope: FactoryDefOf<F>['scope'];\n} & FactoryField<F, 'children', FactoryChildrenOf<F>> & FactoryField<F, 'store', FactoryStoreOf<F> | (() => FactoryStoreOf<F>)> & FactoryField<F, 'inject', (...args: FactoryInjectParams<F>) => FactoryInjectOf<F>> & FactoryField<F, 'locale', FactoryLocaleOf<F>> & FactoryField<F, 'slots', RuntimeFactorySlots<F>> & FactoryCollisionCheck<F> & FactoryChildrenCheck<F>;"
+			},
+			{
+				name: "RemoteHostFacts",
+				declaration: "export interface RemoteHostFacts {\n    readonly home: string | undefined;\n    readonly isLoopback: boolean;\n}"
 			},
 			{
 				name: "RemoteStream",
@@ -1839,12 +2062,24 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export interface RemoteStreamOptions<Item> {\n    readonly name: string;\n    readonly open: (signal: AbortSignal) => AsyncIterable<Item>;\n    readonly ended: (accepted: boolean) => Error;\n    readonly carrierFailed?: (error: RemoteStreamCarrierError) => void;\n}"
 			},
 			{
+				name: "RenderFactorySlot",
+				declaration: "export type RenderFactorySlot = <F extends keyof SlotFactoryMap & string>(name: F, props: FactoryInputPropsOf<F>, options?: {\n    slots?: Partial<{\n        [N in FactoryLocalNameOf<F>]: FactoryLocalComponent<F, N>;\n    }>;\n    fallback?: ReactNode;\n}) => ReactNode;"
+			},
+			{
 				name: "ScopeOf",
 				declaration: "export type ScopeOf<K extends keyof SlotMap & string> = SlotMap[K]['scope'];"
 			},
 			{
+				name: "ScopeStandardProps",
+				declaration: "export type ScopeStandardProps<S extends SlotScope> = (S extends 'session' ? SessionStandardProps : S extends 'session-maybe' ? SessionMaybeStandardProps : object) & GlobalStandardProps;"
+			},
+			{
 				name: "SessionAreaProps",
-				declaration: "export interface SessionAreaProps {\n    empty?: (() => ReactNode) | undefined;\n    children: ReactNode;\n}"
+				declaration: "export interface SessionAreaProps {\n    readonly session?: SlotScopeTargetMap[keyof SlotScopeTargetMap & 'session'] | undefined;\n    empty?: (() => ReactNode) | undefined;\n    children: ReactNode;\n}"
+			},
+			{
+				name: "SessionAssistantSettlementEntry",
+				declaration: "export interface SessionAssistantSettlementEntry {\n    readonly type: 'event';\n    readonly event: SessionEvent<'assistant/message'> | SessionEvent<'assistant/attempt'>;\n}"
 			},
 			{
 				name: "SessionBinding",
@@ -1852,11 +2087,11 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "SessionEventChange",
-				declaration: "export type SessionEventChange = {\n    readonly kind: 'replace';\n    readonly entries: readonly SessionEventLikeEntry[];\n} | {\n    readonly kind: 'prepend';\n    readonly entries: readonly SessionEventLikeEntry[];\n} | {\n    readonly kind: 'append';\n    readonly entries: readonly SessionLiveEventEntry[];\n};"
+				declaration: "export type SessionEventChange = {\n    readonly kind: 'replace';\n    readonly entries: readonly SessionEventLikeEntry[];\n} | {\n    readonly kind: 'prepend';\n    readonly entries: readonly SessionEventLikeEntry[];\n} | {\n    readonly kind: 'append';\n    readonly entries: readonly SessionEventLikeEntry[];\n} | {\n    readonly kind: 'settle-assistant';\n    readonly attemptId: LlmAttemptId;\n    readonly entry?: SessionAssistantSettlementEntry;\n};"
 			},
 			{
 				name: "SessionEventLikeEntry",
-				declaration: "export type SessionEventLikeEntry = {\n    readonly type: 'event';\n    readonly event: SessionEvent;\n} | {\n    readonly type: 'chunks';\n    readonly event: ChunkRowEvent;\n};"
+				declaration: "export type SessionEventLikeEntry = {\n    readonly type: 'event';\n    readonly event: SessionEvent;\n} | {\n    readonly type: 'transient';\n    readonly event: AssistantLiveChunkEvent;\n};"
 			},
 			{
 				name: "SessionEventSource",
@@ -1875,10 +2110,6 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export type SessionIdOf = SessionStandardProps extends {\n    sessionId: infer S;\n} ? S : string;"
 			},
 			{
-				name: "SessionLiveEventEntry",
-				declaration: "export type SessionLiveEventEntry = Extract<SessionEventLikeEntry, {\n    readonly type: 'event';\n}>;"
-			},
-			{
 				name: "SessionMaybeStandardProps",
 				declaration: "export interface SessionMaybeStandardProps {\n}"
 			},
@@ -1887,8 +2118,28 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export type SessionProviderComponent = (props: SessionAreaProps) => ReactNode;"
 			},
 			{
+				name: "SessionReference",
+				declaration: "export interface SessionReference extends Disposable {\n    readonly sessionId: SessionId;\n    readonly binding: SessionBinding;\n    readonly ready: Promise<SessionBinding>;\n    release(): void;\n}"
+			},
+			{
+				name: "SessionReferenceSource",
+				declaration: "export type SessionReferenceSource = Extract<keyof SessionReferenceSourceMap, string>;"
+			},
+			{
+				name: "SessionReferenceSourceMap",
+				declaration: "export interface SessionReferenceSourceMap {\n    controllerOperation: unknown;\n    gateway: unknown;\n}"
+			},
+			{
 				name: "SessionRequestId",
 				declaration: "export type SessionRequestId = Branded<'session-request-id'>;"
+			},
+			{
+				name: "SessionRetainInfo",
+				declaration: "export interface SessionRetainInfo {\n    readonly referenceCount: number;\n    readonly retainedBy: Readonly<Partial<Record<SessionReferenceSource, number>>>;\n}"
+			},
+			{
+				name: "SessionRetainOptions",
+				declaration: "export interface SessionRetainOptions {\n    readonly source: SessionReferenceSource;\n    readonly signal?: AbortSignal | undefined;\n}"
 			},
 			{
 				name: "SessionSearchResultItem",
@@ -1896,11 +2147,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "SessionSnapshot",
-				declaration: "export interface SessionSnapshot {\n    readonly sessionId: SessionId;\n    readonly queue: readonly QueuedMessage[];\n    readonly pendingSubmissions: readonly PendingSubmission[];\n    readonly running: boolean;\n    readonly subagent: {\n        readonly address: SubagentAddress;\n        readonly parentAvailable?: boolean;\n    } | null;\n    readonly removed: boolean;\n    readonly openState: OpenState;\n    readonly openError: ClientFailure | null;\n    readonly hasMore: boolean;\n    readonly loadingOlder: boolean;\n    readonly promptError: PromptError | null;\n    readonly blank: boolean;\n    readonly lastAgentError: string | null;\n    readonly promptAttempted: boolean;\n    readonly awaitingFirstTurn: boolean;\n}"
+				declaration: "export interface SessionSnapshot {\n    readonly sessionId: SessionId;\n    readonly pendingSubmissions: readonly PendingSubmission[];\n    readonly running: boolean;\n    readonly subagent: {\n        readonly address: SubagentAddress;\n        readonly parentAvailable?: boolean;\n    } | null;\n    readonly removed: boolean;\n    readonly openState: OpenState;\n    readonly openError: RemoteFailure | null;\n    readonly hasMore: boolean;\n    readonly loadingOlder: boolean;\n    readonly promptError: PromptError | null;\n    readonly blank: boolean;\n    readonly lastAgentError: string | null;\n    readonly promptAttempted: boolean;\n    readonly awaitingFirstTurn: boolean;\n}"
 			},
 			{
 				name: "SessionStandardProps",
 				declaration: "export interface SessionStandardProps {\n}"
+			},
+			{
+				name: "SessionTarget",
+				declaration: "export type SessionTarget = SessionId | SubagentAddress;"
 			},
 			{
 				name: "SlotComponent",
@@ -1908,11 +2163,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			},
 			{
 				name: "SlotCore",
-				declaration: "export class SlotCore {\n    constructor();\n    register<K extends keyof SlotMap & string, const EntryKey extends EntryKeyOf<K> = EntryKeyOf<K>, const D extends ChildrenDecl = Record<never, never>, H extends StoreDecl | undefined = undefined, M = never, N extends (keyof LocaleNamespaceMap & string) | undefined = undefined, C extends SlotComponent<never> = SlotComponent<never>>(options: BaseOptions<K, EntryKey, D, H, M, N> & {\n        inject?: undefined;\n    }, component: C & SlotComponent<ComposedProps<K, NoInfer<EntryKey>, keyof NoInfer<D> & keyof SlotMap & string, HandleOf<NoInfer<H>>, object, NoInfer<M>, NoInfer<N>>> & RendersCheck<C, D>): () => void;\n    register<K extends keyof SlotMap & string, I extends object, const EntryKey extends EntryKeyOf<K> = EntryKeyOf<K>, const D extends ChildrenDecl = Record<never, never>, H extends StoreDecl | undefined = undefined, M = never, N extends (keyof LocaleNamespaceMap & string) | undefined = undefined, C extends SlotComponent<never> = SlotComponent<never>>(options: BaseOptions<K, EntryKey, D, H, M, N> & {\n        inject: (...args: InjectParams<K, H>) => I;\n    }, component: C & SlotComponent<ComposedProps<K, NoInfer<EntryKey>, keyof NoInfer<D> & keyof SlotMap & string, HandleOf<NoInfer<H>>, I, NoInfer<M>, NoInfer<N>>> & RendersCheck<C, D>): () => void;\n    register(options: ErasedOptions, component: unknown): () => void;\n    isLive(entry: StoredEntry): boolean;\n    entries(key: string): readonly StoredEntry[];\n    entriesOfSlot(key /* …truncated — full shape in source */"
+				declaration: "export class SlotCore {\n    constructor();\n    readonly registerFactory: RegisterFactory;\n    factory(name: string): StoredFactory | undefined;\n    factoryVersion(name: string): number;\n    subscribeFactory(name: string, listener: () => void): () => void;\n    isFactoryLive(definition: StoredFactory): boolean;\n    register<K extends keyof SlotMap & string, const EntryKey extends EntryKeyOf<K> = EntryKeyOf<K>, const D extends ChildrenDecl = Record<never, never>, H extends StoreDecl | undefined = undefined, M = never, N extends (keyof LocaleNamespaceMap & string) | undefined = undefined, C extends SlotComponent<never> = SlotComponent<never>>(options: BaseOptions<K, EntryKey, D, H, M, N> & {\n        inject?: undefined;\n    }, component: C & SlotComponent<ComposedProps<K, NoInfer<EntryKey>, keyof NoInfer<D> & keyof SlotMap & string, HandleOf<NoInfer<H>>, object, NoInfer<M>, NoInfer<N>>> & RendersCheck<C, D>): () => void;\n    register<K extends keyof SlotMap & string, I extends object, const EntryKey extends EntryKeyOf<K> = EntryKeyOf<K>, const D extends ChildrenDecl = Record<never, never>, H extends StoreDecl | undefined = undefined, M = never, N extends (keyof LocaleNamespaceMap & string) | undefined = undefined, C extends SlotComponent<never> = SlotComponent<never>>(options: BaseOptions<K, EntryKey, D, H, M, N> & {\n        inject: (...args: InjectParams<K, H>) => I;\n    }, component: C & SlotComponent<ComposedProps<K, NoInfer<EntryKey>, keyof NoInfer<D> & keyof SlotMap & string, HandleOf<NoInfer<H>>, I, NoInfer<M>, NoInfer<N>>> & RendersCheck<C, D>): () => void;\n    register(options: ErasedOptions, component: unknown): () => void;\n    isLive(entry: StoredEntry): boolean;\n    entries(key: string): readonly StoredEntry[];\n    entriesOfSlot(key: string): readonly StoredEntry[];\n    spec<K extends keyof SlotMap & string>(key: K): SlotSpec<SlotMap[K]> | undefined;\n    specDynamic(key: string): SlotSpec<SlotEntryDef> | undefined;\n    snapshot(root?: string): LiveCompositionNode[];\n    declarationEpoch(key: string): number;\n    subscribe(key: string, fn: () => void): () => void;\n    subscribeDeclaration(key: string, fn: () => void): () => void;\n    getVersion(key: string): number;\n    onMutate(fn: (key: string) => void): () => void;\n    reportEntryError(key: string, entry: StoredEntry, error: unknown, info: {\n        abdicate: boolean;\n    }): void;\n    reportFactoryError(name: string, registration: StoredEntry | StoredFactory, error: unknown): void;\n    onEntryError(fn: (key: string, registration: StoredEntry | StoredFactory, error: unknown, info: {\n        abdicated: boolean;\n    }) => void): () => void;\n}"
 			},
 			{
 				name: "SlotEntryDef",
 				declaration: "export interface SlotEntryDef {\n    kind: SlotKind;\n    scope: SlotScope;\n    owner?: object;\n    keyProps?: Record<string, object>;\n    hookContext?: unknown;\n    inject?: object;\n}"
+			},
+			{
+				name: "SlotFactoryMap",
+				declaration: "export interface SlotFactoryMap {\n}"
 			},
 			{
 				name: "SlotInjectFace",
@@ -1939,6 +2198,10 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export type SlotScope = 'root' | 'session-maybe' | 'session';"
 			},
 			{
+				name: "SlotScopeTargetMap",
+				declaration: "export interface SlotScopeTargetMap {\n}"
+			},
+			{
 				name: "SlotSpec",
 				declaration: "export type SlotSpec<E extends SlotEntryDef> = {\n    kind: E['kind'];\n    scope: E['scope'];\n} & ('inject' extends keyof E ? E extends {\n    inject: infer Injected extends object;\n} ? {\n    inject: Injected;\n} : {\n    inject?: object;\n} : {\n    inject?: never;\n});"
 			},
@@ -1947,12 +2210,20 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export type SnapshotSelectorHook<T> = <S>(sel: (s: T) => S, eq?: (a: S, b: S) => boolean) => S;"
 			},
 			{
+				name: "StartSessionOptions",
+				declaration: "export type StartSessionOptions = DraftInitializationOptions;"
+			},
+			{
 				name: "StoreDecl",
 				declaration: "export type StoreDecl = StoreHandle<any, any> | StoreFactory;"
 			},
 			{
 				name: "StoredEntry",
 				declaration: "export interface StoredEntry {\n    component: unknown;\n    options: {\n        key?: string;\n        id?: string;\n        order?: number;\n        label?: SlotLabel;\n        priority?: number;\n    };\n    select?: ((owner: never) => unknown) | undefined;\n    inject?: ((...args: never[]) => Record<string, unknown>) | undefined;\n    children?: Readonly<Record<string, SlotSpec<SlotEntryDef>>> | undefined;\n    store?: StoreDecl | undefined;\n    locale?: string | undefined;\n    registrant?: string | undefined;\n}"
+			},
+			{
+				name: "StoredFactory",
+				declaration: "export interface StoredFactory {\n    readonly name: string;\n    readonly component: unknown;\n    readonly scope: SlotScope;\n    readonly children?: Readonly<Record<string, SlotSpec<SlotEntryDef>>> | undefined;\n    readonly store?: StoreDecl | undefined;\n    readonly inject?: ((...args: never[]) => Record<string, unknown>) | undefined;\n    readonly locale?: string | undefined;\n    readonly slots?: Readonly<Record<string, {\n        scope: SlotScope;\n    }>> | undefined;\n    readonly registrant?: string | undefined;\n}"
 			},
 			{
 				name: "StoreFactory",
@@ -1999,12 +2270,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaration: "export type ThemeTokens = Record<string, string>;"
 			},
 			{
-				name: "Translate",
-				declaration: "export type Translate<K extends string = string> = (key: K, params?: Record<string, unknown>) => string;"
-			},
-			{
 				name: "TranslateNS",
 				declaration: "export type TranslateNS<N extends keyof LocaleNamespaceMap & string> = Translate<LocaleKeysOf<N>>;"
+			},
+			{
+				name: "UseFactorySlot",
+				declaration: "export type UseFactorySlot<F extends keyof SlotFactoryMap & string> = <N extends FactoryLocalNameOf<F>>(name: N, fallback: FactoryLocalComponent<F, N>) => SlotComponent<FactoryLocalInputPropsOf<F, N>>;"
 			},
 			{
 				name: "WorkspaceView",
@@ -2102,36 +2373,6 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 		/** Every slot the shipped web bundle declares, sorted by key. */
 		const CLIENT_SLOT_API = [
 			{
-				key: "conversation",
-				kind: "single",
-				scope: "session-maybe",
-				summary: "The whole center column, across both the no-session hero and a live conversation.",
-				doc: "The whole center column, across both the no-session hero and a live\nconversation. OCCUPIED by ui-conversation's ConversationRoot, which\ndeclares the session body, composer, and input seats inside it —\nregistering here replaces the entire conversation surface (and removes\nevery seat it declares) rather than adding to it.\n\nCurrent-session-optional: the occupant owns both states without\nchanging its React identity, so it keeps its own state across a session\nswitch. It receives no owner props; session facts arrive through the\nframework hooks of the `session-maybe` scope.",
-				registerOptions: [],
-				ownerProps: ["/** Conversation owner share: business state and actions belong to the registrant. */\nexport interface ConvOwnerProps {}"],
-				ownerPropsReferences: [],
-				standardProps: [
-					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
-					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
-					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
-					"useConversation: MaybeSnapshotSelectorHook<ConversationSnapshot>",
-					"useInput: MaybeSnapshotSelectorHook<InputState>",
-					"inputActions: InputActions | undefined",
-					"useSession: MaybeSnapshotSelectorHook<SessionSnapshot>",
-					"sessionId: SessionId | undefined",
-					"useProjection: UseProjection"
-				],
-				keyDomain: "",
-				hookContext: "",
-				slotInject: "",
-				declaredBy: "an entry in 'root' (client-ui-layout), so it exists while that entry is mounted",
-				occupants: ["client-ui-conversation ConversationRoot"],
-				replaceRisk: "shadows-shipped-ui",
-				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation', () => ctx.slots.register(\n      { name: 'conversation' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-layout/src/client/index.ts:65"
-			},
-			{
 				key: "conversation.approval.detail",
 				kind: "single",
 				scope: "session",
@@ -2141,9 +2382,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Stable identity handed to an optional approval-detail renderer. */\nexport interface ApprovalDetailOwnerProps {\n  /** Tool call correlated with the request. */\n  callId: ToolCallId\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2192,9 +2436,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner currency of finalized-assistant actions. */\nexport interface AssistantActionOwnerProps {\n  messageId: MessageId\n}"],
 				ownerPropsReferences: ["MessageId"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2212,7 +2459,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-message-feedback MessageFeedbackActions id 'feedback'"],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register(\n      { name: 'conversation.chat.assistant-actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-chat/src/client/contract/slots.ts:202"
+				source: "packages/client/ui-chat/src/client/contract/slots.ts:321"
 			},
 			{
 				key: "conversation.chat.commandview",
@@ -2233,9 +2480,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					"CompactionSummaryNode"
 				],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2253,7 +2503,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: [],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.chat.commandview', () => ctx.slots.register(\n      { name: 'conversation.chat.commandview', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-chat/src/client/contract/slots.ts:190"
+				source: "packages/client/ui-chat/src/client/contract/slots.ts:309"
 			},
 			{
 				key: "conversation.chat.node",
@@ -2267,17 +2517,22 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					type: "string",
 					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
 				}],
-				ownerProps: ["/** Stable owner currency delivered to a keyed Chat renderer. */\nexport interface ChatNodeOwnerProps {\n  selectedCallId?: ToolCallId | undefined\n  cwd?: string | undefined\n  openFile: (path: string) => void\n  inspectCall: (callId: ToolCallId) => void\n  forkAt: (seq: number) => void\n  renderMessageImages: RenderMessageImages\n  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined\n  /** Turn-process state when this Node belongs to a projected Turn. */\n  turnProcess?: TurnProcessOwnerProps | undefined\n}"],
+				ownerProps: ["/** Stable owner currency delivered to a keyed Chat renderer. */\nexport interface ChatNodeOwnerProps {\n  /** Renderer-owned Node portion selected by the grouping Definition. */\n  groupPart?: string\n  cwd?: string | undefined\n  /** Open the current source file of a skill referenced by a sent message. */\n  openSkill: (name: string) => void\n  openFile: (path: string, options?: OpenFileOptions) => void\n  inspectCall: ((callId: ToolCallId) => void) | undefined\n  forkAt: (seq: number) => void\n  /**\n   * Session-authorized image loader, down-threaded from the Chat view so a\n   * chat-node renderer can render the attachment presentation slot directly\n   * with only the durable references plus this loader, instead of receiving a\n   * rendering closure.\n   */\n  loadImage: MessageImageLoader\n  renderMessageImages: RenderMessageImages\n  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined\n  /** Turn-process state when this Node belongs to a projected Turn. */\n  turnProcess?: TurnProcessOwnerProps | undefined\n}"],
 				ownerPropsReferences: [
 					"MarkdownFileMentions",
+					"MessageImageLoader",
+					"OpenFileOptions",
 					"RenderMessageImages",
 					"TurnProcessOwnerProps",
 					"TurnTailOwnerProps"
 				],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2288,14 +2543,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					"useProjection: UseProjection",
 					"useTrajectory: UseTrajectory"
 				],
-				keyDomain: "fixed by the owner's key table { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }, already taken: assistant-step, command, command-input, compaction, context, manual-compaction, model-retry, steering, system-prompt, tool-call, turn-error, turn-max-tokens, turn-process, turn-tail, unknown, user, workflow-run",
-				hookContext: "string",
-				slotInject: "ChatNodeTurnDataInjected",
+				keyDomain: "fixed by the owner's key table { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }, already taken: assistant-step, command, command-input, compaction, context, manual-compaction, model-retry, question-reply, steering, system-prompt, tool-call, turn-error, turn-max-tokens, turn-process, turn-tail, turn-trigger, unknown, user, workflow-run",
+				hookContext: "ChatNodeHookContext",
+				slotInject: "ChatNodeInjected",
 				declaredBy: "an entry in 'conversation.view' (client-ui-chat), so it exists while that entry is mounted",
 				occupants: [
 					"client-ui-chat UserMessageNodeView key 'user'",
 					"client-ui-chat UserMessageNodeView key 'steering'",
 					"client-ui-chat ContextMessageNodeView key 'context'",
+					"client-ui-chat TurnTriggerNodeView key 'turn-trigger'",
 					"client-ui-chat SystemPromptNodeView key 'system-prompt'",
 					"client-ui-chat AssistantNodeView key 'assistant-step'",
 					"client-ui-chat CommandNodeView key 'command'",
@@ -2309,30 +2565,48 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					"client-ui-chat UnknownNodeView key 'unknown'",
 					"client-ui-goal GoalCommandInputView key 'command-input'",
 					"client-ui-tool ToolCallTree key 'tool-call'",
+					"client-ui-user-questions QuestionReplyView key 'question-reply'",
 					"client-ui-workflow-run WorkflowRunPanel key 'workflow-run'"
 				],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(\n      { name: 'conversation.chat.node', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-chat/src/client/contract/slots.ts:171"
+				source: "packages/client/ui-chat/src/client/contract/slots.ts:290"
 			},
 			{
 				key: "conversation.chat.turnTail",
-				kind: "chain",
+				kind: "list",
 				scope: "session",
-				summary: "Selector-routed extension before a completed Turn's action row.",
-				doc: "Selector-routed extension before a completed Turn's action row. The\ncomponent receives the Turn, closing sequence, and file opener. The first\nselector that accepts the owner renders; an all-declined chain is empty.",
-				registerOptions: [{
-					name: "select",
-					requirement: "required",
-					type: "(owner) => unknown | null",
-					doc: "Pure routing selector. Entries are tried in ascending order; the first non-null result wins and arrives as the component's `matched` prop. All-null falls through to the owner's fallback."
-				}],
+				summary: "Ordered feature contributions before a completed Turn's action row.",
+				doc: "Ordered feature contributions before a completed Turn's action row. Each\nentry receives the Turn, closing sequence, and file opener. A fresh `id`\nadds an entry; entries without content return null.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
 				ownerProps: ["/** Owner currency of the completed-Turn extension chain. */\nexport interface TurnTailOwnerProps {\n  turn: TurnLocation\n  seq: number\n  openFile: (path: string) => void\n}"],
 				ownerPropsReferences: ["TurnLocation"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2347,10 +2621,14 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				hookContext: "",
 				slotInject: "",
 				declaredBy: "an entry in 'conversation.chat.node' (client-ui-chat), so it exists while that entry is mounted",
-				occupants: ["client-ui-deliverables ProducedFiles"],
+				occupants: [
+					"client-ui-deliverables DeliverablesTail id '@deepseek-ai/dsh-client-ui-deliverables'",
+					"client-ui-plan PlanCards",
+					"client-ui-schedule ScheduleTurnCard id 'schedule-created'"
+				],
 				replaceRisk: "none",
-				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register(\n      { name: 'conversation.chat.turnTail', select: owner => null },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-chat/src/client/contract/slots.ts:196"
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register(\n      { name: 'conversation.chat.turnTail', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-chat/src/client/contract/slots.ts:315"
 			},
 			{
 				key: "conversation.composer",
@@ -2371,9 +2649,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					"SessionSnapshot"
 				],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2387,7 +2668,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "factory 'conversation.content' (client-ui-conversation), so it exists while that definition is registered",
 				occupants: [
 					"client-ui-approval ApprovalPanel",
 					"client-ui-subagent SubagentReadOnlyComposer",
@@ -2395,7 +2676,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.composer', () => ctx.slots.register(\n      { name: 'conversation.composer', select: owner => null },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:119"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:187"
 			},
 			{
 				key: "conversation.composer.bar",
@@ -2404,12 +2685,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				summary: "Resident composer body, including the no-Session inert state.",
 				doc: "Resident composer body, including the no-Session inert state.",
 				registerOptions: [],
-				ownerProps: ["/** Owner share of the resident composer bar. */\nexport interface ComposerBarOwnerProps {\n  /** Hero uses centered placement; composer uses the active bottom placement. */\n  variant: 'hero' | 'composer'\n  /** A feature-owned reason that makes message input inert while leaving model selection live. */\n  blocked?: { readonly reason: string }\n  /** Lock all message actions while preserving the resident composer surface. */\n  disabled?: boolean\n  /** Whether the shared Workspace picker is expanded. */\n  workspacePickerOpen?: boolean\n  /** Open the Workspace picker from the inert composer surface. */\n  onRequestWorkspace?: () => void\n  placeholder?: string\n  /** Optional content rendered above the composer surface. */\n  accessory?: ReactNode\n  /** Floating overlay content rendered inside the composer card. */\n  overlay?: ReactNode\n  /** Left-side input controls. */\n  leftItems?: ReactNode\n  /** Right-side input controls. */\n  rightItems?: ReactNode\n  /** Ambient content below the card. */\n  footer?: ReactNode\n}"],
+				ownerProps: ["/** Owner share of the resident composer bar. */\nexport interface ComposerBarOwnerProps {\n  /** Hero uses centered placement; composer uses the active bottom placement. */\n  variant: 'hero' | 'composer'\n  /** A feature-owned reason that makes message input inert while leaving model selection live. */\n  blocked?: { readonly reason: string }\n  /** Lock all message actions while preserving the resident composer surface. */\n  disabled?: boolean\n  /** Whether the shared Workspace picker is expanded. */\n  workspacePickerOpen?: boolean\n  /** Open the Workspace picker from the inert composer surface. */\n  onRequestWorkspace?: () => void\n  placeholder?: string\n  /** Optional content rendered above the composer surface. */\n  accessory?: ReactNode\n}"],
 				ownerPropsReferences: ["Workspace"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useConversation: MaybeSnapshotSelectorHook<ConversationSnapshot>",
 					"useInput: MaybeSnapshotSelectorHook<InputState>",
@@ -2421,11 +2705,11 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "factory 'conversation.content' (client-ui-conversation), so it exists while that definition is registered",
 				occupants: ["client-ui-conversation InputBar"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.composer.bar', () => ctx.slots.register(\n      { name: 'conversation.composer.bar' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:137"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:207"
 			},
 			{
 				key: "conversation.composer.dock",
@@ -2453,44 +2737,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
 					}
 				],
-				ownerProps: ["/** Point-in-time owner values for composer extension entries. */\nexport interface InputZone {\n  readonly session: SessionSnapshot\n  readonly input: InputState\n}"],
-				ownerPropsReferences: ["InputState", "SessionSnapshot"],
-				standardProps: [
-					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
-					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
-					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
-					"useChat: UseChat",
-					"useConversation: UseConversation",
-					"useInput: SnapshotSelectorHook<InputState>",
-					"inputActions: InputActions",
-					"useSession: SessionSnapshotSelector",
-					"sessionId: SessionId",
-					"useProjection: UseProjection",
-					"useTrajectory: UseTrajectory"
-				],
-				keyDomain: "",
-				hookContext: "",
-				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
-				occupants: ["client-ui-chat StatsLine id 'stats'"],
-				replaceRisk: "none",
-				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(\n      { name: 'conversation.composer.dock', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:131"
-			},
-			{
-				key: "conversation.details.tool",
-				kind: "single",
-				scope: "session",
-				summary: "Whole details-panel body for the selected Tool call.",
-				doc: "Whole details-panel body for the selected Tool call. The component receives\nthe running or settled block and optional workspace root. A registration\nreplaces the shipped Tool details renderer; absence uses the raw fallback.",
-				registerOptions: [],
-				ownerProps: ["/** Tool block rendered in the details panel. */\nexport interface DetailsToolOwnerProps {\n  block: ToolCallBlock\n  cwd?: string | undefined\n}"],
+				ownerProps: [],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2504,35 +2759,104 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'details' (client-ui-chat), so it exists while that entry is mounted",
-				occupants: ["client-ui-tool ToolDetails"],
+				declaredBy: "an entry in 'conversation.composer.bar' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: ["client-ui-chat ActivityPill id 'activity'", "client-ui-chat UsagePill id 'usage'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(\n      { name: 'conversation.composer.dock', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:199"
+			},
+			{
+				key: "conversation.header",
+				kind: "single",
+				scope: "session-maybe",
+				summary: "Resident navigation container, including when no Session is selected.",
+				doc: "Resident navigation container, including when no Session is selected.",
+				registerOptions: [],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useConversation: MaybeSnapshotSelectorHook<ConversationSnapshot>",
+					"useInput: MaybeSnapshotSelectorHook<InputState>",
+					"inputActions: InputActions | undefined",
+					"useSession: MaybeSnapshotSelectorHook<SessionSnapshot>",
+					"sessionId: SessionId | undefined",
+					"useProjection: UseProjection"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main.conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: ["client-ui-conversation ConversationHeader"],
 				replaceRisk: "shadows-shipped-ui",
-				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.details.tool', () => ctx.slots.register(\n      { name: 'conversation.details.tool' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-chat/src/client/contract/slots.ts:208"
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.header', () => ctx.slots.register(\n      { name: 'conversation.header' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:139"
+			},
+			{
+				key: "conversation.header.leading",
+				kind: "single",
+				scope: "root",
+				summary: "Global navigation before the Session title, available without a Session.",
+				doc: "Global navigation before the Session title, available without a Session.",
+				registerOptions: [],
+				ownerProps: ["/** The leading seat exposes global navigation independently of a Session. */\nexport interface ConversationHeaderLeadingOwnerProps {\n  /** Marker field: the occupant receives no owner-specific values. */\n  children?: never\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'conversation.header' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: [],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.header.leading', () => ctx.slots.register(\n      { name: 'conversation.header.leading' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:168"
 			},
 			{
 				key: "conversation.hero.agentPreset",
 				kind: "single",
-				scope: "root",
+				scope: "session-maybe",
 				summary: "Agent-preset control staged for a New Session.",
 				doc: "Agent-preset control staged for a New Session.",
 				registerOptions: [],
 				ownerProps: ["/** Owner share of the Hero agent-preset control. */\nexport interface HeroAgentPresetOwnerProps {\n  /** Marker field: the occupant owns its roster and staged selection. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
-					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useConversation: MaybeSnapshotSelectorHook<ConversationSnapshot>",
+					"useInput: MaybeSnapshotSelectorHook<InputState>",
+					"inputActions: InputActions | undefined",
+					"useSession: MaybeSnapshotSelectorHook<SessionSnapshot>",
+					"sessionId: SessionId | undefined",
+					"useProjection: UseProjection"
 				],
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "factory 'conversation.content' (client-ui-conversation), so it exists while that definition is registered",
 				occupants: ["client-ui-agent-preset AgentPresetSeat"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.hero.agentPreset', () => ctx.slots.register(\n      { name: 'conversation.hero.agentPreset' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:125"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:193"
 			},
 			{
 				key: "conversation.hero.brand.mark",
@@ -2544,19 +2868,22 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Presentation props supplied to the blank-session brand mark. */\nexport interface HeroBrandMarkOwnerProps {\n  /** Requested square edge in pixels. */\n  size: number\n  /** Host class preserving the surrounding mark geometry. */\n  className?: string | undefined\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
-				occupants: ["client-ui-brand-official OfficialBrandMark"],
-				replaceRisk: "shadows-shipped-ui",
+				declaredBy: "factory 'conversation.content' (client-ui-conversation), so it exists while that definition is registered",
+				occupants: [],
+				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register(\n      { name: 'conversation.hero.brand.mark' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:123"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:191"
 			},
 			{
 				key: "conversation.hero.workspace",
@@ -2568,19 +2895,22 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share common to blank-session Workspace pickers. */\nexport interface EmptyWorkspaceOwnerProps {\n  open: boolean\n  anchorRef?: RefObject<HTMLElement>\n  /** Currently selected Workspace, when available. */\n  selectedId?: WorkspaceId | undefined\n  onPick: (workspaceId: WorkspaceId) => void\n  onClose: () => void\n}"],
 				ownerPropsReferences: ["Workspace"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "factory 'conversation.content' (client-ui-conversation), so it exists while that definition is registered",
 				occupants: ["client-ui-workspace WorkspacePicker"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.hero.workspace', () => ctx.slots.register(\n      { name: 'conversation.hero.workspace' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:121"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:189"
 			},
 			{
 				key: "conversation.hero.workspace.directoryFlow",
@@ -2592,9 +2922,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/**\n * Owner share of the directory-flow holes: the complete conversation between\n * the trigger surface and the picking interaction. The occupant reads `open`\n * to run/render its interaction and reports exactly one outcome per open.\n */\nexport interface DirectoryFlowOwnerProps {\n  /** True while a picking interaction is requested; flipping back to false withdraws the request. */\n  open: boolean\n  /** True while the owner adopts a picked path (`createWorkspace` in flight); occupants disable their commit affordances. */\n  busy: boolean\n  /** The operator picked a directory (absolute host path); the owner adopts it. */\n  onPicked: (path: string) => void\n  /** The operator dismissed the interaction; the owner just closes the flow. */\n  onCancel: () => void\n  /** The interaction itself failed (chooser missing, listing denied); the owner shows its error surface. */\n  onError: (message: string) => void\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -2604,21 +2937,63 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-directory-picker-browse BrowseDirectoryFlow", "client-ui-directory-picker-native NativeDirectoryFlow"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.hero.workspace.directoryFlow', () => ctx.slots.register(\n      { name: 'conversation.hero.workspace.directoryFlow' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-workspace/src/client/contract/slots.ts:57"
+				source: "packages/client/ui-workspace/src/client/contract/slots.ts:117"
+			},
+			{
+				key: "conversation.input.activity",
+				kind: "single",
+				scope: "session",
+				summary: "Compact action after the model selector; it can expand across the toolbar while retaining the editor and submit action.",
+				doc: "Compact action after the model selector; it can expand across the toolbar while retaining the editor and submit action.",
+				registerOptions: [],
+				ownerProps: ["/** A toolbar activity hides ordinary accessory controls while expanded; its occupant must release expansion on unmount. */\nexport interface InputActivityOwnerProps extends InputControlOwnerProps {\n  /** @param active - whether the occupant needs the toolbar width before the submit action. */\n  onActiveChange: (active: boolean) => void\n}"],
+				ownerPropsReferences: ["InputControlOwnerProps"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'conversation.composer.bar' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: ["experimental-client-ui-voice-input VoiceInput"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.activity', () => ctx.slots.register(\n      { name: 'conversation.input.activity' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:205"
 			},
 			{
 				key: "conversation.input.attachments",
 				kind: "single",
 				scope: "session-maybe",
-				summary: "Optional draft-image rail and drop target.",
-				doc: "Optional draft-image rail and drop target.",
+				summary: "Optional draft-attachment rail and drop target.",
+				doc: "Optional draft-attachment rail and drop target.",
 				registerOptions: [],
-				ownerProps: ["/** Input state handed to the optional attachment presentation plugin. */\nexport interface ComposerAttachmentsOwnerProps {\n  /** Browser-owned draft images in input order. */\n  attachments: readonly ComposerAttachment[]\n  /** Whether a document-level file drop may add images now. */\n  canAcceptDrop: boolean\n  /** Add one dropped batch through the composer's validation path. */\n  onAddImages: (files: readonly File[]) => void\n  /** Remove one draft image through the Conversation service. */\n  onRemoveImage: (id: DraftAttachmentId) => void\n  /** Display-ready limits for the drop invitation. */\n  dropLimits?: { readonly count: number; readonly size: string } | undefined\n}"],
-				ownerPropsReferences: ["ComposerAttachment", "DraftAttachmentId"],
+				ownerProps: ["/** Input state handed to the optional attachment presentation plugin. */\nexport interface ComposerAttachmentsOwnerProps {\n  /** Browser-owned draft attachments in input order. */\n  attachments: readonly ComposerAttachment[]\n  /** Whether a document-level file drop may add attachments now. */\n  canAcceptDrop: boolean\n  /**\n   * Add one dropped batch through the composer's validation path.\n   * @param files - dropped, pasted, or picked browser files in source order.\n   * @param directories - members of `files` the drop source identified as directories.\n   */\n  onAddFiles: (files: readonly File[], directories?: ReadonlySet<File>) => void\n  /** Remove one draft attachment through the Conversation service. */\n  onRemoveAttachment: (id: DraftAttachmentId) => void\n  /** Current per-draft upload states for file-kind attachments. */\n  uploads: DraftFileUploads\n  /** Restart one failed file upload. */\n  onRetryFile: (id: DraftAttachmentId) => void\n  /** Display-ready limits for the drop invitation. */\n  dropLimits?: { readonly count: number; readonly size: string } | undefined\n}"],
+				ownerPropsReferences: [
+					"ComposerAttachment",
+					"DraftAttachmentId",
+					"DraftFileUploads"
+				],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useConversation: MaybeSnapshotSelectorHook<ConversationSnapshot>",
 					"useInput: MaybeSnapshotSelectorHook<InputState>",
@@ -2634,7 +3009,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-attachment ComposerAttachments"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.attachments', () => ctx.slots.register(\n      { name: 'conversation.input.attachments' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:139"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:209"
 			},
 			{
 				key: "conversation.input.dock",
@@ -2665,9 +3040,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Point-in-time owner values for composer extension entries. */\nexport interface InputZone {\n  readonly session: SessionSnapshot\n  readonly input: InputState\n}"],
 				ownerPropsReferences: ["InputState", "SessionSnapshot"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2681,15 +3059,16 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "factory 'conversation.content' (client-ui-conversation), so it exists while that definition is registered",
 				occupants: [
 					"client-ui-conversation QueueDock id 'queue'",
 					"client-ui-conversation TodoDock id 'todo'",
-					"client-ui-goal GoalDock id 'goal'"
+					"client-ui-goal GoalDock id 'goal'",
+					"experimental-client-ui-claude-code-mods Band id 'claude-code-mods'"
 				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.dock', () => ctx.slots.register(\n      { name: 'conversation.input.dock', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:127"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:195"
 			},
 			{
 				key: "conversation.input.left",
@@ -2717,12 +3096,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
 					}
 				],
-				ownerProps: ["/** Point-in-time owner values for composer extension entries. */\nexport interface InputZone {\n  readonly session: SessionSnapshot\n  readonly input: InputState\n}"],
-				ownerPropsReferences: ["InputState", "SessionSnapshot"],
+				ownerProps: [],
+				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2736,25 +3118,28 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "an entry in 'conversation.composer.bar' (client-ui-conversation), so it exists while that entry is mounted",
 				occupants: [],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.left', () => ctx.slots.register(\n      { name: 'conversation.input.left', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:133"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:201"
 			},
 			{
 				key: "conversation.input.model",
 				kind: "single",
 				scope: "session",
 				summary: "Model selector inside the composer tool row.",
-				doc: "Model selector inside the composer tool row.",
+				doc: "Model selector inside the composer tool row. When expanded controls cannot\nshare a line, the row sets --dsh-composer-model-text-display to none and\n--dsh-composer-model-icon-display to block for an occupant's compact display.",
 				registerOptions: [],
-				ownerProps: ["/** Owner share of the named plan and model controls. */\nexport interface InputControlOwnerProps {\n  /** Whether the composer currently refuses interaction. */\n  locked: boolean\n}"],
+				ownerProps: ["/** Owner share of the named plan, permission, and model controls. */\nexport interface InputControlOwnerProps {\n  /** Whether the composer currently refuses interaction. */\n  locked: boolean\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2772,7 +3157,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-model-selection ModelSelect"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.model', () => ctx.slots.register(\n      { name: 'conversation.input.model' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:147"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:223"
 			},
 			{
 				key: "conversation.input.overlay",
@@ -2803,9 +3188,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: [],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2819,11 +3207,50 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
-				occupants: ["client-ui-commands PopupSelectView id 'command-popup'", "client-ui-input-trigger MenuView id 'slash-menu'"],
+				declaredBy: "an entry in 'conversation.composer.bar' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: [
+					"client-ui-commands PopupSelectView id 'command-popup'",
+					"client-ui-input-trigger MenuView id 'slash-menu'",
+					"client-ui-message-feedback FeedbackDialog id 'feedback-dialog'"
+				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register(\n      { name: 'conversation.input.overlay', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:129"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:197"
+			},
+			{
+				key: "conversation.input.permission",
+				kind: "single",
+				scope: "session",
+				summary: "Current-session permission control inside the composer tool row.",
+				doc: "Current-session permission control inside the composer tool row.",
+				registerOptions: [],
+				ownerProps: ["/** Owner share of the named plan, permission, and model controls. */\nexport interface InputControlOwnerProps {\n  /** Whether the composer currently refuses interaction. */\n  locked: boolean\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'conversation.composer.bar' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: ["client-ui-permission-presets PermissionSelect"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.permission', () => ctx.slots.register(\n      { name: 'conversation.input.permission' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:217"
 			},
 			{
 				key: "conversation.input.plan",
@@ -2832,12 +3259,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				summary: "Plan control inside the composer tool row.",
 				doc: "Plan control inside the composer tool row.",
 				registerOptions: [],
-				ownerProps: ["/** Owner share of the named plan and model controls. */\nexport interface InputControlOwnerProps {\n  /** Whether the composer currently refuses interaction. */\n  locked: boolean\n}"],
+				ownerProps: ["/** Owner share of the named plan, permission, and model controls. */\nexport interface InputControlOwnerProps {\n  /** Whether the composer currently refuses interaction. */\n  locked: boolean\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2855,7 +3285,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-plan PlanChip"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.plan', () => ctx.slots.register(\n      { name: 'conversation.input.plan' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:145"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:215"
 			},
 			{
 				key: "conversation.input.right",
@@ -2883,12 +3313,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
 					}
 				],
-				ownerProps: ["/** Point-in-time owner values for composer extension entries. */\nexport interface InputZone {\n  readonly session: SessionSnapshot\n  readonly input: InputState\n}"],
-				ownerPropsReferences: ["InputState", "SessionSnapshot"],
+				ownerProps: [],
+				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2902,11 +3335,11 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "an entry in 'conversation.composer.bar' (client-ui-conversation), so it exists while that entry is mounted",
 				occupants: [],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.input.right', () => ctx.slots.register(\n      { name: 'conversation.input.right', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:135"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:203"
 			},
 			{
 				key: "conversation.message.images",
@@ -2915,16 +3348,19 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				summary: "Renderer for one consecutive group of durable message images.",
 				doc: "Renderer for one consecutive group of durable message images. The owner\nsupplies image references, an authorized loader, and alignment. A\nregistration replaces the shipped gallery; without one, images are omitted.",
 				registerOptions: [],
-				ownerProps: ["/** Message image group handed to the optional attachment presentation plugin. */\nexport interface MessageImagesOwnerProps {\n  /** Durable references or submission-echo previews in source order. */\n  images: readonly MessageImageSource[]\n  /** Session-authorized image URL loader for the durable arm. */\n  loadImage: MessageImageLoader\n  /** Horizontal placement inside the owning record. */\n  align: 'start' | 'end'\n}"],
+				ownerProps: ["/** Message image group handed to the optional attachment presentation plugin. */\nexport interface MessageImagesOwnerProps {\n  /** Durable references or submission-echo previews in source order. */\n  images: readonly MessageImageSource[]\n  /** Session-authorized image URL loader for the durable arm. */\n  loadImage: MessageImageLoader\n  /** Horizontal placement inside the owning record. */\n  align: 'start' | 'end'\n  /** Force every image into the compact message-attachment tile size. */\n  compact?: boolean\n  /** Fixed, uncropped thumbnail for an attachment list row. */\n  thumbnail?: boolean\n}"],
 				ownerPropsReferences: [
 					"Message",
 					"MessageImageLoader",
 					"MessageImageSource"
 				],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2942,7 +3378,61 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-attachment MessageImages"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.message.images', () => ctx.slots.register(\n      { name: 'conversation.message.images' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-chat/src/client/contract/slots.ts:184"
+				source: "packages/client/ui-chat/src/client/contract/slots.ts:303"
+			},
+			{
+				key: "conversation.plan-review.actions",
+				kind: "list",
+				scope: "session",
+				summary: "Actions for the exact plan under review; approval remains with the question composer.",
+				doc: "Actions for the exact plan under review; approval remains with the question composer.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/**\n * A request narrowed to the `plan-review` presentation intent: everything the\n * decision card renders and answers with, so the panel never re-reads the\n * request fields. `approve` and `decline` are the asker's own options — an\n * answer must carry one of those labels verbatim — and `plan` is the markdown\n * body under review.\n */\nexport interface PlanReview {\n  /** The reviewed question's id, echoed in the answer. */\n  id: string\n  /** The question text, kept as the card's accessible name. */\n  question: string\n  /** The plan markdown under review. */\n  plan: string\n  /** Logged tool invocation used to reopen this plan. */\n  callId?: ToolCallId\n  /** The option that approves the plan. */\n  approve: QuestionOption\n  /** The option that declines it; absent when the asker offered no other option. */\n  decline?: QuestionOption\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'conversation.composer' (client-ui-user-questions), so it exists while that entry is mounted",
+				occupants: ["client-ui-plan PlanReviewOpen"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.plan-review.actions', () => ctx.slots.register(\n      { name: 'conversation.plan-review.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-user-questions/src/client/contract/slots.ts:21"
 			},
 			{
 				key: "conversation.session",
@@ -2954,9 +3444,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: [],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -2970,11 +3463,11 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "factory 'conversation.content' (client-ui-conversation), so it exists while that definition is registered",
 				occupants: ["client-ui-conversation ConversationSession"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.session', () => ctx.slots.register(\n      { name: 'conversation.session' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:95"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:133"
 			},
 			{
 				key: "conversation.session.header",
@@ -2986,9 +3479,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: [],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3002,11 +3498,11 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
-				declaredBy: "an entry in 'conversation' (client-ui-conversation), so it exists while that entry is mounted",
+				declaredBy: "an entry in 'conversation.header' (client-ui-conversation), so it exists while that entry is mounted",
 				occupants: ["client-ui-conversation ConversationSessionHeader"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.session.header', () => ctx.slots.register(\n      { name: 'conversation.session.header' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:97"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:141"
 			},
 			{
 				key: "conversation.session.header.actions",
@@ -3037,9 +3533,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Header actions derive their state from standard Session props. */\nexport interface ConversationHeaderActionOwnerProps {\n  /** Marker field: entries receive no owner-specific values. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3057,11 +3556,47 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: [
 					"client-ui-agent-preset AgentPresetLabel id 'agent-preset'",
 					"client-ui-jobs JobListAction id 'job-list'",
+					"client-ui-subagent SubagentCatalogAction id 'subagent-catalog'",
 					"experimental-client-ui-agent-team TeamAction id 'agent-team'"
 				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register(\n      { name: 'conversation.session.header.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:105"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:156"
+			},
+			{
+				key: "conversation.session.header.corner",
+				kind: "single",
+				scope: "session",
+				summary: "The header's far-right corner, past the utilities' edge and into the header's own padding, for one control.",
+				doc: "The header's far-right corner, past the utilities' edge and into the\nheader's own padding, for one control. The corner is laid out only while\nits occupant renders something; an occupant with nothing to show renders\nnothing, and the utilities take the header's edge.",
+				registerOptions: [],
+				ownerProps: ["/** The header corner's occupant derives its state from standard Session props. */\nexport interface ConversationHeaderCornerOwnerProps {\n  /** Marker field: the occupant receives no owner-specific values. */\n  children?: never\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'conversation.session.header' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: ["client-ui-sidebar-right ExpandButton"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.session.header.corner', () => ctx.slots.register(\n      { name: 'conversation.session.header.corner' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:179"
 			},
 			{
 				key: "conversation.session.header.lineage",
@@ -3073,9 +3608,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Plain breadcrumb data handed to the optional lineage renderer. */\nexport interface ConversationHeaderLineageOwnerProps {\n  /** Session represented by this breadcrumb title. */\n  lineageSessionId: SessionId\n  /** Display title available to a combined title/control renderer. */\n  displayTitle: string\n  /** Navigate to an ancestor title when present. */\n  openTitle?: () => void\n}"],
 				ownerPropsReferences: ["SessionId"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3093,7 +3631,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-subagent SubagentHeaderLineage"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.session.header.lineage', () => ctx.slots.register(\n      { name: 'conversation.session.header.lineage' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:99"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:150"
 			},
 			{
 				key: "conversation.session.header.utilities",
@@ -3124,9 +3662,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Header actions derive their state from standard Session props. */\nexport interface ConversationHeaderActionOwnerProps {\n  /** Marker field: entries receive no owner-specific values. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3141,10 +3682,14 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				hookContext: "",
 				slotInject: "",
 				declaredBy: "an entry in 'conversation.session.header' (client-ui-conversation), so it exists while that entry is mounted",
-				occupants: ["session-log-export SessionLogDownloadHeaderAction id 'session-log-download'"],
+				occupants: [
+					"client-ui-open-in-app SessionOpenInAppAction id 'open-in-app'",
+					"client-ui-schedule ScheduleCatalogAction id 'schedule-catalog'",
+					"session-log-export SessionLogDownloadHeaderAction id 'session-log-download'"
+				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register(\n      { name: 'conversation.session.header.utilities', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:111"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:162"
 			},
 			{
 				key: "conversation.trajectory.images",
@@ -3153,16 +3698,19 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				summary: "Renderer for one group of durable record images in the Trajectory ledger.",
 				doc: "Renderer for one group of durable record images in the Trajectory\nledger. The owner supplies image references, an authorized loader, and\nalignment. A registration replaces the shipped gallery; without one,\nimages are omitted.",
 				registerOptions: [],
-				ownerProps: ["/** Message image group handed to the optional attachment presentation plugin. */\nexport interface MessageImagesOwnerProps {\n  /** Durable references or submission-echo previews in source order. */\n  images: readonly MessageImageSource[]\n  /** Session-authorized image URL loader for the durable arm. */\n  loadImage: MessageImageLoader\n  /** Horizontal placement inside the owning record. */\n  align: 'start' | 'end'\n}"],
+				ownerProps: ["/** Message image group handed to the optional attachment presentation plugin. */\nexport interface MessageImagesOwnerProps {\n  /** Durable references or submission-echo previews in source order. */\n  images: readonly MessageImageSource[]\n  /** Session-authorized image URL loader for the durable arm. */\n  loadImage: MessageImageLoader\n  /** Horizontal placement inside the owning record. */\n  align: 'start' | 'end'\n  /** Force every image into the compact message-attachment tile size. */\n  compact?: boolean\n  /** Fixed, uncropped thumbnail for an attachment list row. */\n  thumbnail?: boolean\n}"],
 				ownerPropsReferences: [
 					"Message",
 					"MessageImageLoader",
 					"MessageImageSource"
 				],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3180,7 +3728,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-attachment MessageImages"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.trajectory.images', () => ctx.slots.register(\n      { name: 'conversation.trajectory.images' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-trajectory/src/client/trajectory-contract.ts:95"
+				source: "packages/client/ui-trajectory/src/client/trajectory-contract.ts:98"
 			},
 			{
 				key: "conversation.view",
@@ -3208,12 +3756,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
 					}
 				],
-				ownerProps: ["/** Conversation View entries obtain their data from registered standard hooks. */\nexport interface ConvViewOwnerProps {\n  /** Focus request addressed to the selected View. */\n  viewRequest: import('./views.ts').ConversationViewRequest | null\n  /** Select a View and address one opaque focus identity to it. */\n  openView: (view: string, focus: string) => void\n  /** Acknowledge the current one-shot focus request. */\n  completeViewRequest: () => void\n}"],
+				ownerProps: ["/** Conversation View entries obtain their data from registered standard hooks. */\nexport interface ConvViewOwnerProps {\n  /** Open a tool call's inspector when an inspection target is available. */\n  inspectCall: ((callId: string) => void) | undefined\n  /** Focus request addressed to the selected View. */\n  viewRequest: import('./views.ts').ConversationViewRequest | null\n  /** Select a View and address one opaque focus identity to it. */\n  openView: (view: string, focus: string) => void\n  /** Acknowledge the current one-shot focus request. */\n  completeViewRequest: () => void\n}"],
 				ownerPropsReferences: ["ConversationViewRequest"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3231,21 +3782,43 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-chat ChatView id 'chat'", "client-ui-trajectory TrajectoryView id 'trajectory'"],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('conversation.view', () => ctx.slots.register(\n      { name: 'conversation.view', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-conversation/src/client/contract/slots.ts:117"
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:185"
 			},
 			{
-				key: "details",
-				kind: "single",
+				key: "deliverables.file.actions",
+				kind: "list",
 				scope: "session",
-				summary: "The right details column, shown when the layout opens it.",
-				doc: "The right details column, shown when the layout opens it. OCCUPIED by\nui-conversation's DetailsPanel, which declares the tool-details seat\ninside it — registering here replaces the column and takes that seat\nwith it. Absent an occupant the column renders nothing.\n\nNo owner props: the framework injects the session id and hooks for the\n`session` scope, and `ctx.layout` owns whether the column is open.",
-				registerOptions: [],
-				ownerProps: ["/** Details owner share: empty — sessionId arrives as a framework-standard prop. */\nexport interface DetailsOwnerProps {}"],
+				summary: "Open one file through its authorized Session event coordinates.",
+				doc: "Open one file through its authorized Session event coordinates.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** Native file action selected by an explicit user gesture. */\nexport type PresentedAction = 'open' | 'reveal'", "/** Failure feedback for the shared native opening control. */\nexport type PresentedOpenFailure = 'openError' | 'revealError' | null"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3259,11 +3832,527 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
+				declaredBy: "an entry in 'conversation.chat.turnTail' (client-ui-deliverables), so it exists while that entry is mounted",
+				occupants: ["client-ui-open-in-app FileRouteAction id 'open-in-app'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('deliverables.file.actions', () => ctx.slots.register(\n      { name: 'deliverables.file.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-deliverables/src/client/file-actions.ts:8"
+			},
+			{
+				key: "deliverables.review.file.actions",
+				kind: "list",
+				scope: "session",
+				summary: "The same file actions owned by a changed-file review tab.",
+				doc: "The same file actions owned by a changed-file review tab.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** Slot contract table. Owners extend via declaration merging; entries are {@link SlotEntryDef}. */\nexport interface SlotMap {}"],
+				ownerPropsReferences: ["SlotEntryDef"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-deliverables), so it exists while that entry is mounted",
+				occupants: ["client-ui-open-in-app FileRouteAction id 'open-in-app'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('deliverables.review.file.actions', () => ctx.slots.register(\n      { name: 'deliverables.review.file.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-deliverables/src/client/file-actions.ts:21"
+			},
+			{
+				key: "main",
+				kind: "keyed",
+				scope: "root",
+				summary: "Central panel selected by sidebar entry id.",
+				doc: "Central panel selected by sidebar entry id. The reserved `conversation`\nkey hosts the Conversation; other keys receive no Session binding.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), already taken: conversation",
+				hookContext: "",
+				slotInject: "",
 				declaredBy: "an entry in 'root' (client-ui-layout), so it exists while that entry is mounted",
-				occupants: ["client-ui-chat DetailsPanel"],
+				occupants: [
+					"client-ui-conversation ConversationPanel key 'conversation'",
+					"client-ui-plugin-manager PluginManagerPage",
+					"client-ui-schedule TaskManagerPage"
+				],
 				replaceRisk: "shadows-shipped-ui",
-				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('details', () => ctx.slots.register(\n      { name: 'details' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-layout/src/client/index.ts:75"
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('main', () => ctx.slots.register(\n      { name: 'main', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-layout/src/client/index.ts:73"
+			},
+			{
+				key: "main.conversation",
+				kind: "single",
+				scope: "session-maybe",
+				summary: "Conversation shell beneath its root-scoped main-panel entry.",
+				doc: "Conversation shell beneath its root-scoped main-panel entry.",
+				registerOptions: [],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useConversation: MaybeSnapshotSelectorHook<ConversationSnapshot>",
+					"useInput: MaybeSnapshotSelectorHook<InputState>",
+					"inputActions: InputActions | undefined",
+					"useSession: MaybeSnapshotSelectorHook<SessionSnapshot>",
+					"sessionId: SessionId | undefined",
+					"useProjection: UseProjection"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-conversation), so it exists while that entry is mounted",
+				occupants: ["client-ui-conversation ConversationRoot"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('main.conversation', () => ctx.slots.register(\n      { name: 'main.conversation' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-conversation/src/client/contract/slots.ts:131"
+			},
+			{
+				key: "plugins.add.actions",
+				kind: "list",
+				scope: "root",
+				summary: "Additional MenuItemButton rows after installation: 72px high, with a title and a description capped at two lines.",
+				doc: "Additional MenuItemButton rows after installation: 72px high, with a title and a description capped at two lines.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** Add-plugin menu actions, independent of any selected bundle or Session. */\nexport interface PluginAddActionsProps {\n  /** Close the add-plugin menu before starting the contributed action. */\n  readonly onDismiss: () => void\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: ["client-ui-agent-preset CreatePluginMenuItem id 'create-plugin'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.add.actions', () => ctx.slots.register(\n      { name: 'plugins.add.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:84"
+			},
+			{
+				key: "plugins.bundle.activation",
+				kind: "keyed",
+				scope: "root",
+				summary: "Optional guidance after the user enables a bundle from the list, keyed by npm package name.",
+				doc: "Optional guidance after the user enables a bundle from the list, keyed by npm package name.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: ["/** One user-requested bundle activation and navigation to its configuration page. */\nexport interface PluginActivationOwnerProps {\n  readonly packageName: string\n  /** Dismiss guidance for this activation. */\n  readonly onDismiss: () => void\n  /** Dismiss guidance and open this bundle's detail page. */\n  readonly onOpenDetails: () => void\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), already taken: @deepseek-ai/dsh-experimental-voice-input-bundle",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: ["experimental-client-ui-voice-input VoiceSetupPrompt key '@deepseek-ai/dsh-experimental-voice-input-bundle'"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.bundle.activation', () => ctx.slots.register(\n      { name: 'plugins.bundle.activation', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:86"
+			},
+			{
+				key: "plugins.bundle.config",
+				kind: "keyed",
+				scope: "root",
+				summary: "A bundle's own configuration, keyed by the bundle's package name and rendered on the bundle's page between its description and its rows (`view: 'page'` only).",
+				doc: "A bundle's own configuration, keyed by the bundle's package name and\nrendered on the bundle's page between its description and its rows\n(`view: 'page'` only).",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: ["/** The view the page asks a configuration entry for. */\nexport interface PluginConfigViewProps {\n  /** `summary` renders the one-liner alone, as text or inline nodes; `page` renders the form with its save control. */\n  readonly view: 'summary' | 'page'\n  /** Host-owned configuration values and write actions for this page's entry. */\n  readonly form?: ConfigPageForm | undefined\n}"],
+				ownerPropsReferences: ["ConfigPageForm"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), already taken: @deepseek-ai/dsh-experimental-voice-input-bundle",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: ["experimental-client-ui-voice-input VoicePreparation key '@deepseek-ai/dsh-experimental-voice-input-bundle'"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(\n      { name: 'plugins.bundle.config', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:102"
+			},
+			{
+				key: "plugins.detail.actions",
+				kind: "list",
+				scope: "root",
+				summary: "Controls at the head of a detail page, before the page's own switch and uninstall, rendered with the page's subject.",
+				doc: "Controls at the head of a detail page, before the page's own switch and\nuninstall, rendered with the page's subject. An entry renders null for a\nsubject it has no control for.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** The owner props every detail contribution is rendered with. */\nexport interface PluginDetailProps {\n  /** The subject of the open page; an entry renders null for a subject it has nothing for. */\n  readonly subject: PluginsSubject\n}"],
+				ownerPropsReferences: ["PluginsSubject"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: [],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.detail.actions', () => ctx.slots.register(\n      { name: 'plugins.detail.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:116"
+			},
+			{
+				key: "plugins.detail.badge",
+				kind: "list",
+				scope: "root",
+				summary: "Tags beside a detail page's title, after the version, beta, and problem tags the page draws itself, rendered with the page's subject.",
+				doc: "Tags beside a detail page's title, after the version, beta, and problem\ntags the page draws itself, rendered with the page's subject.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** The owner props every detail contribution is rendered with. */\nexport interface PluginDetailProps {\n  /** The subject of the open page; an entry renders null for a subject it has nothing for. */\n  readonly subject: PluginsSubject\n}"],
+				ownerPropsReferences: ["PluginsSubject"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: [],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.detail.badge', () => ctx.slots.register(\n      { name: 'plugins.detail.badge', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:121"
+			},
+			{
+				key: "plugins.detail.section",
+				kind: "list",
+				scope: "root",
+				summary: "Sections under a detail page's own content: after the rows on a bundle's page, after the configuration on a row's or an official plugin's page.",
+				doc: "Sections under a detail page's own content: after the rows on a bundle's\npage, after the configuration on a row's or an official plugin's page.\nAn entry draws its own section chrome and renders null for a subject it\nhas nothing for.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** The owner props every detail contribution is rendered with. */\nexport interface PluginDetailProps {\n  /** The subject of the open page; an entry renders null for a subject it has nothing for. */\n  readonly subject: PluginsSubject\n}"],
+				ownerPropsReferences: ["PluginsSubject"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: [],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.detail.section', () => ctx.slots.register(\n      { name: 'plugins.detail.section', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:128"
+			},
+			{
+				key: "plugins.item",
+				kind: "list",
+				scope: "root",
+				summary: "One official plugin the Plugins page lists in its Official group after the official bundles: `label` is the card's title and `order` its place.",
+				doc: "One official plugin the Plugins page lists in its Official group after\nthe official bundles: `label` is the card's title and `order` its place.\nThe page renders the entry as the card's one-liner (`view: 'summary'`)\nand, once the card is opened, as the body of the plugin's own page\n(`view: 'page'`). OCCUPIED by the official settings pages, one companion\npackage per host-plane namespace; a bundle's configuration belongs in\n`plugins.bundle.config` or `plugins.row.config` instead.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** The view the page asks a configuration entry for. */\nexport interface PluginConfigViewProps {\n  /** `summary` renders the one-liner alone, as text or inline nodes; `page` renders the form with its save control. */\n  readonly view: 'summary' | 'page'\n  /** Host-owned configuration values and write actions for this page's entry. */\n  readonly form?: ConfigPageForm | undefined\n}"],
+				ownerPropsReferences: ["ConfigPageForm"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: [
+					"client-ui-settings-agent-loop AgentLoopCard id 'agent-loop'",
+					"client-ui-settings-shell ShellCard id 'shell'",
+					"client-ui-settings-subagent SubagentCard id 'subagent'",
+					"client-ui-settings-web-search WebSearchCard id 'web-search'"
+				],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.item', () => ctx.slots.register(\n      { name: 'plugins.item', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:96"
+			},
+			{
+				key: "plugins.row.config",
+				kind: "keyed",
+				scope: "root",
+				summary: "The configuration of one row a bundle declares, keyed by `<package name>#<row id>` with the row id as the bundle's patch declares it: the row on the bundle's page gains a configure control that opens the entry's page, headed by the plugin's display title and description.",
+				doc: "The configuration of one row a bundle declares, keyed by\n`<package name>#<row id>` with the row id as the bundle's patch declares\nit: the row on the bundle's page gains a configure control that opens\nthe entry's page, headed by the plugin's display title and description.\nAn absent description falls back to the entry's `view: 'summary'`.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: ["/** The view the page asks a configuration entry for. */\nexport interface PluginConfigViewProps {\n  /** `summary` renders the one-liner alone, as text or inline nodes; `page` renders the form with its save control. */\n  readonly view: 'summary' | 'page'\n  /** Host-owned configuration values and write actions for this page's entry. */\n  readonly form?: ConfigPageForm | undefined\n}"],
+				ownerPropsReferences: ["ConfigPageForm"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'main' (client-ui-plugin-manager), so it exists while that entry is mounted",
+				occupants: [],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('plugins.row.config', () => ctx.slots.register(\n      { name: 'plugins.row.config', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-plugin-manager/src/client/slot-contract.ts:110"
+			},
+			{
+				key: "rightbar",
+				kind: "single",
+				scope: "root",
+				summary: "The right column: a track the centre makes room for, or nothing.",
+				doc: "The right column: a track the centre makes room for, or nothing. OCCUPIED\nby the right Sidebar, which uses the resolved column width in normal\nmode and covers the viewport in fullscreen, retaining the wide-screen\ncolumn reservation underneath.\n\nWhether the panel is shown, and whether it takes a track, is the\noccupant's own recorded business — it reports the composition of its\nexpanded and presentation state through `ctx.layout`, and the frame sizes\nthe track and places the resize handle from that. The expand control is\nnot this column's: it is a button in the conversation header. The root\noccupant decides when to render its Session-bound content.",
+				registerOptions: [],
+				ownerProps: ["/** Right column owner share: resolved normal geometry and opening eligibility. */\nexport interface RightbarOwnerProps {\n  /** Resolved normal panel width in px, not the saved preference; zero if it cannot fit. */\n  width: number\n  /** Current frame width in px. */\n  viewportWidth: number\n  /**\n   * Whether a normal right panel can retain 300px beside a 400px center.\n   * Before a narrow opening, includes the space from collapsing the left sidebar.\n   */\n  canShow: boolean\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'root' (client-ui-layout), so it exists while that entry is mounted",
+				occupants: ["client-ui-sidebar-right RightbarRoot"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('rightbar', () => ctx.slots.register(\n      { name: 'rightbar' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-layout/src/client/index.ts:87"
+			},
+			{
+				key: "rightbar.session",
+				kind: "single",
+				scope: "session",
+				summary: "Session content selected by the root-scoped right Sidebar controller.",
+				doc: "Session content selected by the root-scoped right Sidebar controller.",
+				registerOptions: [],
+				ownerProps: ["/** Right column owner share: resolved normal geometry and opening eligibility. */\nexport interface RightbarOwnerProps {\n  /** Resolved normal panel width in px, not the saved preference; zero if it cannot fit. */\n  width: number\n  /** Current frame width in px. */\n  viewportWidth: number\n  /**\n   * Whether a normal right panel can retain 300px beside a 400px center.\n   * Before a narrow opening, includes the space from collapsing the left sidebar.\n   */\n  canShow: boolean\n}", "/** Identity of one open tab; distinct copies of one content share `contentId`, never `TabId`. */\nexport type TabId = Branded<'TabId'>"],
+				ownerPropsReferences: ["Branded"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'rightbar' (client-ui-sidebar-right), so it exists while that entry is mounted",
+				occupants: ["client-ui-sidebar-right RightbarSeat"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('rightbar.session', () => ctx.slots.register(\n      { name: 'rightbar.session' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-right/src/client/contract/slots.ts:43"
 			},
 			{
 				key: "root",
@@ -3275,9 +4364,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Root owner share: the shell supplies nothing — the frame is inject-assembled. */\nexport interface RootOwnerProps { children?: never }"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3287,7 +4379,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-layout AppFrame"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('root', () => ctx.slots.register(\n      { name: 'root' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-renderer/src/client/registry.ts:43"
+				source: "packages/client/ui-renderer/src/client/registry.ts:44"
 			},
 			{
 				key: "settings.action",
@@ -3318,9 +4410,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of the header title seat (the shell supplies nothing). */\nexport interface SettingsHeaderOwnerProps {\n  /** Marker field: header owner props are intentionally empty. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3330,7 +4425,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-settings-general SettingsDocumentAction id 'open-document'"],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.action', () => ctx.slots.register(\n      { name: 'settings.action', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:36"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:39"
 			},
 			{
 				key: "settings.close",
@@ -3342,9 +4437,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of the header title seat (the shell supplies nothing). */\nexport interface SettingsHeaderOwnerProps {\n  /** Marker field: header owner props are intentionally empty. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3354,14 +4452,14 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-settings-general CloseLabel"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.close', () => ctx.slots.register(\n      { name: 'settings.close' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:42"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:45"
 			},
 			{
 				key: "settings.general.item",
 				kind: "list",
 				scope: "root",
 				summary: "One preference row inside the General section — the additive seat for a single setting that needs no page of its own (a whole page is `settings.section`), contributed by the feature plugin that owns the preference (locale → Language, ui-theme → Appearance, ui-conversation → Composer Enter).",
-				doc: "One preference row inside the General section — the additive seat for a\nsingle setting that needs no page of its own (a whole page is\n`settings.section`), contributed by the feature plugin that owns the\npreference (locale → Language, ui-theme → Appearance, ui-conversation →\nComposer Enter). Options: `id` (row key), `order` (row position). The\nsection column only stacks rows, so a row draws its own internals,\nincluding its label: nothing projects a `label` here and the owner passes\nno props at all — copy, current value, and the write path are all yours,\nthrough your own inject face and `host.call`. Declared at runtime by\nui-settings-general's General entry; the type lives here with every other\nsettings slot type, because this package is the settings domain's base\nlayer and every registrant already depends on it for `ctx.settingsScope`.",
+				doc: "One preference row inside the General section — the additive seat for a\nsingle setting that needs no page of its own (a whole page is\n`settings.section`), contributed by the feature plugin that owns the\npreference (locale → Language, ui-theme → Appearance, ui-conversation →\nComposer Enter). Options: `id` (row key), `order` (row position). The\nsection column only stacks rows, so a row draws its own internals,\nincluding its label: nothing projects a `label` here and the owner passes\nno props at all — copy, current value, and the write path are all yours,\nthrough your own inject face and `host.call`. Declared at runtime by\nui-settings-general's General entry; the type lives here with every other\nsettings slot type, because this package is the settings domain's base\nlayer and every registrant already depends on it for `ctx.configForms`.",
 				registerOptions: [
 					{
 						name: "id",
@@ -3385,9 +4483,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of a General preference row (the section supplies nothing). */\nexport interface SettingsGeneralItemOwnerProps {\n  /** Marker field: item owner props are intentionally empty. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3396,16 +4497,21 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaredBy: "an entry in 'settings.section' (client-ui-settings-general), so it exists while that entry is mounted",
 				occupants: [
 					"client-locale LanguageRow id 'language'",
-					"client-ui-agent-preset AgentPresetRow id 'agent-preset'",
+					"client-ui-chat LinkOpeningRow id 'link-opening'",
+					"client-ui-chat PerformanceUsageRow id 'performance-usage'",
 					"client-ui-chat TranscriptViewRow id 'transcript-view'",
 					"client-ui-conversation EnterBehaviorRow id 'composer-enter'",
 					"client-ui-permission-presets PermissionRow id 'permission'",
+					"client-ui-settings-general DeveloperToolsRow id 'developer-tools'",
+					"client-ui-settings-general CurrentVersionRow id 'current-version'",
+					"client-ui-settings-session-log UploadRow",
+					"client-ui-shortcuts ShortcutsRow id 'shortcuts'",
 					"client-ui-theme AppearanceRow id 'appearance'",
 					"client-ui-theme FontSizeRow id 'font-size'"
 				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.general.item', () => ctx.slots.register(\n      { name: 'settings.general.item', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:89"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:92"
 			},
 			{
 				key: "settings.header",
@@ -3417,9 +4523,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of the header title seat (the shell supplies nothing). */\nexport interface SettingsHeaderOwnerProps {\n  /** Marker field: header owner props are intentionally empty. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3429,7 +4538,34 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-settings-general HeaderContent"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.header', () => ctx.slots.register(\n      { name: 'settings.header' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:30"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:33"
+			},
+			{
+				key: "settings.launcher",
+				kind: "single",
+				scope: "root",
+				summary: "Optional sidebar account launcher; opens the shell-owned settings panel.",
+				doc: "Optional sidebar account launcher; opens the shell-owned settings panel.",
+				registerOptions: [],
+				ownerProps: ["/** Sidebar launcher geometry and settings navigation. */\nexport interface SettingsLauncherOwnerProps {\n  /** Whether the sidebar shows labels. */\n  wide: boolean\n  /** Whether the settings dialog covers the sidebar; a launcher may treat a false-to-true edge as one Settings entry. */\n  settingsOpen: boolean\n  /** Effective Settings key labels and accessible combination; omitted when unbound. */\n  settingsShortcut?: { readonly keys: readonly string[]; readonly aria?: string | undefined }\n  /** Open the settings panel. */\n  openSettings: () => void\n  /** @param id - registered onboarding editor to open explicitly. */\n  openOnboarding: (id: string) => void\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.settings' (client-ui-settings-general), so it exists while that entry is mounted",
+				occupants: ["client-ui-settings-account AccountMenu"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.launcher', () => ctx.slots.register(\n      { name: 'settings.launcher' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:17"
 			},
 			{
 				key: "settings.models.footer",
@@ -3460,9 +4596,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of the footer area (the section supplies nothing). */\nexport interface ModelsFooterOwnerProps {\n  /** Marker field: footer owner props are intentionally empty. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3472,7 +4611,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: [],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.models.footer', () => ctx.slots.register(\n      { name: 'settings.models.footer', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings-models/src/client/slot-contract.ts:38"
+				source: "packages/client/ui-settings-models/src/client/slot-contract.ts:40"
 			},
 			{
 				key: "settings.models.provider-card",
@@ -3489,9 +4628,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of one provider-card extension occurrence. */\nexport interface ProviderCardExtrasOwnerProps {\n  /** The card's directory row (route id, display name, settings address, live state). */\n  provider: ProviderDirectoryEntry\n  /** Whether any layer configures this provider (its profile resolves); `false` while the add-provider draft edits a dormant row. */\n  configured: boolean\n  /** Whether the row's referenced api-key credential is confirmed configured (the page's credential join). */\n  keyConfigured: boolean\n}"],
 				ownerPropsReferences: ["ProviderDirectoryEntry"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
@@ -3502,6 +4644,33 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.models.provider-card', () => ctx.slots.register(\n      { name: 'settings.models.provider-card', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
 				source: "packages/client/ui-settings-models/src/client/slot-contract.ts:33"
+			},
+			{
+				key: "settings.models.sign-in",
+				kind: "single",
+				scope: "root",
+				summary: "Optional account login choice before the credential editor.",
+				doc: "Optional account login choice before the credential editor.",
+				registerOptions: [],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'settings.onboarding' (client-ui-settings-models), so it exists while that entry is mounted",
+				occupants: ["client-ui-settings-account AccountOnboarding"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.models.sign-in', () => ctx.slots.register(\n      { name: 'settings.models.sign-in' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-settings-models/src/client/slot-contract.ts:35"
 			},
 			{
 				key: "settings.onboarding",
@@ -3529,12 +4698,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
 					}
 				],
-				ownerProps: ["/** Owner share of the currently active settings-backed onboarding step. */\nexport interface SettingsOnboardingOwnerProps {\n  /** Stable id of the step currently selected by the coordinator. */\n  stepId: string\n  /** Complete or skip this step and transfer ownership to the next entry. */\n  complete: () => void\n  /** Open the settings panel directly on one registered section. */\n  openSection: (id: string) => void\n}"],
+				ownerProps: ["/** Owner share of the currently active settings-backed onboarding step. */\nexport interface SettingsOnboardingOwnerProps {\n  /** Stable id of the step currently selected by the coordinator. */\n  stepId: string\n  /** User explicitly reopened this step outside first-run onboarding. */\n  explicit?: boolean\n  /** Complete or skip this step and transfer ownership to the next entry. */\n  complete: () => void\n  /** Open the settings panel directly on one registered section. */\n  openSection: (id: string) => void\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3544,41 +4716,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-settings-models WelcomeNotice id 'welcome-notice'", "client-ui-settings-models DeepSeekOnboardingDialog id 'deepseek-official'"],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.onboarding', () => ctx.slots.register(\n      { name: 'settings.onboarding', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:74"
-			},
-			{
-				key: "settings.plugin.item",
-				kind: "keyed",
-				scope: "root",
-				summary: "One plugin's card inside the plugin configuration section (see module JSDoc).",
-				doc: "One plugin's card inside the plugin configuration section (see module JSDoc).",
-				registerOptions: [{
-					name: "key",
-					requirement: "required",
-					type: "string",
-					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
-				}],
-				ownerProps: ["/** Owner share of a plugin card (the section supplies nothing). */\nexport interface SettingsPluginItemOwnerProps {\n  /** Marker field: card owner props are intentionally empty. */\n  children?: never\n}"],
-				ownerPropsReferences: [],
-				standardProps: [
-					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
-					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
-					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
-				],
-				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
-				hookContext: "",
-				slotInject: "",
-				declaredBy: "an entry in 'settings.plugins.tab' (client-ui-settings-plugins), so it exists while that entry is mounted",
-				occupants: [
-					"client-ui-settings-plugins BashCard",
-					"client-ui-settings-plugins AgentLoopCard",
-					"client-ui-settings-plugins SubagentModelSelectionCard",
-					"client-ui-settings-plugins WebSearchCard"
-				],
-				replaceRisk: "none",
-				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.plugin.item', () => ctx.slots.register(\n      { name: 'settings.plugin.item', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings-plugins/src/client/slot-contract.ts:19"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:77"
 			},
 			{
 				key: "settings.plugins.tab",
@@ -3609,19 +4747,22 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of a Plugins tab (the section supplies nothing). */\nexport interface SettingsPluginsTabOwnerProps {\n  /** Marker field: tab owner props are intentionally empty. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
 				declaredBy: "an entry in 'settings.section' (client-ui-settings-plugins), so it exists while that entry is mounted",
-				occupants: ["client-ui-settings-plugin-inventory PluginInventorySettingsTab id 'all'", "client-ui-settings-plugins ConfigurablePluginsTab id 'configurable'"],
+				occupants: ["client-ui-settings-plugin-inventory PluginInventorySettingsTab id 'all'"],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register(\n      { name: 'settings.plugins.tab', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:63"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:66"
 			},
 			{
 				key: "settings.section",
@@ -3652,9 +4793,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/**\n * Owner share of a settings section entry. The shell owns modal visibility\n * and navigation; a section's data arrives through its own inject faces and\n * stores. `close` is the one shell affordance a section receives, for flows\n * that leave settings altogether (starting a session from a section) — the\n * onboarding coordinator's `openSection`/`complete` precedent, inverted.\n */\nexport interface SettingsSectionOwnerProps {\n  /** Close the settings panel (the shell owns the open state). */\n  close: () => void\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3663,13 +4807,14 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				declaredBy: "an entry in 'sidebar.settings' (client-ui-settings-general), so it exists while that entry is mounted",
 				occupants: [
 					"client-ui-agent-preset AgentPresetSection id 'agent-presets'",
+					"client-ui-settings-account AccountSection id 'account'",
 					"client-ui-settings-general GeneralSection id 'general'",
 					"client-ui-settings-models ModelsSection id 'models'",
 					"client-ui-settings-plugins PluginsSettingsSection id 'plugins'"
 				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.section', () => ctx.slots.register(\n      { name: 'settings.section', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:54"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:57"
 			},
 			{
 				key: "settings.trigger",
@@ -3681,9 +4826,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of the trigger content seat: the sidebar column state. */\nexport interface SettingsTriggerOwnerProps {\n  /** Whether the sidebar renders wide content (false = 56px rail, icon only). */\n  wide: boolean\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3693,7 +4841,61 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-settings-general TriggerContent"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('settings.trigger', () => ctx.slots.register(\n      { name: 'settings.trigger' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-settings/src/client/contract/slots.ts:24"
+				source: "packages/client/ui-settings/src/client/contract/slots.ts:27"
+			},
+			{
+				key: "shell.bottom",
+				kind: "single",
+				scope: "root",
+				summary: "Full-width bottom content below all three columns.",
+				doc: "Full-width bottom content below all three columns. Its rendered height\nreduces the columns' available height; empty content reserves no space.\nThe occupant owns its height, visibility, and controls. It receives no\nSession binding and remains mounted across main-panel navigation.",
+				registerOptions: [],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'root' (client-ui-layout), so it exists while that entry is mounted",
+				occupants: ["experimental-inspector InspectorPage"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('shell.bottom', () => ctx.slots.register(\n      { name: 'shell.bottom' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-layout/src/client/index.ts:94"
+			},
+			{
+				key: "shell.leading",
+				kind: "single",
+				scope: "root",
+				summary: "Window-chrome seat at the frame's top-left, over every main panel.",
+				doc: "Window-chrome seat at the frame's top-left, over every main panel.\nMounted only while the sidebar column is fully hidden (macOS desktop\ncollapse; other platforms keep the rail), so the occupant can assume the\nframe edge is the window edge and the macOS traffic lights sit before it.\nOCCUPIED by ui-sidebar's reopen/New Session controls.\n\nWhile the seat is mounted the frame publishes\n`--dsh-frame-leading-clearance` (the inline inset the seat's band\noccupies, measured from the frame's left edge); a main panel whose\ncontent reaches the top-left corner pads by it so nothing lands under\nthe lights or the controls.",
+				registerOptions: [],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'root' (client-ui-layout), so it exists while that entry is mounted",
+				occupants: ["client-ui-sidebar HeaderLeadingControls"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('shell.leading', () => ctx.slots.register(\n      { name: 'shell.leading' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-layout/src/client/index.ts:119"
 			},
 			{
 				key: "shell.overlay",
@@ -3724,19 +4926,65 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: [],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
 				hookContext: "",
 				slotInject: "",
 				declaredBy: "an entry in 'root' (client-ui-layout), so it exists while that entry is mounted",
-				occupants: [],
+				occupants: [
+					"client-ui-chat QuotaNoticeHost id 'chat.quota-notice'",
+					"client-ui-plugin-manager PluginRefreshToast id 'plugin-manager.refresh-toast'",
+					"client-ui-schedule ScheduleDeleteToast id 'schedule.delete-toast'",
+					"client-ui-settings-account DesktopOnboardingEntry id 'desktop-onboarding'",
+					"client-ui-settings-account AccountPlatformHost id 'account.platform-page'",
+					"client-ui-settings-session-log UploadToast id 'session-log-upload-toast'",
+					"client-ui-shortcuts ShortcutReference id 'shortcuts'",
+					"client-ui-workspace SessionRenameDialog id 'workspace.session-rename'",
+					"client-ui-workspace SessionArchiveConfirmDialog id 'workspace.session-archive'",
+					"client-ui-workspace RowActionToast id 'workspace.row-toast'"
+				],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('shell.overlay', () => ctx.slots.register(\n      { name: 'shell.overlay', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-layout/src/client/index.ts:86"
+				source: "packages/client/ui-layout/src/client/index.ts:105"
+			},
+			{
+				key: "shell.quota-notice",
+				kind: "chain",
+				scope: "root",
+				summary: "Frame-wide quota notice chain.",
+				doc: "Frame-wide quota notice chain. The Chat-owned host in `shell.overlay`\noffers the one live notice; the first entry whose selector claims its\ncode takes over the surface, and the all-decline case renders the host's\ngeneric warning Toast. The host lives outside the Chat panel, so a notice\nsurvives switching or closing the panel that reported it.",
+				registerOptions: [{
+					name: "select",
+					requirement: "required",
+					type: "(owner) => unknown | null",
+					doc: "Pure routing selector. Entries are tried in ascending order; the first non-null result wins and arrives as the component's `matched` prop. All-null falls through to the owner's fallback."
+				}],
+				ownerProps: ["/** Owner currency of one quota notice offered to the frame-wide chain. */\nexport interface QuotaNoticeOwnerProps {\n  /** Stable failure code retained in the Session log. */\n  code: QuotaNoticeCode\n  /** Provider-neutral notice copy in the active locale. */\n  message: string\n  /** Take the notice down. */\n  dismiss: () => void\n  /**\n   * Prevent later quota failures from replacing this notice. Dismissal clears\n   * all holds; releasing the last hold resumes future notices without replay.\n   * Callers must release on unmount.\n   * @returns idempotent release that cannot clear another hold.\n   */\n  keepOpen: () => () => void\n}"],
+				ownerPropsReferences: ["QuotaNoticeCode"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'shell.overlay' (client-ui-chat), so it exists while that entry is mounted",
+				occupants: ["client-ui-settings-account AccountQuotaNotice"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('shell.quota-notice', () => ctx.slots.register(\n      { name: 'shell.quota-notice', select: owner => null },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-chat/src/client/contract/slots.ts:329"
 			},
 			{
 				key: "sidebar",
@@ -3748,9 +4996,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Sidebar owner share: live column state from the frame's concession solve. */\nexport interface SidebarOwnerProps {\n  /** True when the sidebar is closed (the column renders the compact control rail). */\n  collapsed: boolean\n  /** Rendered column width in px (SIDEBAR_COLLAPSED when collapsed). */\n  width: number\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3760,7 +5011,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-sidebar SidebarRoot"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar', () => ctx.slots.register(\n      { name: 'sidebar' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-layout/src/client/index.ts:52"
+				source: "packages/client/ui-layout/src/client/index.ts:68"
 			},
 			{
 				key: "sidebar.brand.mark",
@@ -3772,9 +5023,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Geometry supplied to the sidebar brand-mark occupant. */\nexport interface SidebarBrandMarkOwnerProps {\n  /** Requested square edge in pixels. */\n  size: number\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3784,7 +5038,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-brand-official OfficialBrandMark"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register(\n      { name: 'sidebar.brand.mark' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:23"
+				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:25"
 			},
 			{
 				key: "sidebar.brand.name",
@@ -3796,9 +5050,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Empty owner share for the sidebar brand-name occupant. */\nexport interface SidebarBrandNameOwnerProps {\n  /** Marker field: the occupant owns its own content and width. */\n  children?: never\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3808,7 +5065,42 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-brand-official OfficialBrandName"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register(\n      { name: 'sidebar.brand.name' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:28"
+				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:30"
+			},
+			{
+				key: "sidebar.chat.conversation",
+				kind: "single",
+				scope: "session",
+				summary: "Session-scoped Conversation occurrence hosted by one Sidebar chat tab.",
+				doc: "Session-scoped Conversation occurrence hosted by one Sidebar chat tab.",
+				registerOptions: [],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-subagent), so it exists while that entry is mounted",
+				occupants: ["client-ui-subagent ConversationSlotPanel"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.chat.conversation', () => ctx.slots.register(\n      { name: 'sidebar.chat.conversation' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-subagent/src/client/sidebar-chat/index.tsx:42"
 			},
 			{
 				key: "sidebar.footer.action",
@@ -3839,9 +5131,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/** Owner share of an action rendered beside Settings at the sidebar foot. */\nexport interface SidebarFooterActionOwnerProps {\n  /** Whether the sidebar renders wide content (false = 56px rail). */\n  wide: boolean\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3851,7 +5146,669 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-cordis CordisPanel id 'cordis-panel'"],
 				replaceRisk: "none",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(\n      { name: 'sidebar.footer.action', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:46"
+				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:53"
+			},
+			{
+				key: "sidebar.panellist",
+				kind: "list",
+				scope: "root",
+				summary: "Global panel icons.",
+				doc: "Global panel icons. Each list id addresses the matching main panel;\nthe sidebar owns the button and resolves its label from list metadata.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** Icon presentation supplied by the global panel row. */\nexport interface SidebarPanelIconOwnerProps {\n  /** Requested square edge in pixels. */\n  size: number\n  /** Whether this panel is selected in the main column. */\n  active: boolean\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar' (client-ui-sidebar), so it exists while that entry is mounted",
+				occupants: ["client-ui-plugin-manager PluginsPanelIcon", "client-ui-schedule TaskManagerIcon"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(\n      { name: 'sidebar.panellist', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:35"
+			},
+			{
+				key: "sidebar.right.pane.tab",
+				kind: "keyed",
+				scope: "session",
+				summary: "One tab's body, dispatched with the `id` of the type in force for `tab.kind`.",
+				doc: "One tab's body, dispatched with the `id` of the type in force for\n`tab.kind`. A tab type registers here under its definition's `id` and\nreceives every tab of that kind, in every pane, docked or floating. A kind\nwith no type in force renders the owner's \"nothing can view this\" notice\nrather than an empty pane.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
+				hookContext: "TabHookContext",
+				slotInject: "SidebarRightTabInjected",
+				declaredBy: "an entry in 'rightbar.session' (client-ui-sidebar-right), so it exists while that entry is mounted",
+				occupants: [
+					"client-ui-deliverables ReviewTab",
+					"client-ui-plan PlanPreview",
+					"client-ui-schedule ScheduleTaskTab",
+					"client-ui-sidebar-browser BrowserBody",
+					"client-ui-sidebar-documentpreview TextPreview",
+					"client-ui-sidebar-files FilesBody",
+					"client-ui-sidebar-right GuideBody",
+					"client-ui-sidebar-terminal LazyTerminalBody",
+					"client-ui-subagent SidebarChatTab",
+					"experimental-session-inspector SessionInspectorView"
+				],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(\n      { name: 'sidebar.right.pane.tab', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-right/src/client/contract/slots.ts:59"
+			},
+			{
+				key: "sidebar.right.pane.tab.title",
+				kind: "keyed",
+				scope: "session",
+				summary: "A tab's title as its chip (and a floating panel's header) shows it, dispatched with the same key and information hook as the body.",
+				doc: "A tab's title as its chip (and a floating panel's header) shows it,\ndispatched with the same key and information hook as the body. A type with a\nlive title — a terminal named after its shell, a chat after its first\nline — registers here and reads its own store; one without registers\nnothing and the chip shows the registry's `title(address)` text captured\nat open time.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
+				hookContext: "TabHookContext",
+				slotInject: "SidebarRightTabInjected",
+				declaredBy: "an entry in 'rightbar.session' (client-ui-sidebar-right), so it exists while that entry is mounted",
+				occupants: [
+					"client-ui-plan PlanTitle",
+					"client-ui-schedule ScheduleTaskTabTitle",
+					"client-ui-sidebar-browser BrowserTitle",
+					"client-ui-sidebar-documentpreview TextTitle",
+					"client-ui-sidebar-files FilesTitle",
+					"client-ui-sidebar-right GuideTitle",
+					"client-ui-sidebar-terminal TerminalTitle"
+				],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register(\n      { name: 'sidebar.right.pane.tab.title', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-right/src/client/contract/slots.ts:73"
+			},
+			{
+				key: "sidebar.right.tab.document",
+				kind: "keyed",
+				scope: "session",
+				summary: "Document body selected by a registered implementation id.",
+				doc: "Document body selected by a registered implementation id.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: ["/** Content and viewing inputs shared by document bodies and nested PDF presentation. */\nexport interface DocumentBodyOwner {\n  /** Observe a file read by this renderer. @param address - complete file resource address. */\n  readonly addResource: (address: string) => void\n  /** Replace this renderer's dependencies. @param addresses - complete file resource addresses. */\n  readonly setResources: (addresses: readonly string[]) => void\n  /** Original file address, also readable through the standard useResource hook. */\n  readonly resourceAddress: string\n  /** Ordinary file content or a renderer-owned loading request; text accumulates until eof. */\n  readonly content: DocumentContent\n  /** The document toolbar's current wrapping preference. */\n  readonly wrap: boolean\n  /** Report a renderer-owned scrollport; passing `null` restores the shared body as the owner. */\n  readonly scrollportRef: RefCallback<HTMLElement>\n}"],
+				ownerPropsReferences: ["DocumentContent"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
+				hookContext: "UseSidebarRightTabInfo",
+				slotInject: "{ hooks: { tabInfo: SlotHookFactory<'sidebar.right.tab.document', UseSidebarRightTabInfo> } }",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-sidebar-documentpreview), so it exists while that entry is mounted",
+				occupants: [
+					"client-ui-sidebar-documentpreview CodeBody",
+					"client-ui-sidebar-documentpreview LazyExcelBody",
+					"client-ui-sidebar-documentpreview HtmlBody",
+					"client-ui-sidebar-documentpreview ImageBody",
+					"client-ui-sidebar-documentpreview MarkdownBody",
+					"client-ui-sidebar-documentpreview OfficeBody",
+					"client-ui-sidebar-documentpreview LazyPdfBody",
+					"client-ui-sidebar-documentpreview TextBody"
+				],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.document', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-documentpreview/src/client/document/contract.ts:51"
+			},
+			{
+				key: "sidebar.right.tab.document.action",
+				kind: "keyed",
+				scope: "session",
+				summary: "Renderer-specific controls before the document toolbar's reload button.",
+				doc: "Renderer-specific controls before the document toolbar's reload button.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: ["/**\n * Ordinary file contents, or a request for the selected renderer to load its content.\n * Byte arrays are transient UI input, never persisted layout or Session data.\n */\nexport type DocumentContent =\n  | { readonly kind: 'text'; readonly text: string; readonly pages: readonly DocumentTextPage[]; readonly eof: boolean }\n  | { readonly kind: 'bytes'; readonly data: Uint8Array<ArrayBuffer> }\n  | {\n    readonly kind: 'renderer'\n    /** Changes on reload or implementation replacement; retained contents belong to one revision. */\n    readonly revision: number\n    /** Report the displayed source version; stale revisions cannot update the owner. @param version - loaded source version. */\n    readonly loaded: (version: string) => void\n    /** End a failed load; a later file change can start another revision. */\n    readonly failed: () => void\n    /** Cancel the current load and start a new revision. */\n    readonly reload: () => void\n  }"],
+				ownerPropsReferences: ["DocumentTextPage"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
+				hookContext: "UseSidebarRightTabInfo",
+				slotInject: "{ hooks: { tabInfo: SlotHookFactory<'sidebar.right.tab.document', UseSidebarRightTabInfo> } }",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-sidebar-documentpreview), so it exists while that entry is mounted",
+				occupants: ["client-ui-sidebar-documentpreview OfficeFontAction"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.document.action', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.document.action', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-documentpreview/src/client/document/contract.ts:87"
+			},
+			{
+				key: "sidebar.right.tab.document.actions",
+				kind: "list",
+				scope: "session",
+				summary: "Header toolbar contributions acting on the previewed file, rendered after the preview's own controls once the file's Host path is known.",
+				doc: "Header toolbar contributions acting on the previewed file, rendered\nafter the preview's own controls once the file's Host path is known.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-sidebar-documentpreview), so it exists while that entry is mounted",
+				occupants: ["client-ui-open-in-app OpenPathAction id 'open-in-app'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.document.actions', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.document.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-documentpreview/src/client/document/contract.ts:66"
+			},
+			{
+				key: "sidebar.right.tab.document.office.pdf",
+				kind: "keyed",
+				scope: "session",
+				summary: "PDF presentation supplied with Office-owned converted bytes.",
+				doc: "PDF presentation supplied with Office-owned converted bytes.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: ["/** Content and viewing inputs shared by document bodies and nested PDF presentation. */\nexport interface DocumentBodyOwner {\n  /** Observe a file read by this renderer. @param address - complete file resource address. */\n  readonly addResource: (address: string) => void\n  /** Replace this renderer's dependencies. @param addresses - complete file resource addresses. */\n  readonly setResources: (addresses: readonly string[]) => void\n  /** Original file address, also readable through the standard useResource hook. */\n  readonly resourceAddress: string\n  /** Ordinary file content or a renderer-owned loading request; text accumulates until eof. */\n  readonly content: DocumentContent\n  /** The document toolbar's current wrapping preference. */\n  readonly wrap: boolean\n  /** Report a renderer-owned scrollport; passing `null` restores the shared body as the owner. */\n  readonly scrollportRef: RefCallback<HTMLElement>\n}"],
+				ownerPropsReferences: ["DocumentContent"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
+				hookContext: "UseSidebarRightTabInfo",
+				slotInject: "{ hooks: { tabInfo: SlotHookFactory<'sidebar.right.tab.document', UseSidebarRightTabInfo> } }",
+				declaredBy: "an entry in 'sidebar.right.tab.document' (client-ui-sidebar-documentpreview), so it exists while that entry is mounted",
+				occupants: ["client-ui-sidebar-documentpreview LazyPdfBody"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.document.office.pdf', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.document.office.pdf', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-documentpreview/src/client/office/OfficeBody.tsx:19"
+			},
+			{
+				key: "sidebar.right.tab.document.unpreviewable",
+				kind: "list",
+				scope: "session",
+				summary: "Empty-state contributions for a file this preview cannot render, offered where Retry would stand once the file's Host path is known.",
+				doc: "Empty-state contributions for a file this preview cannot render,\noffered where Retry would stand once the file's Host path is known.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-sidebar-documentpreview), so it exists while that entry is mounted",
+				occupants: ["client-ui-open-in-app OpenPathEmptyAction id 'open-in-app'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.document.unpreviewable', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.document.unpreviewable', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-documentpreview/src/client/document/contract.ts:78"
+			},
+			{
+				key: "sidebar.right.tab.files.actions",
+				kind: "list",
+				scope: "session",
+				summary: "Workspace directory actions after the file tree's reload control.",
+				doc: "Workspace directory actions after the file tree's reload control.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-sidebar-files), so it exists while that entry is mounted",
+				occupants: ["client-ui-open-in-app OpenInAppAction id 'open-in-app'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.files.actions', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.files.actions', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-files/src/client/index.ts:34"
+			},
+			{
+				key: "sidebar.right.tab.guide",
+				kind: "chain",
+				scope: "session",
+				summary: "The guide tab's body.",
+				doc: "The guide tab's body. Selectors run in chain order and the first\nnon-declining entry replaces the shipped guide entirely; with no entry, or\nwith every entry declining, the shipped guide renders.",
+				registerOptions: [{
+					name: "select",
+					requirement: "required",
+					type: "(owner) => unknown | null",
+					doc: "Pure routing selector. Entries are tried in ascending order; the first non-null result wins and arrives as the component's `matched` prop. All-null falls through to the owner's fallback."
+				}],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "UseSidebarRightTabInfo",
+				slotInject: "{ hooks: { tabInfo: SlotHookFactory<'sidebar.right.tab.guide', UseSidebarRightTabInfo> } }",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-sidebar-right), so it exists while that entry is mounted",
+				occupants: [],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.guide', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.guide', select: owner => null },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-right/src/client/contract/slots.ts:84"
+			},
+			{
+				key: "sidebar.right.tab.guide.entry",
+				kind: "keyed",
+				scope: "session",
+				summary: "One provider's guide card, with the standard card as the owner's fallback.",
+				doc: "One provider's guide card, with the standard card as the owner's fallback.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: ["/** Resolved guide copy and entry identity supplied to a provider's card renderer. */\nexport interface SidebarRightGuideEntryOwnerProps {\n  readonly entryId: string\n  readonly kind: string\n  readonly title: string\n  readonly description?: string\n}"],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), none are taken yet",
+				hookContext: "UseSidebarRightTabInfo",
+				slotInject: "{ hooks: { tabInfo: SlotHookFactory<'sidebar.right.tab.guide.entry', UseSidebarRightTabInfo> } }",
+				declaredBy: "an entry in 'sidebar.right.pane.tab' (client-ui-sidebar-right), so it exists while that entry is mounted",
+				occupants: ["client-ui-sidebar-terminal TerminalGuide"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.guide.entry', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.guide.entry', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-right/src/client/contract/slots.ts:91"
+			},
+			{
+				key: "sidebar.right.tab.menu.item",
+				kind: "list",
+				scope: "session",
+				summary: "Extra items at the end of one tab's actions menu, in registration order.",
+				doc: "Extra items at the end of one tab's actions menu, in registration order.\nEntries decide their own visibility from the tab they are given. Without a\nregistrant the menu shows only the kit's own layout actions.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** Owner share of one tab-menu item occurrence. */\nexport interface SidebarRightTabMenuOwnerProps {\n  /** The tab whose menu is open. */\n  tab: TabRecord\n  /**\n   * Dismiss the menu.\n   *\n   * An item that acts MUST call this: the menu is the kit's, and it closes on\n   * its own actions only. An item that leaves it open leaves a menu floating\n   * over content the action may have just replaced.\n   */\n  dismiss: () => void\n}"],
+				ownerPropsReferences: ["TabRecord"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'rightbar.session' (client-ui-sidebar-right), so it exists while that entry is mounted",
+				occupants: [],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.right.tab.menu.item', () => ctx.slots.register(\n      { name: 'sidebar.right.tab.menu.item', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar-right/src/client/contract/slots.ts:103"
+			},
+			{
+				key: "sidebar.session.row.hover",
+				kind: "list",
+				scope: "root",
+				summary: "Section of the Session row's hover card between its relative time and its trailing status line.",
+				doc: "Section of the Session row's hover card between its relative time and\nits trailing status line. Mounted only while that card is open.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/**\n * Owner share of the two Session-row schedule seats. Both receive only the\n * row's Session identity: the occupant reads that Session's own scheduled\n * tasks, and reading them activates nothing.\n */\nexport interface SessionRowScheduleOwnerProps {\n  /** Session this row shows; the occupant addresses its own data by this id. */\n  readonly sessionId: SessionId\n}"],
+				ownerPropsReferences: ["SessionId"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.workspaces' (client-ui-workspace), so it exists while that entry is mounted",
+				occupants: ["client-ui-schedule SessionScheduleHover id 'schedule-tasks'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.session.row.hover', () => ctx.slots.register(\n      { name: 'sidebar.session.row.hover', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-workspace/src/client/contract/slots.ts:134"
+			},
+			{
+				key: "sidebar.session.row.leading",
+				kind: "list",
+				scope: "root",
+				summary: "Leading decoration of one Session row, in the 16px cell before the title that the row's own state dot otherwise occupies.",
+				doc: "Leading decoration of one Session row, in the 16px cell before the title\nthat the row's own state dot otherwise occupies. A higher-priority state\n(a pending interaction, a new message, live activity) replaces the seat\nwith that dot for the same row, so an occupant here never renders beside\na status dot and is mounted only by a row whose primary state is idle.\nAn archived row keeps that cell blank — neither its status dot nor this\nseat renders there, and its live status appears on the hover card only.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/**\n * Owner share of the two Session-row schedule seats. Both receive only the\n * row's Session identity: the occupant reads that Session's own scheduled\n * tasks, and reading them activates nothing.\n */\nexport interface SessionRowScheduleOwnerProps {\n  /** Session this row shows; the occupant addresses its own data by this id. */\n  readonly sessionId: SessionId\n}"],
+				ownerPropsReferences: ["SessionId"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.workspaces' (client-ui-workspace), so it exists while that entry is mounted",
+				occupants: ["client-ui-schedule SessionScheduleMark id 'schedule-mark'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register(\n      { name: 'sidebar.session.row.leading', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-workspace/src/client/contract/slots.ts:129"
 			},
 			{
 				key: "sidebar.settings",
@@ -3863,9 +5820,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/**\n * Owner share of the sidebar settings seat: the column display state the\n * occupant's trigger row must render against (wide row vs rail icon).\n */\nexport interface SidebarSettingsOwnerProps {\n  /** Whether the sidebar renders wide content (false = 56px rail). */\n  wide: boolean\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3875,7 +5835,34 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-settings-general SettingsRoot"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.settings', () => ctx.slots.register(\n      { name: 'sidebar.settings' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:41"
+				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:48"
+			},
+			{
+				key: "sidebar.toggle.badge",
+				kind: "single",
+				scope: "root",
+				summary: "Non-interactive notification inside the collapsed sidebar expand button.",
+				doc: "Non-interactive notification inside the collapsed sidebar expand button.",
+				registerOptions: [],
+				ownerProps: [],
+				ownerPropsReferences: [],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar' (client-ui-sidebar), so it exists while that entry is mounted",
+				occupants: ["client-ui-settings-general DesktopUpdateBadge"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register(\n      { name: 'sidebar.toggle.badge' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:19"
 			},
 			{
 				key: "sidebar.workspaces",
@@ -3887,9 +5874,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/**\n * Owner share of the browser hole — the only facts crossing the shell/region\n * boundary. Business data and actions arrive through the region's own inject.\n */\nexport interface SidebarSectionOwnerProps {\n  /** Shell fold-state output: wide renders the full browser, rail the icon column. */\n  wide: boolean\n  /** Rail icons request expansion; the browser rides the wide flip for focus. */\n  expandSidebar: () => void\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3899,7 +5889,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-workspace WorkspaceBrowser"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(\n      { name: 'sidebar.workspaces' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:35"
+				source: "packages/client/ui-sidebar/src/client/contract/slots.ts:42"
 			},
 			{
 				key: "sidebar.workspaces.directoryFlow",
@@ -3911,9 +5901,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				ownerProps: ["/**\n * Owner share of the directory-flow holes: the complete conversation between\n * the trigger surface and the picking interaction. The occupant reads `open`\n * to run/render its interaction and reports exactly one outcome per open.\n */\nexport interface DirectoryFlowOwnerProps {\n  /** True while a picking interaction is requested; flipping back to false withdraws the request. */\n  open: boolean\n  /** True while the owner adopts a picked path (`createWorkspace` in flight); occupants disable their commit affordances. */\n  busy: boolean\n  /** The operator picked a directory (absolute host path); the owner adopts it. */\n  onPicked: (path: string) => void\n  /** The operator dismissed the interaction; the owner just closes the flow. */\n  onCancel: () => void\n  /** The interaction itself failed (chooser missing, listing denied); the owner shows its error surface. */\n  onError: (message: string) => void\n}"],
 				ownerPropsReferences: [],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
 				],
 				keyDomain: "",
@@ -3923,26 +5916,121 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				occupants: ["client-ui-directory-picker-browse BrowseDirectoryFlow", "client-ui-directory-picker-native NativeDirectoryFlow"],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.workspaces.directoryFlow', () => ctx.slots.register(\n      { name: 'sidebar.workspaces.directoryFlow' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-workspace/src/client/contract/slots.ts:59"
+				source: "packages/client/ui-workspace/src/client/contract/slots.ts:119"
 			},
 			{
-				key: "tool.call.toolview",
-				kind: "keyed",
-				scope: "session",
-				summary: "Keyed atomic Tool call view, dispatched by the wire Tool name.",
-				doc: "Keyed atomic Tool call view, dispatched by the wire Tool name. Register\nwith `key: '<tool name>'` to own how one tool's calls render inside a\nturn — the key domain is open (any wire tool name, including a tool your\nown package registered), so there is no compile-time key set to pick\nfrom and a typo simply never renders.\n\nA key the shipped composition already covers is replaced, not shared;\nan unclaimed key falls back to the generic tool row, so registering is\nadditive for your own tool and a takeover for a shipped one. The owner\npasses the call's identity, its frozen running-or-settled node, and the\nexpansion state (see ToolCallOwnerProps), so the view stays a pure\nfunction of what the turn already knows.",
-				registerOptions: [{
-					name: "key",
-					requirement: "required",
-					type: "string",
-					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
-				}],
-				ownerProps: ["/** Standard owner currency supplied to every atomic Tool view. */\nexport interface ToolCallOwnerProps {\n  /** Tool call identity, stable across running and settled forms. */\n  callId: string\n  /** Wire Tool name and keyed dispatch value. */\n  toolName: string\n  /** Frozen running call or settled result node. */\n  block: ToolCallBlock\n  /** Session workspace root for relative summaries. */\n  cwd?: string | undefined\n  /** Host account home; POSIX home-rooted summaries display as `~`. */\n  home?: string | undefined\n  /** Open a Tool argument path through the Host. */\n  openFile: (path: string) => void\n  /** Inspect this call in the trajectory view when available. */\n  inspect?: (() => void) | undefined\n}"],
-				ownerPropsReferences: [],
+				key: "sidebar.workspaces.session.menu.item",
+				kind: "list",
+				scope: "root",
+				summary: "The rows of one Session's \"...\" menu, in ascending `order`.",
+				doc: "The rows of one Session's \"...\" menu, in ascending `order`. ui-workspace\nregisters the shipped rows here — `pin` (100), `rename` (200), `fork`\n(300), `archive` (400) — so a plugin row is placed by its own `order`\namong them. Use a package-namespaced `id`; reusing a shipped id at\nanother `priority` shadows that row. Each entry renders one\n`role=\"menuitem\"` `<button>` (the shipped rows use ui-primitives'\n`MenuItemButton`, which adds the host styling and `separatorBefore`),\ndecides its own visibility from its own state, and dismisses the menu\nthrough the injected `useMenuOpenState` hook after acting; the list's\nkeyboard walk and focus return read the DOM, so any such button joins\nthem. Labels come from the contributing package's locale namespace.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** Owner share of one Session row action occurrence: the row the action belongs to. */\nexport interface SessionRowOwnerProps {\n  /** Session the row shows. */\n  sessionId: SessionId\n  /** Row display title: persisted title, or empty when the Session has none. */\n  displayTitle: string\n}"],
+				ownerPropsReferences: ["SessionId"],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "MenuOpenState",
+				slotInject: "{ hooks: { menuOpenState: SlotHookFactory<'sidebar.workspaces.session.menu.item', UseMenuOpenState> shortcuts: HostObservable<readonly ShortcutCatalogEntry[]> } }",
+				declaredBy: "an entry in 'sidebar.workspaces' (client-ui-workspace), so it exists while that entry is mounted",
+				occupants: [
+					"client-ui-workspace PinSessionMenuItem id 'pin'",
+					"client-ui-workspace RenameSessionMenuItem id 'rename'",
+					"client-ui-workspace ForkSessionMenuItem id 'fork'",
+					"client-ui-workspace ArchiveSessionMenuItem id 'archive'"
+				],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    const copyLabel = 'Copy Session ID' // Localize in the contributing package.\n    ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register(\n      { name: 'sidebar.workspaces.session.menu.item', id: 'copy-session-id', order: 500 },\n      ({ sessionId, useMenuOpenState }) => {\n        const [, setMenuOpen] = useMenuOpenState()\n        return React.createElement(\n          'button',\n          { type: 'button', role: 'menuitem', onClick: () => { setMenuOpen(false); void navigator.clipboard.writeText(sessionId) } },\n          copyLabel,\n        )\n      },\n    ))\n  },\n}",
+				source: "packages/client/ui-workspace/src/client/contract/slots.ts:166"
+			},
+			{
+				key: "sidebar.workspaces.session.row.action",
+				kind: "list",
+				scope: "root",
+				summary: "The hover buttons at the end of one Session row, in ascending `order`, after the \"...\" menu trigger.",
+				doc: "The hover buttons at the end of one Session row, in ascending `order`,\nafter the \"...\" menu trigger. ui-workspace registers `archive` (100) and\n`pin` (200) here. An entry renders one icon button (or nothing, when its\naction does not apply to the row) and owns the action it performs. Clicks\ninside the strip stay in the strip, so the button needs no propagation\nhandling to keep the row from opening.",
+				registerOptions: [
+					{
+						name: "id",
+						requirement: "required",
+						type: "string",
+						doc: "Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it."
+					},
+					{
+						name: "order",
+						requirement: "optional",
+						type: "number",
+						doc: "Position among the entries, ascending (default 0)."
+					},
+					{
+						name: "label",
+						requirement: "optional",
+						type: "string | (() => string)",
+						doc: "Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering."
+					}
+				],
+				ownerProps: ["/** Owner share of one Session row action occurrence: the row the action belongs to. */\nexport interface SessionRowOwnerProps {\n  /** Session the row shows. */\n  sessionId: SessionId\n  /** Row display title: persisted title, or empty when the Session has none. */\n  displayTitle: string\n}"],
+				ownerPropsReferences: ["SessionId"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>"
+				],
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'sidebar.workspaces' (client-ui-workspace), so it exists while that entry is mounted",
+				occupants: ["client-ui-workspace ArchiveSessionRowButton id 'archive'", "client-ui-workspace PinSessionRowButton id 'pin'"],
+				replaceRisk: "none",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('sidebar.workspaces.session.row.action', () => ctx.slots.register(\n      { name: 'sidebar.workspaces.session.row.action', id: 'my-entry', order: 100, label: 'My entry' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-workspace/src/client/contract/slots.ts:184"
+			},
+			{
+				key: "tool.call.images",
+				kind: "single",
+				scope: "session",
+				summary: "Durable images of a settled image-bearing Tool call, rendered through the attachment presentation plugin.",
+				doc: "Durable images of a settled image-bearing Tool call, rendered through\nthe attachment presentation plugin. The Tool layer never imports an\nattachment implementation: a toolview declares this slot as a child and\nrenders it with the image card's references plus the session-authorized\nloader it received in its owner, and the attachment plugin fills the\ngallery. Composing no attachment presentation plugin renders nothing,\nwhich is why the image card keeps its own envelope text beside the\ngallery. A child slot is declared by exactly one entry: registering a\nsecond toolview that declares the same child throws at load, so a\nfuture image-bearing tool must reuse this entry or own a distinct\nslot.",
+				registerOptions: [],
+				ownerProps: ["/** Owner currency of the Tool image gallery slot: references plus the loader. */\nexport interface ToolImagesOwnerProps {\n  /** Durable references or submission-echo previews in result order. */\n  images: readonly MessageImageSource[]\n  /** Session-authorized image URL loader for the durable arm. */\n  loadImage: MessageImageLoader\n  /** Horizontal placement inside the owning record. */\n  align: 'start' | 'end'\n}"],
+				ownerPropsReferences: ["MessageImageLoader", "MessageImageSource"],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -3953,16 +6041,106 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					"useProjection: UseProjection",
 					"useTrajectory: UseTrajectory"
 				],
-				keyDomain: "open: any string the owner dispatches (no compile-time key set), already taken: ask_user_question, bash, cordis_define, cordis_run, cordis_stop, cordis_undefine, edit, glob, grep, read, skill, todo_write, web_fetch, web_search, write",
+				keyDomain: "",
+				hookContext: "",
+				slotInject: "",
+				declaredBy: "an entry in 'tool.call.toolview' (client-ui-tool), so it exists while that entry is mounted",
+				occupants: ["client-ui-attachment MessageImages"],
+				replaceRisk: "shadows-shipped-ui",
+				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('tool.call.images', () => ctx.slots.register(\n      { name: 'tool.call.images' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
+				source: "packages/client/ui-tool/src/client/contract/slots.ts:44"
+			},
+			{
+				key: "tool.call.toolview",
+				kind: "keyed",
+				scope: "session",
+				summary: "Keyed Tool call view dispatched by wire Tool name.",
+				doc: "Keyed Tool call view dispatched by wire Tool name. Any name is allowed,\nincluding tools registered by your package. Register with\n`key: '<tool name>'`; a typo never renders.\n\nRegistering an occupied key replaces its view; unclaimed keys use the\ngeneric row. The owner supplies the call identity and running\nor settled node through explicit phase props. Every stage supplies\n`name` and a lazy `args` view; preparing arguments may be incomplete.",
+				registerOptions: [{
+					name: "key",
+					requirement: "required",
+					type: "string",
+					doc: "Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant."
+				}],
+				ownerProps: [
+					"/** Standard owner currency supplied to every atomic Tool view. */\nexport interface ToolCallCommonProps {\n  /** Stable Hook; each invocation owns its open state and subscribes to enclosing-Turn resets. */\n  useDisclosure: UseDisclosure\n  /** Call identity, stable across all stages. */\n  callId: string\n  /** Wire Tool name and keyed dispatch value. */\n  toolName: string\n  /** Session workspace root for relative summaries. */\n  cwd?: string | undefined\n  /** Host account home; POSIX home-rooted summaries display as `~`. */\n  home?: string | undefined\n  /** Open an argument path at its optional requested line. */\n  openFile: (path: string, options?: OpenFileOptions) => void\n  /** Chat-supplied, session-authorized loader for durable images; Tool views do not manage attachment URLs. */\n  loadImage: MessageImageLoader\n  /** Inspect this call in the trajectory view when available. */\n  inspect?: (() => void) | undefined\n}",
+					"/** Common owner callbacks and the data admitted at the current tool stage. */\nexport type ToolCallOwnerProps = ToolCallCommonProps & ToolCallPhaseProps",
+					"/** Stage-specific tool data; only start/result expose the dispatched call material. */\nexport type ToolCallPhaseProps =\n  | { readonly phase: 'preparing'; readonly block: PreparingToolCall }\n  | { readonly phase: 'start'; readonly block: StartedToolCall }\n  | { readonly phase: 'result'; readonly block: ToolResultNode }"
+				],
+				ownerPropsReferences: [
+					"MessageImageLoader",
+					"OpenFileOptions",
+					"PreparingToolCall",
+					"StartedToolCall",
+					"ToolResultNode",
+					"UseDisclosure"
+				],
+				standardProps: [
+					"useResource: UseResource",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
+					"useSessions: UseSessions",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
+					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"useChat: UseChat",
+					"useConversation: UseConversation",
+					"useInput: SnapshotSelectorHook<InputState>",
+					"inputActions: InputActions",
+					"useSession: SessionSnapshotSelector",
+					"sessionId: SessionId",
+					"useProjection: UseProjection",
+					"useTrajectory: UseTrajectory"
+				],
+				keyDomain: "open: any string the owner dispatches (no compile-time key set), already taken: ask_user_question, bash, cordis_define, cordis_inspect_list, cordis_inspect_query, cordis_inspect_self, cordis_run, cordis_stop, cordis_undefine, create_goal, edit, get_goal, glob, grep, interrupt_agent, job_kill, job_list, job_output, list_agents, list_subagent_models, lsp, present, ralph, read, read_image, schedule_create, schedule_delete, schedule_list, schedule_update, send_message, session_event_read, session_event_search, session_event_trace, session_search, session_trace, skill, spawn_teammate, subagent, team_task_create, team_task_get, team_task_list, team_task_update, terminal_close, terminal_list, terminal_open, terminal_read, terminal_signal, todo_write, update_goal, wait_agent, web_fetch, web_search, workflow, write",
 				hookContext: "",
 				slotInject: "",
 				declaredBy: "an entry in 'conversation.chat.node' (client-ui-tool), so it exists while that entry is mounted",
 				occupants: [
+					"client-ui-deliverables PresentRow key 'present'",
 					"client-ui-skill SkillRow key 'skill'",
 					"client-ui-tool AskQuestionRow key 'ask_user_question'",
 					"client-ui-tool BashRow key 'bash'",
+					"client-ui-tool DetailsRow key 'create_goal'",
+					"client-ui-tool DetailsRow key 'get_goal'",
+					"client-ui-tool DetailsRow key 'update_goal'",
+					"client-ui-tool DetailsRow key 'schedule_create'",
+					"client-ui-tool DetailsRow key 'schedule_list'",
+					"client-ui-tool DetailsRow key 'schedule_delete'",
+					"client-ui-tool DetailsRow key 'schedule_update'",
+					"client-ui-tool DetailsRow key 'cordis_inspect_list'",
+					"client-ui-tool DetailsRow key 'cordis_inspect_query'",
+					"client-ui-tool DetailsRow key 'cordis_inspect_self'",
+					"client-ui-tool DetailsRow key 'workflow'",
+					"client-ui-tool DetailsRow key 'ralph'",
+					"client-ui-tool DetailsRow key 'session_event_read'",
+					"client-ui-tool DetailsRow key 'session_event_search'",
+					"client-ui-tool DetailsRow key 'session_event_trace'",
+					"client-ui-tool DetailsRow key 'session_search'",
+					"client-ui-tool DetailsRow key 'session_trace'",
+					"client-ui-tool DetailsRow key 'list_subagent_models'",
+					"client-ui-tool DetailsRow key 'subagent'",
+					"client-ui-tool DetailsRow key 'list_agents'",
+					"client-ui-tool DetailsRow key 'send_message'",
+					"client-ui-tool DetailsRow key 'interrupt_agent'",
+					"client-ui-tool DetailsRow key 'job_list'",
+					"client-ui-tool DetailsRow key 'job_output'",
+					"client-ui-tool DetailsRow key 'job_kill'",
+					"client-ui-tool DetailsRow key 'terminal_open'",
+					"client-ui-tool DetailsRow key 'terminal_read'",
+					"client-ui-tool DetailsRow key 'terminal_list'",
+					"client-ui-tool DetailsRow key 'terminal_signal'",
+					"client-ui-tool DetailsRow key 'terminal_close'",
+					"client-ui-tool DetailsRow key 'lsp'",
+					"client-ui-tool DetailsRow key 'spawn_teammate'",
+					"client-ui-tool DetailsRow key 'team_task_create'",
+					"client-ui-tool DetailsRow key 'team_task_get'",
+					"client-ui-tool DetailsRow key 'team_task_update'",
+					"client-ui-tool DetailsRow key 'team_task_list'",
+					"client-ui-tool DetailsRow key 'wait_agent'",
 					"client-ui-tool FileMutationRow key 'edit'",
 					"client-ui-tool FileMutationRow key 'write'",
+					"client-ui-tool ReadImageRow key 'read_image'",
 					"client-ui-tool ReadRow key 'read'",
 					"client-ui-tool SearchRow key 'grep'",
 					"client-ui-tool SearchRow key 'glob'",
@@ -3976,7 +6154,7 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				],
 				replaceRisk: "shadows-shipped-ui",
 				example: "return {\n  inject: ['slots'],\n  apply(ctx) {\n    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(\n      { name: 'tool.call.toolview', key: '<one key the owner dispatches>' },\n      () => React.createElement('div', null, 'hello'),\n    ))\n  },\n}",
-				source: "packages/client/ui-tool/src/client/contract/slots.ts:24"
+				source: "packages/client/ui-tool/src/client/contract/slots.ts:26"
 			},
 			{
 				key: "tool.view.cordis",
@@ -3997,9 +6175,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 					"CordisDynamicPluginRunId"
 				],
 				standardProps: [
+					"useResource: UseResource",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
+					"usePanelInfo: UsePanelInfo",
 					"useSessions: UseSessions",
-					"useSessionPendingInteraction: UseSessionPendingInteraction",
+					"useSessionStatus: UseSessionStatus",
+					"useSessionRetainInfo: UseSessionRetainInfo",
 					"useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>",
 					"useChat: UseChat",
 					"useConversation: UseConversation",
@@ -4033,12 +6214,12 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 		const EVENT_INPUT = exactInput("event", "Exact Event name. Omit it for the compact Event and listener-signature directory.");
 		const SERVICE_OUTPUT = { description: "Compact Service directory, or one exact Service contract with only its referenced type declarations." };
 		const EVENT_OUTPUT = { description: "Compact Event directory, or one exact Event contract with only its referenced type declarations." };
-		const SUBTREE_OUTPUT = { description: "Compact purpose/topology trees. With root, selected also contains that Slot's full contract and live occupants." };
+		const SUBTREE_OUTPUT = { description: "Compact topology trees. An exact Slot includes its catalog and occupants; an exact Factory includes identity, scope, and registrant." };
 		const SUBTREE_INPUT = {
 			type: "object",
 			properties: { root: {
 				type: "string",
-				description: "Exact live Slot key. When supplied, selected contains the full contract for this Slot."
+				description: "Exact live Slot key or factory:<name>. When supplied, selected contains that declaration."
 			} },
 			additionalProperties: false
 		};
@@ -4095,10 +6276,10 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 				{
 					manifest: {
 						id: "Slots",
-						description: "Progressive live Slot inspection: compact purpose/topology trees plus one exact Slot contract.",
+						description: "Progressive live Slot inspection with explicit Slot and Factory topology nodes.",
 						methods: [{
 							name: "listSubTree",
-							description: "Return compact live Slot trees for navigation. With root, also return the selected Slot's full contract and occupants.",
+							description: "Return compact live Slot and Factory trees, plus available detail for one exact root.",
 							inputSchema: SUBTREE_INPUT,
 							outputSchema: SUBTREE_OUTPUT
 						}]
@@ -4173,9 +6354,16 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			}]
 		}]]);
 		function compactSlotTree(node) {
+			if (node.type === "factory") return {
+				type: node.type,
+				name: node.name,
+				scope: node.scope,
+				children: node.children.map(compactSlotTree)
+			};
 			const catalog = SLOT_CATALOG.get(node.name);
 			const guardedKeys = catalog === void 0 ? void 0 : GUARDED_SLOT_KEYS.get(catalog.key);
 			return {
+				type: node.type,
 				name: node.name,
 				kind: node.kind,
 				scope: node.scope,
@@ -4196,8 +6384,15 @@ call: (method, args = null) => env.invoke(method, args) }, harnessTrap(), ...Obj
 			};
 		}
 		function inspectLiveSlot(node) {
+			if (node.type === "factory") return {
+				type: node.type,
+				name: node.name,
+				scope: node.scope,
+				...node.registrant === void 0 ? {} : { registrant: node.registrant }
+			};
 			const catalog = SLOT_CATALOG.get(node.name);
 			return {
+				type: node.type,
 				name: node.name,
 				kind: node.kind,
 				scope: node.scope,

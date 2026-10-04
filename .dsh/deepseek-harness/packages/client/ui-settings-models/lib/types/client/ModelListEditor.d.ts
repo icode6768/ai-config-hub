@@ -14,8 +14,8 @@
  * rows the user can still fill in by hand.
  */
 import type { ReactNode } from 'react';
+import type { ModelsOperations } from './operations.ts';
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx';
-import { type ModelsWire } from './store.ts';
 import type { en } from './locales.ts';
 /**
  * One configured model row. Fields this card does not edit must survive an
@@ -43,6 +43,10 @@ export interface ProbeTarget {
 export interface ModelListEditorProps {
     /** The rows as currently drafted. */
     models: readonly ModelDraft[];
+    /** Installed provider whose catalog supplies defaults without endpoint I/O. */
+    catalogProvider?: string | undefined;
+    /** Route input types for models absent from the installed catalog. */
+    defaultInput?: readonly string[] | undefined;
     /** Whether the user layer currently owns the whole array; absent on a create. */
     overridden?: boolean;
     /** Replace the drafted rows. */
@@ -58,12 +62,19 @@ export interface ModelListEditorProps {
      * told what the field already says.
      */
     probeBlocked?: keyof typeof en | undefined;
-    /** Wire face the fetch action calls. */
-    api: Pick<ModelsWire, 'llm'>;
+    /** The Host operations whose interrogation answers the fetch action. */
+    operations: ModelsOperations;
     /** Section copy. */
     t: (key: keyof typeof en) => string;
     /** Disable every control (read-only deployment or a pending write). */
     disabled: boolean;
+    /**
+     * Called once per change with whether an endpoint interrogation is in
+     * flight. The owning card folds it into its own busy state so the surface
+     * around the card — a mode switch, say — can refuse to move while the
+     * answer, and the picker it opens, is still bound for this list.
+     */
+    onBusyChange: (busy: boolean) => void;
 }
 /**
  * Render the model list with its fetch action.

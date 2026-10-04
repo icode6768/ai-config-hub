@@ -18,11 +18,12 @@
  * @module @deepseek-ai/dsh-tmux-context
  */
 import z from '@deepseek-ai/schemastery';
+import { z as zod } from 'zod';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tmux-context';
 /** The agent registry that owns pre-step processing. */
-export const inject = ['agents'];
+export const inject = ['agents', 'sessionProjections'];
 /** Schemastery validation for {@link Config}. */
 export const Config = z.object({
     refreshIntervalMs: z.number(),
@@ -87,7 +88,7 @@ async function queryTmuxLocation(bash, logger, processId, signal) {
     ].join('\n');
     let result;
     try {
-        result = await bash.run(bash.resolve({ command, signal }));
+        result = await (await bash.execute(bash.resolve({ command, signal }))).result();
     }
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -136,21 +137,6 @@ function renderReading(location, turn) {
  * schedule survives compaction and resumed processes without process-local
  * cache state.
  */
-function latestInjectedState(agent) {
-    for (const event of [...agent.session.events].reverse()) {
-        if (event.type === 'user/message'
-            && event.data.source.kind === 'plugin'
-            && event.data.source.plugin === name) {
-            const [block] = event.data.content;
-            if (block?.type !== 'text')
-                return undefined;
-            const newline = block.text.indexOf('\n');
-            const state = newline === -1 ? '' : block.text.slice(newline + 1);
-            return { state, time: event.time };
-        }
-    }
-    return undefined;
-}
 /** Reject refresh intervals that cannot represent an exact elapsed-millisecond threshold. */
 function validateRefreshInterval(refreshIntervalMs) {
     if (refreshIntervalMs !== undefined && (!Number.isSafeInteger(refreshIntervalMs)
@@ -158,15 +144,30 @@ function validateRefreshInterval(refreshIntervalMs) {
         throw new TypeError(`tmux-context: refreshIntervalMs must be a non-negative safe integer, got ${String(refreshIntervalMs)}`);
     }
 }
-/**
- * Register a prepended pre-step listener for the lifetime of `ctx`.
- * @param ctx - plugin context; the listener is disposed with it.
- * @param config - durable refresh scheduling configuration.
- * @throws when the refresh interval is invalid.
- */
+const tmuxContextStateSchema = zod.object({
+    state: zod.string(),
+    time: zod.number(),
+}).nullable();
 export function apply(ctx, config) {
     const refreshIntervalMs = config.refreshIntervalMs;
     validateRefreshInterval(refreshIntervalMs);
+    ctx.sessionProjections.register({
+        key: 'tmuxContext',
+        stateVersion: 1,
+        stateSchema: tmuxContextStateSchema,
+        init: () => null,
+        apply: (state, event) => {
+            if (event.type !== 'user/message'
+                || event.data.source.kind !== name)
+                return state;
+            const [block] = event.data.content;
+            if (block?.type !== 'text')
+                return state;
+            const newline = block.text.indexOf('\n');
+            const stableState = newline === -1 ? '' : block.text.slice(newline + 1);
+            return { state: stableState, time: event.time };
+        },
+    });
     ctx.on('agent/pre-step', async ({ agent, turn, step, signal }, next) => {
         const decision = await next();
         if (decision.kind === 'reject' || signal.aborted || step !== 1)
@@ -174,8 +175,8 @@ export function apply(ctx, config) {
         const bash = ctx.get('shell');
         if (bash === undefined)
             return decision;
-        const previous = latestInjectedState(agent);
-        if (refreshIntervalMs !== undefined && refreshIntervalMs > 0 && previous !== undefined) {
+        const previous = ctx.sessionProjections.stateOf(agent.session, 'tmuxContext');
+        if (refreshIntervalMs !== undefined && refreshIntervalMs > 0 && previous !== null) {
             const now = Date.now();
             if (now >= previous.time && now - previous.time < refreshIntervalMs)
                 return decision;
@@ -184,7 +185,7 @@ export function apply(ctx, config) {
         if (location === undefined)
             return decision;
         const state = renderState(location);
-        if (previous !== undefined && previous.state === state)
+        if (previous !== null && previous.state === state)
             return decision;
         const text = renderReading(location, turn);
         return {
@@ -192,7 +193,7 @@ export function apply(ctx, config) {
             messages: [
                 createUserMessage({
                     content: [{ type: 'text', text }],
-                    source: { kind: 'plugin', plugin: name, form: 'snapshot', sections: [{ name, text }] },
+                    source: { kind: name, form: 'snapshot', sections: [{ name, text }] },
                 }),
                 ...decision.messages,
             ],

@@ -11,8 +11,9 @@
  * @module @deepseek-ai/dsh-subagent-in-process-driver
  */
 import { randomUUID } from 'node:crypto';
+import { brandString } from '@deepseek-ai/dsh-brand';
 import { foldConsumedWork } from '@deepseek-ai/dsh-agent';
-import { SessionId } from '@deepseek-ai/dsh-session';
+import { SessionLogOffset } from '@deepseek-ai/dsh-session';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { appendDelegatedPolicyOverrides, applyChildComposition, assertSubagentMaxDepth, captureDelegatedPolicyOverrides, childSessionMeta, finalAssistantOutput, resolveChildAgentOptions, resolveChildDepth, } from '@deepseek-ai/dsh-subagent';
 import { attachStructuredRuntime, } from "./structured.js";
@@ -69,15 +70,15 @@ export async function startInProcessRun(request, options) {
         throw prePublicationAbort();
     const parent = request.parent;
     const childDepth = resolveChildDepth(parent, request.maxDepth);
-    const childId = SessionId(randomUUID());
+    const childId = brandString(randomUUID());
     const seed = options.seed;
-    const activationBoundary = seed?.length ?? 0;
+    const activationBoundary = SessionLogOffset(seed?.length ?? 0);
     // Capture before the first await: a later parent switch belongs to the
     // parent's future.
     const inherited = captureDelegatedPolicyOverrides(parent);
     let structured;
-    const setup = (childCtx) => {
-        appendDelegatedPolicyOverrides(childCtx.agent.session, inherited);
+    const setup = (childCtx, child) => {
+        appendDelegatedPolicyOverrides(child.session, inherited);
         applyChildComposition(childCtx, parent, {
             persona: request.persona,
             toolFilter: request.toolFilter,
@@ -89,8 +90,10 @@ export async function startInProcessRun(request, options) {
     };
     const handle = await parent.ctx.agents.create({
         sessionId: childId,
-        meta: childSessionMeta(parent, childDepth, activationBoundary),
+        parentAgent: parent,
+        meta: childSessionMeta(parent, childDepth, seed !== undefined),
         ...seed !== undefined ? { seed } : {},
+        ...seed === undefined ? {} : { inheritedEventCount: activationBoundary },
         agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
         signal: request.signal,
         setup,
@@ -144,7 +147,8 @@ function drivePublishedRun(handle, signal, prompt, childId, boundary, structured
 }
 /** Read one settled child's result from events after its activation boundary. */
 function readResult(child, boundary, cancelled, structured) {
-    const own = child.session.events.slice(boundary);
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+    const own = child.session.snapshotEvents(boundary);
     // `droppedUnrun` is deliberately unread: a one-shot prompt is claimed by its
     // awaited first turn almost immediately, and the owner's own teardown is the
     // `cancelled` flag below. A cancellation with no accounting turn resolves

@@ -4,7 +4,7 @@
  * shared subprocess/client launcher ({@link launchAcpTestAgent}), the scripted
  * scenario harness ({@link runScenario}), the pure expected-output normalizers
  * ({@link normalizeStdout} / {@link normalizeSessionLog} /
- * {@link scrubRequestHeaders} / {@link scrubSystemPrompts}), and the suite
+ * {@link scrubModelRequestBulk} / {@link scrubSystemPrompts}), and the suite
  * factory ({@link defineAcpSnapshotSuite}) that registers a scenario table as a
  * full describe/it tree. Transport-neutral normalizers and fixture invariants
  * remain reusable by other profile adapters. Ordinary ACP e2e tests can use the launcher directly;
@@ -19,8 +19,9 @@
 export { redactSessionSnapshotIds, } from "./identity.js";
 export { runScenario, snapshotSpillRoot, } from "./harness.js";
 export { launchAcpTestAgent, materializeProfilePatch, } from "./launcher.js";
-export { extractSnapshotSpillPaths, normalizeSessionLog, normalizeSessionSnapshot, normalizeSessionSnapshots, normalizeStdout, scrubRequestHeaders, scrubSessionSnapshot, scrubSystemPrompts, scrubToolSchemas, tokenizeSessionFixtureCwd, } from "./normalize.js";
-export { parseSnapshotManifest, } from "./manifest.js";
-export { formatSystemPromptSnapshot, formatToolSchemasSnapshot, fixtureContext, headerChangeCount, defineAcpSnapshotSuite, normalizedHeaders, normalizedSystemPrompts, normalizedToolSchemas, parseToolSchemasSnapshot, refreshFixtureReplacements, restorePinnedToolSchemas, sessionFixtureNames, stabilizeFixtureMessageIds, stabilizeRefreshLog, } from "./suite.js";
+export { extractSnapshotSpillPaths, normalizeSessionFormatMetadata, normalizeSessionLog, normalizeSessionSnapshot, normalizeSessionSnapshots, normalizeStdout, scrubModelRequestBulk, scrubSessionSnapshot, scrubSystemPrompts, scrubToolSchemas, tokenizeSessionFixtureCwd, } from "./normalize.js";
+export { parseSnapshotManifest, writesCurrentSessionFixtures, } from "./manifest.js";
+export { assertPersistedSessionVersion, assertSessionFixtureVersion, latestPersistedSessionPaths, parsePersistedSessionFilename, parseSessionFixtureName, persistedSessionFilename, sessionFixtureFiles, sessionFixtureName, sessionFixtureNames, sessionHeaderVersion, writerSnapshotName, } from "./session-files.js";
+export { formatSystemPromptSnapshot, formatToolSchemasSnapshot, fixtureContext, headerChangeCount, defineAcpSnapshotSuite, normalizedHeaders, normalizedSystemPrompts, normalizedToolSchemas, parseSystemPromptSnapshot, parseToolSchemasSnapshot, refreshFixtureReplacements, reconcileCatalogCreationTimes, restorePinnedToolSchemas, stabilizeFixtureMessageIds, stabilizeRefreshLog, systemPromptPrecedesRequests, } from "./suite.js";
 export { captureExpectedWorkspaceSnapshot, captureWorkspaceSnapshot, EMPTY_WORKSPACE_MARKER, } from "./workspace.js";
 //# sourceMappingURL=index.js.map

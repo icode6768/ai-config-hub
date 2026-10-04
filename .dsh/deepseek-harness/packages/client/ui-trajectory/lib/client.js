@@ -41,6 +41,15 @@ window.__ModuleLoader__.load({
 			return (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(false, { persist: { name: "dsh.trajectory.duration" } });
 		}
 		//#endregion
+		//#region lib/types/client/string-wrapping-store.js
+		/**
+		* Create the browser-wide default for expanded JSON strings.
+		* @returns A persisted preference sampled only when a string is expanded.
+		*/
+		function createTrajectoryStringWrappingStore() {
+			return (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(false, { persist: { name: "dsh.trajectory.jsonStringWrapping" } });
+		}
+		//#endregion
 		//#region lib/types/client/locales.js
 		/** `trajectory` namespace dictionaries for the complete trajectory surface. */
 		/** Dictionary namespace owned by this plugin. */
@@ -79,7 +88,7 @@ window.__ModuleLoader__.load({
 			"turn.label": "第 {turn} 轮",
 			"section.betweenTurns": "轮次之间",
 			"group.message": "消息",
-			"group.step": "步骤 {step}",
+			"group.step": "第 {step} 步",
 			"group.compaction": "压缩 {seq}",
 			"status.failed": "失败",
 			"status.pending": "等待中",
@@ -156,6 +165,13 @@ window.__ModuleLoader__.load({
 			"record.payloadJson": "参数 JSON",
 			"record.outputJson": "结果 JSON",
 			"record.thinking": "思考",
+			"record.wrapLines": "自动换行",
+			"code.source": "代码",
+			"code.output": "输出",
+			"code.copySource": "复制代码",
+			"code.copyOutput": "复制输出",
+			"code.originalJson": "原始 JSON",
+			"code.running": "执行中…",
 			"record.systemPromptMissing": "本次请求没有系统提示词",
 			"record.toolsMissing": "本次请求没有工具",
 			"record.systemPrompt": "系统提示词",
@@ -215,10 +231,21 @@ window.__ModuleLoader__.load({
 			"layout.compactionFailed": "上下文压缩失败",
 			"layout.compacted": "上下文已压缩",
 			"layout.toolCallOnly": "仅工具调用",
-			"layout.imageOnly": "图片 ×{count}",
+			"attachment.list": "附件",
+			"attachment.imageName": "图片 {index}",
+			"layout.imageCount": "图片 ×{count}",
+			"layout.fileAttachments": "文件 ×{count}",
 			"layout.initialSystemPrompt": "初始系统提示词",
 			"layout.systemPromptUpdated": "系统提示词已更新",
 			"layout.toolsUpdated": "工具已更新",
+			"layout.toolAdded": "已添加工具：{name}",
+			"layout.toolRemoved": "已移除工具：{name}",
+			"layout.toolUpdateNotice": "工具已更新",
+			"layout.toolsAdded": "新增：{names}",
+			"layout.toolsAddedCount": "新增 {count} 个",
+			"layout.toolsChanged": "新增 {added} 个，移除 {removed} 个",
+			"layout.toolsRemoved": "移除：{names}",
+			"layout.toolsRemovedCount": "移除 {count} 个",
 			"layout.systemPromptAndToolsUpdated": "系统提示词和工具已更新",
 			"layout.compactionInterrupted": "上下文压缩在完成前被中断。"
 		};
@@ -333,6 +360,13 @@ window.__ModuleLoader__.load({
 			"record.payloadJson": "Payload JSON",
 			"record.outputJson": "Result JSON",
 			"record.thinking": "Thinking",
+			"record.wrapLines": "Wrap lines",
+			"code.source": "Code",
+			"code.output": "Output",
+			"code.copySource": "Copy code",
+			"code.copyOutput": "Copy output",
+			"code.originalJson": "Original JSON",
+			"code.running": "Running…",
 			"record.systemPromptMissing": "No system prompt in this request",
 			"record.toolsMissing": "No tools in this request",
 			"record.systemPrompt": "System Prompt",
@@ -392,13 +426,713 @@ window.__ModuleLoader__.load({
 			"layout.compactionFailed": "Compaction failed",
 			"layout.compacted": "Context compacted",
 			"layout.toolCallOnly": "Tool call only",
-			"layout.imageOnly": "Images ×{count}",
+			"attachment.list": "Attachments",
+			"attachment.imageName": "Image {index}",
+			"layout.imageCount": "Images ×{count}",
+			"layout.fileAttachments": "Files ×{count}",
 			"layout.initialSystemPrompt": "Initial System Prompt",
 			"layout.systemPromptUpdated": "System Prompt Updated",
 			"layout.toolsUpdated": "Tools Updated",
+			"layout.toolAdded": "Tool added: {name}",
+			"layout.toolRemoved": "Tool removed: {name}",
+			"layout.toolUpdateNotice": "Tools updated",
+			"layout.toolsAdded": "Added: {names}",
+			"layout.toolsAddedCount": "{count} added",
+			"layout.toolsChanged": "{added} added, {removed} removed",
+			"layout.toolsRemoved": "Removed: {names}",
+			"layout.toolsRemovedCount": "{count} removed",
 			"layout.systemPromptAndToolsUpdated": "System Prompt and Tools Updated",
 			"layout.compactionInterrupted": "Compaction was interrupted before completion."
 		};
+		//#endregion
+		//#region ../../util/values/src/partial-json.ts
+		/**
+		* Lazily scanned view of one JSON object's top-level fields, built from text
+		* that may still be streaming or from an already parsed object. Nothing is
+		* scanned until a reader asks; the view remembers every question it answered
+		* and reports changed answers when the owner refreshes for publication.
+		* Used for model tool-call arguments: a row reads the fields it
+		* cares about at whatever granularity it displays, at every stage of the call.
+		* @module @deepseek-ai/dsh-util-values/src/partial-json
+		*/
+		const SIMPLE_ESCAPES = {
+			"\"": "\"",
+			"\\": "\\",
+			"/": "/",
+			b: "\b",
+			f: "\f",
+			n: "\n",
+			r: "\r",
+			t: "	"
+		};
+		const CONTENT_ESCAPE = /[\\\u0000-\u001f]/u;
+		function isWhitespace(c) {
+			return c === " " || c === "\n" || c === "\r" || c === "	";
+		}
+		function isHex(c) {
+			return c >= "0" && c <= "9" || c >= "a" && c <= "f" || c >= "A" && c <= "F";
+		}
+		/**
+		* The view. A streaming instance grows through {@link PartialArguments.append};
+		* {@link PartialArguments.fromText} and {@link PartialArguments.fromObject} build
+		* sealed instances over a finished call. Every reader is total: an absent or
+		* differently typed field answers `undefined` (or `false`), never throws.
+		*/
+		var PartialArguments = class PartialArguments {
+			/** The view of a call with no arguments available. */
+			static EMPTY = PartialArguments.fromObject({});
+			/**
+			* View finished argument text without scanning it until a reader asks.
+			* @param text - the complete argument JSON text.
+			* @returns a sealed view.
+			*/
+			static fromText(text) {
+				const view = new PartialArguments();
+				view.append(text);
+				view.sealed = true;
+				return view;
+			}
+			/**
+			* View an already parsed argument payload, such as a PTC dispatch object.
+			* @param value - the parsed argument value.
+			* @returns a sealed view; a non-object payload has no fields.
+			*/
+			static fromObject(value) {
+				const view = new PartialArguments();
+				view.object = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+				view.sealed = true;
+				return view;
+			}
+			/**
+			* The source: text so far or a parsed object, plus whether it can still grow.
+			* These are the only enumerable fields, so two views over the same source
+			* compare equal structurally however far each has been read.
+			*/
+			chunks = [];
+			object;
+			sealed = false;
+			#ends = [];
+			#size = 0;
+			#consumed = 0;
+			#mode = "root";
+			#escape = false;
+			#keyStart = 0;
+			#keyEscaped = false;
+			#key = "";
+			#current = null;
+			#nestedEnds = [];
+			#nestedInString = false;
+			#invalidAt;
+			#invalidValue = false;
+			#entries = /* @__PURE__ */ new Map();
+			#order = [];
+			#reads = /* @__PURE__ */ new Map();
+			/** Whether this view rejects further appends; does not scan text or register reads. */
+			get isSealed() {
+				return this.sealed;
+			}
+			/** Whether indexing or a content read found invalid JSON; unread value contents are not validated. */
+			get invalid() {
+				this.scan();
+				return this.#mode === "invalid" || this.#invalidValue;
+			}
+			/**
+			* Retain streamed argument text without scanning or comparing observed answers.
+			* @param fragment - the text following every fragment appended before.
+			*/
+			append(fragment) {
+				if (this.sealed) throw new Error("PartialArguments: cannot append to a sealed view");
+				if (fragment.length === 0) return;
+				this.chunks.push(fragment);
+				this.#size += fragment.length;
+				this.#ends.push(this.#size);
+			}
+			/**
+			* Reconcile a streamed prefix with authoritative complete text without joining the fragments.
+			* @param text - the final argument text, which replaces missing or conflicting deltas.
+			* @returns this view sealed with its caches retained when every character matches; otherwise a new sealed view.
+			*/
+			settle(text) {
+				if (this.object !== void 0 || text.length !== this.#size) return PartialArguments.fromText(text);
+				let offset = 0;
+				for (const chunk of this.chunks) {
+					if (!text.startsWith(chunk, offset)) return PartialArguments.fromText(text);
+					offset += chunk.length;
+				}
+				this.chunks = text.length === 0 ? [] : [text];
+				this.#ends = text.length === 0 ? [] : [text.length];
+				this.sealed = true;
+				return this;
+			}
+			/**
+			* Compare observed answers and advance their publication baseline. Unread views remain unscanned.
+			* @returns whether any observed answer changed since its first read or the preceding refresh.
+			*/
+			refresh() {
+				if (this.#reads.size === 0) return false;
+				this.scan();
+				let changed = false;
+				let completions = false;
+				for (const read of this.#reads.values()) {
+					if (read.completion) {
+						completions = true;
+						continue;
+					}
+					changed = this.refreshRead(read) || changed;
+				}
+				if (completions) {
+					for (const read of this.#reads.values()) if (read.completion) changed = this.refreshRead(read) || changed;
+				}
+				if (this.sealed) this.#reads.clear();
+				return changed;
+			}
+			refreshRead(read) {
+				const now = read.answer();
+				if (Object.is(now, read.last)) return false;
+				read.last = now;
+				return true;
+			}
+			/**
+			* Check whether no further fields can arrive.
+			* @returns whether the outer object closed, indexing failed, or the view is sealed; unread values are not validated.
+			*/
+			closed() {
+				return this.remember("closed", "", () => this.closedNow());
+			}
+			/**
+			* List discovered fields in first-appearance order.
+			* @returns top-level keys seen so far, in first-appearance order.
+			*/
+			keys() {
+				return this.remember("keys", "", () => this.keysNow(), (keys) => keys.length);
+			}
+			/**
+			* Check whether a top-level field has appeared.
+			* @param key - argument name.
+			* @returns whether the field has appeared (a string opened or another value began).
+			*/
+			has(key) {
+				return this.remember("has", key, () => this.hasNow(key));
+			}
+			/**
+			* Check whether a field's closing delimiter has arrived, without validating its contents.
+			* @param key - argument name.
+			* @returns whether its delimiter arrived and no content reader has reported an error for this value.
+			*/
+			complete(key) {
+				return this.remember("complete", key, () => this.completeNow(key));
+			}
+			/**
+			* Read string length without materializing its text.
+			* @param key - argument name.
+			* @param options - change granularity for a streaming string.
+			* @returns decoded UTF-16 length of the string field so far; undefined when absent or not a string.
+			*/
+			stringLength(key, options) {
+				const step = Math.max(1, Math.floor(options?.step ?? 1));
+				const offset = options?.offset ?? 0;
+				return this.remember(`length:${step}:${offset}`, key, () => this.lengthNow(key), (length) => length === void 0 ? void 0 : Math.ceil((length + offset) / step));
+			}
+			/**
+			* Check a string against a decoded UTF-16 length limit without materializing it.
+			* @param key - argument name.
+			* @param maxLength - decoded UTF-16 limit, floored to at least zero.
+			* @returns whether the string is longer than the limit; false when absent or not a string.
+			*/
+			stringExceeds(key, maxLength) {
+				const limit = Math.max(0, Math.floor(maxLength));
+				return this.remember(`exceeds:${limit}`, key, () => (this.lengthNow(key, limit + 1) ?? 0) > limit);
+			}
+			/**
+			* Read a decoded string, including a streaming prefix.
+			* @param key - argument name.
+			* @returns the string field's decoded text so far; undefined when absent or not a string.
+			*/
+			text(key) {
+				return this.remember("text", key, () => this.textNow(key));
+			}
+			/**
+			* Read at most the first decoded UTF-16 units of a string.
+			* @param key - argument name.
+			* @param maxLength - maximum decoded UTF-16 length, floored to at least one.
+			* @returns the bounded string prefix; undefined when absent or not a string.
+			*/
+			textPrefix(key, maxLength) {
+				const limit = Math.max(1, Math.floor(maxLength));
+				return this.remember(`prefix:${limit}`, key, () => this.textPrefixNow(key, limit));
+			}
+			/**
+			* Read a completed non-string argument.
+			* @param key - argument name.
+			* @returns the parsed non-string value once it closed; undefined while open, absent, or a string.
+			*/
+			value(key) {
+				return this.remember("value", key, () => this.valueNow(key));
+			}
+			/** Answer a question and, on a streaming view, remember it for change detection. */
+			remember(kind, key, read, comparison) {
+				this.scan();
+				const result = read();
+				if (!this.sealed) {
+					const id = `${kind}/${key}`;
+					if (!this.#reads.has(id)) this.#reads.set(id, {
+						completion: kind === "complete",
+						answer: comparison === void 0 ? read : () => comparison(read()),
+						last: comparison === void 0 ? result : comparison(result)
+					});
+				}
+				return result;
+			}
+			closedNow() {
+				return this.sealed || this.#mode === "closed" || this.#mode === "invalid";
+			}
+			keysNow() {
+				return this.object === void 0 ? this.#order : Object.keys(this.object);
+			}
+			hasNow(key) {
+				return this.object === void 0 ? this.#entries.has(key) : Object.hasOwn(this.object, key);
+			}
+			completeNow(key) {
+				if (this.object !== void 0) return Object.hasOwn(this.object, key);
+				const entry = this.#entries.get(key);
+				return entry !== void 0 && entry.end >= 0 && (entry.kind === "string" ? entry.invalidAt === void 0 : !entry.invalid);
+			}
+			lengthNow(key, limit = Number.POSITIVE_INFINITY) {
+				if (this.object !== void 0) {
+					const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+					return typeof field === "string" ? field.length : void 0;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "string") return void 0;
+				if (entry.text !== void 0 && entry.text.at === entry.end) return entry.text.length;
+				const read = entry.length ??= {
+					at: entry.start,
+					length: 0,
+					text: ""
+				};
+				this.readString(entry, read, limit, false);
+				return read.length;
+			}
+			textNow(key) {
+				if (this.object !== void 0) {
+					const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+					return typeof field === "string" ? field : void 0;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "string") return void 0;
+				if (entry.text === void 0 && entry.end >= 0 && entry.needsDecoding && entry.invalidAt === void 0) {
+					let text;
+					try {
+						text = JSON.parse(`"${this.slice(entry.start, entry.end)}"`);
+					} catch (_error) {}
+					if (text !== void 0) entry.text = {
+						at: entry.end,
+						length: text.length,
+						text
+					};
+				}
+				const read = entry.text ??= {
+					at: entry.start,
+					length: 0,
+					text: ""
+				};
+				this.readString(entry, read, Number.POSITIVE_INFINITY, true);
+				return read.text;
+			}
+			textPrefixNow(key, maxLength) {
+				if (this.object !== void 0) {
+					const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+					return typeof field === "string" ? field.slice(0, maxLength) : void 0;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "string") return void 0;
+				const prefixes = entry.prefixes ??= /* @__PURE__ */ new Map();
+				let read = prefixes.get(maxLength);
+				if (read === void 0) {
+					read = {
+						at: entry.start,
+						length: 0,
+						text: ""
+					};
+					prefixes.set(maxLength, read);
+				}
+				this.readString(entry, read, maxLength, true);
+				return read.text;
+			}
+			valueNow(key) {
+				if (this.object !== void 0) {
+					if (!Object.hasOwn(this.object, key)) return void 0;
+					const field = this.object[key];
+					return typeof field === "string" ? void 0 : field;
+				}
+				const entry = this.#entries.get(key);
+				if (entry?.kind !== "value" || entry.end < 0 || entry.invalid) return void 0;
+				if (entry.parsed === void 0) try {
+					entry.parsed = JSON.parse(this.slice(entry.start, entry.end));
+				} catch (_error) {
+					entry.invalid = true;
+					this.#invalidValue = true;
+				}
+				return entry.parsed;
+			}
+			chunkAt(at) {
+				let low = 0;
+				let high = this.#ends.length;
+				while (low < high) {
+					const mid = low + high >>> 1;
+					if (this.#ends[mid] <= at) low = mid + 1;
+					else high = mid;
+				}
+				return low;
+			}
+			/** Materialize only a requested range, never the cumulative source. */
+			slice(start, end) {
+				if (start >= end) return "";
+				const first = this.chunkAt(start);
+				const last = this.chunkAt(end - 1);
+				const base = first === 0 ? 0 : this.#ends[first - 1];
+				if (first === last) return this.chunks[first].slice(start - base, end - base);
+				const parts = [this.chunks[first].slice(start - base)];
+				for (let i = first + 1; i < last; i++) parts.push(this.chunks[i]);
+				parts.push(this.chunks[last].slice(0, end - this.#ends[last - 1]));
+				return parts.join("");
+			}
+			readString(entry, read, limit, materialize) {
+				const end = Math.min(entry.end < 0 ? this.#consumed : entry.end, entry.invalidAt ?? Number.POSITIVE_INFINITY, this.#invalidAt ?? Number.POSITIVE_INFINITY);
+				if (!entry.needsDecoding) {
+					const length = Math.min(end - read.at, limit - read.length);
+					if (length <= 0) return;
+					if (materialize) read.text += this.slice(read.at, read.at + length);
+					read.at += length;
+					read.length += length;
+					return;
+				}
+				let chunkIndex = this.chunkAt(read.at);
+				while (read.at < end && read.length < limit) {
+					const base = chunkIndex === 0 ? 0 : this.#ends[chunkIndex - 1];
+					const chunk = this.chunks[chunkIndex];
+					const remaining = chunk.slice(read.at - base, Math.min(chunk.length, end - base));
+					const boundary = remaining.search(CONTENT_ESCAPE);
+					const length = Math.min(boundary < 0 ? remaining.length : boundary, limit - read.length);
+					if (length > 0) {
+						if (materialize) read.text += remaining.slice(0, length);
+						read.at += length;
+						read.length += length;
+						if (read.at === base + chunk.length) chunkIndex++;
+						continue;
+					}
+					const type = remaining.length > 1 ? remaining[1] : read.at + 1 < end ? this.chunks[chunkIndex + 1][0] : void 0;
+					let decoded;
+					let width = 2;
+					if (remaining[0] === "\\" && type === void 0 && entry.end < 0) return;
+					if (remaining[0] === "\\" && type === "u") {
+						const hex = this.slice(read.at + 2, Math.min(end, read.at + 6));
+						let valid = true;
+						for (let i = 0; i < hex.length; i++) if (!isHex(hex[i])) valid = false;
+						if (valid) {
+							if (hex.length < 4 && entry.end < 0) return;
+							if (hex.length === 4) decoded = String.fromCharCode(Number.parseInt(hex, 16));
+						}
+						width = 6;
+					} else if (remaining[0] === "\\" && type !== void 0) decoded = SIMPLE_ESCAPES[type];
+					if (decoded === void 0) {
+						entry.invalidAt = read.at;
+						this.#invalidValue = true;
+						return;
+					}
+					if (materialize) read.text += decoded;
+					read.length++;
+					read.at += width;
+					while (chunkIndex < this.chunks.length && read.at >= this.#ends[chunkIndex]) chunkIndex++;
+				}
+			}
+			/** Locate new field ranges without decoding or parsing their contents. */
+			scan() {
+				if (this.object !== void 0 || this.#consumed === this.#size) return;
+				for (let i = this.chunkAt(this.#consumed); i < this.chunks.length && this.#invalidAt === void 0; i++) {
+					const pending = this.chunks[i];
+					const base = i === 0 ? 0 : this.#ends[i - 1];
+					for (let index = this.#consumed - base; index < pending.length && this.#mode !== "invalid"; index++) {
+						if (this.#mode === "string" || this.#mode === "nested" && this.#nestedInString) {
+							const end = this.stringBoundary(pending, index);
+							this.#consumed += end - index;
+							index = end;
+							if (index === pending.length) break;
+						}
+						this.step(pending[index], this.#consumed);
+						this.#consumed++;
+					}
+				}
+			}
+			/** Only raw quotes and their preceding backslash runs can terminate a string. */
+			stringBoundary(fragment, start) {
+				let at = start;
+				while (true) {
+					const quote = fragment.indexOf("\"", at);
+					const end = quote < 0 ? fragment.length : quote;
+					if (this.#mode === "string") {
+						const entry = this.#current;
+						if (!entry.needsDecoding && CONTENT_ESCAPE.test(fragment.slice(at, end))) entry.needsDecoding = true;
+					}
+					let slashStart = end;
+					while (slashStart > at && fragment[slashStart - 1] === "\\") slashStart--;
+					const escaped = (end - slashStart) % 2 === 1 !== (slashStart === at && this.#escape);
+					this.#escape = quote < 0 && escaped;
+					if (quote < 0 || !escaped) return end;
+					at = quote + 1;
+				}
+			}
+			step(c, at) {
+				switch (this.#mode) {
+					case "root":
+						if (isWhitespace(c)) return;
+						if (c === "{") {
+							this.#mode = "key-or-end";
+							return;
+						}
+						this.fail();
+						return;
+					case "key-or-end":
+						if (isWhitespace(c)) return;
+						if (c === "}") {
+							this.#mode = "closed";
+							return;
+						}
+						if (c === "\"") {
+							this.beginKey(at);
+							return;
+						}
+						this.fail();
+						return;
+					case "key-only":
+						if (isWhitespace(c)) return;
+						if (c === "\"") {
+							this.beginKey(at);
+							return;
+						}
+						this.fail();
+						return;
+					case "key":
+						this.stepKey(c, at);
+						return;
+					case "colon":
+						if (isWhitespace(c)) return;
+						if (c === ":") {
+							this.#mode = "value";
+							return;
+						}
+						this.fail();
+						return;
+					case "value":
+						this.beginValue(c, at);
+						return;
+					case "string": {
+						const entry = this.#current;
+						entry.end = at;
+						this.#current = null;
+						this.#mode = "comma-or-end";
+						return;
+					}
+					case "scalar":
+						this.stepScalar(c, at);
+						return;
+					case "nested":
+						this.stepNested(c, at);
+						return;
+					case "comma-or-end":
+						if (isWhitespace(c)) return;
+						if (c === ",") {
+							this.#mode = "key-only";
+							return;
+						}
+						if (c === "}") {
+							this.#mode = "closed";
+							return;
+						}
+						this.fail();
+						return;
+					case "closed":
+						if (isWhitespace(c)) return;
+						this.fail();
+						return;
+					/* v8 ignore next 2 -- scan() stops stepping once the view is invalid. */
+					case "invalid": return;
+					/* v8 ignore next 2 -- Every scanner mode has a handler above. */
+					default: assertNever(this.#mode);
+				}
+			}
+			fail() {
+				this.#invalidAt = this.#consumed;
+				this.#mode = "invalid";
+				this.#current = null;
+			}
+			beginKey(at) {
+				this.#mode = "key";
+				this.#keyStart = at + 1;
+				this.#keyEscaped = false;
+				this.#escape = false;
+			}
+			stepKey(c, at) {
+				if (c < " ") {
+					this.fail();
+					return;
+				}
+				if (this.#escape) {
+					this.#escape = false;
+					return;
+				}
+				if (c === "\\") {
+					this.#escape = true;
+					this.#keyEscaped = true;
+					return;
+				}
+				if (c !== "\"") return;
+				const raw = this.slice(this.#keyStart, at);
+				if (this.#keyEscaped) try {
+					this.#key = JSON.parse(`"${raw}"`);
+				} catch (_error) {
+					this.fail();
+					return;
+				}
+				else this.#key = raw;
+				this.#mode = "colon";
+			}
+			open(entry) {
+				if (!this.#entries.has(this.#key)) this.#order.push(this.#key);
+				this.#entries.set(this.#key, entry);
+				this.#current = entry;
+			}
+			beginValue(c, at) {
+				if (isWhitespace(c)) return;
+				if (c === "\"") {
+					this.open({
+						kind: "string",
+						start: at + 1,
+						end: -1,
+						needsDecoding: false,
+						invalidAt: void 0,
+						length: void 0,
+						text: void 0,
+						prefixes: void 0
+					});
+					this.#escape = false;
+					this.#mode = "string";
+					return;
+				}
+				if (c === "}" || c === "," || c === ":" || c === "]") {
+					this.fail();
+					return;
+				}
+				this.open({
+					kind: "value",
+					start: at,
+					end: -1,
+					parsed: void 0,
+					invalid: false
+				});
+				if (c === "{" || c === "[") {
+					this.#mode = "nested";
+					this.#nestedEnds = [c === "{" ? "}" : "]"];
+					this.#nestedInString = false;
+					this.#escape = false;
+					return;
+				}
+				this.#mode = "scalar";
+			}
+			stepScalar(c, at) {
+				if (c !== "," && c !== "}" && !isWhitespace(c)) return;
+				this.closeValue(at);
+				this.#mode = c === "," ? "key-only" : c === "}" ? "closed" : "comma-or-end";
+			}
+			stepNested(c, at) {
+				if (this.#nestedInString) {
+					this.#nestedInString = false;
+					return;
+				}
+				if (c === "\"") {
+					this.#nestedInString = true;
+					return;
+				}
+				if (c === "{" || c === "[") {
+					this.#nestedEnds.push(c === "{" ? "}" : "]");
+					return;
+				}
+				if (c === "}" || c === "]") {
+					if (this.#nestedEnds.pop() !== c) {
+						this.fail();
+						return;
+					}
+					if (this.#nestedEnds.length === 0) {
+						this.closeValue(at + 1);
+						this.#mode = "comma-or-end";
+					}
+				}
+			}
+			closeValue(end) {
+				const entry = this.#current;
+				entry.end = end;
+				this.#current = null;
+			}
+		};
+		//#endregion
+		//#region ../../util/values/src/index.ts
+		/**
+		* Mark an unreachable closed-union branch.
+		* @param value - impossible value; an unhandled typed variant fails at the call site.
+		* @param context - optional switch-site label included in the failure message.
+		* @returns never; a runtime value that escaped its type always throws.
+		*/
+		function assertNever(value, context) {
+			const rendered = JSON.stringify(value) ?? String(value);
+			throw new Error(`unreachable variant${context ? ` in ${context}` : ""}: ${rendered}`);
+		}
+		//#endregion
+		//#region ../../llm/llm/src/assistant-stream.ts
+		/**
+		* Whether one chunk carries the model's first output token for latency measurement.
+		* @param chunk - any stream chunk.
+		* @returns true for a non-empty text, reasoning, or Tool-call arguments fragment and for
+		*   every name-bearing Tool-call delta; false for block, usage, and finish chunks.
+		*/
+		function isTokenDelta$1(chunk) {
+			switch (chunk.type) {
+				case "text-delta":
+				case "reasoning-delta": return chunk.text !== "";
+				case "tool-call-delta": return chunk.argumentsDelta !== "" || chunk.name !== void 0;
+				default: return false;
+			}
+		}
+		function firstRunMemberTime(run, predicate) {
+			const fragments = run.type === "tool-call-chunks" ? run.args : run.texts;
+			let time = run.time0;
+			for (let index = 0; index < fragments.length; index += 1) {
+				if (index > 0) time += run.dt[index - 1];
+				if (predicate(fragments[index])) return time;
+			}
+		}
+		/**
+		* Time of the first member of one packed run that {@link isTokenDelta} accepts: a
+		* name-bearing Tool-call run starts at its first member, otherwise the first non-empty fragment.
+		* Stops scanning at that member.
+		* @param run - one packed delta run.
+		* @returns the member's reconstructed time, or undefined when no member qualifies.
+		*/
+		function runFirstTokenTime(run) {
+			if (run.type === "tool-call-chunks" && run.name !== void 0) return run.time0;
+			return firstRunMemberTime(run, (fragment) => fragment !== "");
+		}
+		/**
+		* Time of the first token in one compact stream per {@link isTokenDelta}, read from the
+		* records themselves and stopping at the first qualifying member.
+		* @param stream - compact records from one durable Assistant settlement.
+		* @returns the first token's time, or undefined when the stream carries no token.
+		*/
+		function assistantStreamFirstTokenTime(stream) {
+			for (const record of stream) {
+				const time = record.type === "chunk" ? isTokenDelta$1(record.chunk) ? record.time : void 0 : runFirstTokenTime(record);
+				if (time !== void 0) return time;
+			}
+		}
 		//#endregion
 		//#region lib/types/client/trajectory-definition-common.js
 		/**
@@ -468,7 +1202,7 @@ window.__ModuleLoader__.load({
 		* @param source - Logged `user/message` source.
 		* @returns Role and label rendered by Trajectory.
 		*/
-		function contextProvenance(source) {
+		function contextProducer(source) {
 			const record = asRecord(source);
 			const kind = record === null ? null : readString(record, "kind");
 			if (record === null || kind === null) return {
@@ -483,10 +1217,6 @@ window.__ModuleLoader__.load({
 				case "agent-instructions": return {
 					role: "inject",
 					label: joined(collect(record, "changes", "path")) ?? kind
-				};
-				case "plugin": return {
-					role: "inject",
-					label: readString(record, "plugin") ?? kind
 				};
 				case "skill-invocation": return {
 					role: "inject",
@@ -597,9 +1327,6 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region lib/types/client/trajectory-assistant-definition.js
-		function isChunkRunEvent(event) {
-			return event.type === "chunkrow/text-chunks" || event.type === "chunkrow/reasoning-chunks" || event.type === "chunkrow/tool-call-chunks";
-		}
 		function initialState(turn, step, startSeq, startTime, started) {
 			return {
 				turn,
@@ -647,9 +1374,7 @@ window.__ModuleLoader__.load({
 				...current?.reasoningTokens === void 0 && next.reasoningTokens === void 0 ? {} : { reasoningTokens: (current?.reasoningTokens ?? 0) + (next.reasoningTokens ?? 0) }
 			};
 		}
-		function updateChunk(state, match) {
-			if (match.event.type !== "assistant/chunk") return state;
-			const chunk = match.event.data.chunk;
+		function updateChunk(state, chunk, seq, time) {
 			if (chunk.type === "usage") return {
 				...state,
 				sawChunk: true,
@@ -719,78 +1444,28 @@ window.__ModuleLoader__.load({
 				blocks,
 				visibleBlocks,
 				...visibleBlocks > 0 && state.firstVisibleSeq === void 0 ? {
-					firstVisibleSeq: match.event.seq,
-					firstVisibleTime: match.event.time
+					firstVisibleSeq: seq,
+					firstVisibleTime: time
 				} : {},
-				...isTokenDelta(chunk) && state.firstTokenTime === void 0 ? { firstTokenTime: match.event.time } : {}
+				...isTokenDelta(chunk) && state.firstTokenTime === void 0 ? { firstTokenTime: time } : {}
 			};
 		}
-		function chunkRunBoundaries(event, needsToken, needsVisible, visibleFromStart) {
-			const fragments = event.type === "chunkrow/tool-call-chunks" ? event.data.args : event.data.texts;
-			const nameStartsToken = event.type === "chunkrow/tool-call-chunks" && Object.hasOwn(event.data, "name");
-			let firstTokenTime;
-			let firstVisible;
-			let time = event.time;
-			for (let index = 0; index < fragments.length; index++) {
-				const fragment = fragments[index];
-				if (needsToken && firstTokenTime === void 0 && (nameStartsToken || fragment !== "")) firstTokenTime = time;
-				if (needsVisible && firstVisible === void 0 && (visibleFromStart || event.type !== "chunkrow/tool-call-chunks" && fragment.trim() !== "")) firstVisible = {
-					seq: event.seq + index,
-					time
-				};
-				if ((!needsToken || firstTokenTime !== void 0) && (!needsVisible || firstVisible !== void 0)) break;
-				time += event.data.dt[index] ?? 0;
-			}
-			return {
-				firstTokenTime,
-				firstVisible
-			};
-		}
-		function updateChunkRun(state, event) {
-			const blocks = [...state.blocks];
-			const previous = blocks[event.data.index];
-			const previousVisible = blockIsVisible(previous);
-			let visibleFromStart = state.visibleBlocks - Number(previousVisible) > 0;
-			if (event.type === "chunkrow/text-chunks") {
-				const text = previous?.kind === "text" ? previous.text : "";
-				visibleFromStart ||= text.trim() !== "";
-				blocks[event.data.index] = {
-					kind: "text",
-					text: text + event.data.texts.join("")
-				};
-			} else if (event.type === "chunkrow/reasoning-chunks") {
-				const text = previous?.kind === "reasoning" ? previous.text : "";
-				visibleFromStart ||= text.trim() !== "";
-				blocks[event.data.index] = {
-					kind: "reasoning",
-					text: text + event.data.texts.join("")
-				};
-			} else {
-				const base = previous?.kind === "tool-call" ? previous : {
-					kind: "tool-call",
-					callId: "",
-					name: "",
-					argsRaw: ""
-				};
-				blocks[event.data.index] = {
-					kind: "tool-call",
-					callId: base.callId || String(event.data.id),
-					name: Object.hasOwn(event.data, "name") ? event.data.name : base.name,
-					argsRaw: base.argsRaw + event.data.args.join("")
-				};
-			}
-			const boundaries = chunkRunBoundaries(event, state.firstTokenTime === void 0, state.firstVisibleSeq === void 0, visibleFromStart);
-			const visibleBlocks = state.visibleBlocks - Number(previousVisible) + Number(blockIsVisible(blocks[event.data.index]));
+		/** The Step retains its first token across live chunks and settled retry attempts. */
+		function settleTiming(state, event) {
 			return {
 				...state,
-				sawChunk: true,
+				firstTokenTime: state.firstTokenTime ?? assistantStreamFirstTokenTime(event.data.stream)
+			};
+		}
+		function settleMessage(state, match, event) {
+			const blocks = toAssistantBlocks(event.data.message.content);
+			return {
+				...settleTiming(state, event),
+				sawChunk: false,
 				blocks,
-				visibleBlocks,
-				...boundaries.firstVisible === void 0 ? {} : {
-					firstVisibleSeq: boundaries.firstVisible.seq,
-					firstVisibleTime: boundaries.firstVisible.time
-				},
-				...boundaries.firstTokenTime === void 0 ? {} : { firstTokenTime: boundaries.firstTokenTime }
+				visibleBlocks: countVisibleBlocks(blocks),
+				final: match,
+				usage: event.data.usage
 			};
 		}
 		function closedBoundary(context) {
@@ -802,25 +1477,16 @@ window.__ModuleLoader__.load({
 		function fallbackState$1(context) {
 			let state;
 			for (const match of context.matches) {
-				if (isChunkRunEvent(match.event)) {
-					state ??= initialState(match.event.data.turn, match.event.data.step, match.event.seq, match.event.time, false);
-					state = updateChunkRun(state, match.event);
-					continue;
-				}
 				const event = match.event;
-				if (event.type === "assistant/chunk") {
+				if (event.type === "assistant/live-chunk") {
 					state ??= initialState(event.data.turn, event.data.step, event.seq, event.time, false);
-					state = updateChunk(state, match);
+					state = updateChunk(state, event.data.chunk, event.seq, event.time);
+				} else if (event.type === "assistant/attempt") {
+					state ??= initialState(event.data.turn, event.data.step, event.seq, event.time, false);
+					state = settleTiming(state, event);
 				} else if (event.type === "assistant/message") {
 					state ??= initialState(event.data.turn, event.data.step, event.seq, event.time, false);
-					const blocks = toAssistantBlocks(event.data.message.content);
-					state = {
-						...state,
-						blocks,
-						visibleBlocks: countVisibleBlocks(blocks),
-						final: match,
-						usage: state.usage ?? event.data.usage
-					};
+					state = settleMessage(state, match, event);
 				} else if (event.type === "step/end" && state !== void 0) state = {
 					...state,
 					stepEnd: match
@@ -841,7 +1507,7 @@ window.__ModuleLoader__.load({
 					step: state.step,
 					blocks: toAssistantBlocks(event.data.message.content),
 					usage: event.data.usage,
-					provenance: {
+					providerMetadata: {
 						provider: event.data.message.source.provider,
 						model: event.data.message.source.model
 					},
@@ -887,7 +1553,7 @@ window.__ModuleLoader__.load({
 				},
 				...node?.messageId === void 0 ? {} : {
 					resultSeq: node.seq,
-					...node.provenance === void 0 ? {} : { provenance: node.provenance }
+					...node.providerMetadata === void 0 ? {} : { providerMetadata: node.providerMetadata }
 				},
 				...state.usage === void 0 ? {} : { usage: state.usage }
 			};
@@ -901,11 +1567,7 @@ window.__ModuleLoader__.load({
 					id: `${event.data.turn}:${event.data.step}`,
 					role: "start"
 				};
-				if (event.type === "assistant/chunk" || event.type === "assistant/message" || event.type === "llm/retry" || event.type === "step/end") return {
-					id: `${event.data.turn}:${event.data.step}`,
-					role: "update"
-				};
-				if (isChunkRunEvent(event)) return {
+				if (event.type === "assistant/live-chunk" || event.type === "assistant/message" || event.type === "assistant/attempt" || event.type === "llm/retry" || event.type === "step/end") return {
 					id: `${event.data.turn}:${event.data.step}`,
 					role: "update"
 				};
@@ -916,18 +1578,9 @@ window.__ModuleLoader__.load({
 				return initialState(match.event.data.turn, match.event.data.step, match.event.seq, match.event.time, true);
 			},
 			update: (context, match) => {
-				if (isChunkRunEvent(match.event)) return updateChunkRun(context.state, match.event);
-				if (match.event.type === "assistant/chunk") return updateChunk(context.state, match);
-				if (match.event.type === "assistant/message") {
-					const blocks = toAssistantBlocks(match.event.data.message.content);
-					return {
-						...context.state,
-						blocks,
-						visibleBlocks: countVisibleBlocks(blocks),
-						final: match,
-						usage: context.state.usage ?? match.event.data.usage
-					};
-				}
+				if (match.event.type === "assistant/live-chunk") return updateChunk(context.state, match.event.data.chunk, match.event.seq, match.event.time);
+				if (match.event.type === "assistant/message") return settleMessage(context.state, match, match.event);
+				if (match.event.type === "assistant/attempt") return settleTiming(context.state, match.event);
 				if (match.event.type === "step/end") return {
 					...context.state,
 					stepEnd: match
@@ -949,9 +1602,8 @@ window.__ModuleLoader__.load({
 				};
 			},
 			publication: (match) => {
-				if (match.event.type === "step/start") return "none";
-				if (isChunkRunEvent(match.event)) return "animation-frame";
-				if (match.event.type !== "assistant/chunk") return "immediate";
+				if (match.event.type === "step/start" || match.event.type === "assistant/attempt") return "none";
+				if (match.event.type !== "assistant/live-chunk") return "immediate";
 				const type = match.event.data.chunk.type;
 				return type === "usage" || type === "finish" ? "none" : "animation-frame";
 			},
@@ -1019,7 +1671,7 @@ window.__ModuleLoader__.load({
 		function checkpointId(event) {
 			if (event.type !== "user/message") return void 0;
 			const source = event.data.source;
-			return source.kind === "plugin" && source.plugin === "compact" && typeof source.compactionId === "string" && source.compactionId !== "" ? source.compactionId : void 0;
+			return source.kind === "compact-checkpoint" && typeof source.compactionId === "string" && source.compactionId !== "" ? source.compactionId : void 0;
 		}
 		function eventCompactionId(event) {
 			if (event.type !== "compaction/start" && event.type !== "compaction/summary" && event.type !== "compaction/end") return void 0;
@@ -1045,7 +1697,7 @@ window.__ModuleLoader__.load({
 					resultSeq: summary.seq,
 					summary: summary.data.summary,
 					...summary.data.rawOutput === void 0 ? {} : { rawOutput: summary.data.rawOutput },
-					provenance: {
+					providerMetadata: {
 						provider: summary.data.provider,
 						model: summary.data.model
 					},
@@ -1131,23 +1783,73 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region lib/types/client/trajectory-message-definitions.js
+		const EMPTY_PENDING = {
+			kind: "snapshot",
+			ids: []
+		};
+		const EMPTY_CURRENT_CLAIMED = /* @__PURE__ */ new Set();
+		function materializePending(state) {
+			const splices = [];
+			let current = state;
+			while (current.kind === "splice") {
+				splices.push(current);
+				current = current.previous;
+			}
+			const pending = [...current.ids];
+			for (const splice of splices.reverse()) pending.splice(splice.start, splice.removedCount, ...splice.inserted);
+			return pending;
+		}
+		function withoutInserted(claimed, inserted) {
+			let next;
+			for (const id of inserted) {
+				if (!claimed.has(id)) continue;
+				next ??= new Set(claimed);
+				next.delete(id);
+			}
+			return next ?? claimed;
+		}
+		/**
+		* Apply one next-step splice under the AgentLoop's durable event ordering.
+		* An entered claim logs its complete message batch before another claim; a
+		* rejected claim logs no messages, so only the current claim can classify a
+		* later `user/message`.
+		*/
 		function applySplice(previous, splice) {
-			const pending = [...previous?.state.pending ?? []];
-			const claimed = new Set(previous?.state.claimed ?? []);
-			const removed = pending.splice(splice.start, splice.removedCount ?? 0, ...splice.inserted);
-			for (const identity of splice.inserted) claimed.delete(identity.id);
-			if (splice.outcome !== "canceled") for (const identity of removed) claimed.add(identity.id);
+			const priorPending = previous?.state.pending ?? EMPTY_PENDING;
+			const inserted = splice.inserted.map((identity) => identity.id);
+			const removedCount = splice.removedCount ?? 0;
+			if (removedCount > 0 && splice.outcome !== "canceled") {
+				const pending = materializePending(priorPending);
+				const removed = pending.splice(splice.start, removedCount, ...inserted);
+				return {
+					pending: {
+						kind: "snapshot",
+						ids: pending
+					},
+					currentClaimed: new Set(removed)
+				};
+			}
+			const currentClaimed = withoutInserted(previous?.state.currentClaimed ?? EMPTY_CURRENT_CLAIMED, inserted);
 			return {
-				pending,
-				claimed
+				pending: {
+					kind: "splice",
+					previous: priorPending,
+					start: splice.start,
+					removedCount,
+					inserted
+				},
+				currentClaimed
 			};
 		}
 		const trajectoryInboxDefinition = {
 			kind: "trajectory-inbox-next-step",
-			match: (event) => event.type === "agent/inbox/spliced" && event.data.target === "next-step" ? {
-				id: String(event.seq),
-				role: "start"
-			} : null,
+			match: (event) => {
+				if (event.type === "agent/inbox/spliced" && event.data.target === "next-step") return {
+					id: String(event.seq),
+					role: "start"
+				};
+				return null;
+			},
 			start: (_context, match, reader) => {
 				if (match.event.type !== "agent/inbox/spliced") throw new Error("trajectory-inbox-next-step start requires agent/inbox/spliced");
 				return applySplice(reader.previous("trajectory-inbox-next-step"), match.event.data);
@@ -1158,11 +1860,25 @@ window.__ModuleLoader__.load({
 		const trajectoryMessageDefinition = {
 			kind: "trajectory-input-message",
 			target: "trajectory",
-			match: (event) => event.type === "user/message" ? {
-				id: String(event.seq),
-				role: "start"
-			} : null,
+			match: (event) => {
+				return event.type === "user/message" || event.type === "developer/message" ? {
+					id: String(event.seq),
+					role: "start"
+				} : null;
+			},
 			start: (_context, match, reader) => {
+				if (match.event.type === "developer/message") {
+					const { seq, time, data: { message } } = match.event;
+					return {
+						kind: "context",
+						seq,
+						time,
+						content: message.content,
+						source: message.source,
+						producer: contextProducer(message.source),
+						form: contextForm(message.source)
+					};
+				}
 				if (match.event.type !== "user/message") throw new Error("trajectory-input-message start requires user/message");
 				const event = match.event;
 				if (event.data.source.kind !== "user") return {
@@ -1171,10 +1887,10 @@ window.__ModuleLoader__.load({
 					time: event.time,
 					content: event.data.content,
 					source: event.data.source,
-					provenance: contextProvenance(event.data.source),
+					producer: contextProducer(event.data.source),
 					form: contextForm(event.data.source)
 				};
-				return reader.previous("trajectory-inbox-next-step")?.state.claimed.has(String(event.data.id)) === true ? {
+				return reader.previous("trajectory-inbox-next-step")?.state.currentClaimed.has(String(event.data.id)) === true ? {
 					kind: "steering",
 					messageId: event.data.id,
 					seq: event.seq,
@@ -1207,6 +1923,89 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/trajectory-request-header-definition.js
 		/**
+		* Definition retaining each `system/message` surface node for the Trajectory
+		* request-header Definition, which reads it through `reader.previous` and
+		* presents the prompt through the request's `system` cell. A node that
+		* lacks a loaded header contributes known text without request config or tools; an in-history
+		* update contributes a request-header fact at its own position, since no
+		* `request/header` follows a prompt change that keeps the cached history.
+		* Surface replacements also contribute prompt changes when they remove the
+		* effective node; earlier request facts remain historical.
+		* @param inspect - Pure surface interpretation supplied by uiConversation.
+		* @returns The Trajectory system-prompt Definition.
+		*/
+		function trajectorySystemMessageDefinition(inspect) {
+			return {
+				kind: "trajectory-system-message",
+				target: "trajectory",
+				match: (event) => event.type === "system/message" || "surfaceOp" in event && event.surfaceOp !== "append" ? {
+					id: String(event.seq),
+					role: "start"
+				} : null,
+				start: (_context, match, reader) => {
+					if (match.event.type === "assistant/live-chunk") throw new Error("system-message requires a durable event");
+					const prior = reader.previous("trajectory-system-message")?.state;
+					const state = inspect(prior, match.event);
+					const node = state.effective;
+					if (state.uncertain) {
+						const header = reader.previous("trajectory-request-header")?.state;
+						if (header === void 0) return state;
+						return {
+							...state,
+							header: {
+								seq: match.event.seq,
+								time: match.event.time,
+								location: match.location,
+								prompt: {
+									...header.prompt,
+									system: ""
+								}
+							}
+						};
+					}
+					if (node === void 0 || node.text === prior?.effective?.text || state.introduced !== void 0 && !state.introduced.update) return {
+						...state,
+						...prior?.header === void 0 ? {} : { header: prior.header }
+					};
+					const header = reader.previous("trajectory-request-header")?.state;
+					const systemHeader = prior?.header;
+					const previous = systemHeader !== void 0 && (header === void 0 || systemHeader.seq > header.seq) ? systemHeader : header;
+					if (previous === void 0) return state;
+					return {
+						...state,
+						header: {
+							seq: node.seq,
+							time: node.time,
+							prompt: {
+								...previous.prompt,
+								system: node.text
+							},
+							change: {
+								seq: node.seq,
+								time: node.time,
+								kind: "system",
+								previous: previous.prompt
+							},
+							location: match.location
+						}
+					};
+				},
+				update: (context) => context.state,
+				buildViewNode: (context) => {
+					const state = context.state;
+					if (state?.header !== void 0 && state.header.seq === context.start?.event.seq) return trajectoryNode(context, state.header.seq, {
+						kind: "request-header",
+						header: state.header
+					});
+					const prompt = state?.introduced;
+					return prompt !== void 0 && prompt.text !== "" && context.start?.event.type === "system/message" && context.start.event.surfaceOp === "append" ? trajectoryNode(context, prompt.seq, {
+						kind: "system-prompt",
+						prompt
+					}) : null;
+				}
+			};
+		}
+		/**
 		* Request-header fact Definition for the Trajectory target.
 		* @param inspect - the shared prompt interpretation, supplied by the
 		* uiConversation service (a client bundle cannot value-import it).
@@ -1222,8 +2021,14 @@ window.__ModuleLoader__.load({
 				} : null,
 				start: (_context, match, reader) => {
 					if (match.event.type !== "request/header") throw new Error("trajectory-request-header start requires request/header");
-					const previous = reader.previous("trajectory-request-header")?.state.prompt;
-					const { prompt, change } = inspect(previous, match.event);
+					const header = reader.previous("trajectory-request-header")?.state;
+					const state = reader.previous("trajectory-system-message")?.state;
+					const systemHeader = state?.header;
+					const previous = systemHeader !== void 0 && (header === void 0 || systemHeader.seq > header.seq) ? systemHeader.prompt : header?.prompt;
+					const system = state?.effective;
+					const inspection = inspect(previous, match.event, system);
+					const { prompt } = inspection;
+					const change = inspection.change ?? (systemHeader !== void 0 && (header === void 0 || systemHeader.seq > header.seq) ? systemHeader.change : void 0);
 					return {
 						seq: match.event.seq,
 						time: match.event.time,
@@ -1240,12 +2045,13 @@ window.__ModuleLoader__.load({
 			};
 		}
 		/**
-		* Register Trajectory request-header facts.
+		* Register Trajectory system-prompt node and request-header facts.
 		*
-		* @param ctx - Plugin context receiving the Definition.
+		* @param ctx - Plugin context receiving the Definitions.
 		*/
 		function registerTrajectoryRequestHeaderDefinition(ctx) {
-			ctx.uiConversation.events.register(trajectoryRequestHeaderDefinition((previous, event) => ctx.uiConversation.inspectRequestPrompt(previous, event)));
+			ctx.uiConversation.events.register(trajectorySystemMessageDefinition((previous, event) => ctx.uiConversation.inspectSystemPrompt(previous, event)));
+			ctx.uiConversation.events.register(trajectoryRequestHeaderDefinition((previous, event, system) => ctx.uiConversation.inspectRequestPrompt(previous, event, system)));
 		}
 		//#endregion
 		//#region lib/types/client/copy-codes.js
@@ -1381,6 +2187,8 @@ window.__ModuleLoader__.load({
 						...contribution.data.header.change !== void 0 ? { change: contribution.data.header.change } : previous?.change === void 0 ? {} : { change: previous.change }
 					});
 				}
+				const representedPrompts = new Set(this.contributions.flatMap((node) => node.data.kind === "request-header" && node.data.header.change !== void 0 ? [node.data.header.change.seq] : []));
+				const systemPrompts = [];
 				const finalized = [];
 				const eventLocations = /* @__PURE__ */ new Map();
 				const requests = [];
@@ -1394,6 +2202,10 @@ window.__ModuleLoader__.load({
 				const runningCalls = [];
 				for (const contribution of this.contributions) {
 					const data = contribution.data;
+					if (data.kind === "system-prompt") {
+						if (!representedPrompts.has(data.prompt.seq)) systemPrompts.push(data.prompt);
+						continue;
+					}
 					if (data.kind === "request-header") {
 						previousHeader = data.header;
 						previousTools = indexTools(data.header.prompt.tools);
@@ -1446,6 +2258,7 @@ window.__ModuleLoader__.load({
 				finalized.sort((left, right) => left.seq - right.seq);
 				return {
 					eventNodes: finalized,
+					...systemPrompts.length > 0 ? { systemPrompts } : {},
 					eventLocations,
 					requests,
 					callSchemas,
@@ -1462,6 +2275,7 @@ window.__ModuleLoader__.load({
 		/** Trajectory target factory preserving the existing stage-oriented view model. */
 		const trajectoryViewDefinition = {
 			target: "trajectory",
+			toolCallFocus: (callId) => callId,
 			create: () => new TrajectorySnapshotBuilder()
 		};
 		/**
@@ -1478,9 +2292,11 @@ window.__ModuleLoader__.load({
 		function rootCall(match) {
 			if (match.event.type !== "tool/call") throw new Error("trajectory-tool-call start requires tool/call");
 			return {
+				phase: "start",
 				callId: String(match.event.data.callId),
 				name: match.event.data.name,
 				argsRaw: match.event.data.arguments,
+				args: PartialArguments.fromText(match.event.data.arguments),
 				turn: match.event.data.turn,
 				step: match.event.data.step,
 				time: match.event.time,
@@ -1489,19 +2305,21 @@ window.__ModuleLoader__.load({
 		}
 		function rootResult(match, previous) {
 			if (match.event.type !== "tool/result") return void 0;
-			const result = match.event.data.message.content[0];
+			const message = match.event.data.message;
 			return {
 				kind: "tool-result",
 				seq: match.event.seq,
 				time: match.event.time,
-				callId: String(match.event.data.message.source.callId),
+				callId: String(message.source.callId),
+				name: previous?.name ?? "",
+				args: previous?.args ?? PartialArguments.EMPTY,
 				call: previous === void 0 ? null : {
 					name: previous.name,
 					argsRaw: previous.argsRaw
 				},
 				callTime: previous?.time ?? null,
-				content: result.content,
-				isError: result.isError === true,
+				content: message.content,
+				isError: message.isError === true,
 				...match.event.data.error === void 0 ? {} : { error: match.event.data.error },
 				meta: match.event.data.meta,
 				subCalls: []
@@ -1515,10 +2333,12 @@ window.__ModuleLoader__.load({
 		}
 		function childCall(match, data) {
 			return {
+				phase: "start",
 				callId: data.subCallId,
 				parentCallId: data.parentCallId,
 				name: data.name,
 				argsRaw: JSON.stringify(data.arguments),
+				args: PartialArguments.fromObject(data.arguments),
 				turn: locationTurn(match),
 				step: locationStep(match),
 				time: match.event.time,
@@ -1532,6 +2352,8 @@ window.__ModuleLoader__.load({
 				time: match.event.time,
 				callId: data.subCallId,
 				parentCallId: data.parentCallId,
+				name: data.name,
+				args: previous?.args ?? PartialArguments.fromObject(data.arguments),
 				call: {
 					name: data.name,
 					argsRaw: JSON.stringify(data.arguments)
@@ -1539,6 +2361,7 @@ window.__ModuleLoader__.load({
 				callTime: previous === void 0 || "kind" in previous ? null : previous.time,
 				content: data.content ?? [],
 				isError: data.isError === true,
+				...data.error === void 0 ? {} : { error: data.error },
 				subCalls: []
 			};
 		}
@@ -1572,16 +2395,16 @@ window.__ModuleLoader__.load({
 		}
 		function updateDispatch(state, match) {
 			const event = match.event;
-			if (event.type !== "tool/code-dispatch-start" && event.type !== "tool/code-dispatch") return state;
+			if (event.type !== "tool/ptc-dispatch-start" && event.type !== "tool/ptc-dispatch") return state;
 			const data = event.data;
 			const parentId = String(data.parentCallId);
 			const childId = String(data.subCallId);
 			const siblings = state.children.get(parentId) ?? [];
 			const index = siblings.indexOf(childId);
 			if (index < 0 && !acceptsEdge(state, parentId, childId)) return state;
-			if (event.type === "tool/code-dispatch-start" && index >= 0) return state;
+			if (event.type === "tool/ptc-dispatch-start" && index >= 0) return state;
 			const calls = new Map(state.calls);
-			calls.set(childId, event.type === "tool/code-dispatch-start" ? childCall(match, data) : childResult(match, data, calls.get(childId)));
+			calls.set(childId, event.type === "tool/ptc-dispatch-start" ? childCall(match, data) : childResult(match, data, calls.get(childId)));
 			if (index >= 0) return {
 				...state,
 				calls
@@ -1625,6 +2448,8 @@ window.__ModuleLoader__.load({
 				time: interruptedAt.time,
 				callId: block.callId,
 				...block.parentCallId === void 0 ? {} : { parentCallId: block.parentCallId },
+				name: block.name,
+				args: block.args,
 				call: {
 					name: block.name,
 					argsRaw: block.argsRaw
@@ -1652,7 +2477,7 @@ window.__ModuleLoader__.load({
 			for (const match of context.matches) state = updateDispatch(state, match);
 			return state;
 		}
-		/** Trajectory-owned root Tool lifecycle with nested Code Dispatch calls. */
+		/** Trajectory-owned root Tool lifecycle with nested PTC dispatch calls. */
 		const trajectoryToolDefinition = {
 			kind: "trajectory-tool-call",
 			target: "trajectory",
@@ -1665,7 +2490,7 @@ window.__ModuleLoader__.load({
 					id: String(event.data.message.source.callId),
 					role: "update"
 				};
-				if (event.type === "tool/code-dispatch-start" || event.type === "tool/code-dispatch") {
+				if (event.type === "tool/ptc-dispatch-start" || event.type === "tool/ptc-dispatch") {
 					const rootCallId = event.data.rootCallId;
 					return typeof rootCallId === "string" && rootCallId !== "" ? {
 						id: rootCallId,
@@ -1707,7 +2532,7 @@ window.__ModuleLoader__.load({
 			}
 		};
 		/**
-		* Register the Trajectory Tool lifecycle.
+		* Register the Trajectory Tool lifecycle with raw native and PTC error details.
 		*
 		* @param ctx - Plugin context receiving the Definition.
 		*/
@@ -3598,8 +4423,49 @@ window.__ModuleLoader__.load({
 			return source.length < text.length || preview.length < compact.length ? `${preview}…` : preview;
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-trajectory\src\client\TrajectoryTable.module.css.mjs
-		const css$3 = ".P_4P_q_split{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);background:var(--dsw-alias-bg-layer-1);flex:1;width:100%;min-height:0;display:flex;position:relative;overflow:hidden;container-type:inline-size}.P_4P_q_tablePane{min-width:0;padding-bottom:var(--dsh-trajectory-bottom-clearance,0px);flex:1;position:relative;overflow:hidden auto;container:P_4P_q_trajectory-table/inline-size}.P_4P_q_historyLoading{z-index:5;pointer-events:none;height:0;position:sticky;top:0;overflow:visible}.P_4P_q_historyLoadingBar{box-sizing:border-box;border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);width:100%;height:30px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);justify-content:center;align-items:center;gap:6px;display:flex}.P_4P_q_historyLoadingSpinner{box-sizing:border-box;border:1.5px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-state-business-primary);border-radius:50%;width:10px;height:10px;animation:.7s linear infinite P_4P_q_history-loading-spin}.P_4P_q_table tbody .P_4P_q_historyLoadRow td{height:30px;padding:0}.P_4P_q_table tbody .P_4P_q_historyLoadRow+tr[data-turn-start=true] td:before{content:none}.P_4P_q_historyLoadButton{background:var(--dsw-alias-bg-layer-1);width:100%;height:29px;color:var(--dsw-alias-label-secondary);cursor:pointer;font:var(--dsw-font-xxs-12);border:0;justify-content:center;align-items:center;gap:6px;display:flex}.P_4P_q_historyLoadButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.P_4P_q_historyLoadButton:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}.P_4P_q_historyLoadButton:disabled{cursor:default}.P_4P_q_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}.P_4P_q_table:not([data-scroll-ready=true]){visibility:hidden}@keyframes P_4P_q_history-loading-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.P_4P_q_historyLoadingSpinner{animation:none}}.P_4P_q_table{--trajectory-turn-accent:color-mix(in srgb, var(--dsw-static-blue-500) 22%, var(--dsw-alias-bg-layer-1));border-spacing:0;table-layout:fixed;width:100%;min-width:0;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);font:var(--dsw-font-xxs-12)}.P_4P_q_eventColumn{width:122px}.P_4P_q_contentColumn{width:auto}.P_4P_q_table th{z-index:3;box-sizing:border-box;border-bottom:1px solid var(--dsw-alias-border-l2);height:30px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-specific-sidebar-fill);font:var(--dsw-font-xxs-12);text-align:left;text-overflow:ellipsis;user-select:none;white-space:nowrap;padding:0 8px;font-weight:500;position:sticky;top:0;overflow:hidden}.P_4P_q_eventHeader{text-align:right!important;padding-right:4px!important}.P_4P_q_table td{box-sizing:border-box;border-bottom:1px solid var(--dsw-alias-border-l1);text-overflow:ellipsis;white-space:nowrap;height:30px;padding:0 8px;overflow:hidden}.P_4P_q_table tbody .P_4P_q_virtualSpacer{pointer-events:none}.P_4P_q_table tbody .P_4P_q_virtualSpacer td{height:var(--trajectory-virtual-spacer-height);border:0;padding:0}.P_4P_q_table tbody tr:not([data-collapsed-summary]):not([data-virtual-spacer]):not([data-history-load]){cursor:default;transition:background-color .12s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out);outline:none}.P_4P_q_table tbody tr[data-timeline-focus=outside]{opacity:.24}.P_4P_q_table tbody tr:not([data-collapsed-summary]):not([data-virtual-spacer]):not([data-history-load]):not([data-selected=true]):hover{background:var(--dsw-alias-interactive-bg-hover)}.P_4P_q_table tbody tr[data-request-only=true]:hover{background:0 0}.P_4P_q_table tbody tr[data-request-only=true] td{border-bottom:0;height:0;padding-top:0;padding-bottom:0}.P_4P_q_table tbody tr[data-terminal-request-boundary=true] td{height:9px}.P_4P_q_table tbody tr[data-request-only=true] .P_4P_q_turnRail{top:-15px;bottom:0}.P_4P_q_table tbody tr:not([data-collapsed-summary]):focus-visible{box-shadow:inset 0 0 0 1px var(--dsw-alias-state-business-primary)}.P_4P_q_table tbody tr[data-selected=true]{background:var(--dsw-alias-interactive-bg-active)}.P_4P_q_requestBoundaryControl{--request-boundary-base-left:12px;z-index:6;top:-8px;left:calc(var(--request-boundary-base-left) + var(--request-boundary-offset,0px));cursor:pointer;background:0 0;border:0;width:16px;height:16px;padding:0;position:absolute}.P_4P_q_requestBoundaryControl:before{background:var(--dsw-alias-label-caption);width:5px;height:5px;box-shadow:0 0 0 2px var(--dsw-alias-bg-layer-1), 0 0 0 3px transparent;content:\"\";transition:background .12s var(--ds-ease-in-out), box-shadow .12s var(--ds-ease-in-out);border-radius:50%;position:absolute;top:5.5px;left:5.5px}.P_4P_q_requestBoundaryControl:after{border:1px solid var(--dsw-alias-border-l1);width:max-content;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);content:attr(data-label);font:9px/12px var(--ds-font-family-code);opacity:0;pointer-events:none;transition:opacity .12s var(--ds-ease-in-out), transform .12s var(--ds-ease-in-out);user-select:none;white-space:nowrap;border-radius:2px;padding:0 4px;position:absolute;top:2px;left:17px;transform:translate(-2px);box-shadow:0 2px 6px #0000001f}.P_4P_q_requestBoundaryControl:hover:before,.P_4P_q_requestBoundaryControl:focus-visible:before{background:var(--dsw-alias-brand-primary-new-colorprimary-new-color)}.P_4P_q_requestBoundaryControlActive:before,.P_4P_q_requestBoundaryControlActive:hover:before,.P_4P_q_requestBoundaryControlActive:focus-visible:before{background:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 18%, var(--dsw-alias-bg-layer-1));box-shadow:0 0 0 1.5px var(--dsw-alias-brand-primary-new-colorprimary-new-color)}.P_4P_q_requestBoundaryControl[data-request-status=error]:before,.P_4P_q_requestBoundaryControl[data-request-status=error]:hover:before,.P_4P_q_requestBoundaryControl[data-request-status=error]:focus-visible:before{background:var(--dsw-alias-state-error-primary)}.P_4P_q_requestBoundaryControl:hover:after,.P_4P_q_requestBoundaryControl:focus-visible:after{opacity:1;transform:translate(0)}.P_4P_q_requestBoundaryControl:focus-visible{outline:none}.P_4P_q_table tbody tr:has(.P_4P_q_requestBoundaryControl:hover):not([data-selected=true]){background:0 0}.P_4P_q_event{position:relative}.P_4P_q_turnRail,.P_4P_q_selectionRail{background:var(--dsw-alias-brand-primary-new-colorprimary-new-color);pointer-events:none;position:absolute;left:0}.P_4P_q_turnRail{z-index:4;background:var(--trajectory-turn-accent);width:2px;top:-1px;bottom:-1px}.P_4P_q_table tbody tr[data-turn-end=true] .P_4P_q_turnRail{bottom:0}.P_4P_q_selectionRail{z-index:5;width:3px;top:0;bottom:0}.P_4P_q_table tbody tr[data-error=true] .P_4P_q_turnRail{background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 22%, var(--dsw-alias-bg-layer-1))}.P_4P_q_table tbody tr[data-error=true] .P_4P_q_selectionRail{background:var(--dsw-alias-state-error-primary)}.P_4P_q_table tbody tr[data-turn-start=true] td{position:relative;overflow:visible}.P_4P_q_table tbody tr[data-turn-start=true]:not(:first-child) td:before{z-index:1;background:var(--dsw-alias-border-l1);content:\"\";pointer-events:none;height:2px;position:absolute;top:0;left:0;right:0;transform:translateY(-50%)}.P_4P_q_event{padding-left:36px!important;padding-right:4px!important;overflow:visible!important}.P_4P_q_turnLabel{z-index:3;box-sizing:border-box;width:max-content;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-module-platform);font:8px/10px var(--ds-font-family-code);font-variant-numeric:tabular-nums;user-select:none;white-space:nowrap;border-radius:0 0 2px;flex:none;align-items:center;padding:1px 5px;display:inline-grid;position:absolute;top:0;left:0}.P_4P_q_turnLabelFull,.P_4P_q_turnLabelCompact{opacity:1;white-space:nowrap;grid-area:1/1;max-width:64px;overflow:hidden}.P_4P_q_turnLabelCompact{opacity:0;max-width:0}.P_4P_q_turnLabelActive{color:color-mix(in srgb, var(--dsw-static-blue-500) 55%, var(--dsw-alias-label-tertiary));background:var(--trajectory-turn-accent)}.P_4P_q_eventInner{justify-content:flex-start;align-items:center;min-width:0;height:100%;display:flex}.P_4P_q_kindSlot{flex:none;justify-content:flex-end;align-items:flex-end;width:76px;display:flex}.P_4P_q_kindSlot [role=tooltip]{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-shadow-lv2);color:var(--dsw-alias-label-primary)}.P_4P_q_content{color:var(--dsw-alias-label-primary);padding-left:4px!important}.P_4P_q_kindTag{box-sizing:border-box;letter-spacing:.035em;user-select:none;border:1px solid #0000;border-radius:4px;flex:none;align-items:center;height:19px;padding:0 5px;font-size:10px;font-weight:650;line-height:16px;display:inline-flex}.P_4P_q_kindTagIcon{opacity:0;flex:none;justify-content:center;align-items:center;width:0;height:13px;display:inline-flex;overflow:hidden;transform:scale(.8)}.P_4P_q_kindTagLabel{opacity:1;white-space:nowrap;max-width:72px;display:inline-block;overflow:hidden}.P_4P_q_table .P_4P_q_kindSlot .P_4P_q_message{justify-content:center;width:100%}@container P_4P_q_trajectory-table (width<=620px){.P_4P_q_eventColumn{width:50px}.P_4P_q_event{padding-left:28px!important;padding-right:3px!important}.P_4P_q_requestBoundaryControl{--request-boundary-base-left:6px}.P_4P_q_kindSlot{width:19px}.P_4P_q_kindTag,.P_4P_q_table .P_4P_q_kindSlot .P_4P_q_message{justify-content:center;width:19px;padding-left:0;padding-right:0}.P_4P_q_kindTagIcon{opacity:1;width:13px;transform:scale(1)}.P_4P_q_kindTagLabel,.P_4P_q_turnLabelFull{opacity:0;max-width:0}.P_4P_q_turnLabelCompact{opacity:1;max-width:64px}}@media (prefers-reduced-motion:no-preference){.P_4P_q_eventColumn,.P_4P_q_event,.P_4P_q_requestBoundaryControl,.P_4P_q_kindSlot,.P_4P_q_kindTag,.P_4P_q_kindTagIcon,.P_4P_q_kindTagLabel,.P_4P_q_turnLabelFull,.P_4P_q_turnLabelCompact{transition-duration:.18s;transition-timing-function:var(--ds-ease-in-out)}.P_4P_q_eventColumn,.P_4P_q_kindSlot{transition-property:width}.P_4P_q_event{transition-property:padding-right,padding-left}.P_4P_q_requestBoundaryControl{transition-property:left}.P_4P_q_kindTag{transition-property:padding-right,padding-left}.P_4P_q_kindTagIcon{transition-property:width,opacity,transform}.P_4P_q_kindTagLabel,.P_4P_q_turnLabelFull,.P_4P_q_turnLabelCompact{transition-property:max-width,opacity}}.P_4P_q_user{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}.P_4P_q_systemNeutral{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform)}.P_4P_q_contextGreen{color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 68%, var(--dsw-alias-label-secondary));background:var(--dsw-alias-state-success-tertiary)}.P_4P_q_compacted{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform)}.P_4P_q_compactedSummary{font:var(--dsw-font-xs-13);margin-top:12px;padding:0 0 14px}.P_4P_q_promptDiffSections{flex-direction:column;gap:14px;max-height:100%;padding:10px 14px 14px;display:flex;overflow:auto}.P_4P_q_promptDiffSection{min-width:0}.P_4P_q_promptDiffTitle{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-strong-13);user-select:none;margin:0 0 6px}.P_4P_q_promptDiff{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);font:11px/17px var(--ds-font-family-code);white-space:pre;margin:0;overflow:auto}.P_4P_q_promptDiff span{min-width:max-content;padding:0 6px;display:block}.P_4P_q_promptDiffLinemeta{color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-module-platform);user-select:none}.P_4P_q_promptDiffLinecontext{color:var(--dsw-alias-label-secondary)}.P_4P_q_promptDiffLineadded{color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 72%, var(--dsw-alias-label-primary));background:var(--dsw-alias-state-success-tertiary)}.P_4P_q_promptDiffLineremoved{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, var(--dsw-alias-bg-layer-1))}.P_4P_q_assistantVioletBright{color:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 60%, var(--dsw-alias-state-error-secondary));background:color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 55%, var(--dsw-alias-state-error-secondary)) 15%, var(--dsw-alias-bg-layer-1))}.P_4P_q_toolAmber{color:var(--dsw-alias-state-warn-label);background:var(--dsw-alias-state-warn-tertiary)}.P_4P_q_subtoolAmber{color:color-mix(in srgb, var(--dsw-alias-state-warn-label) 62%, var(--dsw-alias-label-tertiary));background:color-mix(in srgb, var(--dsw-alias-state-warn-tertiary) 58%, var(--dsw-alias-bg-layer-1))}.P_4P_q_contentText{text-overflow:ellipsis;white-space:nowrap;min-width:0;display:block;overflow:hidden}.P_4P_q_toolCallOnly{color:var(--dsw-alias-label-tertiary)}.P_4P_q_table tbody tr[data-collapsed-summary=turn] td,.P_4P_q_table tbody tr[data-collapsed-summary=assistant] td{height:20px}.P_4P_q_table tbody tr[data-collapsed-summary]{cursor:pointer;transition:background-color .12s var(--ds-ease-in-out);outline:none}.P_4P_q_table tbody tr[data-collapsed-summary]:hover{background:var(--dsw-alias-interactive-bg-hover)}.P_4P_q_table tbody tr[data-collapsed-summary]:focus-visible{box-shadow:inset 0 0 0 1px var(--dsw-alias-state-business-primary)}.P_4P_q_collapsedTurnContent{min-width:0;color:var(--dsw-alias-label-secondary);align-items:center;font-size:12px;line-height:16px;display:flex}.P_4P_q_collapsedTurnEllipsis{color:var(--dsw-alias-label-tertiary);user-select:none;flex:none;margin-right:6px;font-weight:600}.P_4P_q_collapsedTurnText{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.P_4P_q_resultPreview{grid-template-columns:clamp(180px, var(--trajectory-tool-request-width,calc(36cqw - 56px)), 480px) minmax(0, 1fr);align-items:center;gap:8px;min-width:0;display:grid}.P_4P_q_resultRequest,.P_4P_q_inlineResultText{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.P_4P_q_toolCallNameTypeface{color:var(--dsw-alias-label-primary);font:400 12px/18px Menlo,Consolas,Liberation Mono,PingFang SC,Microsoft YaHei}.P_4P_q_toolCallPayload{color:var(--dsw-alias-label-secondary);font:400 12px/18px var(--ds-font-family-code);margin-left:7px}.P_4P_q_table tbody tr[data-kind=tool] .P_4P_q_contentText,.P_4P_q_table tbody tr[data-kind=subtool] .P_4P_q_contentText,.P_4P_q_table tbody tr[data-kind=tool] .P_4P_q_resultPreview,.P_4P_q_table tbody tr[data-kind=subtool] .P_4P_q_resultPreview{font-family:var(--ds-font-family-code);font-size:12px}.P_4P_q_table tbody tr[data-kind=subtool] .P_4P_q_content{padding-left:26px}.P_4P_q_inlineResult{min-width:0;color:var(--dsw-alias-label-secondary);align-items:center;display:flex}.P_4P_q_noOutputText{color:var(--dsw-alias-label-caption)}.P_4P_q_arrow{color:var(--dsw-alias-label-caption);flex:none;margin-right:8px}.P_4P_q_error,.P_4P_q_overview dd.P_4P_q_error,.P_4P_q_details .P_4P_q_errorPayload{color:var(--dsw-alias-state-error-primary)}.P_4P_q_details .P_4P_q_errorPayload .P_4P_q_resultBlockText{color:inherit}.P_4P_q_details .P_4P_q_jsonPayload.P_4P_q_errorPayload,.P_4P_q_details .P_4P_q_jsonPreview.P_4P_q_errorPayload{--json-tree-property:var(--dsw-alias-state-error-primary);--json-tree-string:var(--dsw-alias-state-error-primary);--json-tree-number:var(--dsw-alias-state-error-primary);--json-tree-keyword:var(--dsw-alias-state-error-primary);--json-tree-punctuation:var(--dsw-alias-state-error-primary);--json-tree-icon:var(--dsw-alias-state-error-primary)}.P_4P_q_details{border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex-direction:column;flex:none;width:clamp(320px,38%,440px);min-width:0;max-width:calc(100% - 280px);min-height:0;display:flex;position:relative}.P_4P_q_detailsResizeHandle{z-index:6;cursor:col-resize;touch-action:none;user-select:none;background:0 0;border:0;width:8px;padding:0;position:absolute;top:0;bottom:0;left:-4px}.P_4P_q_detailsResizeHandle:focus-visible{outline:none}.P_4P_q_detailsHeader{box-sizing:border-box;border-bottom:1px solid var(--dsw-alias-border-l2);flex:none;justify-content:space-between;align-items:center;height:42px;padding:0 8px 0 12px;display:flex}.P_4P_q_detailsTitle{min-width:0;color:var(--dsw-alias-label-primary);align-items:center;gap:8px;display:flex}.P_4P_q_requestDetailsDot{background:var(--dsw-alias-label-secondary);border-radius:50%;flex:none;width:5px;height:5px}.P_4P_q_requestDetailsName{font:500 12px/16px var(--ds-font-family-code);flex:none}.P_4P_q_detailsLocation{min-width:0;color:var(--dsw-alias-label-tertiary);font:11px/16px var(--ds-font-family-code);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.P_4P_q_close{width:28px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:6px;flex:none;justify-content:center;align-items:center;padding:0;font-size:18px;line-height:18px;display:inline-flex}.P_4P_q_close:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.P_4P_q_detailTabs{box-sizing:border-box;border-bottom:1px solid var(--dsw-alias-border-l2);overscroll-behavior-x:contain;scrollbar-width:none;white-space:nowrap;flex:none;gap:1px;width:100%;min-width:0;max-width:100%;height:34px;padding:0 8px;display:flex;overflow:auto hidden}.P_4P_q_detailTabs::-webkit-scrollbar{display:none}.P_4P_q_detailTab{color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xs-13);background:0 0;border:0;flex:none;padding:0 9px;position:relative}.P_4P_q_detailTab:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.P_4P_q_detailTabActive{color:var(--dsw-alias-state-business-primary)}.P_4P_q_detailTabActive:after{background:var(--dsw-alias-state-business-primary);content:\"\";border-radius:1px 1px 0 0;height:2px;position:absolute;bottom:0;left:9px;right:9px}.P_4P_q_close:focus-visible,.P_4P_q_detailTab:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}.P_4P_q_detailBody{min-height:0;padding-bottom:var(--dsh-trajectory-bottom-clearance,0px);scrollbar-gutter:stable;flex:1;overflow:hidden auto}.P_4P_q_detailBodySummary{box-sizing:border-box;padding-bottom:calc(12px + var(--dsh-trajectory-bottom-clearance,0px));flex-direction:column;display:flex;overflow:hidden}.P_4P_q_detailBodySummary>.P_4P_q_overview{overscroll-behavior:contain;flex:0 auto;min-height:0;overflow:auto}.P_4P_q_detailBodySummary>.P_4P_q_compactedSummary{flex:1;min-height:0;overflow:auto}.P_4P_q_summaryScrollRegion{--dsh-scrollbar-thumb:transparent;--dsh-scrollbar-thumb-hover:transparent}.P_4P_q_summaryScrollRegion:hover,.P_4P_q_summaryScrollRegion:focus-within{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}.P_4P_q_compactedSummary .P_4P_q_markdownPayload{padding-right:18px}.P_4P_q_overview{font:var(--dsw-font-xs-13);margin:0;padding:8px 0}.P_4P_q_overviewParentLinks{gap:14px;display:flex}.P_4P_q_overviewHierarchyNavLink{all:unset;color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;opacity:1;align-items:center;gap:1px;display:inline-flex}.P_4P_q_overviewHierarchyNavLink:hover{color:var(--dsw-alias-label-primary)}.P_4P_q_overviewHierarchyJumpIconTight{color:var(--dsw-alias-label-caption);flex:none}.P_4P_q_overviewHierarchyNavLink:hover .P_4P_q_overviewHierarchyJumpIconTight,.P_4P_q_overviewHierarchyNavLink:focus-visible .P_4P_q_overviewHierarchyJumpIconTight{color:var(--dsw-alias-label-primary)}.P_4P_q_overviewHierarchyNavLink:focus-visible{color:var(--dsw-alias-label-primary);outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.P_4P_q_overview>div{grid-template-columns:94px minmax(0,1fr);align-items:center;min-height:22px;padding:0 14px;display:grid}.P_4P_q_overview>.P_4P_q_requestTokenDetail dt{padding-left:12px}.P_4P_q_usagePanel{padding:4px 0 10px}.P_4P_q_usageGroup+.P_4P_q_usageGroup{margin-top:8px}.P_4P_q_usageHeading{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-strong-13);user-select:none;margin:0;padding:4px 14px 1px}.P_4P_q_usageGroup .P_4P_q_overview{padding:0}.P_4P_q_overview dt{color:var(--dsw-alias-label-tertiary)}.P_4P_q_overview dd{min-width:0;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;margin:0;overflow:hidden}.P_4P_q_timestampToggle{all:unset;color:inherit;cursor:pointer;font:inherit;user-select:text}.P_4P_q_timestampToggle:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.P_4P_q_overviewSections{border-top:0;flex-direction:column;flex:1;min-height:min-content;display:flex;overflow:hidden}.P_4P_q_overviewSection{flex-direction:column;flex:1 1 0;min-height:28px;max-height:max-content;display:flex;overflow:hidden}.P_4P_q_overviewSection+.P_4P_q_overviewSection{padding-top:8px}.P_4P_q_overviewHeading{box-sizing:border-box;width:100%;height:28px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);font:var(--dsw-font-xs-strong-13);user-select:none;flex:none;align-items:flex-end;margin:0;padding:0 0 3px 14px;display:flex}.P_4P_q_overviewTitle{width:max-content;height:auto;color:inherit;cursor:pointer;font:inherit;user-select:none;background:0 0;border:0;flex:none;align-items:center;gap:3px;padding:0;line-height:1;display:inline-flex}.P_4P_q_overviewTitleIcon{color:var(--dsw-alias-label-caption);flex:none}.P_4P_q_overviewTitle:hover .P_4P_q_overviewTitleIcon{color:var(--dsw-alias-label-primary)}.P_4P_q_overviewTitle:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.P_4P_q_overviewTitle:focus-visible .P_4P_q_overviewTitleIcon{color:var(--dsw-alias-state-business-primary)}.P_4P_q_overviewPreview{overscroll-behavior:contain;background:var(--dsw-alias-bg-layer-1);flex:1;min-height:0;overflow:auto}.P_4P_q_overviewPreview>:last-child{margin-bottom:0;padding-bottom:0}.P_4P_q_overviewPreview .P_4P_q_jsonPreview>:first-child,.P_4P_q_overviewPreview .P_4P_q_schemaTree>:first-child{padding-bottom:0}.P_4P_q_overviewPreview .P_4P_q_schemaTree{margin-bottom:0}.P_4P_q_overviewPreview .P_4P_q_overview{padding:2px 0 0}.P_4P_q_overviewPreview .P_4P_q_overview>div{min-height:22px}.P_4P_q_markdownPreview,.P_4P_q_markdownPayload{color:var(--dsw-alias-label-primary)}.P_4P_q_markdownPreview>div,.P_4P_q_markdownPayload>div{font:var(--dsw-font-xs-13);gap:8px}.P_4P_q_markdownPreview>div h1,.P_4P_q_markdownPayload>div h1{font:600 16px/22px var(--dsw-font-family)}.P_4P_q_markdownPreview>div h2,.P_4P_q_markdownPayload>div h2{font:600 15px/22px var(--dsw-font-family)}.P_4P_q_markdownPreview>div :where(h3,h4,h5,h6),.P_4P_q_markdownPayload>div :where(h3,h4,h5,h6){font:600 14px/20px var(--dsw-font-family)}.P_4P_q_markdownPreview>div :not(pre)>code,.P_4P_q_markdownPayload>div :not(pre)>code{font:12px/18px var(--ds-font-family-code)}.P_4P_q_markdownPreview>div table,.P_4P_q_markdownPayload>div table{font:var(--dsw-font-xs-13)}.P_4P_q_markdownPreview>div>:first-child{margin-top:0}.P_4P_q_markdownPreview>div>:last-child{margin-bottom:0}.P_4P_q_markdownPreview>div :where(h1,h2,h3){margin:12px 0 6px}.P_4P_q_markdownPreview>div :where(h4,h5,h6){margin:10px 0 5px}.P_4P_q_markdownPreview>div :where(p,ul,ol){margin:8px 0}.P_4P_q_markdownPreview>div li:not(:first-child){margin-top:3px}.P_4P_q_markdownPreview>div blockquote{margin-top:8px}.P_4P_q_markdownPreview>div hr{margin:14px 0}.P_4P_q_markdownPreview>div>.md-code-block{margin:10px 0}.P_4P_q_assistantContent .P_4P_q_markdownPayload,.P_4P_q_assistantContent .P_4P_q_payload{min-height:0}.P_4P_q_thinkingQuote{border-left:2px solid var(--dsw-alias-markdown-citation);color:var(--dsw-alias-label-secondary);background:0 0;margin:6px 14px 0 12px;padding-left:6px}.P_4P_q_thinkingQuoteOnlyPreview{margin-bottom:8px}.P_4P_q_detailBody>.P_4P_q_assistantContentRendered .P_4P_q_thinkingQuote{margin-top:14px}.P_4P_q_thinkingToggle{width:max-content;height:18px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:600 12px/18px var(--dsw-font-family);user-select:none;background:0 0;border:0;align-items:center;gap:2px;padding:0;display:flex}.P_4P_q_thinkingChevron{transition:transform .12s var(--ds-ease-in-out);flex:none}.P_4P_q_thinkingToggle[aria-expanded=true] .P_4P_q_thinkingChevron{transform:rotate(90deg)}.P_4P_q_thinkingToggle:hover{color:var(--dsw-alias-label-secondary)}.P_4P_q_thinkingToggle:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.P_4P_q_thinkingQuote .P_4P_q_markdownPreview,.P_4P_q_thinkingQuote .P_4P_q_markdownPayload,.P_4P_q_thinkingQuote .P_4P_q_payload{min-height:0;color:var(--dsw-alias-label-secondary);background:0 0;padding:2px 0}.P_4P_q_assistantOutput{background:var(--dsw-alias-bg-layer-1)}.P_4P_q_markdownPreview{padding:6px 14px 8px}.P_4P_q_markdownPayload{min-height:100%;padding:14px}.P_4P_q_jsonPayload{min-height:100%}.P_4P_q_jsonPreview{min-height:0}.P_4P_q_schema{background:var(--dsw-alias-bg-layer-1);min-height:100%}.P_4P_q_schemaPreview{min-height:0}.P_4P_q_schemaIntro{padding:12px 14px 6px}.P_4P_q_schemaPreview .P_4P_q_schemaIntro{padding-top:6px}.P_4P_q_schemaName{color:var(--dsw-alias-label-primary);font:600 12px/18px var(--ds-font-family-code);margin:0}.P_4P_q_schemaDescription{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);white-space:pre-wrap;margin:2px 0 0}.P_4P_q_schemaParameters{min-width:0}.P_4P_q_schemaParametersTitle{color:var(--dsw-alias-label-tertiary);font:600 11px/16px var(--dsw-font-family);user-select:none;margin:0;padding:4px 14px 2px}.P_4P_q_schemaTree{margin:0 6px 8px 0}.P_4P_q_payload{box-sizing:border-box;overflow-wrap:anywhere;min-height:100%;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-markdown-code-block);font:12px/19px var(--ds-font-family-code);tab-size:2;white-space:pre-wrap;margin:0;padding:14px}.P_4P_q_payloadPreview{min-height:0;padding:6px 14px 8px}.P_4P_q_sourceBlocks{box-sizing:border-box;min-height:100%;padding:12px 14px}.P_4P_q_sourceBlock+.P_4P_q_sourceBlock{margin-top:14px}.P_4P_q_sourceBlockHeader,.P_4P_q_sourceBlockJumpTarget{user-select:none;align-items:center;gap:3px;width:max-content;margin-bottom:3px;display:flex}.P_4P_q_sourceBlockJumpTarget{all:unset;cursor:pointer;user-select:none;align-items:center;gap:3px;width:max-content;margin-bottom:3px;display:flex}.P_4P_q_sourceBlockLabel{color:var(--dsw-alias-label-tertiary);font:11px/16px var(--ds-font-family-code)}.P_4P_q_sourceBlockJumpIcon{color:var(--dsw-alias-label-caption);flex:none}.P_4P_q_sourceBlockJumpTarget:hover .P_4P_q_sourceBlockJumpIcon{color:var(--dsw-alias-label-primary)}.P_4P_q_sourceBlockJumpTarget:focus-visible{outline:none}.P_4P_q_sourceBlockJumpTarget:focus-visible .P_4P_q_sourceBlockJumpIcon{color:var(--dsw-alias-state-business-primary)}.P_4P_q_sourceBlockContent{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font:12px/19px var(--ds-font-family-code);tab-size:2;white-space:pre-wrap;background:0 0;margin:0}.P_4P_q_messageImages{flex-direction:column;gap:8px;margin:8px 14px 14px;display:flex}.P_4P_q_messageImagesPreview{gap:6px;margin:6px 14px 8px}.P_4P_q_assistantToolCalls{box-sizing:border-box;max-width:100%;color:var(--dsw-alias-label-secondary);font:11px/17px var(--ds-font-family-code);margin:2px 14px 12px;padding:0;list-style:none}.P_4P_q_assistantToolCallsPreview{margin-top:2px;margin-bottom:8px}.P_4P_q_assistantToolCalls li{min-width:0}.P_4P_q_assistantToolCallButton{all:unset;box-sizing:border-box;cursor:pointer;border-radius:3px;align-items:center;width:calc(100% + 4px);min-width:0;height:19px;margin-left:-4px;padding:0 4px;display:flex}.P_4P_q_assistantToolCallButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.P_4P_q_assistantToolCallButton:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}.P_4P_q_assistantToolCallIcon{color:var(--dsw-alias-label-caption);flex:none;margin-right:5px}.P_4P_q_assistantToolCallButton:hover .P_4P_q_assistantToolCallIcon,.P_4P_q_assistantToolCallButton:focus-visible .P_4P_q_assistantToolCallIcon{color:var(--dsw-alias-label-secondary)}.P_4P_q_assistantToolCallText{white-space:nowrap;flex:1;min-width:0;display:flex;overflow:hidden}.P_4P_q_assistantToolCallName{color:var(--dsw-alias-label-secondary);flex:none;margin-right:5px;font-weight:500}.P_4P_q_assistantToolCallArgs{min-width:0;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.P_4P_q_systemPrompt{box-sizing:border-box}.P_4P_q_toolCatalog{min-height:100%;padding:8px 0 16px}.P_4P_q_toolCatalogItem{border-bottom:1px solid var(--dsw-alias-border-l1)}.P_4P_q_toolCatalogSummary{box-sizing:border-box;cursor:pointer;user-select:none;grid-template-columns:12px 12px max-content minmax(0,1fr);align-items:center;gap:5px;min-height:30px;padding:4px 12px;list-style:none;display:grid}.P_4P_q_toolCatalogSummary::-webkit-details-marker{display:none}.P_4P_q_toolCatalogSummary:hover{background:var(--dsw-alias-interactive-bg-hover)}.P_4P_q_toolCatalogSummary:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}.P_4P_q_toolCatalogChevron,.P_4P_q_toolCatalogIcon{color:var(--dsw-alias-label-caption)}.P_4P_q_toolCatalogChevron{transition:transform .1s var(--ds-ease-in-out)}.P_4P_q_toolCatalogItem[open] .P_4P_q_toolCatalogChevron{transform:rotate(90deg)}.P_4P_q_toolCatalogName{color:var(--dsw-alias-label-primary);font:500 12px/18px var(--ds-font-family-code)}.P_4P_q_toolCatalogDescription{min-width:0;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.P_4P_q_toolCatalogDefinition{background:var(--dsw-alias-bg-base);padding:0 0 8px 29px}.P_4P_q_toolCatalogFullDescription{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);white-space:pre-wrap;margin:0;padding:7px 14px 4px 0}.P_4P_q_toolCatalogTree{margin-left:-14px;margin-right:6px}.P_4P_q_resultBlocks{box-sizing:border-box;flex-direction:column;gap:10px;min-height:100%;padding:14px;display:flex}.P_4P_q_resultBlocksPreview{gap:6px;min-height:0;padding:6px 14px 8px}.P_4P_q_resultBlockText{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font:12px/19px var(--ds-font-family-code);tab-size:2;white-space:pre-wrap;background:0 0;margin:0}.P_4P_q_overviewPreview .P_4P_q_noPayload{padding:6px 14px 8px}.P_4P_q_noPayload{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);margin:0;padding:18px 14px}@media (width<=760px){.P_4P_q_details{z-index:5;border-left-color:var(--dsw-alias-border-l3);width:min(92%,420px);max-width:92%;position:absolute;top:0;bottom:0;right:0;box-shadow:-12px 0 32px #00000024}}";
+		//#region lib/types/client/code-program.js
+		/** Recorded name of the programmatic tool-calling entry point. */
+		const PTC_TOOL_NAME = "run_code";
+		function record(value) {
+			return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
+		}
+		function parseRecord(value) {
+			if (value === void 0) return void 0;
+			try {
+				return record(JSON.parse(value));
+			} catch {
+				return;
+			}
+		}
+		function recordedLanguage(schemaRaw) {
+			const description = record(record(record(parseRecord(schemaRaw)?.parameters)?.properties)?.code)?.description;
+			if (typeof description !== "string") return void 0;
+			const typescript = /\bTypeScript\b/i.test(description);
+			if (typescript === /\bPython\b/i.test(description)) return void 0;
+			return typescript ? "typescript" : "python";
+		}
+		/**
+		* Resolve a PTC program without guessing its language from source or current runtime settings.
+		* @param cell - Recorded tool arguments and the schema visible at call time.
+		* @returns The program, or undefined for another tool or unsupported arguments.
+		*/
+		function codeProgram(cell) {
+			if (cell.kind !== "tool" && cell.kind !== "subtool") return void 0;
+			if (cell.toolName !== "run_code" || cell.inputDetail === void 0) return void 0;
+			const args = parseRecord(cell.inputDetail);
+			if (typeof args?.code !== "string") return void 0;
+			if (args.description !== void 0 && typeof args.description !== "string") return void 0;
+			return {
+				rawInput: cell.inputDetail,
+				source: args.code,
+				description: typeof args.description === "string" && args.description.trim() !== "" ? args.description : args.code.split(/\r?\n/).find((line) => line.trim() !== "")?.trim() ?? "",
+				arguments: args,
+				language: recordedLanguage(cell.schemaDetail)
+			};
+		}
+		//#endregion
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-trajectory\src\client\TrajectoryTable.module.css.mjs
+		const css$3 = "._4rQ4Pa_split{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);background:var(--dsw-alias-bg-layer-1);flex:1;width:100%;min-height:0;display:flex;position:relative;overflow:hidden;container-type:inline-size}._4rQ4Pa_tablePane{min-width:0;padding-bottom:var(--dsh-trajectory-bottom-clearance,0px);flex:1;position:relative;overflow:hidden auto;container:_4rQ4Pa_trajectory-table/inline-size}._4rQ4Pa_historyLoading{z-index:5;pointer-events:none;height:0;position:sticky;top:0;overflow:visible}._4rQ4Pa_historyLoadingBar{box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);width:100%;height:30px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);justify-content:center;align-items:center;gap:6px;display:flex}._4rQ4Pa_table tbody ._4rQ4Pa_historyLoadRow td{height:30px;padding:0}._4rQ4Pa_table tbody ._4rQ4Pa_historyLoadRow+tr[data-turn-start=true] td:before{content:none}._4rQ4Pa_historyLoadButton{background:var(--dsw-alias-bg-layer-1);width:100%;height:29px;color:var(--dsw-alias-label-secondary);cursor:pointer;font:var(--dsw-font-xxs-12);border:0;justify-content:center;align-items:center;gap:6px;display:flex}._4rQ4Pa_historyLoadButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._4rQ4Pa_historyLoadButton:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}._4rQ4Pa_historyLoadButton:disabled{cursor:default}._4rQ4Pa_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}._4rQ4Pa_table:not([data-scroll-ready=true]){visibility:hidden}._4rQ4Pa_table{--trajectory-turn-accent:color-mix(in srgb, var(--dsw-static-blue-500) 22%, var(--dsw-alias-bg-layer-1));border-spacing:0;table-layout:fixed;width:100%;min-width:0;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);font:var(--dsw-font-xxs-12)}._4rQ4Pa_eventColumn{width:122px}._4rQ4Pa_eventColumn:where(:lang(zh)){width:84px}._4rQ4Pa_contentColumn{width:auto}._4rQ4Pa_table th{z-index:3;box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l2);height:30px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-specific-sidebar-fill);font:var(--dsw-font-xxs-12);text-align:left;text-overflow:ellipsis;user-select:none;white-space:nowrap;padding:0 8px;font-weight:500;position:sticky;top:0;overflow:hidden}._4rQ4Pa_eventHeader{text-align:right!important;padding-right:4px!important}._4rQ4Pa_table td{box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l1);text-overflow:ellipsis;white-space:nowrap;height:30px;padding:0 8px;overflow:hidden}._4rQ4Pa_table tbody ._4rQ4Pa_virtualSpacer{pointer-events:none}._4rQ4Pa_table tbody ._4rQ4Pa_virtualSpacer td{height:var(--trajectory-virtual-spacer-height);border:0;padding:0}._4rQ4Pa_table tbody tr:not([data-collapsed-summary]):not([data-virtual-spacer]):not([data-history-load]){cursor:default;transition:background-color .12s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out);outline:none}._4rQ4Pa_table tbody tr[data-timeline-focus=outside]{opacity:.24}._4rQ4Pa_table tbody tr:not([data-collapsed-summary]):not([data-virtual-spacer]):not([data-history-load]):not([data-selected=true]):hover{background:var(--dsw-alias-interactive-bg-hover)}._4rQ4Pa_table tbody tr[data-request-only=true]:hover{background:0 0}._4rQ4Pa_table tbody tr[data-request-only=true] td{border-bottom:0;height:0;padding-top:0;padding-bottom:0}._4rQ4Pa_table tbody tr[data-terminal-request-boundary=true] td{height:9px}._4rQ4Pa_table tbody tr[data-request-only=true] ._4rQ4Pa_turnRail{top:-15px;bottom:0}._4rQ4Pa_table tbody tr:not([data-collapsed-summary]):focus-visible{box-shadow:inset 0 0 0 1px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}._4rQ4Pa_table tbody tr[data-selected=true]{background:var(--dsw-alias-interactive-bg-active)}._4rQ4Pa_requestBoundaryControl{--request-boundary-base-left:12px;z-index:6;top:-8px;left:calc(var(--request-boundary-base-left) + var(--request-boundary-offset,0px));cursor:pointer;background:0 0;border:0;width:16px;height:16px;padding:0;position:absolute}._4rQ4Pa_requestBoundaryControl:before{corner-shape:round;background:var(--dsw-alias-label-caption);width:5px;height:5px;box-shadow:0 0 0 2px var(--dsw-alias-bg-layer-1), 0 0 0 3px transparent;content:\"\";transition:background .12s var(--ds-ease-in-out), box-shadow .12s var(--ds-ease-in-out);border-radius:50%;position:absolute;top:5.5px;left:5.5px}._4rQ4Pa_requestBoundaryControl:after{border:.5px solid var(--dsw-alias-border-l1);width:max-content;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);content:attr(data-label);font:9px/12px var(--ds-font-family-code);opacity:0;pointer-events:none;transition:opacity .12s var(--ds-ease-in-out), transform .12s var(--ds-ease-in-out);user-select:none;white-space:nowrap;border-radius:2px;padding:0 4px;position:absolute;top:2px;left:17px;transform:translate(-2px);box-shadow:0 2px 6px #0000001f}._4rQ4Pa_requestBoundaryControl:hover:before,._4rQ4Pa_requestBoundaryControl:focus-visible:before{background:var(--dsw-alias-brand-primary-new-colorprimary-new-color)}._4rQ4Pa_requestBoundaryControlActive:before,._4rQ4Pa_requestBoundaryControlActive:hover:before,._4rQ4Pa_requestBoundaryControlActive:focus-visible:before{background:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 18%, var(--dsw-alias-bg-layer-1));box-shadow:0 0 0 1.5px var(--dsw-alias-state-business-primary)}._4rQ4Pa_requestBoundaryControl[data-request-status=error]:before,._4rQ4Pa_requestBoundaryControl[data-request-status=error]:hover:before,._4rQ4Pa_requestBoundaryControl[data-request-status=error]:focus-visible:before{background:var(--dsw-alias-state-error-primary)}._4rQ4Pa_requestBoundaryControl:hover:after,._4rQ4Pa_requestBoundaryControl:focus-visible:after{opacity:1;transform:translate(0)}._4rQ4Pa_requestBoundaryControl:focus-visible{outline:none}._4rQ4Pa_table tbody tr:has(._4rQ4Pa_requestBoundaryControl:hover):not([data-selected=true]){background:0 0}._4rQ4Pa_event{position:relative}._4rQ4Pa_turnRail,._4rQ4Pa_selectionRail{background:var(--dsw-alias-brand-primary-new-colorprimary-new-color);pointer-events:none;position:absolute;left:0}._4rQ4Pa_turnRail{z-index:4;background:var(--trajectory-turn-accent);width:2px;top:-1px;bottom:-1px}._4rQ4Pa_table tbody tr[data-turn-end=true] ._4rQ4Pa_turnRail{bottom:0}._4rQ4Pa_selectionRail{z-index:5;width:3px;top:0;bottom:0}._4rQ4Pa_table tbody tr[data-error=true] ._4rQ4Pa_turnRail{background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 22%, var(--dsw-alias-bg-layer-1))}._4rQ4Pa_table tbody tr[data-error=true] ._4rQ4Pa_selectionRail{background:var(--dsw-alias-state-error-primary)}._4rQ4Pa_table tbody tr[data-turn-start=true] td{position:relative;overflow:visible}._4rQ4Pa_table tbody tr[data-turn-start=true]:not(:first-child) td:before{z-index:1;background:var(--dsw-alias-border-l1);content:\"\";pointer-events:none;height:2px;position:absolute;top:0;left:0;right:0;transform:translateY(-50%)}._4rQ4Pa_event{padding-left:36px!important;padding-right:4px!important;overflow:visible!important}._4rQ4Pa_turnLabel{z-index:3;box-sizing:border-box;width:max-content;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-module-platform);font:8px/10px var(--ds-font-family-code);font-variant-numeric:tabular-nums;user-select:none;white-space:nowrap;border-radius:0 0 2px;flex:none;align-items:center;padding:1px 5px;display:inline-grid;position:absolute;top:0;left:0}._4rQ4Pa_turnLabelFull,._4rQ4Pa_turnLabelCompact{opacity:1;white-space:nowrap;grid-area:1/1;max-width:64px;overflow:hidden}._4rQ4Pa_turnLabelCompact{opacity:0;max-width:0}._4rQ4Pa_turnLabelActive{color:color-mix(in srgb, var(--dsw-static-blue-500) 55%, var(--dsw-alias-label-tertiary));background:var(--trajectory-turn-accent)}._4rQ4Pa_eventInner{justify-content:flex-start;align-items:center;min-width:0;height:100%;display:flex}._4rQ4Pa_kindSlot{flex:none;justify-content:flex-end;align-items:flex-end;width:76px;display:flex}._4rQ4Pa_kindSlot:where(:lang(zh)){width:44px}._4rQ4Pa_kindSlot [role=tooltip]{background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-panel);color:var(--dsw-alias-label-primary);border:0}._4rQ4Pa_content{color:var(--dsw-alias-label-primary);padding-left:4px!important}._4rQ4Pa_kindTag{box-sizing:border-box;border-radius:var(--dsw-radius-xs);letter-spacing:.035em;user-select:none;border:1px solid #0000;flex:none;align-items:center;height:19px;padding:0 5px;font-size:10px;font-weight:650;line-height:16px;display:inline-flex}._4rQ4Pa_kindTagIcon{opacity:0;flex:none;justify-content:center;align-items:center;width:0;height:13px;display:inline-flex;overflow:hidden;transform:scale(.8)}._4rQ4Pa_kindTagLabel{opacity:1;white-space:nowrap;max-width:72px;display:inline-block;overflow:hidden}._4rQ4Pa_table ._4rQ4Pa_kindSlot ._4rQ4Pa_message{justify-content:center;width:100%}@container _4rQ4Pa_trajectory-table (width<=620px){._4rQ4Pa_eventColumn{width:50px}._4rQ4Pa_event{padding-left:28px!important;padding-right:3px!important}._4rQ4Pa_requestBoundaryControl{--request-boundary-base-left:6px}._4rQ4Pa_kindSlot{width:19px}._4rQ4Pa_kindTag,._4rQ4Pa_table ._4rQ4Pa_kindSlot ._4rQ4Pa_message{justify-content:center;width:19px;padding-left:0;padding-right:0}._4rQ4Pa_kindTagIcon{opacity:1;width:13px;transform:scale(1)}._4rQ4Pa_kindTagLabel,._4rQ4Pa_turnLabelFull{opacity:0;max-width:0}._4rQ4Pa_turnLabelCompact{opacity:1;max-width:64px}}@media (prefers-reduced-motion:no-preference){._4rQ4Pa_eventColumn,._4rQ4Pa_event,._4rQ4Pa_requestBoundaryControl,._4rQ4Pa_kindSlot,._4rQ4Pa_kindTag,._4rQ4Pa_kindTagIcon,._4rQ4Pa_kindTagLabel,._4rQ4Pa_turnLabelFull,._4rQ4Pa_turnLabelCompact{transition-duration:.18s;transition-timing-function:var(--ds-ease-in-out)}._4rQ4Pa_eventColumn,._4rQ4Pa_kindSlot{transition-property:width}._4rQ4Pa_event{transition-property:padding-right,padding-left}._4rQ4Pa_requestBoundaryControl{transition-property:left}._4rQ4Pa_kindTag{transition-property:padding-right,padding-left}._4rQ4Pa_kindTagIcon{transition-property:width,opacity,transform}._4rQ4Pa_kindTagLabel,._4rQ4Pa_turnLabelFull,._4rQ4Pa_turnLabelCompact{transition-property:max-width,opacity}}._4rQ4Pa_user{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}._4rQ4Pa_systemNeutral{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform)}._4rQ4Pa_contextGreen{color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 68%, var(--dsw-alias-label-secondary));background:var(--dsw-alias-state-success-tertiary)}._4rQ4Pa_compacted{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform)}._4rQ4Pa_compactedSummary{font:var(--dsw-font-xs-13);margin-top:12px;padding:0 0 14px}._4rQ4Pa_promptDiffSections{flex-direction:column;gap:14px;max-height:100%;padding:10px 14px 14px;display:flex;overflow:auto}._4rQ4Pa_promptDiffSection{min-width:0}._4rQ4Pa_promptDiffTitle{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-strong-13);user-select:none;margin:0 0 6px}._4rQ4Pa_promptDiff{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);font:11px/17px var(--ds-font-family-code);white-space:pre;margin:0;overflow:auto}._4rQ4Pa_promptDiff span{min-width:max-content;padding:0 6px;display:block}._4rQ4Pa_promptDiffLinemeta{color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-module-platform);user-select:none}._4rQ4Pa_promptDiffLinecontext{color:var(--dsw-alias-label-secondary)}._4rQ4Pa_promptDiffLineadded{color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 72%, var(--dsw-alias-label-primary));background:var(--dsw-alias-state-success-tertiary)}._4rQ4Pa_promptDiffLineremoved{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, var(--dsw-alias-bg-layer-1))}._4rQ4Pa_assistantVioletBright{color:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 60%, var(--dsw-alias-state-error-secondary));background:color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 55%, var(--dsw-alias-state-error-secondary)) 15%, var(--dsw-alias-bg-layer-1))}._4rQ4Pa_toolAmber{color:var(--dsw-alias-state-warn-label);background:var(--dsw-alias-state-warn-tertiary)}._4rQ4Pa_subtoolAmber{color:color-mix(in srgb, var(--dsw-alias-state-warn-label) 62%, var(--dsw-alias-label-tertiary));background:color-mix(in srgb, var(--dsw-alias-state-warn-tertiary) 58%, var(--dsw-alias-bg-layer-1))}._4rQ4Pa_contentText{text-overflow:ellipsis;white-space:nowrap;min-width:0;display:block;overflow:hidden}._4rQ4Pa_toolCallOnly{color:var(--dsw-alias-label-tertiary)}._4rQ4Pa_table tbody tr[data-collapsed-summary=turn] td,._4rQ4Pa_table tbody tr[data-collapsed-summary=assistant] td{height:20px}._4rQ4Pa_table tbody tr[data-collapsed-summary]{cursor:pointer;transition:background-color .12s var(--ds-ease-in-out);outline:none}._4rQ4Pa_table tbody tr[data-collapsed-summary]:hover{background:var(--dsw-alias-interactive-bg-hover)}._4rQ4Pa_table tbody tr[data-collapsed-summary]:focus-visible{box-shadow:inset 0 0 0 1px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}._4rQ4Pa_collapsedTurnContent{min-width:0;color:var(--dsw-alias-label-secondary);align-items:center;font-size:12px;line-height:16px;display:flex}._4rQ4Pa_collapsedTurnEllipsis{color:var(--dsw-alias-label-tertiary);user-select:none;flex:none;margin-right:6px;font-weight:600}._4rQ4Pa_collapsedTurnText{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}._4rQ4Pa_resultPreview{grid-template-columns:clamp(180px, var(--trajectory-tool-request-width,calc(36cqw - 56px)), 480px) minmax(0, 1fr);align-items:center;gap:8px;min-width:0;display:grid}._4rQ4Pa_resultRequest,._4rQ4Pa_inlineResultText{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}._4rQ4Pa_toolCallNameTypeface{color:var(--dsw-alias-label-primary);font:400 12px/18px Menlo,Consolas,Liberation Mono,PingFang SC,Microsoft YaHei}._4rQ4Pa_toolCallPayload{color:var(--dsw-alias-label-secondary);font:400 12px/18px var(--ds-font-family-code);margin-left:7px}._4rQ4Pa_table tbody tr[data-kind=tool] ._4rQ4Pa_contentText,._4rQ4Pa_table tbody tr[data-kind=subtool] ._4rQ4Pa_contentText,._4rQ4Pa_table tbody tr[data-kind=tool] ._4rQ4Pa_resultPreview,._4rQ4Pa_table tbody tr[data-kind=subtool] ._4rQ4Pa_resultPreview{font-family:var(--ds-font-family-code);font-size:12px}._4rQ4Pa_table tbody tr[data-kind=subtool] ._4rQ4Pa_content{padding-left:26px}._4rQ4Pa_inlineResult{min-width:0;color:var(--dsw-alias-label-secondary);align-items:center;display:flex}._4rQ4Pa_noOutputText{color:var(--dsw-alias-label-caption)}._4rQ4Pa_arrow{color:var(--dsw-alias-label-caption);flex:none;margin-right:8px}._4rQ4Pa_error,._4rQ4Pa_overview dd._4rQ4Pa_error,._4rQ4Pa_details ._4rQ4Pa_errorPayload{color:var(--dsw-alias-state-error-primary)}._4rQ4Pa_details ._4rQ4Pa_errorPayload ._4rQ4Pa_resultBlockText{color:inherit}._4rQ4Pa_details ._4rQ4Pa_jsonPayload._4rQ4Pa_errorPayload,._4rQ4Pa_details ._4rQ4Pa_jsonPreview._4rQ4Pa_errorPayload{--json-tree-property:var(--dsw-alias-state-error-primary);--json-tree-string:var(--dsw-alias-state-error-primary);--json-tree-number:var(--dsw-alias-state-error-primary);--json-tree-keyword:var(--dsw-alias-state-error-primary);--json-tree-punctuation:var(--dsw-alias-state-error-primary);--json-tree-icon:var(--dsw-alias-state-error-primary)}._4rQ4Pa_details{border-left:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex-direction:column;flex:none;width:clamp(320px,38%,440px);min-width:0;max-width:calc(100% - 280px);min-height:0;display:flex;position:relative}._4rQ4Pa_detailsResizeHandle{z-index:6;cursor:col-resize;touch-action:none;user-select:none;background:0 0;border:0;width:8px;padding:0;position:absolute;top:0;bottom:0;left:-4px}._4rQ4Pa_detailsResizeHandle:focus-visible{outline:none}._4rQ4Pa_detailsHeader{box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l2);flex:none;justify-content:space-between;align-items:center;height:42px;padding:0 8px 0 12px;display:flex}._4rQ4Pa_detailsTitle{min-width:0;color:var(--dsw-alias-label-primary);align-items:center;gap:8px;display:flex}._4rQ4Pa_requestDetailsDot{corner-shape:round;background:var(--dsw-alias-label-secondary);border-radius:50%;flex:none;width:5px;height:5px}._4rQ4Pa_requestDetailsName{font:500 12px/16px var(--ds-font-family-code);flex:none}._4rQ4Pa_detailsLocation{min-width:0;color:var(--dsw-alias-label-tertiary);font:11px/16px var(--ds-font-family-code);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}._4rQ4Pa_close{border-radius:var(--dsw-radius-sm);width:28px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;flex:none;justify-content:center;align-items:center;padding:0;font-size:18px;line-height:18px;display:inline-flex}._4rQ4Pa_close:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}._4rQ4Pa_detailTabs{box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l2);overscroll-behavior-x:contain;scrollbar-width:none;white-space:nowrap;flex:none;gap:1px;width:100%;min-width:0;max-width:100%;height:34px;padding:0 8px;display:flex;overflow:auto hidden}._4rQ4Pa_detailTabs::-webkit-scrollbar{display:none}._4rQ4Pa_detailTab{color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xs-13);background:0 0;border:0;flex:none;padding:0 9px;position:relative}._4rQ4Pa_detailTab:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}._4rQ4Pa_detailTabActive{color:var(--dsw-alias-state-business-primary)}._4rQ4Pa_detailTabActive:after{background:var(--dsw-alias-state-business-primary);content:\"\";border-radius:1px 1px 0 0;height:2px;position:absolute;bottom:0;left:9px;right:9px}._4rQ4Pa_close:focus-visible,._4rQ4Pa_detailTab:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}._4rQ4Pa_detailBody{min-height:0;padding-bottom:var(--dsh-trajectory-bottom-clearance,0px);scrollbar-gutter:stable;flex:1;overflow:hidden auto}._4rQ4Pa_detailBodySummary{box-sizing:border-box;padding-bottom:calc(12px + var(--dsh-trajectory-bottom-clearance,0px));flex-direction:column;display:flex;overflow:hidden}._4rQ4Pa_detailBodySummary>._4rQ4Pa_overview{overscroll-behavior:contain;flex:0 auto;min-height:0;padding-bottom:0;overflow:auto}._4rQ4Pa_detailBodySummary>._4rQ4Pa_compactedSummary{flex:1;min-height:0;overflow:auto}._4rQ4Pa_summaryScrollRegion{--dsh-scrollbar-thumb:transparent;--dsh-scrollbar-thumb-hover:transparent}._4rQ4Pa_summaryScrollRegion:hover,._4rQ4Pa_summaryScrollRegion:focus-within{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}._4rQ4Pa_compactedSummary ._4rQ4Pa_markdownPayload{padding-right:18px}._4rQ4Pa_overview{font:var(--dsw-font-xs-13);margin:0;padding:8px 0}._4rQ4Pa_overviewParentLinks{gap:14px;display:flex}._4rQ4Pa_overviewHierarchyNavLink{all:unset;color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;opacity:1;align-items:center;gap:1px;display:inline-flex}._4rQ4Pa_overviewHierarchyNavLink:hover{color:var(--dsw-alias-label-primary)}._4rQ4Pa_overviewHierarchyJumpIconTight{color:var(--dsw-alias-label-caption);flex:none}._4rQ4Pa_overviewHierarchyNavLink:hover ._4rQ4Pa_overviewHierarchyJumpIconTight,._4rQ4Pa_overviewHierarchyNavLink:focus-visible ._4rQ4Pa_overviewHierarchyJumpIconTight{color:var(--dsw-alias-label-primary)}._4rQ4Pa_overviewHierarchyNavLink:focus-visible{color:var(--dsw-alias-label-primary);outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}._4rQ4Pa_overview>div{grid-template-columns:94px minmax(0,1fr);align-items:center;min-height:22px;padding:0 14px;display:grid}._4rQ4Pa_overview>._4rQ4Pa_requestTokenDetail dt{padding-left:12px}._4rQ4Pa_usagePanel{padding:4px 0 10px}._4rQ4Pa_usageGroup+._4rQ4Pa_usageGroup{margin-top:8px}._4rQ4Pa_usageHeading{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-strong-13);user-select:none;margin:0;padding:4px 14px 1px}._4rQ4Pa_usageGroup ._4rQ4Pa_overview{padding:0}._4rQ4Pa_overview dt{color:var(--dsw-alias-label-tertiary)}._4rQ4Pa_overview dd{min-width:0;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;margin:0;overflow:hidden}._4rQ4Pa_timestampToggle{all:unset;color:inherit;cursor:pointer;font:inherit;user-select:text}._4rQ4Pa_timestampToggle:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}._4rQ4Pa_overviewSections{border-top:0;flex-direction:column;flex:1;min-height:min-content;display:flex;overflow:hidden}._4rQ4Pa_overviewSection{flex-direction:column;flex:1 1 0;min-height:24px;max-height:max-content;display:flex;overflow:hidden}._4rQ4Pa_overviewSection+._4rQ4Pa_overviewSection{padding-top:2px}._4rQ4Pa_overviewHeading{box-sizing:border-box;width:100%;height:24px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);font:var(--dsw-font-xs-strong-13);user-select:none;flex:none;align-items:flex-end;margin:0;padding:0 0 3px 14px;display:flex}._4rQ4Pa_overviewTitle{width:max-content;height:auto;color:inherit;cursor:pointer;font:inherit;user-select:none;background:0 0;border:0;flex:none;align-items:center;gap:3px;padding:0;line-height:1;display:inline-flex}._4rQ4Pa_overviewTitleIcon{color:var(--dsw-alias-label-caption);flex:none}._4rQ4Pa_overviewTitle:hover ._4rQ4Pa_overviewTitleIcon{color:var(--dsw-alias-label-primary)}._4rQ4Pa_overviewTitle:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}._4rQ4Pa_overviewTitle:focus-visible ._4rQ4Pa_overviewTitleIcon{color:var(--dsw-alias-state-business-primary)}._4rQ4Pa_overviewPreview{overscroll-behavior:contain;background:var(--dsw-alias-bg-layer-1);flex:1;min-height:0;overflow:auto}._4rQ4Pa_overviewPreview[data-scroll-more]{mask-image:linear-gradient(#000 calc(100% - 12px),#0000)}._4rQ4Pa_overviewPreview>:last-child{margin-bottom:0;padding-bottom:0}._4rQ4Pa_programDescription{color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-13);white-space:pre-wrap;overflow-wrap:anywhere;flex:none;margin:0;padding:8px 14px 2px}._4rQ4Pa_programIcon{vertical-align:-2px;margin-right:4px}._4rQ4Pa_programSummary{font-family:var(--dsw-font-family);margin-left:5px}._4rQ4Pa_detailBodyProgram,._4rQ4Pa_programPanel{flex-direction:column;min-height:0;display:flex;overflow:hidden}._4rQ4Pa_programPanel{background:var(--dsw-alias-bg-layer-1);flex:1}._4rQ4Pa_programActions{flex:none;align-items:center;gap:4px;height:16px;margin-left:auto;padding-right:14px;display:inline-flex}._4rQ4Pa_programLanguage{color:var(--dsw-alias-label-tertiary);font:11px/16px var(--ds-font-family-code);padding-right:4px}._4rQ4Pa_programAction{box-sizing:border-box;width:20px;height:16px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;justify-content:center;align-items:center;padding:0;display:inline-flex}._4rQ4Pa_programAction:hover{color:var(--dsw-alias-label-primary)}._4rQ4Pa_programAction[aria-pressed=true]{color:var(--dsw-alias-state-business-primary)}._4rQ4Pa_programAction[data-state=failed]{color:var(--dsw-alias-state-error-primary)}._4rQ4Pa_programAction:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}._4rQ4Pa_programContent{min-width:0;min-height:0}._4rQ4Pa_programPanel>._4rQ4Pa_programContent{overscroll-behavior:contain;flex:1;overflow:auto}._4rQ4Pa_programSource{background:var(--dsw-alias-bg-layer-1);--dsl-code-block-line-white-space:pre;border-radius:0;margin:0!important}._4rQ4Pa_programSource :where(pre){font:12px/16px var(--ds-font-family-code);overflow-wrap:normal;word-break:normal;tab-size:2;border-radius:0;padding:2px 14px 8px;overflow:visible;background:var(--dsw-alias-bg-layer-1)!important}._4rQ4Pa_programSource pre code>.line{box-sizing:border-box;width:max-content;min-width:100%}._4rQ4Pa_programContent[data-wrap=true] ._4rQ4Pa_programSource{--dsl-code-block-line-white-space:pre-wrap}._4rQ4Pa_programContent[data-wrap=true] ._4rQ4Pa_programSource pre code>.line{overflow-wrap:anywhere;word-break:break-all;width:auto}._4rQ4Pa_programOutput{color:var(--dsw-alias-label-primary);font:12px/16px var(--ds-font-family-code);white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:2px 14px 8px}._4rQ4Pa_programError:first-line{color:var(--dsw-alias-state-error-primary);font-weight:600}._4rQ4Pa_overviewPreview ._4rQ4Pa_jsonPreview>:first-child,._4rQ4Pa_overviewPreview ._4rQ4Pa_schemaTree>:first-child{padding-top:2px;padding-bottom:0}._4rQ4Pa_overviewPreview ._4rQ4Pa_schemaTree{margin-bottom:0}._4rQ4Pa_overviewPreview ._4rQ4Pa_overview{padding:2px 0 0}._4rQ4Pa_overviewPreview ._4rQ4Pa_overview>div{min-height:22px}._4rQ4Pa_markdownPreview,._4rQ4Pa_markdownPayload{color:var(--dsw-alias-label-primary)}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]),._4rQ4Pa_markdownPayload>div:not([data-markdown-variant=compact]){font:var(--dsw-font-xs-13);gap:8px}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) h1,._4rQ4Pa_markdownPayload>div:not([data-markdown-variant=compact]) h1{font:600 16px/22px var(--dsw-font-family)}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) h2,._4rQ4Pa_markdownPayload>div:not([data-markdown-variant=compact]) h2{font:600 15px/22px var(--dsw-font-family)}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) :where(h3,h4,h5,h6),._4rQ4Pa_markdownPayload>div:not([data-markdown-variant=compact]) :where(h3,h4,h5,h6){font:600 14px/20px var(--dsw-font-family)}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) :not(pre)>code,._4rQ4Pa_markdownPayload>div:not([data-markdown-variant=compact]) :not(pre)>code{font:12px/18px var(--ds-font-family-code)}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) table,._4rQ4Pa_markdownPayload>div:not([data-markdown-variant=compact]) table{font:var(--dsw-font-xs-13)}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact])>:first-child{margin-top:0}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact])>:last-child{margin-bottom:0}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) :where(h1,h2,h3){margin:12px 0 6px}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) :where(h4,h5,h6){margin:10px 0 5px}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) :where(p,ul,ol){margin:8px 0}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) li:not(:first-child){margin-top:3px}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) blockquote{margin-top:8px}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact]) hr{margin:14px 0}._4rQ4Pa_markdownPreview>div:not([data-markdown-variant=compact])>.md-code-block{margin:10px 0}._4rQ4Pa_assistantContent ._4rQ4Pa_markdownPayload,._4rQ4Pa_assistantContent ._4rQ4Pa_payload{min-height:0}._4rQ4Pa_thinkingQuote{--dsh-content-font-size-secondary:13px;--dsh-content-font-delta-secondary:0px;border-left:2px solid var(--dsw-alias-markdown-citation);color:var(--dsw-alias-label-secondary);background:0 0;margin:6px 14px 0 12px;padding-left:6px}._4rQ4Pa_thinkingQuoteOnlyPreview{margin-bottom:8px}._4rQ4Pa_detailBody>._4rQ4Pa_assistantContentRendered ._4rQ4Pa_thinkingQuote{margin-top:14px}._4rQ4Pa_thinkingToggle{width:max-content;height:18px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:600 12px/18px var(--dsw-font-family);user-select:none;background:0 0;border:0;align-items:center;gap:2px;padding:0;display:flex}._4rQ4Pa_thinkingChevron{transition:transform .12s var(--ds-ease-in-out);flex:none}._4rQ4Pa_thinkingToggle[aria-expanded=true] ._4rQ4Pa_thinkingChevron{transform:rotate(90deg)}._4rQ4Pa_thinkingToggle:hover{color:var(--dsw-alias-label-secondary)}._4rQ4Pa_thinkingToggle:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}._4rQ4Pa_thinkingQuote ._4rQ4Pa_markdownPreview,._4rQ4Pa_thinkingQuote ._4rQ4Pa_markdownPayload,._4rQ4Pa_thinkingQuote ._4rQ4Pa_payload{min-height:0;color:var(--dsw-alias-label-secondary);background:0 0;padding:2px 0}._4rQ4Pa_assistantOutput{background:var(--dsw-alias-bg-layer-1)}._4rQ4Pa_markdownPreview{padding:2px 14px 8px}._4rQ4Pa_markdownPayload{min-height:100%;padding:14px}._4rQ4Pa_jsonPayload{min-height:100%}._4rQ4Pa_jsonPreview{min-height:0}._4rQ4Pa_schema{background:var(--dsw-alias-bg-layer-1);min-height:100%}._4rQ4Pa_schemaPreview{min-height:0}._4rQ4Pa_schemaIntro{padding:12px 14px 6px}._4rQ4Pa_schemaPreview ._4rQ4Pa_schemaIntro{padding-top:2px}._4rQ4Pa_schemaName{color:var(--dsw-alias-label-primary);font:600 12px/18px var(--ds-font-family-code);margin:0}._4rQ4Pa_schemaDescription{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);white-space:pre-wrap;margin:2px 0 0}._4rQ4Pa_schemaParameters{min-width:0}._4rQ4Pa_schemaParametersTitle{color:var(--dsw-alias-label-tertiary);font:600 11px/16px var(--dsw-font-family);user-select:none;margin:0;padding:4px 14px 2px}._4rQ4Pa_schemaTree{margin:0 6px 8px 0}._4rQ4Pa_payload{box-sizing:border-box;overflow-wrap:anywhere;min-height:100%;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-markdown-code-block);font:12px/19px var(--ds-font-family-code);tab-size:2;white-space:pre-wrap;margin:0;padding:14px}._4rQ4Pa_payloadPreview{min-height:0;padding:2px 14px 8px}._4rQ4Pa_sourceBlocks{box-sizing:border-box;min-height:100%;padding:12px 14px}._4rQ4Pa_sourceBlock+._4rQ4Pa_sourceBlock{margin-top:14px}._4rQ4Pa_sourceBlockHeader,._4rQ4Pa_sourceBlockJumpTarget{user-select:none;align-items:center;gap:3px;width:max-content;margin-bottom:3px;display:flex}._4rQ4Pa_sourceBlockJumpTarget{all:unset;cursor:pointer;user-select:none;align-items:center;gap:3px;width:max-content;margin-bottom:3px;display:flex}._4rQ4Pa_sourceBlockLabel{color:var(--dsw-alias-label-tertiary);font:11px/16px var(--ds-font-family-code)}._4rQ4Pa_sourceBlockJumpIcon{color:var(--dsw-alias-label-caption);flex:none}._4rQ4Pa_sourceBlockJumpTarget:hover ._4rQ4Pa_sourceBlockJumpIcon{color:var(--dsw-alias-label-primary)}._4rQ4Pa_sourceBlockJumpTarget:focus-visible{outline:none}._4rQ4Pa_sourceBlockJumpTarget:focus-visible ._4rQ4Pa_sourceBlockJumpIcon{color:var(--dsw-alias-state-business-primary)}._4rQ4Pa_sourceBlockContent{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font:12px/19px var(--ds-font-family-code);tab-size:2;white-space:pre-wrap;background:0 0;margin:0}._4rQ4Pa_messageImages{flex-direction:column;gap:8px;margin:8px 14px 14px;display:flex}._4rQ4Pa_attachments{flex-direction:column;gap:8px;margin:8px 14px 14px;padding:0;list-style:none;display:flex}._4rQ4Pa_attachmentsPreview{gap:6px;margin-block:6px 8px}._4rQ4Pa_attachmentRow{border:.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:var(--dsw-radius-lg);align-items:center;gap:10px;min-width:0;padding:8px;display:flex}._4rQ4Pa_attachmentIcon{flex:0 0 48px;place-items:center;width:48px;height:48px;display:grid}._4rQ4Pa_attachmentInfo{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}._4rQ4Pa_attachmentName{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;overflow:hidden}._4rQ4Pa_attachmentMetadata{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:16px;overflow:hidden}._4rQ4Pa_attachmentDisclosure{border:.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:var(--dsw-radius-md);margin-block:8px}._4rQ4Pa_attachmentDisclosure>summary{cursor:pointer;padding:8px}._4rQ4Pa_attachmentDisclosure>summary ._4rQ4Pa_attachmentName{display:block}._4rQ4Pa_attachmentDisclosure>summary:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}._4rQ4Pa_attachmentDisclosure>pre{padding:0 8px 8px}._4rQ4Pa_assistantToolCalls{box-sizing:border-box;max-width:100%;color:var(--dsw-alias-label-secondary);font:11px/17px var(--ds-font-family-code);margin:2px 14px 12px;padding:0;list-style:none}._4rQ4Pa_assistantToolCallsPreview{margin-top:2px;margin-bottom:8px}._4rQ4Pa_assistantToolCalls li{min-width:0}._4rQ4Pa_assistantToolCallButton{all:unset;box-sizing:border-box;border-radius:var(--dsw-radius-xs);cursor:pointer;align-items:center;width:calc(100% + 4px);min-width:0;height:19px;margin-left:-4px;padding:0 4px;display:flex}._4rQ4Pa_assistantToolCallButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._4rQ4Pa_assistantToolCallButton:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}._4rQ4Pa_assistantToolCallIcon{color:var(--dsw-alias-label-caption);flex:none;margin-right:5px}._4rQ4Pa_assistantToolCallButton:hover ._4rQ4Pa_assistantToolCallIcon,._4rQ4Pa_assistantToolCallButton:focus-visible ._4rQ4Pa_assistantToolCallIcon{color:var(--dsw-alias-label-secondary)}._4rQ4Pa_assistantToolCallText{white-space:nowrap;flex:1;min-width:0;display:flex;overflow:hidden}._4rQ4Pa_assistantToolCallName{color:var(--dsw-alias-label-secondary);flex:none;margin-right:5px;font-weight:500}._4rQ4Pa_assistantToolCallArgs{min-width:0;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}._4rQ4Pa_systemPrompt{box-sizing:border-box}._4rQ4Pa_toolCatalog{min-height:100%;padding:8px 0 16px}._4rQ4Pa_toolCatalogItem{border-bottom:.5px solid var(--dsw-alias-border-l1)}._4rQ4Pa_toolCatalogSummary{box-sizing:border-box;cursor:pointer;user-select:none;grid-template-columns:12px 12px max-content minmax(0,1fr);align-items:center;gap:5px;min-height:30px;padding:4px 12px;list-style:none;display:grid}._4rQ4Pa_toolCatalogSummary::-webkit-details-marker{display:none}._4rQ4Pa_toolCatalogSummary:hover{background:var(--dsw-alias-interactive-bg-hover)}._4rQ4Pa_toolCatalogSummary:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}._4rQ4Pa_toolCatalogChevron,._4rQ4Pa_toolCatalogIcon{color:var(--dsw-alias-label-caption)}._4rQ4Pa_toolCatalogChevron{transition:transform .1s var(--ds-ease-in-out)}._4rQ4Pa_toolCatalogItem[open] ._4rQ4Pa_toolCatalogChevron{transform:rotate(90deg)}._4rQ4Pa_toolCatalogName{color:var(--dsw-alias-label-primary);font:500 12px/18px var(--ds-font-family-code)}._4rQ4Pa_toolCatalogDescription{min-width:0;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}._4rQ4Pa_toolCatalogDefinition{background:var(--dsw-alias-bg-base);padding:0 0 8px 29px}._4rQ4Pa_toolCatalogFullDescription{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);white-space:pre-wrap;margin:0;padding:7px 14px 4px 0}._4rQ4Pa_toolCatalogTree{margin-left:-14px;margin-right:6px}._4rQ4Pa_resultBlocks{box-sizing:border-box;flex-direction:column;gap:10px;min-height:100%;padding:14px;display:flex}._4rQ4Pa_resultBlocksPreview{gap:6px;min-height:0;padding:2px 14px 8px}._4rQ4Pa_resultBlockText{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font:12px/19px var(--ds-font-family-code);tab-size:2;white-space:pre-wrap;background:0 0;margin:0}._4rQ4Pa_overviewPreview ._4rQ4Pa_noPayload{padding:2px 14px 0}._4rQ4Pa_noPayload{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);margin:0;padding:18px 14px}@media (width<=760px){._4rQ4Pa_details{z-index:5;border-left-color:var(--dsw-alias-border-l3);width:min(92%,420px);max-width:92%;position:absolute;top:0;bottom:0;right:0;box-shadow:-12px 0 32px #00000024}}._4rQ4Pa_toolUpdatePayload{white-space:pre;overflow-x:auto}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-trajectory/TrajectoryTable.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -3609,149 +4475,167 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var TrajectoryTable_module_css_default = {
-			"arrow": "P_4P_q_arrow",
-			"assistantContent": "P_4P_q_assistantContent",
-			"assistantContentRendered": "P_4P_q_assistantContentRendered",
-			"assistantOutput": "P_4P_q_assistantOutput",
-			"assistantToolCallArgs": "P_4P_q_assistantToolCallArgs",
-			"assistantToolCallButton": "P_4P_q_assistantToolCallButton",
-			"assistantToolCallIcon": "P_4P_q_assistantToolCallIcon",
-			"assistantToolCallName": "P_4P_q_assistantToolCallName",
-			"assistantToolCallText": "P_4P_q_assistantToolCallText",
-			"assistantToolCalls": "P_4P_q_assistantToolCalls",
-			"assistantToolCallsPreview": "P_4P_q_assistantToolCallsPreview",
-			"assistantVioletBright": "P_4P_q_assistantVioletBright",
-			"close": "P_4P_q_close",
-			"collapsedTurnContent": "P_4P_q_collapsedTurnContent",
-			"collapsedTurnEllipsis": "P_4P_q_collapsedTurnEllipsis",
-			"collapsedTurnText": "P_4P_q_collapsedTurnText",
-			"compacted": "P_4P_q_compacted",
-			"compactedSummary": "P_4P_q_compactedSummary",
-			"content": "P_4P_q_content",
-			"contentColumn": "P_4P_q_contentColumn",
-			"contentText": "P_4P_q_contentText",
-			"contextGreen": "P_4P_q_contextGreen",
-			"detailBody": "P_4P_q_detailBody",
-			"detailBodySummary": "P_4P_q_detailBodySummary",
-			"detailTab": "P_4P_q_detailTab",
-			"detailTabActive": "P_4P_q_detailTabActive",
-			"detailTabs": "P_4P_q_detailTabs",
-			"details": "P_4P_q_details",
-			"detailsHeader": "P_4P_q_detailsHeader",
-			"detailsLocation": "P_4P_q_detailsLocation",
-			"detailsResizeHandle": "P_4P_q_detailsResizeHandle",
-			"detailsTitle": "P_4P_q_detailsTitle",
-			"error": "P_4P_q_error",
-			"errorPayload": "P_4P_q_errorPayload",
-			"event": "P_4P_q_event",
-			"eventColumn": "P_4P_q_eventColumn",
-			"eventHeader": "P_4P_q_eventHeader",
-			"eventInner": "P_4P_q_eventInner",
-			"history-loading-spin": "P_4P_q_history-loading-spin",
-			"historyLoadButton": "P_4P_q_historyLoadButton",
-			"historyLoadRow": "P_4P_q_historyLoadRow",
-			"historyLoading": "P_4P_q_historyLoading",
-			"historyLoadingBar": "P_4P_q_historyLoadingBar",
-			"historyLoadingSpinner": "P_4P_q_historyLoadingSpinner",
-			"inlineResult": "P_4P_q_inlineResult",
-			"inlineResultText": "P_4P_q_inlineResultText",
-			"jsonPayload": "P_4P_q_jsonPayload",
-			"jsonPreview": "P_4P_q_jsonPreview",
-			"kindSlot": "P_4P_q_kindSlot",
-			"kindTag": "P_4P_q_kindTag",
-			"kindTagIcon": "P_4P_q_kindTagIcon",
-			"kindTagLabel": "P_4P_q_kindTagLabel",
-			"markdownPayload": "P_4P_q_markdownPayload",
-			"markdownPreview": "P_4P_q_markdownPreview",
-			"message": "P_4P_q_message",
-			"messageImages": "P_4P_q_messageImages",
-			"messageImagesPreview": "P_4P_q_messageImagesPreview",
-			"noOutputText": "P_4P_q_noOutputText",
-			"noPayload": "P_4P_q_noPayload",
-			"overview": "P_4P_q_overview",
-			"overviewHeading": "P_4P_q_overviewHeading",
-			"overviewHierarchyJumpIconTight": "P_4P_q_overviewHierarchyJumpIconTight",
-			"overviewHierarchyNavLink": "P_4P_q_overviewHierarchyNavLink",
-			"overviewParentLinks": "P_4P_q_overviewParentLinks",
-			"overviewPreview": "P_4P_q_overviewPreview",
-			"overviewSection": "P_4P_q_overviewSection",
-			"overviewSections": "P_4P_q_overviewSections",
-			"overviewTitle": "P_4P_q_overviewTitle",
-			"overviewTitleIcon": "P_4P_q_overviewTitleIcon",
-			"payload": "P_4P_q_payload",
-			"payloadPreview": "P_4P_q_payloadPreview",
-			"promptDiff": "P_4P_q_promptDiff",
-			"promptDiffLineadded": "P_4P_q_promptDiffLineadded",
-			"promptDiffLinecontext": "P_4P_q_promptDiffLinecontext",
-			"promptDiffLinemeta": "P_4P_q_promptDiffLinemeta",
-			"promptDiffLineremoved": "P_4P_q_promptDiffLineremoved",
-			"promptDiffSection": "P_4P_q_promptDiffSection",
-			"promptDiffSections": "P_4P_q_promptDiffSections",
-			"promptDiffTitle": "P_4P_q_promptDiffTitle",
-			"requestBoundaryControl": "P_4P_q_requestBoundaryControl",
-			"requestBoundaryControlActive": "P_4P_q_requestBoundaryControlActive",
-			"requestDetailsDot": "P_4P_q_requestDetailsDot",
-			"requestDetailsName": "P_4P_q_requestDetailsName",
-			"requestTokenDetail": "P_4P_q_requestTokenDetail",
-			"resultBlockText": "P_4P_q_resultBlockText",
-			"resultBlocks": "P_4P_q_resultBlocks",
-			"resultBlocksPreview": "P_4P_q_resultBlocksPreview",
-			"resultPreview": "P_4P_q_resultPreview",
-			"resultRequest": "P_4P_q_resultRequest",
-			"schema": "P_4P_q_schema",
-			"schemaDescription": "P_4P_q_schemaDescription",
-			"schemaIntro": "P_4P_q_schemaIntro",
-			"schemaName": "P_4P_q_schemaName",
-			"schemaParameters": "P_4P_q_schemaParameters",
-			"schemaParametersTitle": "P_4P_q_schemaParametersTitle",
-			"schemaPreview": "P_4P_q_schemaPreview",
-			"schemaTree": "P_4P_q_schemaTree",
-			"selectionRail": "P_4P_q_selectionRail",
-			"sourceBlock": "P_4P_q_sourceBlock",
-			"sourceBlockContent": "P_4P_q_sourceBlockContent",
-			"sourceBlockHeader": "P_4P_q_sourceBlockHeader",
-			"sourceBlockJumpIcon": "P_4P_q_sourceBlockJumpIcon",
-			"sourceBlockJumpTarget": "P_4P_q_sourceBlockJumpTarget",
-			"sourceBlockLabel": "P_4P_q_sourceBlockLabel",
-			"sourceBlocks": "P_4P_q_sourceBlocks",
-			"split": "P_4P_q_split",
-			"subtoolAmber": "P_4P_q_subtoolAmber",
-			"summaryScrollRegion": "P_4P_q_summaryScrollRegion",
-			"systemNeutral": "P_4P_q_systemNeutral",
-			"systemPrompt": "P_4P_q_systemPrompt",
-			"table": "P_4P_q_table",
-			"tablePane": "P_4P_q_tablePane",
-			"thinkingChevron": "P_4P_q_thinkingChevron",
-			"thinkingQuote": "P_4P_q_thinkingQuote",
-			"thinkingQuoteOnlyPreview": "P_4P_q_thinkingQuoteOnlyPreview",
-			"thinkingToggle": "P_4P_q_thinkingToggle",
-			"timestampToggle": "P_4P_q_timestampToggle",
-			"toolAmber": "P_4P_q_toolAmber",
-			"toolCallNameTypeface": "P_4P_q_toolCallNameTypeface",
-			"toolCallOnly": "P_4P_q_toolCallOnly",
-			"toolCallPayload": "P_4P_q_toolCallPayload",
-			"toolCatalog": "P_4P_q_toolCatalog",
-			"toolCatalogChevron": "P_4P_q_toolCatalogChevron",
-			"toolCatalogDefinition": "P_4P_q_toolCatalogDefinition",
-			"toolCatalogDescription": "P_4P_q_toolCatalogDescription",
-			"toolCatalogFullDescription": "P_4P_q_toolCatalogFullDescription",
-			"toolCatalogIcon": "P_4P_q_toolCatalogIcon",
-			"toolCatalogItem": "P_4P_q_toolCatalogItem",
-			"toolCatalogName": "P_4P_q_toolCatalogName",
-			"toolCatalogSummary": "P_4P_q_toolCatalogSummary",
-			"toolCatalogTree": "P_4P_q_toolCatalogTree",
-			"trajectory-table": "P_4P_q_trajectory-table",
-			"turnLabel": "P_4P_q_turnLabel",
-			"turnLabelActive": "P_4P_q_turnLabelActive",
-			"turnLabelCompact": "P_4P_q_turnLabelCompact",
-			"turnLabelFull": "P_4P_q_turnLabelFull",
-			"turnRail": "P_4P_q_turnRail",
-			"usageGroup": "P_4P_q_usageGroup",
-			"usageHeading": "P_4P_q_usageHeading",
-			"usagePanel": "P_4P_q_usagePanel",
-			"user": "P_4P_q_user",
-			"virtualSpacer": "P_4P_q_virtualSpacer",
-			"visuallyHidden": "P_4P_q_visuallyHidden"
+			"arrow": "_4rQ4Pa_arrow",
+			"assistantContent": "_4rQ4Pa_assistantContent",
+			"assistantContentRendered": "_4rQ4Pa_assistantContentRendered",
+			"assistantOutput": "_4rQ4Pa_assistantOutput",
+			"assistantToolCallArgs": "_4rQ4Pa_assistantToolCallArgs",
+			"assistantToolCallButton": "_4rQ4Pa_assistantToolCallButton",
+			"assistantToolCallIcon": "_4rQ4Pa_assistantToolCallIcon",
+			"assistantToolCallName": "_4rQ4Pa_assistantToolCallName",
+			"assistantToolCallText": "_4rQ4Pa_assistantToolCallText",
+			"assistantToolCalls": "_4rQ4Pa_assistantToolCalls",
+			"assistantToolCallsPreview": "_4rQ4Pa_assistantToolCallsPreview",
+			"assistantVioletBright": "_4rQ4Pa_assistantVioletBright",
+			"attachmentDisclosure": "_4rQ4Pa_attachmentDisclosure",
+			"attachmentIcon": "_4rQ4Pa_attachmentIcon",
+			"attachmentInfo": "_4rQ4Pa_attachmentInfo",
+			"attachmentMetadata": "_4rQ4Pa_attachmentMetadata",
+			"attachmentName": "_4rQ4Pa_attachmentName",
+			"attachmentRow": "_4rQ4Pa_attachmentRow",
+			"attachments": "_4rQ4Pa_attachments",
+			"attachmentsPreview": "_4rQ4Pa_attachmentsPreview",
+			"close": "_4rQ4Pa_close",
+			"collapsedTurnContent": "_4rQ4Pa_collapsedTurnContent",
+			"collapsedTurnEllipsis": "_4rQ4Pa_collapsedTurnEllipsis",
+			"collapsedTurnText": "_4rQ4Pa_collapsedTurnText",
+			"compacted": "_4rQ4Pa_compacted",
+			"compactedSummary": "_4rQ4Pa_compactedSummary",
+			"content": "_4rQ4Pa_content",
+			"contentColumn": "_4rQ4Pa_contentColumn",
+			"contentText": "_4rQ4Pa_contentText",
+			"contextGreen": "_4rQ4Pa_contextGreen",
+			"detailBody": "_4rQ4Pa_detailBody",
+			"detailBodyProgram": "_4rQ4Pa_detailBodyProgram",
+			"detailBodySummary": "_4rQ4Pa_detailBodySummary",
+			"detailTab": "_4rQ4Pa_detailTab",
+			"detailTabActive": "_4rQ4Pa_detailTabActive",
+			"detailTabs": "_4rQ4Pa_detailTabs",
+			"details": "_4rQ4Pa_details",
+			"detailsHeader": "_4rQ4Pa_detailsHeader",
+			"detailsLocation": "_4rQ4Pa_detailsLocation",
+			"detailsResizeHandle": "_4rQ4Pa_detailsResizeHandle",
+			"detailsTitle": "_4rQ4Pa_detailsTitle",
+			"error": "_4rQ4Pa_error",
+			"errorPayload": "_4rQ4Pa_errorPayload",
+			"event": "_4rQ4Pa_event",
+			"eventColumn": "_4rQ4Pa_eventColumn",
+			"eventHeader": "_4rQ4Pa_eventHeader",
+			"eventInner": "_4rQ4Pa_eventInner",
+			"historyLoadButton": "_4rQ4Pa_historyLoadButton",
+			"historyLoadRow": "_4rQ4Pa_historyLoadRow",
+			"historyLoading": "_4rQ4Pa_historyLoading",
+			"historyLoadingBar": "_4rQ4Pa_historyLoadingBar",
+			"inlineResult": "_4rQ4Pa_inlineResult",
+			"inlineResultText": "_4rQ4Pa_inlineResultText",
+			"jsonPayload": "_4rQ4Pa_jsonPayload",
+			"jsonPreview": "_4rQ4Pa_jsonPreview",
+			"kindSlot": "_4rQ4Pa_kindSlot",
+			"kindTag": "_4rQ4Pa_kindTag",
+			"kindTagIcon": "_4rQ4Pa_kindTagIcon",
+			"kindTagLabel": "_4rQ4Pa_kindTagLabel",
+			"markdownPayload": "_4rQ4Pa_markdownPayload",
+			"markdownPreview": "_4rQ4Pa_markdownPreview",
+			"message": "_4rQ4Pa_message",
+			"messageImages": "_4rQ4Pa_messageImages",
+			"noOutputText": "_4rQ4Pa_noOutputText",
+			"noPayload": "_4rQ4Pa_noPayload",
+			"overview": "_4rQ4Pa_overview",
+			"overviewHeading": "_4rQ4Pa_overviewHeading",
+			"overviewHierarchyJumpIconTight": "_4rQ4Pa_overviewHierarchyJumpIconTight",
+			"overviewHierarchyNavLink": "_4rQ4Pa_overviewHierarchyNavLink",
+			"overviewParentLinks": "_4rQ4Pa_overviewParentLinks",
+			"overviewPreview": "_4rQ4Pa_overviewPreview",
+			"overviewSection": "_4rQ4Pa_overviewSection",
+			"overviewSections": "_4rQ4Pa_overviewSections",
+			"overviewTitle": "_4rQ4Pa_overviewTitle",
+			"overviewTitleIcon": "_4rQ4Pa_overviewTitleIcon",
+			"payload": "_4rQ4Pa_payload",
+			"payloadPreview": "_4rQ4Pa_payloadPreview",
+			"programAction": "_4rQ4Pa_programAction",
+			"programActions": "_4rQ4Pa_programActions",
+			"programContent": "_4rQ4Pa_programContent",
+			"programDescription": "_4rQ4Pa_programDescription",
+			"programError": "_4rQ4Pa_programError",
+			"programIcon": "_4rQ4Pa_programIcon",
+			"programLanguage": "_4rQ4Pa_programLanguage",
+			"programOutput": "_4rQ4Pa_programOutput",
+			"programPanel": "_4rQ4Pa_programPanel",
+			"programSource": "_4rQ4Pa_programSource",
+			"programSummary": "_4rQ4Pa_programSummary",
+			"promptDiff": "_4rQ4Pa_promptDiff",
+			"promptDiffLineadded": "_4rQ4Pa_promptDiffLineadded",
+			"promptDiffLinecontext": "_4rQ4Pa_promptDiffLinecontext",
+			"promptDiffLinemeta": "_4rQ4Pa_promptDiffLinemeta",
+			"promptDiffLineremoved": "_4rQ4Pa_promptDiffLineremoved",
+			"promptDiffSection": "_4rQ4Pa_promptDiffSection",
+			"promptDiffSections": "_4rQ4Pa_promptDiffSections",
+			"promptDiffTitle": "_4rQ4Pa_promptDiffTitle",
+			"requestBoundaryControl": "_4rQ4Pa_requestBoundaryControl",
+			"requestBoundaryControlActive": "_4rQ4Pa_requestBoundaryControlActive",
+			"requestDetailsDot": "_4rQ4Pa_requestDetailsDot",
+			"requestDetailsName": "_4rQ4Pa_requestDetailsName",
+			"requestTokenDetail": "_4rQ4Pa_requestTokenDetail",
+			"resultBlockText": "_4rQ4Pa_resultBlockText",
+			"resultBlocks": "_4rQ4Pa_resultBlocks",
+			"resultBlocksPreview": "_4rQ4Pa_resultBlocksPreview",
+			"resultPreview": "_4rQ4Pa_resultPreview",
+			"resultRequest": "_4rQ4Pa_resultRequest",
+			"schema": "_4rQ4Pa_schema",
+			"schemaDescription": "_4rQ4Pa_schemaDescription",
+			"schemaIntro": "_4rQ4Pa_schemaIntro",
+			"schemaName": "_4rQ4Pa_schemaName",
+			"schemaParameters": "_4rQ4Pa_schemaParameters",
+			"schemaParametersTitle": "_4rQ4Pa_schemaParametersTitle",
+			"schemaPreview": "_4rQ4Pa_schemaPreview",
+			"schemaTree": "_4rQ4Pa_schemaTree",
+			"selectionRail": "_4rQ4Pa_selectionRail",
+			"sourceBlock": "_4rQ4Pa_sourceBlock",
+			"sourceBlockContent": "_4rQ4Pa_sourceBlockContent",
+			"sourceBlockHeader": "_4rQ4Pa_sourceBlockHeader",
+			"sourceBlockJumpIcon": "_4rQ4Pa_sourceBlockJumpIcon",
+			"sourceBlockJumpTarget": "_4rQ4Pa_sourceBlockJumpTarget",
+			"sourceBlockLabel": "_4rQ4Pa_sourceBlockLabel",
+			"sourceBlocks": "_4rQ4Pa_sourceBlocks",
+			"split": "_4rQ4Pa_split",
+			"subtoolAmber": "_4rQ4Pa_subtoolAmber",
+			"summaryScrollRegion": "_4rQ4Pa_summaryScrollRegion",
+			"systemNeutral": "_4rQ4Pa_systemNeutral",
+			"systemPrompt": "_4rQ4Pa_systemPrompt",
+			"table": "_4rQ4Pa_table",
+			"tablePane": "_4rQ4Pa_tablePane",
+			"thinkingChevron": "_4rQ4Pa_thinkingChevron",
+			"thinkingQuote": "_4rQ4Pa_thinkingQuote",
+			"thinkingQuoteOnlyPreview": "_4rQ4Pa_thinkingQuoteOnlyPreview",
+			"thinkingToggle": "_4rQ4Pa_thinkingToggle",
+			"timestampToggle": "_4rQ4Pa_timestampToggle",
+			"toolAmber": "_4rQ4Pa_toolAmber",
+			"toolCallNameTypeface": "_4rQ4Pa_toolCallNameTypeface",
+			"toolCallOnly": "_4rQ4Pa_toolCallOnly",
+			"toolCallPayload": "_4rQ4Pa_toolCallPayload",
+			"toolCatalog": "_4rQ4Pa_toolCatalog",
+			"toolCatalogChevron": "_4rQ4Pa_toolCatalogChevron",
+			"toolCatalogDefinition": "_4rQ4Pa_toolCatalogDefinition",
+			"toolCatalogDescription": "_4rQ4Pa_toolCatalogDescription",
+			"toolCatalogFullDescription": "_4rQ4Pa_toolCatalogFullDescription",
+			"toolCatalogIcon": "_4rQ4Pa_toolCatalogIcon",
+			"toolCatalogItem": "_4rQ4Pa_toolCatalogItem",
+			"toolCatalogName": "_4rQ4Pa_toolCatalogName",
+			"toolCatalogSummary": "_4rQ4Pa_toolCatalogSummary",
+			"toolCatalogTree": "_4rQ4Pa_toolCatalogTree",
+			"toolUpdatePayload": "_4rQ4Pa_toolUpdatePayload",
+			"trajectory-table": "_4rQ4Pa_trajectory-table",
+			"turnLabel": "_4rQ4Pa_turnLabel",
+			"turnLabelActive": "_4rQ4Pa_turnLabelActive",
+			"turnLabelCompact": "_4rQ4Pa_turnLabelCompact",
+			"turnLabelFull": "_4rQ4Pa_turnLabelFull",
+			"turnRail": "_4rQ4Pa_turnRail",
+			"usageGroup": "_4rQ4Pa_usageGroup",
+			"usageHeading": "_4rQ4Pa_usageHeading",
+			"usagePanel": "_4rQ4Pa_usagePanel",
+			"user": "_4rQ4Pa_user",
+			"virtualSpacer": "_4rQ4Pa_virtualSpacer",
+			"visuallyHidden": "_4rQ4Pa_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/TrajectoryTable.js
@@ -3838,11 +4722,11 @@ window.__ModuleLoader__.load({
 			});
 		}
 		const KIND_ICON = {
-			system: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSettingsOutline16, { size: 13 }),
-			user: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconUserOutline16, { size: 13 }),
+			system: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 13 }),
+			user: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconUserOutlineRegular, { size: 13 }),
 			context: (0, react_jsx_runtime.jsx)(InformationIcon, {}),
 			compacted: (0, react_jsx_runtime.jsx)(CompactedIcon, {}),
-			message: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSparkle16, { size: 13 }),
+			message: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSparkleRegular, { size: 13 }),
 			tool: (0, react_jsx_runtime.jsx)(ToolWrenchIcon, {}),
 			subtool: (0, react_jsx_runtime.jsx)(ToolWrenchIcon, {})
 		};
@@ -3912,8 +4796,8 @@ window.__ModuleLoader__.load({
 				copyCompactJson: t("copy.compactJson"),
 				copied: t("copied"),
 				copyFailed: t("copy.failed"),
-				collapseNode: t("json.collapseNode"),
-				expandNode: t("json.expandNode"),
+				collapseNode: t("collapse"),
+				expandNode: t("expand"),
 				copyButtonTitle: (action) => t("copy.optionsHint", { action })
 			};
 		}
@@ -4262,13 +5146,15 @@ window.__ModuleLoader__.load({
 				})]
 			});
 		}
-		function RequestOptions({ options, preview = false, t }) {
+		function RequestOptions({ options, preview = false, stringWrapping, t }) {
 			if (options === void 0) return (0, react_jsx_runtime.jsx)("p", {
 				className: TrajectoryTable_module_css_default.noPayload,
 				children: t("options.notRecorded")
 			});
 			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
 				data: options,
+				stringWrapping,
+				collapsedStringLines: preview ? 3 : 12,
 				label: t("options.json"),
 				labels: jsonTreeLabels(t),
 				className: preview ? TrajectoryTable_module_css_default.jsonPreview : TrajectoryTable_module_css_default.jsonPayload
@@ -4279,10 +5165,6 @@ window.__ModuleLoader__.load({
 			const properties = source;
 			const kind = properties.kind;
 			if (kind === "user") return t("source.user");
-			if (kind === "plugin") {
-				const plugin = properties.plugin;
-				return typeof plugin === "string" && plugin !== "" ? t("source.pluginNamed", { plugin }) : t("source.plugin");
-			}
 			if (kind === "goal") {
 				const round = properties.round;
 				return typeof round === "number" && round > 0 ? t("source.goalRound", { round }) : t("source.goal");
@@ -4290,7 +5172,7 @@ window.__ModuleLoader__.load({
 			if (typeof kind !== "string" || kind === "") return t("source.unknown");
 			return `${kind[0]?.toUpperCase() ?? ""}${kind.slice(1)}`;
 		}
-		function MessageSource({ record, t }) {
+		function MessageSource({ record, stringWrapping, t }) {
 			const source = record.cell.messageSource;
 			if (source === void 0) return (0, react_jsx_runtime.jsx)("p", {
 				className: TrajectoryTable_module_css_default.noPayload,
@@ -4298,6 +5180,8 @@ window.__ModuleLoader__.load({
 			});
 			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
 				data: typeof source === "object" && source !== null ? source : { value: source },
+				stringWrapping,
+				collapsedStringLines: 12,
 				label: t("source.messageJson"),
 				labels: jsonTreeLabels(t),
 				className: TrajectoryTable_module_css_default.jsonPayload
@@ -4332,7 +5216,10 @@ window.__ModuleLoader__.load({
 			if (record.cell.kind === "message" || record.cell.kind === "compacted") return record.cell.outputDetail;
 		}
 		function detailTabs(record) {
-			if (record.cell.kind === "system") return record.cell.previousPromptDetail === void 0 ? SYSTEM_PROMPT_TABS : SYSTEM_UPDATE_TABS;
+			if (record.cell.kind === "system") {
+				if (record.cell.promptDetail === void 0 && record.cell.systemPromptDetail !== void 0) return SYSTEM_PROMPT_TABS.filter((tab) => tab.id === "system-prompt");
+				return record.cell.previousPromptDetail === void 0 ? SYSTEM_PROMPT_TABS : SYSTEM_UPDATE_TABS;
+			}
 			if (record.cell.kind === "compacted") return [{
 				id: "overview",
 				labelKey: "tab.summary"
@@ -4365,9 +5252,9 @@ window.__ModuleLoader__.load({
 				},
 				...record.cell.inputDetail ? [{
 					id: "input",
-					labelKey: "tab.payload"
+					labelKey: codeProgram(record.cell) === void 0 ? "tab.payload" : "code.source"
 				}] : [],
-				...record.cell.outputDetail ? [{
+				...record.cell.outputDetail || codeProgram(record.cell) !== void 0 ? [{
 					id: "output",
 					labelKey: "tab.result"
 				}] : [],
@@ -4383,6 +5270,8 @@ window.__ModuleLoader__.load({
 		}
 		function recordDisplayText(cell, t) {
 			if (isToolCallOnly(cell, t)) return "";
+			const program = codeProgram(cell);
+			if (program !== void 0) return `${PTC_TOOL_NAME} · ${program.description.replace(/\s+/g, " ")}`;
 			if (cell.previewMarkdown !== void 0) {
 				const preview = trajectoryPreviewText(cell.previewMarkdown);
 				if (cell.text === "") return preview;
@@ -4395,11 +5284,16 @@ window.__ModuleLoader__.load({
 		function recordResultText(cell) {
 			return cell.resultPreviewMarkdown === void 0 ? cell.result : trajectoryPreviewText(cell.resultPreviewMarkdown);
 		}
-		function toolCallTextParts(kind, text) {
-			if (kind !== "tool" && kind !== "subtool") return void 0;
+		function toolCallTextParts(cell, text) {
+			if (cell.kind !== "tool" && cell.kind !== "subtool") return void 0;
+			const program = cell.toolName === PTC_TOOL_NAME;
 			const separator = text.indexOf(" · ");
-			if (separator === -1) return { name: text };
+			if (separator === -1) return {
+				name: text,
+				program
+			};
 			return {
+				program,
 				name: text.slice(0, separator),
 				args: text.slice(separator + 3)
 			};
@@ -4411,6 +5305,7 @@ window.__ModuleLoader__.load({
 			const displayText = (0, react.useMemo)(() => recordDisplayText(cell, t), [
 				cell.kind,
 				cell.text,
+				cell.toolName,
 				cell.previewMarkdown,
 				cell.inputDetail,
 				cell.outputDetail,
@@ -4419,7 +5314,7 @@ window.__ModuleLoader__.load({
 			]);
 			const resultText = (0, react.useMemo)(() => recordResultText(cell), [cell.result, cell.resultPreviewMarkdown]);
 			const toolCallOnly = isToolCallOnly(cell, t);
-			const toolCallText = toolCallTextParts(cell.kind, displayText);
+			const toolCallText = toolCallTextParts(cell, displayText);
 			return children({
 				displayText,
 				listDisplayText: toolCallOnly ? t("record.toolCallOnly") : toolCallText === void 0 ? displayText : [toolCallText.name, toolCallText.args].filter(Boolean).join(" "),
@@ -4434,21 +5329,25 @@ window.__ModuleLoader__.load({
 				children: t("record.toolCallOnly")
 			});
 			if (toolCallText === void 0) return displayText || "—";
-			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)("span", {
+			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("span", {
 				className: TrajectoryTable_module_css_default.toolCallNameTypeface,
-				children: toolCallText.name || "—"
+				children: [toolCallText.program && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutlineRegular, {
+					className: TrajectoryTable_module_css_default.programIcon,
+					size: 12
+				}), toolCallText.name || "—"]
 			}), toolCallText.args !== void 0 && (0, react_jsx_runtime.jsx)("span", {
-				className: TrajectoryTable_module_css_default.toolCallPayload,
+				className: toolCallText.program ? TrajectoryTable_module_css_default.programSummary : TrajectoryTable_module_css_default.toolCallPayload,
 				children: toolCallText.args
 			})] });
 		}
-		function MarkdownFragment({ text, rendered, preview, t }) {
+		function MarkdownFragment({ text, rendered, preview, variant = "body", t }) {
 			const labels = (0, react.useMemo)(() => markdownLabels(t), [t]);
 			if (rendered) return (0, react_jsx_runtime.jsx)("div", {
 				className: preview ? TrajectoryTable_module_css_default.markdownPreview : TrajectoryTable_module_css_default.markdownPayload,
 				children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {
 					text,
-					labels
+					labels,
+					variant
 				})
 			});
 			return (0, react_jsx_runtime.jsx)("pre", {
@@ -4456,60 +5355,113 @@ window.__ModuleLoader__.load({
 				children: text
 			});
 		}
-		function SourceBlocks({ blocks, onOpenCall, renderImages, t }) {
+		function SourceBlocks({ blocks, onOpenCall, t }) {
+			const attachments = new Map(recordAttachments(blocks, t).map((entry) => [entry.index, entry]));
 			return (0, react_jsx_runtime.jsx)("div", {
 				className: TrajectoryTable_module_css_default.sourceBlocks,
-				children: blocks.map((block, index) => (0, react_jsx_runtime.jsxs)("section", {
-					className: TrajectoryTable_module_css_default.sourceBlock,
-					children: [block.callId !== void 0 ? (0, react_jsx_runtime.jsxs)("button", {
-						type: "button",
-						className: TrajectoryTable_module_css_default.sourceBlockJumpTarget,
-						"aria-label": t("block.openSummary", { index: index + 1 }),
-						title: t("block.openSummaryTitle"),
-						onClick: () => {
-							if (block.callId !== void 0) onOpenCall(block.callId);
-						},
-						children: [(0, react_jsx_runtime.jsx)("span", {
+				children: blocks.map((block, index) => {
+					const attachment = attachments.get(index);
+					return attachment !== void 0 ? (0, react_jsx_runtime.jsxs)("details", {
+						className: TrajectoryTable_module_css_default.attachmentDisclosure,
+						children: [(0, react_jsx_runtime.jsxs)("summary", { children: [(0, react_jsx_runtime.jsx)("span", {
 							className: TrajectoryTable_module_css_default.sourceBlockLabel,
 							children: t("block.label", {
 								index: index + 1,
 								type: block.type
 							})
-						}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
-							className: TrajectoryTable_module_css_default.sourceBlockJumpIcon,
-							size: 12
+						}), (0, react_jsx_runtime.jsx)("span", {
+							className: TrajectoryTable_module_css_default.attachmentName,
+							title: attachment.name,
+							children: attachment.name
+						})] }), (0, react_jsx_runtime.jsx)("pre", {
+							className: TrajectoryTable_module_css_default.sourceBlockContent,
+							children: block.content
 						})]
-					}) : (0, react_jsx_runtime.jsx)("div", {
-						className: TrajectoryTable_module_css_default.sourceBlockHeader,
-						children: (0, react_jsx_runtime.jsx)("span", {
-							className: TrajectoryTable_module_css_default.sourceBlockLabel,
-							children: t("block.label", {
-								index: index + 1,
-								type: block.type
+					}, index) : (0, react_jsx_runtime.jsxs)("section", {
+						className: TrajectoryTable_module_css_default.sourceBlock,
+						children: [block.callId !== void 0 ? (0, react_jsx_runtime.jsxs)("button", {
+							type: "button",
+							className: TrajectoryTable_module_css_default.sourceBlockJumpTarget,
+							"aria-label": t("block.openSummary", { index: index + 1 }),
+							title: t("block.openSummaryTitle"),
+							onClick: () => {
+								if (block.callId !== void 0) onOpenCall(block.callId);
+							},
+							children: [(0, react_jsx_runtime.jsx)("span", {
+								className: TrajectoryTable_module_css_default.sourceBlockLabel,
+								children: t("block.label", {
+									index: index + 1,
+									type: block.type
+								})
+							}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
+								className: TrajectoryTable_module_css_default.sourceBlockJumpIcon,
+								size: 12
+							})]
+						}) : (0, react_jsx_runtime.jsx)("div", {
+							className: TrajectoryTable_module_css_default.sourceBlockHeader,
+							children: (0, react_jsx_runtime.jsx)("span", {
+								className: TrajectoryTable_module_css_default.sourceBlockLabel,
+								children: t("block.label", {
+									index: index + 1,
+									type: block.type
+								})
 							})
-						})
-					}), block.attachment !== void 0 ? renderImages({
-						images: [{ attachment: block.attachment }],
-						align: "start"
-					}) : (0, react_jsx_runtime.jsx)("pre", {
-						className: TrajectoryTable_module_css_default.sourceBlockContent,
-						children: block.content
-					})]
-				}, index))
+						}), (0, react_jsx_runtime.jsx)("pre", {
+							className: TrajectoryTable_module_css_default.sourceBlockContent,
+							children: block.content
+						})]
+					}, index);
+				})
 			});
 		}
-		function recordImages(blocks) {
-			return (blocks ?? []).flatMap((block) => block.attachment !== void 0 ? [{ attachment: block.attachment }] : []);
+		function recordAttachments(blocks, t) {
+			let imageIndex = 0;
+			return (blocks ?? []).flatMap((block, index) => {
+				const ref = block.attachment ?? block.file;
+				if (ref === void 0) return [];
+				if (block.attachment !== void 0) imageIndex += 1;
+				return [{
+					block,
+					index,
+					name: ref.name ?? t("attachment.imageName", { index: imageIndex }),
+					metadata: [
+						block.attachment?.mediaType ?? (0, _deepseek_ai_dsh_client_ui_primitives.fileExtension)(ref.name ?? "").toUpperCase(),
+						(0, _deepseek_ai_dsh_client_ui_primitives.fileSizeText)(ref.bytes),
+						...block.attachment === void 0 ? [] : [`${block.attachment.width} × ${block.attachment.height}`]
+					].filter(Boolean).join(" · ")
+				}];
+			});
 		}
-		function MessageImages({ blocks, preview, renderImages }) {
-			const images = recordImages(blocks);
-			if (images.length === 0) return null;
-			return (0, react_jsx_runtime.jsx)("div", {
-				className: preview ? `${TrajectoryTable_module_css_default.messageImages} ${TrajectoryTable_module_css_default.messageImagesPreview}` : TrajectoryTable_module_css_default.messageImages,
-				children: renderImages({
-					images,
-					align: "start"
-				})
+		function RecordAttachments({ blocks, preview, renderImages, t }) {
+			const attachments = recordAttachments(blocks, t);
+			if (attachments.length === 0) return null;
+			return (0, react_jsx_runtime.jsx)("ul", {
+				className: preview ? `${TrajectoryTable_module_css_default.attachments} ${TrajectoryTable_module_css_default.attachmentsPreview}` : TrajectoryTable_module_css_default.attachments,
+				"aria-label": t("attachment.list"),
+				children: attachments.map(({ block, index, name, metadata }) => (0, react_jsx_runtime.jsxs)("li", {
+					className: TrajectoryTable_module_css_default.attachmentRow,
+					children: [block.attachment !== void 0 ? renderImages({
+						images: [{
+							attachment: block.attachment,
+							label: name
+						}],
+						align: "start",
+						thumbnail: true
+					}) : (0, react_jsx_runtime.jsx)("span", {
+						className: TrajectoryTable_module_css_default.attachmentIcon,
+						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.FileTypeIcon, { path: name })
+					}), (0, react_jsx_runtime.jsxs)("div", {
+						className: TrajectoryTable_module_css_default.attachmentInfo,
+						children: [(0, react_jsx_runtime.jsx)("span", {
+							className: TrajectoryTable_module_css_default.attachmentName,
+							title: name,
+							children: name
+						}), (0, react_jsx_runtime.jsx)("span", {
+							className: TrajectoryTable_module_css_default.attachmentMetadata,
+							children: metadata
+						})]
+					})]
+				}, index))
 			});
 		}
 		function AssistantToolCalls({ blocks, preview, onOpenCall, t }) {
@@ -4568,7 +5520,7 @@ window.__ModuleLoader__.load({
 				})
 			});
 		}
-		function ToolCatalog({ tools, t }) {
+		function ToolCatalog({ tools, stringWrapping, t }) {
 			if (tools.length === 0) return (0, react_jsx_runtime.jsx)("p", {
 				className: TrajectoryTable_module_css_default.noPayload,
 				children: t("record.toolsMissing")
@@ -4580,7 +5532,7 @@ window.__ModuleLoader__.load({
 					children: [(0, react_jsx_runtime.jsxs)("summary", {
 						className: TrajectoryTable_module_css_default.toolCatalogSummary,
 						children: [
-							(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
+							(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
 								className: TrajectoryTable_module_css_default.toolCatalogChevron,
 								size: 12
 							}),
@@ -4601,6 +5553,7 @@ window.__ModuleLoader__.load({
 							children: tool.description
 						}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
 							data: tool.parameters,
+							stringWrapping,
 							label: t("record.namedParametersJson", { name: tool.name }),
 							labels: jsonTreeLabels(t),
 							className: TrajectoryTable_module_css_default.toolCatalogTree
@@ -4692,10 +5645,13 @@ window.__ModuleLoader__.load({
 			});
 		}
 		function MarkdownRecordContent({ record, rendered, preview = false, thinkingExpanded, onThinkingExpandedChange, onOpenCall, renderImages, t }) {
+			if (record.cell.sourceBlocks?.length && record.cell.sourceBlocks.every((block) => block.type === "tool-addition" || block.type === "tool-removal")) return (0, react_jsx_runtime.jsx)("pre", {
+				className: `${TrajectoryTable_module_css_default.payload} ${TrajectoryTable_module_css_default.toolUpdatePayload}`,
+				children: record.cell.inputDetail
+			});
 			if (!rendered && record.cell.sourceBlocks && record.cell.sourceBlocks.length > 0) return (0, react_jsx_runtime.jsx)(SourceBlocks, {
 				blocks: record.cell.sourceBlocks,
 				onOpenCall,
-				renderImages,
 				t
 			});
 			if (record.cell.thinkingDetail) {
@@ -4717,7 +5673,7 @@ window.__ModuleLoader__.load({
 								onClick: () => {
 									onThinkingExpandedChange(!thinkingExpanded);
 								},
-								children: [t("record.thinking"), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
+								children: [t("record.thinking"), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
 									className: TrajectoryTable_module_css_default.thinkingChevron,
 									size: 12
 								})]
@@ -4725,6 +5681,7 @@ window.__ModuleLoader__.load({
 								text: record.cell.thinkingDetail,
 								rendered,
 								preview,
+								variant: "compact",
 								t
 							})]
 						}),
@@ -4743,25 +5700,26 @@ window.__ModuleLoader__.load({
 							onOpenCall,
 							t
 						}),
-						(0, react_jsx_runtime.jsx)(MessageImages, {
+						(0, react_jsx_runtime.jsx)(RecordAttachments, {
 							blocks: record.cell.sourceBlocks,
 							preview,
-							renderImages
+							renderImages,
+							t
 						})
 					]
 				});
 			}
 			const source = markdownSource(record);
-			const hasImages = record.cell.sourceBlocks?.some((block) => block.attachment !== void 0) === true;
+			const hasAttachments = record.cell.sourceBlocks?.some((block) => block.attachment !== void 0 || block.file !== void 0) === true;
 			const hasToolCalls = record.cell.kind === "message" && record.cell.sourceBlocks?.some((block) => block.type === "tool-call") === true;
-			if (!source && !hasImages && !hasToolCalls) {
+			if (!source && !hasAttachments && !hasToolCalls) {
 				const emptyLabel = isToolCallOnly(record.cell, t) ? t("record.toolCallOnly") : record.cell.text || t("record.noContent");
 				return (0, react_jsx_runtime.jsx)("p", {
 					className: TrajectoryTable_module_css_default.noPayload,
 					children: emptyLabel
 				});
 			}
-			if (!rendered || !hasImages && !hasToolCalls) return (0, react_jsx_runtime.jsx)(MarkdownFragment, {
+			if (!rendered || !hasAttachments && !hasToolCalls) return (0, react_jsx_runtime.jsx)(MarkdownFragment, {
 				text: source ?? "",
 				rendered,
 				preview,
@@ -4780,14 +5738,15 @@ window.__ModuleLoader__.load({
 					onOpenCall,
 					t
 				}),
-				(0, react_jsx_runtime.jsx)(MessageImages, {
+				(0, react_jsx_runtime.jsx)(RecordAttachments, {
 					blocks: record.cell.sourceBlocks,
 					preview,
-					renderImages
+					renderImages,
+					t
 				})
 			] });
 		}
-		function RecordTiming({ record, t }) {
+		function RecordTiming({ record, preview = false, t }) {
 			return record.cell.kind === "message" && record.cell.assistantMetrics !== void 0 ? (0, react_jsx_runtime.jsx)(AssistantTimingPanel, {
 				metrics: record.cell.assistantMetrics,
 				t
@@ -4799,13 +5758,14 @@ window.__ModuleLoader__.load({
 						t
 					})] }),
 					(0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.duration") }), (0, react_jsx_runtime.jsx)("dd", { children: formatElapsedSeconds(record.cell.timeSeconds, t) })] }),
-					(0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.source") }), (0, react_jsx_runtime.jsx)("dd", { children: record.cell.timeSeconds === null ? t("timing.notAvailable") : t("timing.sessionTimestamps") })] })
+					!preview && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.source") }), (0, react_jsx_runtime.jsx)("dd", { children: record.cell.timeSeconds === null ? t("timing.notAvailable") : t("timing.sessionTimestamps") })] })
 				]
 			});
 		}
-		function RequestTiming({ assistant, anchor, request, t }) {
+		function RequestTiming({ assistant, anchor, request, preview = false, t }) {
 			if (assistant !== void 0) return (0, react_jsx_runtime.jsx)(RecordTiming, {
 				record: assistant,
+				preview,
 				t
 			});
 			if (request?.startedAt !== void 0) {
@@ -4818,7 +5778,7 @@ window.__ModuleLoader__.load({
 							t
 						})] }),
 						(0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.duration") }), (0, react_jsx_runtime.jsx)("dd", { children: formatElapsedSeconds(duration, t) })] }),
-						(0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.source") }), (0, react_jsx_runtime.jsx)("dd", { children: duration === null ? t("timing.sessionTimestampsRunning") : t("timing.sessionTimestamps") })] })
+						!preview && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.source") }), (0, react_jsx_runtime.jsx)("dd", { children: duration === null ? t("timing.sessionTimestampsRunning") : t("timing.sessionTimestamps") })] })
 					]
 				});
 			}
@@ -4830,7 +5790,7 @@ window.__ModuleLoader__.load({
 				})] }), (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.duration") }), (0, react_jsx_runtime.jsx)("dd", { children: formatElapsedSeconds(null, t) })] })]
 			});
 		}
-		function RecordPayload({ record, direction, preview = false, renderImages, t }) {
+		function RecordPayload({ record, direction, preview = false, renderImages, stringWrapping, t }) {
 			const value = direction === "input" ? record.cell.inputDetail : record.cell.outputDetail;
 			const missing = direction === "input" ? t("record.noPayload") : t("record.noResult");
 			if (!value) return (0, react_jsx_runtime.jsx)("p", {
@@ -4843,6 +5803,8 @@ window.__ModuleLoader__.load({
 			const json = parseJsonContainer(value);
 			if (direction === "output" && record.cell.outputBlocks?.length === 1 && record.cell.outputBlocks[0]?.type === "text" && json !== void 0) return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
 				data: json,
+				stringWrapping,
+				collapsedStringLines: preview ? 3 : 12,
 				label: t("record.resultJson"),
 				labels: jsonTreeLabels(t),
 				className: payloadClassName
@@ -4863,6 +5825,8 @@ window.__ModuleLoader__.load({
 			});
 			if (json !== void 0) return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
 				data: json,
+				stringWrapping,
+				collapsedStringLines: preview ? 3 : 12,
 				label: t(direction === "input" ? "record.payloadJson" : "record.outputJson"),
 				labels: jsonTreeLabels(t),
 				className: payloadClassName
@@ -4877,7 +5841,7 @@ window.__ModuleLoader__.load({
 				children: value
 			});
 		}
-		function RecordSchema({ record, preview = false, t }) {
+		function RecordSchema({ record, preview = false, stringWrapping, t }) {
 			if (!record.cell.schemaDetail) return (0, react_jsx_runtime.jsx)("p", {
 				className: TrajectoryTable_module_css_default.noPayload,
 				children: t("record.schemaUnavailable")
@@ -4901,6 +5865,8 @@ window.__ModuleLoader__.load({
 						children: t("record.parameters")
 					}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
 						data: schema.parameters,
+						stringWrapping,
+						collapsedStringLines: preview ? 3 : 12,
 						label: t("record.namedParametersJson", { name: schema.name }),
 						labels: jsonTreeLabels(t),
 						className: TrajectoryTable_module_css_default.schemaTree
@@ -4935,23 +5901,200 @@ window.__ModuleLoader__.load({
 				return;
 			}
 		}
-		function OverviewSection({ label, onOpen, children }) {
+		function InspectorCopyButton({ text, label, t }) {
+			const [state, setState] = (0, react.useState)("idle");
+			(0, react.useEffect)(() => {
+				if (state === "idle") return;
+				const timer = setTimeout(() => {
+					setState("idle");
+				}, 1500);
+				return () => {
+					clearTimeout(timer);
+				};
+			}, [state]);
+			const title = state === "idle" ? label : t(state === "copied" ? "copied" : "copy.failed");
+			return (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				className: TrajectoryTable_module_css_default.programAction,
+				"data-state": state,
+				"aria-label": title,
+				title,
+				onClick: () => {
+					(0, _deepseek_ai_dsh_client_ui_primitives.writeClipboard)(text).then((ok) => {
+						setState(ok ? "copied" : "failed");
+					});
+				},
+				children: state === "copied" ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 12 }) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCopyOutlineRegular, { size: 12 })
+			});
+		}
+		function ProgramInput({ program, initialWrapped, stringWrapping, onOpen, t }) {
+			const contentsId = (0, react.useId)();
+			const [wrapped, setWrapped] = (0, react.useState)(initialWrapped);
+			const [showJson, setShowJson] = (0, react.useState)(false);
+			const actions = (0, react_jsx_runtime.jsxs)("span", {
+				className: TrajectoryTable_module_css_default.programActions,
+				children: [
+					!showJson && program.language !== void 0 && (0, react_jsx_runtime.jsx)("span", {
+						className: TrajectoryTable_module_css_default.programLanguage,
+						children: program.language
+					}),
+					!showJson && (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: TrajectoryTable_module_css_default.programAction,
+						"aria-label": t("record.wrapLines"),
+						title: t("record.wrapLines"),
+						"aria-pressed": wrapped,
+						"aria-controls": contentsId,
+						onClick: () => {
+							const next = !wrapped;
+							setWrapped(next);
+							stringWrapping?.setDefault(next);
+						},
+						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconWrapLinesOutlineRegular, { size: 12 })
+					}),
+					onOpen === void 0 && (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: TrajectoryTable_module_css_default.programAction,
+						"aria-label": t("code.originalJson"),
+						title: t("code.originalJson"),
+						"aria-pressed": showJson,
+						"aria-controls": contentsId,
+						onClick: () => {
+							setShowJson((value) => !value);
+						},
+						children: (0, react_jsx_runtime.jsxs)("svg", {
+							width: "12",
+							height: "12",
+							viewBox: "0 0 16 16",
+							fill: "none",
+							stroke: "currentColor",
+							strokeWidth: "1.5",
+							strokeLinecap: "round",
+							strokeLinejoin: "round",
+							"aria-hidden": "true",
+							children: [(0, react_jsx_runtime.jsx)("path", { d: "M6 2H5a2 2 0 0 0-2 2v2a2 2 0 0 1-2 2 2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h1" }), (0, react_jsx_runtime.jsx)("path", { d: "M10 2h1a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0-2 2v2a2 2 0 0 1-2 2h-1" })]
+						})
+					}),
+					(0, react_jsx_runtime.jsx)(InspectorCopyButton, {
+						text: showJson ? program.rawInput : program.source,
+						label: t(showJson ? "copy.json" : "code.copySource"),
+						t
+					})
+				]
+			});
+			const body = (0, react_jsx_runtime.jsx)("div", {
+				id: contentsId,
+				className: TrajectoryTable_module_css_default.programContent,
+				"data-wrap": wrapped,
+				children: showJson ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
+					data: program.arguments,
+					label: t("record.parametersJson"),
+					labels: jsonTreeLabels(t),
+					stringWrapping
+				}) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.CodeBlock, {
+					code: program.source,
+					lang: program.language,
+					lineNumbers: true,
+					showHeader: false,
+					className: TrajectoryTable_module_css_default.programSource,
+					copyLabel: t("code.copySource"),
+					copiedLabel: t("copied")
+				})
+			});
+			return onOpen === void 0 ? (0, react_jsx_runtime.jsxs)("section", {
+				className: TrajectoryTable_module_css_default.programPanel,
+				children: [(0, react_jsx_runtime.jsxs)("header", {
+					className: TrajectoryTable_module_css_default.overviewHeading,
+					children: [(0, react_jsx_runtime.jsx)("span", { children: t("code.source") }), actions]
+				}), body]
+			}) : (0, react_jsx_runtime.jsx)(OverviewSection, {
+				label: t("code.source"),
+				onOpen,
+				actions,
+				children: body
+			});
+		}
+		function ProgramOutput({ record, stringWrapping, onOpen, t }) {
+			const output = record.cell.outputDetail;
+			const json = output === void 0 || record.cell.isError === true ? void 0 : parseJsonContainer(output);
+			const actions = output === void 0 ? void 0 : (0, react_jsx_runtime.jsx)("span", {
+				className: TrajectoryTable_module_css_default.programActions,
+				children: (0, react_jsx_runtime.jsx)(InspectorCopyButton, {
+					text: output,
+					label: t("code.copyOutput"),
+					t
+				})
+			});
+			const body = (0, react_jsx_runtime.jsx)("div", {
+				className: TrajectoryTable_module_css_default.programContent,
+				children: output === void 0 || output === "" ? (0, react_jsx_runtime.jsx)("p", {
+					className: TrajectoryTable_module_css_default.noPayload,
+					children: t(stateOf(record) === "running" ? "code.running" : "record.noOutput")
+				}) : json !== void 0 ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.JsonTree, {
+					data: json,
+					label: t("record.outputJson"),
+					labels: jsonTreeLabels(t),
+					stringWrapping,
+					collapsedStringLines: onOpen === void 0 ? 12 : 3
+				}) : (0, react_jsx_runtime.jsx)("pre", {
+					className: `${TrajectoryTable_module_css_default.programOutput} ${record.cell.isError === true ? TrajectoryTable_module_css_default.programError : ""}`,
+					children: output
+				})
+			});
+			return onOpen === void 0 ? (0, react_jsx_runtime.jsxs)("section", {
+				className: TrajectoryTable_module_css_default.programPanel,
+				children: [(0, react_jsx_runtime.jsxs)("header", {
+					className: TrajectoryTable_module_css_default.overviewHeading,
+					children: [(0, react_jsx_runtime.jsx)("span", { children: t("code.output") }), actions]
+				}), body]
+			}) : (0, react_jsx_runtime.jsx)(OverviewSection, {
+				label: t("code.output"),
+				onOpen,
+				actions,
+				children: body
+			});
+		}
+		function OverviewSection({ label, onOpen, actions, children }) {
+			const previewRef = (0, react.useRef)(null);
+			const [hasMore, setHasMore] = (0, react.useState)(false);
+			const measureOverflow = (0, react.useCallback)((preview) => {
+				setHasMore(preview.scrollHeight - preview.clientHeight - preview.scrollTop > 1);
+			}, []);
+			(0, react.useLayoutEffect)(() => {
+				const preview = previewRef.current;
+				const measure = () => {
+					measureOverflow(preview);
+				};
+				measure();
+				if (typeof ResizeObserver === "undefined") return;
+				const observer = new ResizeObserver(measure);
+				observer.observe(preview);
+				for (const child of preview.children) observer.observe(child);
+				return () => {
+					observer.disconnect();
+				};
+			}, [children, measureOverflow]);
 			return (0, react_jsx_runtime.jsxs)("section", {
 				className: TrajectoryTable_module_css_default.overviewSection,
-				children: [(0, react_jsx_runtime.jsx)("h3", {
+				children: [(0, react_jsx_runtime.jsxs)("h3", {
 					className: TrajectoryTable_module_css_default.overviewHeading,
-					children: (0, react_jsx_runtime.jsxs)("button", {
+					children: [(0, react_jsx_runtime.jsxs)("button", {
 						type: "button",
 						className: TrajectoryTable_module_css_default.overviewTitle,
 						onClick: onOpen,
-						children: [(0, react_jsx_runtime.jsx)("span", { children: label }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
+						children: [(0, react_jsx_runtime.jsx)("span", { children: label }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
 							className: TrajectoryTable_module_css_default.overviewTitleIcon,
 							size: 12
 						})]
-					})
+					}), actions]
 				}), (0, react_jsx_runtime.jsx)("div", {
+					ref: previewRef,
 					className: `${TrajectoryTable_module_css_default.overviewPreview} ${TrajectoryTable_module_css_default.summaryScrollRegion}`,
 					"data-summary-scroll-region": "",
+					"data-scroll-more": hasMore || void 0,
+					onScroll: (event) => {
+						measureOverflow(event.currentTarget);
+					},
 					children
 				})]
 			});
@@ -4962,11 +6105,12 @@ window.__ModuleLoader__.load({
 		* @param props - Grouped trajectory data and whole-ledger fold state.
 		* @returns The ledger and an optional local record inspector.
 		*/
-		function TrajectoryTable({ t, renderImages, requestNumbers: sessionRequestNumbers, turns, streamingCells = [], timelineFocusIndexes = null, searchMatchIndexes = null, onSelectedIndexChange, onRecordSelect, recordSelection = null, recordFocus = null, historyLoading = false, olderHistoryLoading = false, historyStartSeq, hasOlderRecords = false, onLoadOlder, onClearSelection, collapsedTurns, onToggleTurn, collapsedAssistants, onToggleAssistant, inspectCallId = null, onInspectApplied }) {
+		function TrajectoryTable({ t, stringWrapping, renderImages, requestNumbers: sessionRequestNumbers, turns, streamingCells = [], timelineFocusIndexes = null, searchMatchIndexes = null, onSelectedIndexChange, onRecordSelect, recordSelection = null, recordFocus = null, historyLoading = false, olderHistoryLoading = false, historyStartSeq, hasOlderRecords = false, onLoadOlder, onClearSelection, collapsedTurns, onToggleTurn, collapsedAssistants, onToggleAssistant, inspectCallId = null, onInspectApplied }) {
 			const [selectedRecordId, setSelectedRecordId] = (0, react.useState)(null);
 			const [selectedRequest, setSelectedRequest] = (0, react.useState)(null);
 			const [activeTab, setActiveTab] = (0, react.useState)("overview");
-			const [thinkingExpanded, setThinkingExpanded] = (0, react.useState)(false);
+			const [codeWrappingOnOpen, setCodeWrappingOnOpen] = (0, react.useState)(false);
+			const [thinkingDisclosure, setThinkingDisclosure] = (0, react.useState)();
 			const [detailsWidth, setDetailsWidth] = (0, react.useState)(null);
 			const [toolRequestOffset, setToolRequestOffset] = (0, react.useState)(null);
 			const detailsResizeDrag = (0, react.useRef)(null);
@@ -4993,6 +6137,14 @@ window.__ModuleLoader__.load({
 			}, [streamingCellsByIndex]);
 			const selectedTemplate = (0, react.useMemo)(() => selectedRecordId === null ? void 0 : allRecords.find((record) => trajectoryRecordId(record.cell) === selectedRecordId), [allRecords, selectedRecordId]);
 			const selected = selectedTemplate === void 0 ? void 0 : currentRecord(selectedTemplate);
+			const selectedProgram = selected === void 0 ? void 0 : codeProgram(selected.cell);
+			const thinkingExpanded = thinkingDisclosure?.recordId === selectedRecordId ? thinkingDisclosure.expanded : selected?.cell.kind === "message" && Boolean(selected.cell.thinkingDetail?.trim());
+			const setThinkingExpanded = (expanded) => {
+				if (selectedRecordId !== null) setThinkingDisclosure({
+					recordId: selectedRecordId,
+					expanded
+				});
+			};
 			const selectedIndex = selected?.cell.index ?? null;
 			(0, react.useEffect)(() => {
 				onSelectedIndexChange?.(selectedIndex);
@@ -5032,7 +6184,8 @@ window.__ModuleLoader__.load({
 				anchorTo: "end",
 				overscan: VIRTUAL_OVERSCAN_ROWS,
 				scrollMargin: virtualScrollMargin,
-				scrollEndThreshold: BOTTOM_FOLLOW_THRESHOLD_PX
+				scrollEndThreshold: BOTTOM_FOLLOW_THRESHOLD_PX,
+				followOnAppend: "auto"
 			});
 			const virtualIndexByRecordId = (0, react.useMemo)(() => {
 				const indexes = /* @__PURE__ */ new Map();
@@ -5058,7 +6211,8 @@ window.__ModuleLoader__.load({
 			const requestBoundaryRuns = (0, react.useMemo)(() => indexRequestBoundaryRuns(records, requestGroups), [records, requestGroups]);
 			const selectedPrompt = selected?.cell.kind === "system" ? selected.cell.promptDetail : void 0;
 			const selectedPreviousPrompt = selected?.cell.kind === "system" ? selected.cell.previousPromptDetail : void 0;
-			const promptSelected = selectedPrompt !== void 0;
+			const selectedSystemPrompt = selectedPrompt?.system ?? selected?.cell.systemPromptDetail;
+			const promptSelected = selectedSystemPrompt !== void 0;
 			const selectedState = selected === void 0 ? void 0 : stateOf(selected);
 			const selectedRequestInfo = selectedRequest === null ? void 0 : sessionRequestNumbers?.find((request) => requestIdentity(request) === selectedRequest.identity);
 			const selectedRequestRecords = (0, react.useMemo)(() => selectedRequestInfo === void 0 ? [] : allRecords.filter((record) => record.turn === selectedRequestInfo.turn && record.group === selectedRequestInfo.group), [allRecords, selectedRequestInfo]).map(currentRecord);
@@ -5091,6 +6245,7 @@ window.__ModuleLoader__.load({
 			const hasSelectedHierarchy = selectedAssistantRequestTarget !== void 0 || selectedParents.message !== void 0 || selectedParents.tool !== void 0;
 			const splitStyle = toolRequestOffset === null ? void 0 : { "--trajectory-tool-request-width": `calc(58cqw - ${toolRequestOffset}px)` };
 			const activateTab = (tab) => {
+				setCodeWrappingOnOpen(stringWrapping?.getDefault() ?? false);
 				tabHistory.current.delete(tab);
 				tabHistory.current.add(tab);
 				setActiveTab(tab);
@@ -5104,6 +6259,7 @@ window.__ModuleLoader__.load({
 				onClearSelection?.();
 			};
 			const selectRecord = (0, react.useCallback)((index) => {
+				setCodeWrappingOnOpen(stringWrapping?.getDefault() ?? false);
 				const record = allRecords.find((candidate) => candidate.cell.index === index);
 				onRecordSelect?.(index);
 				setSelectedRequest(null);
@@ -5112,7 +6268,11 @@ window.__ModuleLoader__.load({
 				const tabs = detailTabs(record);
 				const available = new Set(tabs.map((tab) => tab.id));
 				setActiveTab([...tabHistory.current].reverse().find((tab) => available.has(tab)) ?? tabs[0]?.id ?? "overview");
-			}, [allRecords, onRecordSelect]);
+			}, [
+				allRecords,
+				onRecordSelect,
+				stringWrapping
+			]);
 			(0, react.useEffect)(() => {
 				if (recordSelection === null || appliedRecordSelection.current === recordSelection) return;
 				appliedRecordSelection.current = recordSelection;
@@ -5289,8 +6449,7 @@ window.__ModuleLoader__.load({
 					return;
 				}
 				if (!followsTableTail.current) return;
-				if (virtualizationEnabled) rowVirtualizer.scrollToEnd({ behavior: "auto" });
-				else pane.scrollTop = pane.scrollHeight;
+				if (!virtualizationEnabled) pane.scrollTop = pane.scrollHeight;
 			}, [
 				historyLoading,
 				historyStartSeq,
@@ -5323,10 +6482,7 @@ window.__ModuleLoader__.load({
 						"aria-live": "polite",
 						children: (0, react_jsx_runtime.jsxs)("span", {
 							className: TrajectoryTable_module_css_default.historyLoadingBar,
-							children: [(0, react_jsx_runtime.jsx)("span", {
-								className: TrajectoryTable_module_css_default.historyLoadingSpinner,
-								"aria-hidden": "true"
-							}), t("history.loadingTrajectory")]
+							children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "ongoing" }), t("history.loadingTrajectory")]
 						})
 					}), (0, react_jsx_runtime.jsxs)("table", {
 						className: TrajectoryTable_module_css_default.table,
@@ -5349,10 +6505,7 @@ window.__ModuleLoader__.load({
 											if (pane !== null) requestOlder(pane, false);
 										},
 										children: [
-											olderBusy && (0, react_jsx_runtime.jsx)("span", {
-												className: TrajectoryTable_module_css_default.historyLoadingSpinner,
-												"aria-hidden": "true"
-											}),
+											olderBusy && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "ongoing" }),
 											(0, react_jsx_runtime.jsx)("span", {
 												"aria-hidden": "true",
 												children: olderBusy ? t("history.loadingEarlier") : t("history.loadEarlier")
@@ -5392,8 +6545,9 @@ window.__ModuleLoader__.load({
 									const requestLabel = request === void 0 ? void 0 : t(requestInfo?.purpose === "compaction" ? "request.labelCompaction" : "request.label", { request });
 									const requestSelected = requestInfo !== void 0 && selectedRequest?.identity === requestIdentity(requestInfo);
 									const sectionActive = record.turn === null ? activeSection === record.section : activeTurn === record.turn;
+									const singleToolNotice = record.cell.kind === "context" && record.cell.sourceBlocks?.length === 1 && record.cell.sourceBlocks.every((block) => block.type === "tool-addition" || block.type === "tool-removal");
 									return (0, react_jsx_runtime.jsxs)("tr", {
-										tabIndex: isRequestOnly ? -1 : 0,
+										tabIndex: isRequestOnly || singleToolNotice ? -1 : 0,
 										"aria-rowindex": position + 1 + historyRowOffset,
 										"aria-label": isCollapsedSummary ? t("request.collapsedSummary", {
 											kind: t(record.collapsedSummaryKind === "turn" ? "request.collapsedTurn" : "request.collapsedAssistant"),
@@ -5418,14 +6572,14 @@ window.__ModuleLoader__.load({
 										"data-collapsed-summary": record.collapsedSummaryKind,
 										"data-selected": !isCollapsedSummary && selectedIndex === record.cell.index || void 0,
 										"data-timeline-focus": isCollapsedSummary || timelineFocusIndexes === null ? void 0 : timelineFocusIndexes.has(record.cell.index) ? "inside" : "outside",
-										onClick: isRequestOnly ? void 0 : isCollapsedSummary ? () => {
+										onClick: isRequestOnly || singleToolNotice ? void 0 : isCollapsedSummary ? () => {
 											if (record.collapsedSummaryKind === "turn" && record.turn !== null) onToggleTurn(record.turn);
 											else onToggleAssistant(trajectoryRecordId(record.cell));
 										} : () => {
 											selectRecord(record.cell.index);
 										},
 										onDoubleClick: (event) => {
-											if (isCollapsedSummary || isRequestOnly) return;
+											if (isCollapsedSummary || isRequestOnly || singleToolNotice) return;
 											if (record.turn !== null && collapsedTurns.has(record.turn)) {
 												event.preventDefault();
 												onToggleTurn(record.turn);
@@ -5443,7 +6597,7 @@ window.__ModuleLoader__.load({
 											onToggleTurn(record.turn);
 										},
 										onKeyDown: (event) => {
-											if (isRequestOnly) return;
+											if (isRequestOnly || singleToolNotice) return;
 											if (event.key !== "Enter" && event.key !== " ") return;
 											event.preventDefault();
 											if (isCollapsedSummary) {
@@ -5691,7 +6845,7 @@ window.__ModuleLoader__.load({
 						}),
 						(0, react_jsx_runtime.jsxs)("div", {
 							id: "trajectory-detail-panel",
-							className: activeTab === "overview" ? `${TrajectoryTable_module_css_default.detailBody} ${TrajectoryTable_module_css_default.detailBodySummary}` : TrajectoryTable_module_css_default.detailBody,
+							className: activeTab === "overview" ? `${TrajectoryTable_module_css_default.detailBody} ${TrajectoryTable_module_css_default.detailBodySummary}` : selectedProgram !== void 0 && (activeTab === "input" || activeTab === "output") ? `${TrajectoryTable_module_css_default.detailBody} ${TrajectoryTable_module_css_default.detailBodyProgram}` : TrajectoryTable_module_css_default.detailBody,
 							role: "tabpanel",
 							"aria-labelledby": `trajectory-detail-${activeTab}`,
 							children: [
@@ -5729,7 +6883,7 @@ window.__ModuleLoader__.load({
 												onClick: () => {
 													openRecordSummary(selectedRequestResult);
 												},
-												children: [(0, react_jsx_runtime.jsx)("span", { children: selectedRequestInfo.purpose === "compaction" ? t("details.compacted") : t("details.assistantMessage") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
+												children: [(0, react_jsx_runtime.jsx)("span", { children: selectedRequestInfo.purpose === "compaction" ? t("details.compacted") : t("details.assistantMessage") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
 													className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
 													size: 11
 												})]
@@ -5747,6 +6901,7 @@ window.__ModuleLoader__.load({
 											children: (0, react_jsx_runtime.jsx)(RequestOptions, {
 												options: selectedRequestOptions,
 												preview: true,
+												stringWrapping,
 												t
 											})
 										}),
@@ -5769,6 +6924,7 @@ window.__ModuleLoader__.load({
 												assistant: selectedRequestAssistant,
 												anchor: selectedRequestAnchor,
 												request: selectedRequestInfo,
+												preview: true,
 												t
 											})
 										})
@@ -5776,6 +6932,7 @@ window.__ModuleLoader__.load({
 								})] }),
 								selectedRequestInfo !== void 0 && activeTab === "options" && (0, react_jsx_runtime.jsx)(RequestOptions, {
 									options: selectedRequestOptions,
+									stringWrapping,
 									t
 								}),
 								selectedRequestInfo !== void 0 && activeTab === "usage" && (0, react_jsx_runtime.jsx)(RequestUsagePanel, {
@@ -5789,23 +6946,24 @@ window.__ModuleLoader__.load({
 									request: selectedRequestInfo,
 									t
 								}),
-								promptSelected && selectedPreviousPrompt !== void 0 && activeTab === "diff" && (0, react_jsx_runtime.jsx)(SystemPromptDiff, {
+								selectedPrompt !== void 0 && selectedPreviousPrompt !== void 0 && activeTab === "diff" && (0, react_jsx_runtime.jsx)(SystemPromptDiff, {
 									before: selectedPreviousPrompt,
 									after: selectedPrompt,
 									t
 								}),
-								promptSelected && activeTab === "system-prompt" && (selectedPrompt.system === "" ? (0, react_jsx_runtime.jsx)("p", {
+								promptSelected && activeTab === "system-prompt" && (selectedSystemPrompt === "" ? (0, react_jsx_runtime.jsx)("p", {
 									className: TrajectoryTable_module_css_default.noPayload,
 									children: t("record.systemPromptMissing")
 								}) : (0, react_jsx_runtime.jsx)("div", {
 									className: `${TrajectoryTable_module_css_default.markdownPayload} ${TrajectoryTable_module_css_default.systemPrompt}`,
 									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {
-										text: selectedPrompt.system,
+										text: selectedSystemPrompt,
 										labels: markdownLabels(t)
 									})
 								})),
-								promptSelected && activeTab === "tools" && (0, react_jsx_runtime.jsx)(ToolCatalog, {
+								selectedPrompt !== void 0 && activeTab === "tools" && (0, react_jsx_runtime.jsx)(ToolCatalog, {
 									tools: selectedPrompt.tools,
+									stringWrapping,
 									t
 								}),
 								!promptSelected && selected?.cell.kind === "compacted" && selectedState !== void 0 && activeTab === "overview" && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("dl", {
@@ -5832,151 +6990,178 @@ window.__ModuleLoader__.load({
 										t
 									})
 								})] }),
-								!promptSelected && selected !== void 0 && selected.cell.kind !== "compacted" && selectedState !== void 0 && activeTab === "overview" && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("dl", {
-									className: `${TrajectoryTable_module_css_default.overview} ${TrajectoryTable_module_css_default.summaryScrollRegion}`,
-									"data-summary-scroll-region": "",
-									children: [
-										selected.cell.messageSource !== void 0 && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("details.source") }), (0, react_jsx_runtime.jsx)("dd", {
-											className: TrajectoryTable_module_css_default.overviewParentLinks,
-											children: (0, react_jsx_runtime.jsxs)("button", {
-												type: "button",
-												className: TrajectoryTable_module_css_default.overviewHierarchyNavLink,
-												onClick: () => {
-													activateTab("source");
-												},
-												children: [(0, react_jsx_runtime.jsx)("span", { children: messageSourceLabel(selected.cell.messageSource, t) }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
-													className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
-													size: 11
-												})]
-											})
-										})] }),
-										hasSelectedHierarchy && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: selectedAssistantRequestTarget !== void 0 ? t("details.source") : t("details.hierarchy") }), (0, react_jsx_runtime.jsxs)("dd", {
-											className: TrajectoryTable_module_css_default.overviewParentLinks,
-											children: [
-												selectedAssistantRequestTarget !== void 0 && (0, react_jsx_runtime.jsxs)("button", {
+								!promptSelected && selected !== void 0 && selected.cell.kind !== "compacted" && selectedState !== void 0 && activeTab === "overview" && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+									selectedProgram !== void 0 && selectedProgram.description !== "" && (0, react_jsx_runtime.jsx)("p", {
+										className: TrajectoryTable_module_css_default.programDescription,
+										children: selectedProgram.description
+									}),
+									(0, react_jsx_runtime.jsxs)("dl", {
+										className: `${TrajectoryTable_module_css_default.overview} ${TrajectoryTable_module_css_default.summaryScrollRegion}`,
+										"data-summary-scroll-region": "",
+										children: [
+											selected.cell.messageSource !== void 0 && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("details.source") }), (0, react_jsx_runtime.jsx)("dd", {
+												className: TrajectoryTable_module_css_default.overviewParentLinks,
+												children: (0, react_jsx_runtime.jsxs)("button", {
 													type: "button",
 													className: TrajectoryTable_module_css_default.overviewHierarchyNavLink,
 													onClick: () => {
-														selectRequest(selectedAssistantRequestTarget);
+														activateTab("source");
 													},
-													children: [(0, react_jsx_runtime.jsx)("span", { children: t("request.label", { request: selectedAssistantRequest ?? "—" }) }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
-														className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
-														size: 11
-													})]
-												}),
-												selectedParentMessage !== void 0 && (0, react_jsx_runtime.jsxs)("button", {
-													type: "button",
-													className: TrajectoryTable_module_css_default.overviewHierarchyNavLink,
-													onClick: () => {
-														openRecordSummary(selectedParentMessage);
-													},
-													children: [(0, react_jsx_runtime.jsx)("span", { children: t("details.assistantMessage") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
-														className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
-														size: 11
-													})]
-												}),
-												selectedParentTool !== void 0 && (0, react_jsx_runtime.jsxs)("button", {
-													type: "button",
-													className: TrajectoryTable_module_css_default.overviewHierarchyNavLink,
-													onClick: () => {
-														openRecordSummary(selectedParentTool);
-													},
-													children: [(0, react_jsx_runtime.jsx)("span", { children: t("details.toolCall") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {
+													children: [(0, react_jsx_runtime.jsx)("span", { children: messageSourceLabel(selected.cell.messageSource, t) }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
 														className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
 														size: 11
 													})]
 												})
-											]
-										})] }),
-										(0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("details.status") }), (0, react_jsx_runtime.jsx)("dd", {
-											className: selectedState === "error" ? TrajectoryTable_module_css_default.error : void 0,
-											children: statusLabel(selectedState, t)
-										})] }),
-										selected.cell.kind === "message" && (0, react_jsx_runtime.jsx)(TokenRows, {
-											cell: selected.cell,
-											t
-										}),
-										(selected.cell.kind === "user" || selected.cell.kind === "context") && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.duration") }), (0, react_jsx_runtime.jsx)("dd", { children: formatElapsedSeconds(selected.cell.timeSeconds, t) })] })
-									]
-								}), (0, react_jsx_runtime.jsxs)("div", {
-									className: TrajectoryTable_module_css_default.overviewSections,
-									children: [
-										isMarkdownRecord(selected) ? (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: (0, react_jsx_runtime.jsx)(OverviewSection, {
-											label: t("tab.preview"),
-											onOpen: () => {
-												activateTab("rendered");
-											},
-											children: (0, react_jsx_runtime.jsx)(MarkdownRecordContent, {
-												record: selected,
-												renderImages,
-												rendered: true,
-												preview: true,
-												thinkingExpanded,
-												onThinkingExpandedChange: setThinkingExpanded,
-												onOpenCall: openCallSummary,
+											})] }),
+											hasSelectedHierarchy && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: selectedAssistantRequestTarget !== void 0 ? t("details.source") : t("details.hierarchy") }), (0, react_jsx_runtime.jsxs)("dd", {
+												className: TrajectoryTable_module_css_default.overviewParentLinks,
+												children: [
+													selectedAssistantRequestTarget !== void 0 && (0, react_jsx_runtime.jsxs)("button", {
+														type: "button",
+														className: TrajectoryTable_module_css_default.overviewHierarchyNavLink,
+														onClick: () => {
+															selectRequest(selectedAssistantRequestTarget);
+														},
+														children: [(0, react_jsx_runtime.jsx)("span", { children: t("request.label", { request: selectedAssistantRequest ?? "—" }) }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
+															className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
+															size: 11
+														})]
+													}),
+													selectedParentMessage !== void 0 && (0, react_jsx_runtime.jsxs)("button", {
+														type: "button",
+														className: TrajectoryTable_module_css_default.overviewHierarchyNavLink,
+														onClick: () => {
+															openRecordSummary(selectedParentMessage);
+														},
+														children: [(0, react_jsx_runtime.jsx)("span", { children: t("details.assistantMessage") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
+															className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
+															size: 11
+														})]
+													}),
+													selectedParentTool !== void 0 && (0, react_jsx_runtime.jsxs)("button", {
+														type: "button",
+														className: TrajectoryTable_module_css_default.overviewHierarchyNavLink,
+														onClick: () => {
+															openRecordSummary(selectedParentTool);
+														},
+														children: [(0, react_jsx_runtime.jsx)("span", { children: t("details.toolCall") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutlineRegular, {
+															className: TrajectoryTable_module_css_default.overviewHierarchyJumpIconTight,
+															size: 11
+														})]
+													})
+												]
+											})] }),
+											(0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("details.status") }), (0, react_jsx_runtime.jsx)("dd", {
+												className: selectedState === "error" ? TrajectoryTable_module_css_default.error : void 0,
+												children: statusLabel(selectedState, t)
+											})] }),
+											selected.cell.kind === "message" && (0, react_jsx_runtime.jsx)(TokenRows, {
+												cell: selected.cell,
 												t
-											})
-										}) }) : (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-											selected.cell.inputDetail && (0, react_jsx_runtime.jsx)(OverviewSection, {
-												label: t("tab.payload"),
+											}),
+											(selected.cell.kind === "user" || selected.cell.kind === "context") && (0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("dt", { children: t("timing.duration") }), (0, react_jsx_runtime.jsx)("dd", { children: formatElapsedSeconds(selected.cell.timeSeconds, t) })] })
+										]
+									}),
+									(0, react_jsx_runtime.jsxs)("div", {
+										className: TrajectoryTable_module_css_default.overviewSections,
+										children: [
+											selectedProgram !== void 0 ? (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(ProgramInput, {
+												program: selectedProgram,
+												initialWrapped: codeWrappingOnOpen,
+												stringWrapping,
 												onOpen: () => {
 													activateTab("input");
 												},
-												children: (0, react_jsx_runtime.jsx)(RecordPayload, {
-													record: selected,
-													direction: "input",
-													preview: true,
-													renderImages,
-													t
-												})
-											}),
-											selected.cell.outputDetail && (0, react_jsx_runtime.jsx)(OverviewSection, {
-												label: t("tab.result"),
+												t
+											}, `preview:${selectedRecordId}`), (0, react_jsx_runtime.jsx)(ProgramOutput, {
+												record: selected,
+												stringWrapping,
 												onOpen: () => {
 													activateTab("output");
 												},
-												children: (0, react_jsx_runtime.jsx)(RecordPayload, {
+												t
+											})] }) : isMarkdownRecord(selected) ? (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: (0, react_jsx_runtime.jsx)(OverviewSection, {
+												label: t("tab.preview"),
+												onOpen: () => {
+													activateTab("rendered");
+												},
+												children: (0, react_jsx_runtime.jsx)(MarkdownRecordContent, {
 													record: selected,
-													direction: "output",
-													preview: true,
 													renderImages,
+													rendered: true,
+													preview: true,
+													thinkingExpanded,
+													onThinkingExpandedChange: setThinkingExpanded,
+													onOpenCall: openCallSummary,
+													t
+												})
+											}) }) : (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+												selected.cell.inputDetail && (0, react_jsx_runtime.jsx)(OverviewSection, {
+													label: t("tab.payload"),
+													onOpen: () => {
+														activateTab("input");
+													},
+													children: (0, react_jsx_runtime.jsx)(RecordPayload, {
+														record: selected,
+														direction: "input",
+														preview: true,
+														renderImages,
+														stringWrapping,
+														t
+													})
+												}),
+												selected.cell.outputDetail && (0, react_jsx_runtime.jsx)(OverviewSection, {
+													label: t("tab.result"),
+													onOpen: () => {
+														activateTab("output");
+													},
+													children: (0, react_jsx_runtime.jsx)(RecordPayload, {
+														record: selected,
+														direction: "output",
+														preview: true,
+														renderImages,
+														stringWrapping,
+														t
+													})
+												}),
+												(0, react_jsx_runtime.jsx)(OverviewSection, {
+													label: t("tab.schema"),
+													onOpen: () => {
+														activateTab("schema");
+													},
+													children: (0, react_jsx_runtime.jsx)(RecordSchema, {
+														record: selected,
+														preview: true,
+														stringWrapping,
+														t
+													})
+												})
+											] }),
+											selectedAssistantRequestTarget !== void 0 && (0, react_jsx_runtime.jsx)(OverviewSection, {
+												label: t("timing.request"),
+												onOpen: () => {
+													selectRequest(selectedAssistantRequestTarget, "timing");
+												},
+												children: (0, react_jsx_runtime.jsx)(RecordTiming, {
+													record: selected,
+													preview: true,
 													t
 												})
 											}),
-											(0, react_jsx_runtime.jsx)(OverviewSection, {
-												label: t("tab.schema"),
+											(selected.cell.kind === "tool" || selected.cell.kind === "subtool") && (0, react_jsx_runtime.jsx)(OverviewSection, {
+												label: t("tab.timing"),
 												onOpen: () => {
-													activateTab("schema");
+													activateTab("timing");
 												},
-												children: (0, react_jsx_runtime.jsx)(RecordSchema, {
+												children: (0, react_jsx_runtime.jsx)(RecordTiming, {
 													record: selected,
 													preview: true,
 													t
 												})
 											})
-										] }),
-										selectedAssistantRequestTarget !== void 0 && (0, react_jsx_runtime.jsx)(OverviewSection, {
-											label: t("timing.request"),
-											onOpen: () => {
-												selectRequest(selectedAssistantRequestTarget, "timing");
-											},
-											children: (0, react_jsx_runtime.jsx)(RecordTiming, {
-												record: selected,
-												t
-											})
-										}),
-										(selected.cell.kind === "tool" || selected.cell.kind === "subtool") && (0, react_jsx_runtime.jsx)(OverviewSection, {
-											label: t("tab.timing"),
-											onOpen: () => {
-												activateTab("timing");
-											},
-											children: (0, react_jsx_runtime.jsx)(RecordTiming, {
-												record: selected,
-												t
-											})
-										})
-									]
-								})] }),
+										]
+									})
+								] }),
 								!promptSelected && selected !== void 0 && activeTab === "rendered" && (0, react_jsx_runtime.jsx)(MarkdownRecordContent, {
 									record: selected,
 									renderImages,
@@ -5997,22 +7182,35 @@ window.__ModuleLoader__.load({
 								}),
 								!promptSelected && selected !== void 0 && activeTab === "source" && (0, react_jsx_runtime.jsx)(MessageSource, {
 									record: selected,
+									stringWrapping,
 									t
 								}),
-								!promptSelected && selected !== void 0 && activeTab === "input" && (0, react_jsx_runtime.jsx)(RecordPayload, {
+								!promptSelected && selected !== void 0 && activeTab === "input" && (selectedProgram === void 0 ? (0, react_jsx_runtime.jsx)(RecordPayload, {
 									record: selected,
 									direction: "input",
 									renderImages,
+									stringWrapping,
 									t
-								}),
-								!promptSelected && selected !== void 0 && activeTab === "output" && (0, react_jsx_runtime.jsx)(RecordPayload, {
+								}) : (0, react_jsx_runtime.jsx)(ProgramInput, {
+									program: selectedProgram,
+									initialWrapped: codeWrappingOnOpen,
+									stringWrapping,
+									t
+								}, `input:${selectedRecordId}`)),
+								!promptSelected && selected !== void 0 && activeTab === "output" && (selectedProgram === void 0 ? (0, react_jsx_runtime.jsx)(RecordPayload, {
 									record: selected,
 									direction: "output",
 									renderImages,
+									stringWrapping,
 									t
-								}),
+								}) : (0, react_jsx_runtime.jsx)(ProgramOutput, {
+									record: selected,
+									stringWrapping,
+									t
+								})),
 								!promptSelected && selected !== void 0 && activeTab === "schema" && (0, react_jsx_runtime.jsx)(RecordSchema, {
 									record: selected,
+									stringWrapping,
 									t
 								}),
 								!promptSelected && selected !== void 0 && activeTab === "timing" && (0, react_jsx_runtime.jsx)(RecordTiming, {
@@ -6026,8 +7224,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-trajectory\src\client\TrajectoryToolbar.module.css.mjs
-		const css$2 = ".dtuyRG_root{z-index:4;box-sizing:border-box;width:100%;height:var(--dsh-trajectory-toolbar-height);border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);position:sticky;top:0}.dtuyRG_inner{box-sizing:border-box;align-items:center;gap:8px;width:100%;height:100%;padding:0 6px;display:flex}.dtuyRG_actions{flex:none;align-items:center;gap:2px;display:flex}.dtuyRG_toggle{height:20px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xxs-12);background:0 0;border:0;border-radius:3px;flex:none;align-items:center;gap:4px;padding:0 7px;display:inline-flex}.dtuyRG_toggle:hover,.dtuyRG_toggle[aria-pressed=true]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.dtuyRG_toggle:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:1px}.dtuyRG_toggleIcon{stroke:currentColor;stroke-width:1.25px;stroke-linecap:round;stroke-linejoin:round;flex:none;width:12px;height:12px}.dtuyRG_control{box-sizing:border-box;width:88px;height:20px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xxs-12);background:0 0;border:0;border-radius:0;flex:none;justify-content:center;align-items:center;gap:4px;padding:0 5px;display:inline-flex}.dtuyRG_control[hidden]{display:none}.dtuyRG_control:hover:not(:disabled),.dtuyRG_control[aria-checked=true],.dtuyRG_control[aria-pressed=true]{color:var(--dsw-alias-label-primary)}.dtuyRG_control:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:1px}.dtuyRG_control:disabled{color:var(--dsw-alias-label-dimmed);cursor:not-allowed}.dtuyRG_controlTrack{background:var(--dsw-alias-border-l2);width:20px;height:10px;transition:background-color .12s var(--ds-ease-in-out);border-radius:5px;flex:none;display:inline-block;position:relative}.dtuyRG_controlThumb{background:var(--dsw-alias-bg-layer-1);width:6px;height:6px;transition:transform .12s var(--ds-ease-in-out);border-radius:50%;position:absolute;top:2px;left:2px}.dtuyRG_controlTrack[data-on=true]{background:var(--dsw-alias-state-business-primary)}.dtuyRG_controlTrack[data-on=true] .dtuyRG_controlThumb{transform:translate(10px)}.dtuyRG_action{height:20px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xxs-12);background:0 0;border:0;border-radius:3px;flex:none;align-items:center;gap:4px;padding:0 5px;display:inline-flex}.dtuyRG_action:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.dtuyRG_action:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:1px}.dtuyRG_actionIcon{color:var(--dsw-alias-label-tertiary);font:14px/14px var(--ds-font-family-code)}.dtuyRG_search{border:1px solid var(--dsw-alias-border-l2);min-width:84px;height:22px;color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-layer-2);border-radius:4px;flex:0 164px;align-items:center;gap:4px;margin-left:auto;padding:0 6px;display:flex}.dtuyRG_search:hover{border-color:var(--dsw-alias-label-caption)}.dtuyRG_search:focus-within{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-layer-1)}.dtuyRG_searchIcon{flex:none}.dtuyRG_searchInput{width:100%;min-width:0;color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);background:0 0;border:0;outline:0;padding:0}.dtuyRG_searchInput::placeholder{color:var(--dsw-alias-label-caption)}.dtuyRG_searchInput::-webkit-search-cancel-button{cursor:pointer;width:12px;height:12px}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-trajectory\src\client\TrajectoryToolbar.module.css.mjs
+		const css$2 = ".b2Ggna_root{z-index:4;box-sizing:border-box;width:100%;height:var(--dsh-trajectory-toolbar-height);border-bottom:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);position:sticky;top:0}.b2Ggna_inner{box-sizing:border-box;align-items:center;gap:8px;width:100%;height:100%;padding:0 6px;display:flex}.b2Ggna_actions{flex:none;align-items:center;gap:2px;display:flex}.b2Ggna_toggle{border-radius:var(--dsw-radius-sm);height:20px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xxs-12);background:0 0;border:0;flex:none;align-items:center;gap:4px;padding:0 7px;display:inline-flex}.b2Ggna_toggle:hover,.b2Ggna_toggle[aria-pressed=true]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.b2Ggna_toggle:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}.b2Ggna_toggleIcon{stroke:currentColor;stroke-width:1.25px;stroke-linecap:round;stroke-linejoin:round;flex:none;width:12px;height:12px}.b2Ggna_control{box-sizing:border-box;width:88px;height:20px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xxs-12);background:0 0;border:0;border-radius:0;flex:none;justify-content:center;align-items:center;gap:4px;padding:0 5px;display:inline-flex}.b2Ggna_control[hidden]{display:none}.b2Ggna_control:hover:not(:disabled),.b2Ggna_control[aria-checked=true],.b2Ggna_control[aria-pressed=true]{color:var(--dsw-alias-label-primary)}.b2Ggna_control:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}.b2Ggna_control:disabled{color:var(--dsw-alias-label-dimmed);cursor:not-allowed}.b2Ggna_controlTrack{background:var(--dsw-alias-border-l2);width:20px;height:10px;transition:background-color .12s var(--ds-ease-in-out);border-radius:5px;flex:none;display:inline-block;position:relative}.b2Ggna_controlThumb{corner-shape:round;background:var(--dsw-alias-bg-layer-1);width:6px;height:6px;transition:transform .12s var(--ds-ease-in-out);border-radius:50%;position:absolute;top:2px;left:2px}.b2Ggna_controlTrack[data-on=true]{background:var(--dsw-alias-state-business-primary)}.b2Ggna_controlTrack[data-on=true] .b2Ggna_controlThumb{transform:translate(10px)}.b2Ggna_action{border-radius:var(--dsw-radius-sm);height:20px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xxs-12);background:0 0;border:0;flex:none;align-items:center;gap:4px;padding:0 5px;display:inline-flex}.b2Ggna_action:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.b2Ggna_action:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}.b2Ggna_actionIcon{color:var(--dsw-alias-label-tertiary);font:14px/14px var(--ds-font-family-code)}.b2Ggna_search{border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-sm);min-width:84px;height:22px;color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-layer-2);flex:0 164px;align-items:center;gap:4px;margin-left:auto;padding:0 6px;display:flex}.b2Ggna_search:hover{border-color:var(--dsw-alias-label-caption)}.b2Ggna_search:focus-within{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-layer-1)}.b2Ggna_searchIcon{flex:none}.b2Ggna_searchInput{width:100%;min-width:0;color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);background:0 0;border:0;outline:0;padding:0}.b2Ggna_searchInput::placeholder{color:var(--dsw-alias-label-caption)}.b2Ggna_searchInput::-webkit-search-cancel-button{cursor:pointer;width:12px;height:12px}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-trajectory/TrajectoryToolbar.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -6037,19 +7235,19 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var TrajectoryToolbar_module_css_default = {
-			"action": "dtuyRG_action",
-			"actionIcon": "dtuyRG_actionIcon",
-			"actions": "dtuyRG_actions",
-			"control": "dtuyRG_control",
-			"controlThumb": "dtuyRG_controlThumb",
-			"controlTrack": "dtuyRG_controlTrack",
-			"inner": "dtuyRG_inner",
-			"root": "dtuyRG_root",
-			"search": "dtuyRG_search",
-			"searchIcon": "dtuyRG_searchIcon",
-			"searchInput": "dtuyRG_searchInput",
-			"toggle": "dtuyRG_toggle",
-			"toggleIcon": "dtuyRG_toggleIcon"
+			"action": "b2Ggna_action",
+			"actionIcon": "b2Ggna_actionIcon",
+			"actions": "b2Ggna_actions",
+			"control": "b2Ggna_control",
+			"controlThumb": "b2Ggna_controlThumb",
+			"controlTrack": "b2Ggna_controlTrack",
+			"inner": "b2Ggna_inner",
+			"root": "b2Ggna_root",
+			"search": "b2Ggna_search",
+			"searchIcon": "b2Ggna_searchIcon",
+			"searchInput": "b2Ggna_searchInput",
+			"toggle": "b2Ggna_toggle",
+			"toggleIcon": "b2Ggna_toggleIcon"
 		};
 		//#endregion
 		//#region lib/types/client/TrajectoryToolbar.js
@@ -6134,7 +7332,7 @@ window.__ModuleLoader__.load({
 						]
 					}), (0, react_jsx_runtime.jsxs)("div", {
 						className: TrajectoryToolbar_module_css_default.search,
-						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSearchOutline16, {
+						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSearchOutlineRegular, {
 							size: 11,
 							className: TrajectoryToolbar_module_css_default.searchIcon
 						}), (0, react_jsx_runtime.jsx)("input", {
@@ -6279,8 +7477,8 @@ window.__ModuleLoader__.load({
 			return new Set(model?.spans.filter((span) => span.start <= range.end && span.end >= range.start).map((span) => span.index));
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-trajectory\src\client\TrajectoryTimeline.module.css.mjs
-		const css$1 = ".Aev5uG_root{z-index:1;isolation:isolate;border-bottom:1px solid var(--dsw-alias-border-l2);user-select:none;flex:none;position:relative}.Aev5uG_root [role=tooltip]{font:var(--dsw-font-xxxs-11)}.Aev5uG_plot{background:var(--dsw-alias-bg-layer-2);grid-template-columns:44px minmax(0,1fr);height:50px;display:grid;overflow:hidden}.Aev5uG_labels{border-right:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-caption);font:var(--dsw-font-xs-13);font-size:10px;line-height:1;position:relative}.Aev5uG_labels span{text-align:right;justify-content:flex-end;align-items:center;height:8px;display:flex;position:absolute;right:3px}.Aev5uG_labels span:first-child{top:7px}.Aev5uG_labels span:nth-child(2){top:21px}.Aev5uG_labels span:nth-child(3){top:35px}.Aev5uG_track{cursor:crosshair;touch-action:none;position:relative;overflow:hidden}.Aev5uG_track[data-panning=true]{cursor:grabbing}.Aev5uG_earlierHistory{z-index:5;appearance:none;box-sizing:border-box;background:linear-gradient(to right, var(--dsw-alias-bg-layer-2) 0, var(--dsw-alias-bg-layer-2) 38%, transparent 100%);width:28px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);opacity:.72;cursor:pointer;border:0;outline:none;justify-content:flex-start;align-items:center;padding-left:3px;line-height:1;display:flex;position:absolute;top:0;bottom:0;left:0}.Aev5uG_earlierHistory:hover{opacity:1}.Aev5uG_earlierHistory[aria-disabled=true]{cursor:default}.Aev5uG_earlierHistory:focus-visible{box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l2)}.Aev5uG_empty{color:var(--dsw-alias-label-caption);font:var(--dsw-font-xs-13);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}.Aev5uG_track:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}.Aev5uG_lanes{z-index:2;top:7px;bottom:7px;left:var(--trajectory-domain-left);width:var(--trajectory-domain-width);position:absolute}.Aev5uG_turnBoundaries{z-index:3;top:0;bottom:0;left:var(--trajectory-domain-left);width:var(--trajectory-domain-width);pointer-events:none;position:absolute}@media (prefers-reduced-motion:no-preference){.Aev5uG_lanes[data-animate-viewport=true],.Aev5uG_turnBoundaries[data-animate-viewport=true]{transition:left .18s ease-out}}.Aev5uG_turnBoundary{top:0;bottom:0;left:var(--trajectory-turn-left);background:var(--dsw-alias-border-l2);width:1px;position:absolute}.Aev5uG_span{top:calc(var(--trajectory-span-lane) * 14px);left:calc(var(--trajectory-span-left) + var(--trajectory-span-gap));width:max(2px, calc(var(--trajectory-span-width) - var(--trajectory-span-gap) - var(--trajectory-span-gap)));background:var(--dsw-alias-label-secondary);opacity:.78;border-radius:1px;min-width:2px;height:8px;position:absolute}.Aev5uG_span[data-timeline-span=user]{background:var(--dsw-alias-state-business-primary)}.Aev5uG_span[data-timeline-span=context]{background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 68%, var(--dsw-alias-label-secondary))}.Aev5uG_span[data-timeline-span=message]{--trajectory-assistant-decoding-color:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 60%, var(--dsw-alias-state-error-secondary));--trajectory-assistant-ttft-color:color-mix(in srgb, var(--trajectory-assistant-decoding-color) 54%, var(--dsw-alias-bg-layer-2));background:var(--trajectory-assistant-decoding-color);opacity:1}.Aev5uG_span[data-timeline-span=message][data-assistant-timing=true]{background:linear-gradient(to right, var(--trajectory-assistant-ttft-color) 0, var(--trajectory-assistant-ttft-color) var(--trajectory-assistant-ttft), var(--trajectory-assistant-decoding-color) var(--trajectory-assistant-ttft), var(--trajectory-assistant-decoding-color) 100%)}.Aev5uG_span[data-timeline-span=tool],.Aev5uG_span[data-timeline-span=subtool]{background:var(--dsw-alias-state-warn-label);opacity:1}.Aev5uG_span[data-error=true]{background:var(--dsw-alias-state-error-primary)}.Aev5uG_span[data-equal-duration=true]{width:8px;min-width:8px}.Aev5uG_span[data-selected=false]{opacity:.2}.Aev5uG_span[data-hovered=true]:not([data-current=true]){z-index:1;opacity:1;box-shadow:0 0 0 1px var(--dsw-alias-bg-layer-2), 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 80%, transparent)}.Aev5uG_span[data-current=true]{z-index:1;opacity:1;box-shadow:0 0 0 1px var(--dsw-alias-bg-layer-2), 0 0 0 2px var(--dsw-alias-state-business-primary)}.Aev5uG_span[data-search-match=false]{opacity:.14}.Aev5uG_selection{z-index:1;top:0;bottom:0;left:var(--trajectory-selection-left);width:var(--trajectory-selection-width);background:color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);min-width:1px;box-shadow:-100vw 0 0 100vw color-mix(in srgb, var(--dsw-alias-bg-layer-1) 58%, transparent), 100vw 0 0 100vw color-mix(in srgb, var(--dsw-alias-bg-layer-1) 58%, transparent);pointer-events:none;position:absolute}.Aev5uG_selectionEdges{z-index:4;top:0;bottom:0;left:var(--trajectory-selection-left);width:var(--trajectory-selection-width);pointer-events:none;min-width:1px;position:absolute}.Aev5uG_hoverLine{z-index:4;top:0;bottom:0;left:clamp(0px, calc(var(--trajectory-hover-left) - 1px), calc(100% - 2px));background:var(--dsw-alias-state-business-primary);pointer-events:none;width:2px;position:absolute}.Aev5uG_selectionEdges:before,.Aev5uG_selectionEdges:after{background:var(--dsw-alias-state-business-primary);content:\"\";width:3px;position:absolute;top:0;bottom:0}.Aev5uG_selectionEdges:before{left:0}.Aev5uG_selectionEdges:after{right:0}.Aev5uG_selectionEdges[data-dragging=true]:before,.Aev5uG_selectionEdges[data-dragging=true]:after{width:2px}.Aev5uG_selection[data-dragging=true]{background:color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent)}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-trajectory\src\client\TrajectoryTimeline.module.css.mjs
+		const css$1 = ".ZHEAxa_root{z-index:1;isolation:isolate;border-bottom:.5px solid var(--dsw-alias-border-l2);user-select:none;flex:none;position:relative}.ZHEAxa_root [role=tooltip]{font:var(--dsw-font-xxxs-11)}.ZHEAxa_plot{background:var(--dsw-alias-bg-layer-2);grid-template-columns:44px minmax(0,1fr);height:50px;display:grid;overflow:hidden}.ZHEAxa_labels{border-right:.5px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-caption);font:var(--dsw-font-xs-13);font-size:10px;line-height:1;position:relative}.ZHEAxa_labels span{text-align:right;justify-content:flex-end;align-items:center;height:8px;display:flex;position:absolute;right:3px}.ZHEAxa_labels span:first-child{top:7px}.ZHEAxa_labels span:nth-child(2){top:21px}.ZHEAxa_labels span:nth-child(3){top:35px}.ZHEAxa_track{cursor:crosshair;touch-action:none;position:relative;overflow:hidden}.ZHEAxa_track[data-panning=true]{cursor:grabbing}.ZHEAxa_earlierHistory{z-index:5;appearance:none;box-sizing:border-box;background:linear-gradient(to right, var(--dsw-alias-bg-layer-2) 0, var(--dsw-alias-bg-layer-2) 38%, transparent 100%);width:28px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);opacity:.72;cursor:pointer;border:0;outline:none;justify-content:flex-start;align-items:center;padding-left:3px;line-height:1;display:flex;position:absolute;top:0;bottom:0;left:0}.ZHEAxa_earlierHistory:hover{opacity:1}.ZHEAxa_earlierHistory[aria-disabled=true]{cursor:default}.ZHEAxa_earlierHistory:focus-visible{box-shadow:inset 0 0 0 1px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}.ZHEAxa_empty{color:var(--dsw-alias-label-caption);font:var(--dsw-font-xs-13);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}.ZHEAxa_track:focus-visible{outline:1px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}.ZHEAxa_lanes{z-index:2;top:7px;bottom:7px;left:var(--trajectory-domain-left);width:var(--trajectory-domain-width);position:absolute}.ZHEAxa_turnBoundaries{z-index:3;top:0;bottom:0;left:var(--trajectory-domain-left);width:var(--trajectory-domain-width);pointer-events:none;position:absolute}@media (prefers-reduced-motion:no-preference){.ZHEAxa_lanes[data-animate-viewport=true],.ZHEAxa_turnBoundaries[data-animate-viewport=true]{transition:left .18s ease-out}}.ZHEAxa_turnBoundary{top:0;bottom:0;left:var(--trajectory-turn-left);background:var(--dsw-alias-border-l2);width:.5px;position:absolute}.ZHEAxa_span{top:calc(var(--trajectory-span-lane) * 14px);left:calc(var(--trajectory-span-left) + var(--trajectory-span-gap));width:max(2px, calc(var(--trajectory-span-width) - var(--trajectory-span-gap) - var(--trajectory-span-gap)));background:var(--dsw-alias-label-secondary);opacity:.78;border-radius:1px;min-width:2px;height:8px;position:absolute}.ZHEAxa_span[data-timeline-span=user]{background:var(--dsw-alias-state-business-primary)}.ZHEAxa_span[data-timeline-span=context]{background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 68%, var(--dsw-alias-label-secondary))}.ZHEAxa_span[data-timeline-span=message]{--trajectory-assistant-decoding-color:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 60%, var(--dsw-alias-state-error-secondary));--trajectory-assistant-ttft-color:color-mix(in srgb, var(--trajectory-assistant-decoding-color) 54%, var(--dsw-alias-bg-layer-2));background:var(--trajectory-assistant-decoding-color);opacity:1}.ZHEAxa_span[data-timeline-span=message][data-assistant-timing=true]{background:linear-gradient(to right, var(--trajectory-assistant-ttft-color) 0, var(--trajectory-assistant-ttft-color) var(--trajectory-assistant-ttft), var(--trajectory-assistant-decoding-color) var(--trajectory-assistant-ttft), var(--trajectory-assistant-decoding-color) 100%)}.ZHEAxa_span[data-timeline-span=tool],.ZHEAxa_span[data-timeline-span=subtool]{background:var(--dsw-alias-state-warn-label);opacity:1}.ZHEAxa_span[data-error=true]{background:var(--dsw-alias-state-error-primary)}.ZHEAxa_span[data-equal-duration=true]{width:8px;min-width:8px}.ZHEAxa_span[data-selected=false]{opacity:.2}.ZHEAxa_span[data-hovered=true]:not([data-current=true]){z-index:1;opacity:1;box-shadow:0 0 0 1px var(--dsw-alias-bg-layer-2), 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 80%, transparent)}.ZHEAxa_span[data-current=true]{z-index:1;opacity:1;box-shadow:0 0 0 1px var(--dsw-alias-bg-layer-2), 0 0 0 2px var(--dsw-alias-state-business-primary)}.ZHEAxa_span[data-search-match=false]{opacity:.14}.ZHEAxa_selection{z-index:1;top:0;bottom:0;left:var(--trajectory-selection-left);width:var(--trajectory-selection-width);background:color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);min-width:1px;box-shadow:-100vw 0 0 100vw color-mix(in srgb, var(--dsw-alias-bg-layer-1) 58%, transparent), 100vw 0 0 100vw color-mix(in srgb, var(--dsw-alias-bg-layer-1) 58%, transparent);pointer-events:none;position:absolute}.ZHEAxa_selectionEdges{z-index:4;top:0;bottom:0;left:var(--trajectory-selection-left);width:var(--trajectory-selection-width);pointer-events:none;min-width:1px;position:absolute}.ZHEAxa_hoverLine{z-index:4;top:0;bottom:0;left:clamp(0px, calc(var(--trajectory-hover-left) - 1px), calc(100% - 2px));background:var(--dsw-alias-state-business-primary);pointer-events:none;width:2px;position:absolute}.ZHEAxa_selectionEdges:before,.ZHEAxa_selectionEdges:after{background:var(--dsw-alias-state-business-primary);content:\"\";width:3px;position:absolute;top:0;bottom:0}.ZHEAxa_selectionEdges:before{left:0}.ZHEAxa_selectionEdges:after{right:0}.ZHEAxa_selectionEdges[data-dragging=true]:before,.ZHEAxa_selectionEdges[data-dragging=true]:after{width:2px}.ZHEAxa_selection[data-dragging=true]{background:color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent)}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-trajectory/TrajectoryTimeline.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -6290,19 +7488,19 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var TrajectoryTimeline_module_css_default = {
-			"earlierHistory": "Aev5uG_earlierHistory",
-			"empty": "Aev5uG_empty",
-			"hoverLine": "Aev5uG_hoverLine",
-			"labels": "Aev5uG_labels",
-			"lanes": "Aev5uG_lanes",
-			"plot": "Aev5uG_plot",
-			"root": "Aev5uG_root",
-			"selection": "Aev5uG_selection",
-			"selectionEdges": "Aev5uG_selectionEdges",
-			"span": "Aev5uG_span",
-			"track": "Aev5uG_track",
-			"turnBoundaries": "Aev5uG_turnBoundaries",
-			"turnBoundary": "Aev5uG_turnBoundary"
+			"earlierHistory": "ZHEAxa_earlierHistory",
+			"empty": "ZHEAxa_empty",
+			"hoverLine": "ZHEAxa_hoverLine",
+			"labels": "ZHEAxa_labels",
+			"lanes": "ZHEAxa_lanes",
+			"plot": "ZHEAxa_plot",
+			"root": "ZHEAxa_root",
+			"selection": "ZHEAxa_selection",
+			"selectionEdges": "ZHEAxa_selectionEdges",
+			"span": "ZHEAxa_span",
+			"track": "ZHEAxa_track",
+			"turnBoundaries": "ZHEAxa_turnBoundaries",
+			"turnBoundary": "ZHEAxa_turnBoundary"
 		};
 		//#endregion
 		//#region lib/types/client/TrajectoryTimeline.js
@@ -6806,11 +8004,32 @@ window.__ModuleLoader__.load({
 			return entry.kind === "system" && entry.change.kind === "initial" ? Number.NEGATIVE_INFINITY : entry.seq;
 		}
 		function inputCellDetail(node, t) {
+			if (node.kind === "context" && node.content.length > 0 && node.content.every((block) => block.type === "tool-addition" || block.type === "tool-removal")) {
+				const added = node.content.flatMap((block) => block.type === "tool-addition" ? [block.toolName] : []);
+				const removed = node.content.flatMap((block) => block.type === "tool-removal" ? [block.toolName] : []);
+				const single = node.content.length === 1 ? node.content[0] : void 0;
+				const summary = added.length > 0 && removed.length > 0 ? t("layout.toolsChanged", {
+					added: added.length,
+					removed: removed.length
+				}) : added.length > 0 ? t("layout.toolsAddedCount", { count: added.length }) : t("layout.toolsRemovedCount", { count: removed.length });
+				return {
+					text: single !== void 0 ? t(single.type === "tool-addition" ? "layout.toolAdded" : "layout.toolRemoved", { name: single.toolName }) : `${t("layout.toolUpdateNotice")} · ${summary}`,
+					sourceSeq: node.seq,
+					sourceBlocks: node.content.map((block) => ({
+						type: block.type,
+						content: block.toolName
+					})),
+					...single !== void 0 ? {} : { inputDetail: [...added.length > 0 ? [t("layout.toolsAdded", { names: added.join(", ") })] : [], ...removed.length > 0 ? [t("layout.toolsRemoved", { names: removed.join(", ") })] : []].join("\n") },
+					timeSeconds: 0,
+					startedAt: finiteTime(node.time)
+				};
+			}
 			const preview = previewContent(node.content);
 			const previewMarkdown = preview === "" ? void 0 : preview;
 			const images = imageBlockCount(node.content);
+			const files = fileBlockCount(node.content);
 			return {
-				text: previewMarkdown === void 0 && images > 0 ? t("layout.imageOnly", { count: images }) : "",
+				text: [images > 0 ? t("layout.imageCount", { count: images }) : void 0, files > 0 ? t("layout.fileAttachments", { count: files }) : void 0].filter((value) => value !== void 0).join(" · "),
 				...previewMarkdown === void 0 ? {} : { previewMarkdown },
 				sourceSeq: node.seq,
 				messageSource: node.source,
@@ -6839,6 +8058,7 @@ window.__ModuleLoader__.load({
 				if (startedAt !== null) callStartById.set(result.callId, startedAt);
 			}
 			for (const call of runningCalls) {
+				if (call.phase === "preparing") continue;
 				const startedAt = finiteTime(call.time);
 				if (startedAt !== null) callStartById.set(call.callId, startedAt);
 			}
@@ -6902,6 +8122,16 @@ window.__ModuleLoader__.load({
 			if (partial !== null && partial.step > 0) representedRequests.add(`${partial.turn}\u0000${partial.step}`);
 			for (const call of runningCalls) if (call.step > 0) representedRequests.add(`${call.turn}\u0000${call.step}`);
 			const entries = [
+				...(input.systemPrompts ?? []).map((prompt) => ({
+					kind: "system",
+					seq: prompt.seq,
+					systemPrompt: prompt.text,
+					change: {
+						seq: prompt.seq,
+						time: prompt.time,
+						kind: prompt.update ? "system" : "initial"
+					}
+				})),
 				...nodes.map((node, nodeIndex) => ({
 					kind: "node",
 					seq: node.seq,
@@ -6953,7 +8183,8 @@ window.__ModuleLoader__.load({
 							kind: "system",
 							text: promptChangeLabel(change, t),
 							sourceSeq: change.seq,
-							...request.prompt === void 0 ? {} : { promptDetail: request.prompt },
+							...request?.prompt === void 0 ? {} : { promptDetail: request.prompt },
+							...entry.systemPrompt === void 0 ? {} : { systemPromptDetail: entry.systemPrompt },
 							...change.previous === void 0 ? {} : { previousPromptDetail: change.previous },
 							timeSeconds: 0,
 							startedAt: finiteTime(change.time)
@@ -7099,7 +8330,7 @@ window.__ModuleLoader__.load({
 			}
 			const seenCalls = collectCallIds(turns);
 			for (const call of runningCalls) {
-				if (seenCalls.has(call.callId)) continue;
+				if (call.phase === "preparing" || seenCalls.has(call.callId)) continue;
 				const laidList = [{
 					absTime: null,
 					toolName: call.name,
@@ -7324,7 +8555,7 @@ window.__ModuleLoader__.load({
 			}
 			if (tools.size > 0) return t("layout.toolCallOnly");
 			const images = blocks.filter((block) => block.kind === "image").length;
-			if (images > 0) return t("layout.imageOnly", { count: images });
+			if (images > 0) return t("layout.imageCount", { count: images });
 			return "";
 		}
 		function promptChangeLabel(change, t) {
@@ -7349,11 +8580,10 @@ window.__ModuleLoader__.load({
 					callId: block.callId,
 					toolName: block.name
 				};
-				case "image": return {
+				case "image": return sourceBlock({
 					type: "image",
-					content: "",
 					attachment: block.attachment
-				};
+				});
 				case "other": return sourceBlock(block.block);
 			}
 		}
@@ -7368,10 +8598,10 @@ window.__ModuleLoader__.load({
 				type: type === "reasoning" ? "thinking" : type,
 				content: block.text
 			};
-			if (type === "image" && typeof block.attachment === "object" && block.attachment !== null && typeof block.attachment.attachmentId === "string") return {
+			if ((type === "image" || type === "file") && typeof block.attachment === "object" && block.attachment !== null && typeof block.attachment.attachmentId === "string") return {
 				type,
-				content: "",
-				attachment: block.attachment
+				content: stringifySourceValue(value),
+				...type === "image" ? { attachment: block.attachment } : { file: block.attachment }
 			};
 			return {
 				type,
@@ -7380,6 +8610,9 @@ window.__ModuleLoader__.load({
 		}
 		function imageBlockCount(content) {
 			return content.filter((block) => block.type === "image").length;
+		}
+		function fileBlockCount(content) {
+			return content.filter((block) => block.type === "file").length;
 		}
 		function stringifySourceValue(value) {
 			return JSON.stringify(value, null, 2) || String(value);
@@ -7485,6 +8718,7 @@ window.__ModuleLoader__.load({
 			const out = [];
 			let index = startIndex;
 			for (const sub of subs) {
+				if (!("kind" in sub) && sub.phase === "preparing") continue;
 				const settled = "kind" in sub;
 				const resultPreview = settled ? summarizeResult(sub, t) : void 0;
 				const laid = {
@@ -7517,6 +8751,7 @@ window.__ModuleLoader__.load({
 		}
 		function summarizeCall(name, argsRaw) {
 			return {
+				toolName: name,
 				text: name,
 				...argsRaw === "" ? {} : { previewMarkdown: argsRaw }
 			};
@@ -7528,7 +8763,7 @@ window.__ModuleLoader__.load({
 				resultPreviewMarkdown: block.text
 			};
 			const images = imageBlockCount(node.content);
-			if (images > 0) return { result: t("layout.imageOnly", { count: images }) };
+			if (images > 0) return { result: t("layout.imageCount", { count: images }) };
 			return { result: t("record.noOutput") };
 		}
 		function resultAsText(result) {
@@ -7542,7 +8777,7 @@ window.__ModuleLoader__.load({
 			const text = node.content.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.type === "text" ? block.text : "").join("\n");
 			if (text !== "") return text;
 			const images = imageBlockCount(node.content);
-			if (images > 0) return t("layout.imageOnly", { count: images });
+			if (images > 0) return t("layout.imageCount", { count: images });
 			if (node.content.length === 0 || node.content.every((block) => block.type === "text" && (typeof block.text !== "string" || block.text === ""))) return t("record.noOutput");
 			return JSON.stringify(node.content, null, 2);
 		}
@@ -7656,8 +8891,8 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-trajectory\src\client\views.module.css.mjs
-		const css = ".BvAyGq_root{--dsh-trajectory-toolbar-height:32px;box-sizing:border-box;width:100%;height:100%;min-height:0;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);flex-direction:column;display:flex;overflow:hidden}.BvAyGq_ledger{z-index:0;isolation:isolate;--dsh-trajectory-bottom-clearance:calc(var(--dsh-composer-height,152px) + 16px);flex:1;min-width:0;min-height:0;display:flex;position:relative;overflow:hidden}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-trajectory\src\client\views.module.css.mjs
+		const css = ".pL_i4a_root{--dsh-trajectory-toolbar-height:32px;box-sizing:border-box;width:100%;height:100%;min-height:0;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);flex-direction:column;display:flex;overflow:hidden}.pL_i4a_ledger{z-index:0;isolation:isolate;--dsh-trajectory-bottom-clearance:calc(var(--dsh-composer-height,152px) + 16px);flex:1;min-width:0;min-height:0;display:flex;position:relative;overflow:hidden}";
 		const tagId = "@deepseek-ai/dsh-client-ui-trajectory/views.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -7667,8 +8902,8 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var views_module_css_default = {
-			"ledger": "BvAyGq_ledger",
-			"root": "BvAyGq_root"
+			"ledger": "pL_i4a_ledger",
+			"root": "pL_i4a_root"
 		};
 		//#endregion
 		//#region lib/types/client/TrajectoryView.js
@@ -7676,6 +8911,11 @@ window.__ModuleLoader__.load({
 		const EMPTY_TURN_IDS = /* @__PURE__ */ new Set();
 		const EMPTY_RECORD_IDS = /* @__PURE__ */ new Set();
 		const SEARCH_INDEX_THROTTLE_MS = 3e3;
+		const HISTORY_PAGE_NODES = 50;
+		function containsCall(calls, callId) {
+			for (const call of calls) if (call.callId === callId || containsCall(call.subCalls, callId)) return true;
+			return false;
+		}
 		function lastCellIndex(turns) {
 			let last = 0;
 			for (const turn of turns) for (const group of turn.groups) for (const cell of group.cells) last = Math.max(last, cell.index);
@@ -7729,7 +8969,7 @@ window.__ModuleLoader__.load({
 				...total?.reasoning === void 0 && usage.reasoning === void 0 ? {} : { reasoning: (total?.reasoning ?? 0) + (usage.reasoning ?? 0) }
 			};
 		}
-		function TrajectoryView({ useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration, viewRequest, completeViewRequest, renderSlot, t }) {
+		function TrajectoryView({ useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration, viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping }) {
 			const [collapsedTurns, setCollapsedTurns] = (0, react.useState)(EMPTY_TURN_IDS);
 			const renderImages = (0, react.useCallback)((owner) => renderSlot("conversation.trajectory.images", {
 				...owner,
@@ -7747,10 +8987,36 @@ window.__ModuleLoader__.load({
 			const [selectedTimelineIndex, setSelectedTimelineIndex] = (0, react.useState)(null);
 			const [timelineRecordSelection, setTimelineRecordSelection] = (0, react.useState)(null);
 			const [timelineRecordFocus, setTimelineRecordFocus] = (0, react.useState)(null);
-			const inspection = useTrajectory((snapshot) => snapshot);
+			const completeInspection = useTrajectory((snapshot) => snapshot);
+			const latestNodeSeq = completeInspection.eventNodes.at(-1)?.seq;
+			const [historyTailSeq, setHistoryTailSeq] = (0, react.useState)(latestNodeSeq);
+			const [historyNodeLimit, setHistoryNodeLimit] = (0, react.useState)(HISTORY_PAGE_NODES);
+			const fixedTailSeq = historyTailSeq ?? latestNodeSeq;
+			const historyTailIndex = fixedTailSeq === void 0 ? -1 : completeInspection.eventNodes.findLastIndex((node) => node.seq <= fixedTailSeq);
+			const historyEndIndex = historyTailIndex < 0 && latestNodeSeq !== void 0 ? completeInspection.eventNodes.length : historyTailIndex + 1;
+			const historyStartIndex = Math.max(0, historyEndIndex - historyNodeLimit);
+			(0, react.useEffect)(() => {
+				if (latestNodeSeq !== void 0 && (historyTailSeq === void 0 || historyTailIndex < 0)) setHistoryTailSeq(latestNodeSeq);
+			}, [
+				historyTailIndex,
+				historyTailSeq,
+				latestNodeSeq
+			]);
+			const inspection = (0, react.useMemo)(() => {
+				if (historyStartIndex === 0) return completeInspection;
+				const eventNodes = completeInspection.eventNodes.slice(historyStartIndex);
+				const firstSeq = eventNodes[0]?.seq ?? 0;
+				return {
+					...completeInspection,
+					eventNodes,
+					requests: completeInspection.requests.filter((request) => request.startSeq >= firstSeq || (request.resultSeq ?? -1) >= firstSeq)
+				};
+			}, [completeInspection, historyStartIndex]);
 			const historyLoading = useSession((snapshot) => snapshot.openState === "loading");
 			const olderHistoryLoading = useSession((snapshot) => snapshot.loadingOlder);
-			const hasOlderHistory = useSession((snapshot) => snapshot.hasMore);
+			const sessionHasOlderHistory = useSession((snapshot) => snapshot.hasMore);
+			const hasResidentOlderHistory = historyStartIndex > 0;
+			const hasOlderHistory = hasResidentOlderHistory || sessionHasOlderHistory;
 			const nodes = inspection.eventNodes;
 			const eventLocations = inspection.eventLocations;
 			const historyBaseSeq = nodes[0]?.seq ?? 0;
@@ -7759,14 +9025,19 @@ window.__ModuleLoader__.load({
 			const requests = inspection.requests;
 			const callSchemas = inspection.callSchemas;
 			const inspectCallId = viewRequest?.view === "trajectory" ? viewRequest.focus : null;
+			const inspectNodeIndex = (0, react.useMemo)(() => inspectCallId === null ? -1 : completeInspection.eventNodes.findIndex((node) => node.kind === "assistant" ? node.blocks.some((block) => block.kind === "tool-call" && block.callId === inspectCallId) : node.kind === "tool-result" && containsCall([node], inspectCallId)), [completeInspection.eventNodes, inspectCallId]);
+			(0, react.useEffect)(() => {
+				if (inspectNodeIndex < 0 || inspectNodeIndex >= historyStartIndex) return;
+				setHistoryNodeLimit((limit) => limit + historyStartIndex - inspectNodeIndex);
+			}, [historyStartIndex, inspectNodeIndex]);
 			const requestNumbers = (0, react.useMemo)(() => {
 				const assistantsByStep = /* @__PURE__ */ new Map();
-				for (const node of nodes) {
+				for (const node of completeInspection.eventNodes) {
 					if (node.kind !== "assistant" || node.step <= 0) continue;
 					assistantsByStep.set(`${node.turn}\u0000${node.step}`, node);
 				}
-				const requestsByStep = new Map(requests.filter((request) => request.purpose === "assistant").map((request) => [`${request.turn}\u0000${request.step}`, request]));
-				const orderedRequests = [...requests.map((request) => ({
+				const requestsByStep = new Map(completeInspection.requests.filter((request) => request.purpose === "assistant").map((request) => [`${request.turn}\u0000${request.step}`, request]));
+				const orderedRequests = [...completeInspection.requests.map((request) => ({
 					seq: request.startSeq,
 					request,
 					node: request.purpose === "assistant" ? assistantsByStep.get(`${request.turn}\u0000${request.step}`) : void 0
@@ -7786,8 +9057,8 @@ window.__ModuleLoader__.load({
 						const turn = request?.turn ?? node?.turn;
 						const step = request?.step ?? node?.step;
 						if (turn === void 0 || step === void 0) continue;
-						const provider = request?.provenance?.provider ?? node?.provenance?.provider;
-						const model = request?.provenance?.model ?? node?.provenance?.model;
+						const provider = request?.providerMetadata?.provider ?? node?.providerMetadata?.provider;
+						const model = request?.providerMetadata?.model ?? node?.providerMetadata?.model;
 						const requestConfig = request?.requestConfig ?? node?.requestConfig;
 						numbered.push({
 							seq: entry.seq,
@@ -7826,8 +9097,8 @@ window.__ModuleLoader__.load({
 						...request.error === void 0 ? {} : { error: request.error },
 						...request.errorCode === void 0 ? {} : { errorCode: request.errorCode },
 						resultSeq: request.startSeq,
-						...request.provenance?.provider === void 0 ? {} : { provider: request.provenance.provider },
-						...request.provenance?.model === void 0 ? {} : { model: request.provenance.model },
+						...request.providerMetadata?.provider === void 0 ? {} : { provider: request.providerMetadata.provider },
+						...request.providerMetadata?.model === void 0 ? {} : { model: request.providerMetadata.model },
 						...request.requestConfig === void 0 ? {} : { requestConfig: request.requestConfig },
 						...usage === void 0 ? {} : { usage },
 						...cumulativeUsage === void 0 ? {} : { cumulativeUsage }
@@ -7835,8 +9106,8 @@ window.__ModuleLoader__.load({
 				}
 				return numbered;
 			}, [
-				nodes,
-				requests,
+				completeInspection.eventNodes,
+				completeInspection.requests,
 				t
 			]);
 			const partialTurn = partial?.turn ?? null;
@@ -7852,6 +9123,7 @@ window.__ModuleLoader__.load({
 					},
 					runningCalls,
 					requests,
+					systemPrompts: inspection.systemPrompts,
 					callSchemas
 				}, t);
 				return {
@@ -7865,6 +9137,7 @@ window.__ModuleLoader__.load({
 				partialStep,
 				runningCalls,
 				requests,
+				inspection.systemPrompts,
 				callSchemas,
 				t
 			]);
@@ -7986,9 +9259,11 @@ window.__ModuleLoader__.load({
 					return collapsed;
 				});
 			};
-			const loadEarlierHistory = (0, react.useCallback)(() => {
-				return loadOlder();
-			}, [loadOlder]);
+			const loadEarlierHistory = (0, react.useCallback)(async () => {
+				if (!hasResidentOlderHistory && !await loadOlder()) return false;
+				setHistoryNodeLimit((limit) => limit + HISTORY_PAGE_NODES);
+				return true;
+			}, [hasResidentOlderHistory, loadOlder]);
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: views_module_css_default.root,
 				"data-conversation-composer-overlay": "",
@@ -8029,6 +9304,10 @@ window.__ModuleLoader__.load({
 						className: views_module_css_default.ledger,
 						children: (0, react_jsx_runtime.jsx)(TrajectoryTable, {
 							t,
+							stringWrapping: jsonStringWrapping === void 0 ? void 0 : {
+								...jsonStringWrapping,
+								label: t("record.wrapLines")
+							},
 							renderImages,
 							requestNumbers,
 							turns: timelineTurns,
@@ -8093,6 +9372,7 @@ window.__ModuleLoader__.load({
 			}), "ui-trajectory: dictionaries");
 			const t = ctx.locale.bind(NS);
 			const duration = createTrajectoryDurationStore();
+			const stringWrapping = createTrajectoryStringWrappingStore();
 			registerTrajectoryMessageDefinitions(ctx);
 			registerTrajectoryRequestHeaderDefinition(ctx);
 			registerTrajectoryAssistantDefinition(ctx);
@@ -8119,6 +9399,12 @@ window.__ModuleLoader__.load({
 					const trajectory = ctx.uiConversation.binding(sessionId).target("trajectory");
 					return {
 						hooks: { duration },
+						jsonStringWrapping: {
+							getDefault: () => stringWrapping.getSnapshot(),
+							setDefault: (value) => {
+								stringWrapping.set(value);
+							}
+						},
 						loadOlder: async () => {
 							const before = trajectory.getSnapshot();
 							await session.loadOlder();

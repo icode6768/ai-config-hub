@@ -1,13 +1,15 @@
 /** Client Session object layer, Agent scopes, and Remote lifecycle wiring. */
+import { typertOwnedValue } from '@deepseek-ai/dsh-typert-protocol';
 import { createSessionControlStream } from "./transport.js";
 import { ClientSessions } from "./sessions/service.js";
-export { createSessionControlStream, SessionEventStream, SESSION_SEARCH_RESULT_LIMIT, SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS, sessionStreamFailure, } from "./transport.js";
+export { createSessionControlStream, SessionEventStream, SESSION_SEARCH_RESULT_LIMIT, SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS, } from "./transport.js";
 export { createScope, scopeOf } from "./scope.js";
 export { SessionCreateError, SessionForkError } from "./sessions/service.js";
 export { MutableSessionEventSource } from "./contract/events.js";
-/** Required wire, Remote, and Context projection services. */
+/** Required Remote and Context projection services. */
 export const inject = [
     'connection',
+    'fileUpload',
     'typert',
     'remote',
     'remote.commands',
@@ -19,8 +21,8 @@ export const inject = [
  * @param ctx - Client Cordis context.
  */
 export function apply(ctx) {
-    const connection = ctx.get('connection');
     const remotes = ctx.remote;
+    const connection = ctx.get('connection');
     const sessions = new ClientSessions(ctx, remotes);
     ctx.remote.$on('api-session/added', (summary) => { sessions.handleSessionAdded(summary); });
     ctx.remote.$on('api-session/removed', (sessionId) => { sessions.handleSessionRemoved(sessionId); });
@@ -37,13 +39,22 @@ export function apply(ctx) {
         accept: (frame) => { sessions.handleControlFrame(frame); },
         failed: (error) => { console.error('[session-controller] control stream failed:', error); },
     });
-    control.start();
-    ctx.on('connection/reset', () => { sessions.handleConnected(); });
-    if (connection.generation.getSnapshot() !== undefined)
+    const connected = () => {
+        if (connection.generation.getSnapshot() === undefined)
+            return;
+        // A ready control baseline may arrive before Cordis delivers connection/reset.
         sessions.handleConnected();
+        control.restart();
+        control.start();
+    };
+    ctx.effect(() => connection.generation.subscribe(connected), 'session-controller.client.generation');
+    connected();
     ctx.typert.contexts.registerClient('agent', {
-        identity: candidate => sessions.scopeOf(candidate),
-        resolve: sessionId => sessions.resolveAgentScope(sessionId),
+        identity: candidate => sessions.sessionOf(candidate)?.sessionId,
+        resolve: (sessionId) => {
+            const reference = sessions.retainAgentScope(sessionId);
+            return typertOwnedValue(reference.binding.ctx, () => { reference.release(); });
+        },
     });
     ctx.effect(() => async () => { await control.dispose(); }, 'session-controller.client.control');
 }

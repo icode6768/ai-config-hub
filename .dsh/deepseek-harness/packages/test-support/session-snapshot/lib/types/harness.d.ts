@@ -11,7 +11,7 @@
  * shutdown flush. The pure normalizers in ./normalize.ts turn the captured
  * stdout frames and the session-log events into stable, snapshot-able text.
  *
- * See .agents/notes/implemented/testing/2026-06-19-acp-snapshot-tests.md.
+ * See packages/test-support/session-snapshot/README.md.
  *
  * @module @deepseek-ai/dsh-session-snapshot/harness
  */
@@ -39,7 +39,8 @@ export type { AgentUnderTest } from './launcher.ts';
  * `waitForInboxMessage` waits for inserted inbox text containing a scenario marker.
  * `waitForSubagentTurnEnd` waits until one background child has persisted a
  * closed model-work turn after its own descriptor; child progress has no ACP
- * update to wait on.
+ * update to wait on. Failures identify the child, turn, and deadline even if
+ * the first log read is still pending; the underlying failure is retained as cause.
  * `waitForTitleAfterTurnEnd` additionally waits for a later durable title.
  * `waitForEventAfterTurnEnd` waits until a complete record of the given event
  * type follows the latest closed turn — for scenarios whose asserted state
@@ -219,7 +220,7 @@ export interface RunOptions {
     configPath?: string;
 }
 /**
- * Derive one stable, fixed-length spill root owned by this scenario.
+ * Derive the stable, fixed-length logical spill prefix; never allocate files here.
  * Windows uses a two-character-shorter root because drive resolution adds its drive prefix.
  * @param fixtureFile - The scenario fixture whose parent directory provides the stable identity.
  * @param platform - the host platform, injectable for unit coverage.

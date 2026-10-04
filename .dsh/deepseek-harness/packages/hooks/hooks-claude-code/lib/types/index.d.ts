@@ -4,12 +4,19 @@
  * start/stop. It owns Claude payloads, environment, substitution, and decision
  * mapping; shared execution and parsing live in `dsh-hook-protocol`.
  * `updatedInput` is logged and warned but not honored. Bespoke behavior should
- * use typed native plugins on the same extension points; see the
- * [hook-bridges Agent Note](../../../../.agents/notes/implemented/feature/2026-06-30-hook-bridges.md).
+ * use typed native plugins on the same extension points.
  * @module @deepseek-ai/dsh-hooks-claude-code
  */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
+import type { ContextFormed } from '@deepseek-ai/dsh-llm';
+declare module '@deepseek-ai/dsh-llm' {
+    interface MessageSourceMap {
+        'hooks-claude-code': {
+            kind: 'hooks-claude-code';
+        } & ContextFormed;
+    }
+}
 export declare const name = "hooks-claude-code";
 export declare const inject: string[];
 /** Plugin config: where the CC hook config lives + substitution roots. */

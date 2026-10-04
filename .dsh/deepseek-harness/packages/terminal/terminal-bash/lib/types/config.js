@@ -44,11 +44,14 @@ export const Config = z.object({
     exactProbeAfterMs: z.number().default(150),
     idleSilenceMs: z.number().default(3_000),
     handoffGraceMs: z.number().default(500),
+    promptTailGraceMs: z.number().default(0),
     timeoutMs: z.number().default(30_000),
     disposeGraceMs: z.number().default(3_000),
 });
 /**
- * Assert every effective numeric config field is a positive safe integer and bounds compose.
+ * Assert every effective numeric config field is a positive safe integer — except
+ * `promptTailGraceMs`, whose zero is the documented "no extension" value — and that bounds
+ * compose.
  * @param config - Schemastery-resolved plugin configuration.
  * @returns Narrows the input to the fully resolved configuration.
  */
@@ -59,15 +62,24 @@ export function validateConfig(config) {
     if (resolved.shellPath.length === 0)
         throw new Error('terminal-bash: shellPath must be non-empty');
     for (const [name, value] of Object.entries(resolved)) {
+        if (name === 'promptTailGraceMs')
+            continue;
         if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) {
             throw new Error(`terminal-bash: ${name} must be a positive safe integer`);
         }
+    }
+    if (typeof resolved.promptTailGraceMs === 'number'
+        && (!Number.isSafeInteger(resolved.promptTailGraceMs) || resolved.promptTailGraceMs < 0)) {
+        throw new Error('terminal-bash: promptTailGraceMs must be a non-negative safe integer');
     }
     if (resolved.maxReadBytes > resolved.scrollbackMaxBytes) {
         throw new Error('terminal-bash: maxReadBytes must not exceed scrollbackMaxBytes');
     }
     if (resolved.handoffGraceMs < resolved.pollIntervalMs) {
         throw new Error('terminal-bash: handoffGraceMs must be at least pollIntervalMs so one readiness poll runs inside the grace window');
+    }
+    if (resolved.promptTailGraceMs !== 0 && resolved.promptTailGraceMs < resolved.pollIntervalMs) {
+        throw new Error('terminal-bash: promptTailGraceMs must be zero or at least pollIntervalMs so a nonzero tolerance contains one readiness poll');
     }
 }
 //# sourceMappingURL=config.js.map

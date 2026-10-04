@@ -1,4 +1,5 @@
 /** Browser plugin owning Session export download state and its shared modal. */
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
 import { SessionLogDownloadController } from "./controller.js";
 import { SessionLogDownloadHeaderAction } from "./HeaderAction.js";
 import { en, NS, zh } from "./locales.js";
@@ -12,6 +13,13 @@ export function apply(ctx) {
     ctx.provide('sessionLogDownload', controller);
     ctx.effect(() => async () => { await controller.dispose(); }, 'session-log-download: browser download lifecycle');
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'session-log-download: browser dictionaries');
+    const feedbackAvailable = createSnapshotStore(false);
+    ctx.inject(['feedbackUi'], (scope) => {
+        scope.effect(() => {
+            feedbackAvailable.set(true);
+            return () => { feedbackAvailable.set(false); };
+        }, 'session-log-download: feedback availability');
+    });
     ctx.on('command/executed', (sessionId, commandName, result) => {
         if (commandName === 'export' && result.kind === 'success')
             void controller.download(sessionId);
@@ -21,9 +29,11 @@ export function apply(ctx) {
         id: 'session-log-download',
         locale: NS,
         inject: () => ({
-            hooks: { sessionLogDownload: controller.store },
+            hooks: { sessionLogDownload: controller.store, feedbackAvailable },
             request: (sessionId) => controller.download(sessionId),
             dismiss: (sessionId) => { controller.dismiss(sessionId); },
+            // The feedback plugin can unload between the menu render and this click.
+            openFeedback: (sessionId) => { ctx.get('feedbackUi')?.openSession(sessionId); },
         }),
     }, SessionLogDownloadHeaderAction));
 }

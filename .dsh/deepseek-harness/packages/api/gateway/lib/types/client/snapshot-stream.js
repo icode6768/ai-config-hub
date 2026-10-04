@@ -1,4 +1,9 @@
 /** Baseline-and-delta protocol layered over a reconnecting Remote stream. */
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
+/** Host-side stream protocol violation, marked so consumers surface it as an error state. */
+function protocolViolation(message) {
+    return new RemoteError('gateway/internal', message, {});
+}
 /**
  * Consumes generations that each contain exactly one opening snapshot followed by deltas.
  *
@@ -50,7 +55,7 @@ export class RemoteSnapshotStream {
                 }
                 if (this.options.isSnapshot(item.value)) {
                     if (snapshotSeen) {
-                        throw new Error(`${this.options.name} emitted more than one opening snapshot`);
+                        throw protocolViolation(`${this.options.name} emitted more than one opening snapshot`);
                     }
                     this.options.replace(item.value);
                     snapshotSeen = true;
@@ -58,7 +63,7 @@ export class RemoteSnapshotStream {
                     continue;
                 }
                 if (!snapshotSeen) {
-                    throw new Error(`${this.options.name} emitted an update before its opening snapshot`);
+                    throw protocolViolation(`${this.options.name} emitted an update before its opening snapshot`);
                 }
                 this.options.update(item.value);
             }

@@ -1,8 +1,9 @@
+import { clearedProxyEnv } from "@deepseek-ai/dsh-http-proxy";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execa } from "execa";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { createUserMessage, expandAssistantStream } from "@deepseek-ai/dsh-llm";
 //#region lib/types/agent-turn.js
 /**
 * Test-only direct-agent turn driver shared by assembled Loader fixtures.
@@ -24,8 +25,16 @@ function assistantText(event) {
 	const blocks = event.data.message.content.filter((block) => block.type === "text");
 	return blocks.length === 0 ? void 0 : blocks.map((block) => block.text).join("");
 }
-function onlyRootAgent(ctx) {
-	const agents = ctx.get("agents")?.roots() ?? [];
+async function onlyRootAgent(ctx) {
+	const registry = ctx.get("agents");
+	if (registry === void 0) throw new Error("fixture turn requires exactly one top-level agent, found 0");
+	if (registry.roots().length === 0) await new Promise((resolve) => {
+		const dispose = ctx.on("agent/created", () => {
+			dispose();
+			resolve();
+		});
+	});
+	const agents = registry.roots();
 	const [agent] = agents;
 	if (agent === void 0 || agents.length !== 1) throw new Error(`fixture turn requires exactly one top-level agent, found ${agents.length}`);
 	return agent;
@@ -37,7 +46,7 @@ function onlyRootAgent(ctx) {
 * @returns the final assistant text and accumulated model usage.
 */
 async function runFixtureTurn(ctx, options) {
-	const agent = onlyRootAgent(ctx);
+	const agent = await onlyRootAgent(ctx);
 	await agent.whenIdle();
 	const message = createUserMessage({
 		content: [{
@@ -56,10 +65,12 @@ async function runFixtureTurn(ctx, options) {
 			received = true;
 		}
 		options.onEvent?.(session.id, event);
-		if (event.type === "assistant/chunk" && event.data.chunk.type === "usage") usageByStep.set(`${event.data.turn}/${event.data.step}`, event.data.chunk.usage);
 		if (event.type === "assistant/message") {
 			output = assistantText(event) ?? output;
 			if (event.data.usage !== void 0) usageByStep.set(`${event.data.turn}/${event.data.step}`, event.data.usage);
+		} else if (event.type === "assistant/attempt") {
+			const usage = expandAssistantStream(event.data.stream).findLast((member) => member.chunk.type === "usage")?.chunk;
+			if (usage?.type === "usage") usageByStep.set(`${event.data.turn}/${event.data.step}`, usage.usage);
 		}
 	});
 	try {
@@ -137,7 +148,10 @@ function toLibBin(srcBin) {
 function resolveExampleLaunch(options) {
 	const mode = options.mode ?? resolveExampleMode();
 	const configArgs = options.configArgs ?? [];
-	const env = { ...options.env };
+	const env = {
+		...clearedProxyEnv(),
+		...options.env
+	};
 	if (mode === "src") {
 		if (options.tsconfigPath === void 0) throw new Error("resolveExampleLaunch: 'src' mode needs tsconfigPath for the workspace paths map.");
 		const tsxLoader = options.sourceImport === "tsx/esm" ? import.meta.resolve("tsx/esm") : import.meta.resolve("tsx");
@@ -159,15 +173,22 @@ function resolveExampleLaunch(options) {
 		env
 	};
 }
+/** Whether the options supply the cwd instead of a prefix the harness expands. */
+function hasProvidedCwd(options) {
+	return options.cwd !== void 0;
+}
 /**
 * Boot one real Loader tree from an isolated cwd, close stdin immediately, and
-* await a clean exit. The helper owns process kill and temp-directory cleanup on
-* every outcome, and picks src/lib via {@link resolveExampleLaunch}.
+* await a clean exit. The helper owns process kill on every outcome and removes
+* the temporary directory it created; a caller-provided cwd is left in place so
+* consecutive smokes can share one world. It picks src/lib via
+* {@link resolveExampleLaunch}.
 * @param options - example paths, mode, environment, and diagnostic identity.
 * @returns captured stdout and stderr after a zero exit.
 */
 async function runLoaderSmoke(options) {
-	const cwd = await mkdtemp(join(options.tempDirParent ?? tmpdir(), options.tempDirPrefix));
+	const providedCwd = hasProvidedCwd(options);
+	const cwd = providedCwd ? options.cwd : await mkdtemp(join(options.tempDirParent ?? tmpdir(), options.tempDirPrefix));
 	const processTimeoutMs = options.processTimeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
 	try {
 		await options.prepare?.(cwd);
@@ -176,6 +197,7 @@ async function runLoaderSmoke(options) {
 			libBin: options.libBinScript,
 			configArgs: options.binArgs ?? [options.configPath],
 			...options.mode !== void 0 ? { mode: options.mode } : {},
+			...options.sourceImport !== void 0 ? { sourceImport: options.sourceImport } : {},
 			tsconfigPath: options.tsconfigPath,
 			env: {
 				DSH_HOME: join(cwd, ".dsh"),
@@ -201,7 +223,7 @@ async function runLoaderSmoke(options) {
 			stderr: result.stderr
 		};
 	} finally {
-		await rm(cwd, {
+		if (!providedCwd) await rm(cwd, {
 			recursive: true,
 			force: true
 		});

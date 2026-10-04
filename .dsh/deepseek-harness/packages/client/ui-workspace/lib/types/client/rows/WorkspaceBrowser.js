@@ -8,13 +8,20 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * rail entry path, each requesting expansion through the owner share. Adding
  * is the header button's one action, so it raises the directory flow with no
  * menu in between; the flow and its error dialog live in WorkspacePicker
- * (same package — direct composition, no slot between them).
+ * (same package — direct composition, no slot between them). A Session row's
+ * "..." menu and hover buttons are the `sidebar.workspaces.session.menu.item`
+ * and `sidebar.workspaces.session.row.action` lists rendered through this
+ * entry's `renderSlot`; the actions in them, this package's own included,
+ * are slot entries with their own behavior, so this component threads no
+ * action callbacks and hosts no action surface.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { Button, IconCloseFill14, IconPersonalizationOutline16, IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
-import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from "../tree.js";
+import { Button, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular, IconChevronsUpDownOutlineRegular, IconClockOutlineRegular, IconCloseFillRegular, IconFlatListOutlineRegular, IconFolderCloseRegular, IconProjectAddOutlineRegular, IconQueueOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular, IconWorkspaceTreeOutlineRegular, Menu, Modal, Toast, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace';
+import { deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY, } from "../tree.js";
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from "./Rows.js";
+import { AnimatedRows } from "./AnimatedRows.js";
 import { FLAT_SESSION_ORDER_KEY } from "../stores.js";
 import { WorkspacePickFlow } from "../WorkspacePicker.js";
 import css from './WorkspaceBrowser.module.css';
@@ -27,17 +34,17 @@ const EXPAND_SLIDE_MS = 300;
 const SEARCH_DEBOUNCE_MS = 250;
 /** `session.search` wire bound, measured in JavaScript UTF-16 code units. */
 const SEARCH_QUERY_MAX_CODE_UNITS = 500;
-/** Session rows visible per Workspace before the local overflow control. */
+/** Idle Session rows visible per Workspace before the local overflow control. */
 const COLLAPSED_SESSION_LIMIT = 5;
-/** Fold one Workspace without charging its provisional New Session against the ordinary-row limit. */
-function collapsedSessionRows(sessions) {
-    let ordinaryCount = 0;
+/** Keep provisional and running rows outside the idle-session quota, including parents with running children. */
+function collapsedSessionRows(sessions, limit = COLLAPSED_SESSION_LIMIT) {
+    let idleCount = 0;
     const rows = sessions.filter((session) => {
-        if (session.blank)
+        if (session.blank || session.running || session.runningSubagentCount > 0)
             return true;
-        if (ordinaryCount >= COLLAPSED_SESSION_LIMIT)
+        if (idleCount >= limit)
             return false;
-        ordinaryCount += 1;
+        idleCount += 1;
         return true;
     });
     return { rows, hiddenCount: sessions.length - rows.length };
@@ -53,10 +60,6 @@ function sanitizeSearchQuery(value) {
     if (last >= 0xD800 && last <= 0xDBFF && next >= 0xDC00 && next <= 0xDFFF)
         end--;
     return withoutNul.slice(0, end);
-}
-/** Immutable membership toggle for the local expand-all array. */
-function toggled(list, key) {
-    return list.includes(key) ? list.filter(k => k !== key) : [...list, key];
 }
 /**
  * Accept the native drag at document level while a row drag is active: row
@@ -81,164 +84,144 @@ function useNativeDragAcceptance(active) {
         };
     }, [active]);
 }
-/** Reconcile a stored view order with the Workspace's current session account. */
-function reconciledSessionOrder(sessionIds, stored) {
-    if (stored === undefined)
-        return [...sessionIds];
-    const byId = new Map(sessionIds.map(id => [id, id]));
-    const ordered = [];
-    const included = new Set();
-    for (const key of stored) {
-        const id = byId.get(key);
-        if (id === undefined || included.has(key))
-            continue;
-        ordered.push(id);
-        included.add(key);
-    }
-    for (const id of sessionIds) {
-        if (included.has(id))
-            continue;
-        ordered.push(id);
-    }
-    return ordered;
-}
-/** Newest update first with stable Session identity as the tie-break. */
-function compareSessionRecency(a, b, byId) {
-    const aUpdatedAt = byId[a]?.updatedAt ?? Number.NEGATIVE_INFINITY;
-    const bUpdatedAt = byId[b]?.updatedAt ?? Number.NEGATIVE_INFINITY;
-    if (aUpdatedAt !== bUpdatedAt)
-        return bUpdatedAt - aUpdatedAt;
-    return a < b ? -1 : 1;
-}
-/** Reconcile one editable order account and apply its activity-promotion policy. */
-function nextSessionOrderAccount({ sessionIds, previousOrder, previousUpdatedAt, list, orderBy, sortByRecency, }) {
-    let order = reconciledSessionOrder(sessionIds, previousOrder);
-    if (sortByRecency) {
-        order.sort((a, b) => compareSessionRecency(a, b, list.byId));
-    }
-    else if (orderBy === 'updated') {
-        const promoted = sessionIds
-            .filter((id) => {
-            const session = list.byId[id];
-            return session !== undefined
-                && (previousUpdatedAt[id] === undefined || session.updatedAt > previousUpdatedAt[id]);
-        })
-            .sort((a, b) => compareSessionRecency(a, b, list.byId));
-        if (promoted.length > 0) {
-            const promotedIds = new Set(promoted);
-            order = [...promoted, ...order.filter(id => !promotedIds.has(id))];
-        }
-    }
-    const updatedAt = {};
-    for (const id of sessionIds) {
-        const session = list.byId[id];
-        if (session !== undefined)
-            updatedAt[id] = session.updatedAt;
-    }
-    const orderChanged = previousOrder === undefined
-        || order.length !== previousOrder.length
-        || order.some((id, index) => id !== previousOrder[index]);
-    const timestampsChanged = Object.keys(updatedAt).length !== Object.keys(previousUpdatedAt).length
-        || Object.entries(updatedAt).some(([id, timestamp]) => previousUpdatedAt[id] !== timestamp);
-    return { order, updatedAt, changed: orderChanged || timestampsChanged };
-}
-/** Grouping and ordering menu; own open state so it resets with the wide chrome. */
-function ViewOptionsMenu({ groupBy, orderBy, onGroupPick, onOrderPick, t }) {
+/** Grouping, ordering, and archived-filter menu; own open state so it resets with the wide chrome. */
+function ViewOptionsMenu({ groupBy, orderBy, archivedFilter, onGroupPick, onOrderPick, onArchivedFilterPick, t }) {
     const [open, setOpen] = useState(false);
     return (_jsx(Menu, { open: open, onClose: () => { setOpen(false); }, items: [
             { type: 'label', id: 'group-by', text: t('groupBy.label') },
-            { id: 'workspace', label: t('groupBy.workspace') },
-            { id: 'flat', label: t('groupBy.flat') },
+            { id: 'workspace', label: t('groupBy.workspace'), icon: _jsx(IconFolderCloseRegular, {}) },
+            { id: 'workspace-tree', label: t('groupBy.workspaceTree'), icon: _jsx(IconWorkspaceTreeOutlineRegular, {}) },
+            { id: 'flat', label: t('groupBy.flat'), icon: _jsx(IconFlatListOutlineRegular, {}) },
             { type: 'separator', id: 'order-by-separator' },
             { type: 'label', id: 'order-by', text: t('orderBy.label') },
-            { id: 'manual', label: t('orderBy.manual') },
-            { id: 'updated', label: t('orderBy.updated') },
-        ], selectedIds: [groupBy, orderBy], onSelect: (id) => {
-            if (id === 'workspace' || id === 'flat')
+            { id: 'manual', label: t('orderBy.manual'), icon: _jsx(IconChevronsUpDownOutlineRegular, {}) },
+            { id: 'updated', label: t('orderBy.updated'), icon: _jsx(IconClockOutlineRegular, {}) },
+            { type: 'separator', id: 'archived-filter-separator' },
+            { type: 'label', id: 'filter-by', text: t('filterBy.label') },
+            { id: 'hide-archived', label: t('viewOptions.hideArchived'), icon: _jsx(IconArchiveOffOutlineRegular, {}) },
+            { id: 'show-archived', label: t('viewOptions.showArchived'), icon: _jsx(IconQueueOutlineRegular, {}) },
+            { id: 'only-archived', label: t('viewOptions.onlyArchived'), icon: _jsx(IconArchiveCheckOutlineRegular, {}) },
+        ], selectedIds: [
+            groupBy,
+            orderBy,
+            { default: 'hide-archived', show: 'show-archived', only: 'only-archived' }[archivedFilter],
+        ], onSelect: (id) => {
+            if (id === 'workspace' || id === 'workspace-tree' || id === 'flat')
                 onGroupPick(id);
             else if (id === 'manual' || id === 'updated')
                 onOrderPick(id);
+            else if (id === 'hide-archived')
+                onArchivedFilterPick('default');
+            else if (id === 'show-archived')
+                onArchivedFilterPick('show');
+            else if (id === 'only-archived')
+                onArchivedFilterPick('only');
             setOpen(false);
-        }, align: "end", dense: true, 
+        }, align: "end", dense: true, listClassName: css.viewOptionsMenu, 
         // Portal: the section header clips overflow, so an in-place list would
         // be cut off at the header's bounds.
-        portal: true, anchor: (_jsx(Tooltip, { label: t('viewOptions.label'), side: "bottom", delayMs: 500, children: _jsx("button", { type: "button", className: clsx(css.iconButton, css.wide), "aria-label": t('viewOptions.label'), onClick: () => { setOpen(v => !v); }, children: _jsx(IconPersonalizationOutline16, {}) }) })) }));
+        portal: true, anchor: (_jsx(Tooltip, { label: t('viewOptions.label'), side: "bottom", delayMs: 500, children: _jsx("button", { type: "button", className: clsx(css.iconButton, css.wide), "aria-label": t('viewOptions.label'), onClick: () => { setOpen(v => !v); }, children: _jsx(IconSlidersTwoOutlineRegular, {}) }) })) }));
 }
-/** Resolve an insertion side from the full rendered workspace group. */
+/** Apply a visible drop to the complete account without removing hidden members. */
+function sessionDragOrder(order, rows, drag, over) {
+    const source = rows.find(row => row.id === drag.sessionId);
+    const target = rows.find(row => row.id === over.id);
+    if (source === undefined || target === undefined || source.blank
+        || source.pinned !== drag.pinned || target.pinned !== drag.pinned
+        || source.id === target.id || !order.includes(source.id))
+        return;
+    const section = rows.filter(row => row.pinned === drag.pinned);
+    const sourceIndex = section.findIndex(row => row.id === source.id);
+    const withoutSource = section.filter(row => row.id !== source.id);
+    const insertAt = withoutSource.findIndex(row => row.id === target.id) + (over.half === 'after' ? 1 : 0);
+    if (insertAt === sourceIndex)
+        return;
+    const next = order.filter(id => id !== source.id);
+    const targetIndex = next.indexOf(target.id);
+    if (targetIndex === -1)
+        return;
+    next.splice(targetIndex + (over.half === 'after' ? 1 : 0), 0, source.id);
+    return pinCurrentBlank(next, rows.find(row => row.blank)?.id);
+}
+/** Resolve an insertion side across the Workspace header, descendants, and Sessions. */
 function workspaceGroupHalf(e) {
     const rect = e.currentTarget.getBoundingClientRect();
     return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 }
-/** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
-function SessionTree({ useSessions, useSessionPendingInteraction, startSession, open, forkSession, workspaces, archivedSessionIds, onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive, insertWorkspaceBefore, insertSessionBefore, orderBy, groupExpansion, setGroupExpanded, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t, }) {
-    const list = useSessions(s => s);
-    const pendingInteractions = useSessionPendingInteraction(s => s);
-    const current = list.current;
-    const [expandedSessionGroups, setExpandedSessionGroups] = useState([]);
+/** The list-empty placeholder — a glyph over the text; the archived-only view names its filter and offers the way back. */
+function EmptySessions({ rowState, onLeaveArchivedOnly, t }) {
+    const archivedOnly = rowState.archivedFilter === 'only';
+    return (_jsxs("div", { className: css.emptyState, "data-row-key": "empty", children: [archivedOnly ? _jsx(IconArchiveOutlineRegular, { size: 24 }) : _jsx(IconQueueOutlineRegular, { size: 24 }), _jsx("div", { children: archivedOnly ? t('empty.noneArchived') : t('empty.none') }), archivedOnly && (_jsx("button", { type: "button", className: css.emptyAction, onClick: onLeaveArchivedOnly, children: t('empty.viewOthers') }))] }));
+}
+/** The scrolling session tree; unmounting drops the sessions subscription and local row limits. */
+function SessionTree({ list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds, rowState, onLeaveArchivedOnly, workspaceReady, animationResetKey, usePanelInfo, onRenameRequest, onDeleteRequest, onSessionRenameRequest, renderSlot, insertWorkspaceBefore, nestWorkspaces, groupExpansion, setGroupExpanded, setSessionOrder, home, t, revealSessionId, onSessionRevealed, shortcuts, }) {
+    const panelActive = usePanelInfo(info => info.activePanelId !== null);
+    const statuses = useSessionStatus(s => s);
+    const current = panelActive
+        ? undefined
+        : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id;
+    const revealGroup = revealSessionId === undefined || !workspaceReady
+        ? undefined
+        : owningGroupKey(workspaces, revealSessionId);
+    const [sessionLimits, setSessionLimits] = useState({});
     // Transient drag marker state; the selected mode owns the resulting order.
     const [drag, setDrag] = useState(null);
     const sessionDropCommitted = useRef(false);
     const [workspaceDrag, setWorkspaceDrag] = useState(null);
     const workspaceDropCommitted = useRef(false);
-    const previousOrderBy = useRef(orderBy);
     const nativeDragActive = drag !== null || workspaceDrag !== null;
     useNativeDragAcceptance(nativeDragActive);
-    const currentGroup = current === undefined
+    const currentGroup = current === undefined || !workspaceReady
         ? undefined
-        : workspaces.find(w => w.sessionIds.includes(current))?.workspaceId
-            ?? UNGROUPED_KEY;
+        : owningGroupKey(workspaces, current);
     useEffect(() => {
         if (current === undefined || currentGroup === undefined || Object.hasOwn(groupExpansion, currentGroup))
             return;
         setGroupExpanded(currentGroup, true);
     }, [current, currentGroup, setGroupExpanded, groupExpansion]);
-    const expandedGroups = useMemo(() => Object.entries(groupExpansion).filter(([, expanded]) => expanded).map(([key]) => key), [groupExpansion]);
-    const ungroupedSessionIds = useMemo(() => {
-        const accounted = new Set(workspaces.flatMap(workspace => workspace.sessionIds));
-        return list.ids.filter((id) => list.byId[id] !== undefined && !accounted.has(id));
-    }, [list, workspaces]);
+    const parents = useMemo(() => {
+        if (!nestWorkspaces)
+            return new Map();
+        const keysByPath = new Map(workspaces.map(workspace => [workspace.path, workspace.workspaceId]));
+        const paths = [...keysByPath.keys()];
+        return new Map(workspaces.map((workspace) => {
+            const path = owningParentFolder(workspace.path, paths);
+            return [workspace.workspaceId, path === undefined ? undefined : keysByPath.get(path)];
+        }));
+    }, [nestWorkspaces, workspaces]);
+    const currentAncestors = useMemo(() => {
+        const keys = new Set();
+        for (let key = currentGroup === undefined ? undefined : parents.get(currentGroup); key !== undefined; key = parents.get(key)) {
+            keys.add(key);
+        }
+        return keys;
+    }, [currentGroup, parents]);
+    const expandedGroups = useMemo(() => {
+        const ancestorKeys = new Set(parents.values());
+        return [...workspaces.map(workspace => workspace.workspaceId), UNGROUPED_KEY]
+            .filter(key => groupExpansion[key] ?? ancestorKeys.has(key));
+    }, [groupExpansion, parents, workspaces]);
+    const groups = useMemo(() => deriveGroups(list, workspaces, rowState, statuses, {
+        expandedGroups,
+        ungroupedOrder: ungroupedSessionIds,
+    }), [list, workspaces, rowState, statuses, expandedGroups, ungroupedSessionIds]);
     useEffect(() => {
-        if (list.phase !== 'ready')
-            return;
-        const switchedToUpdated = previousOrderBy.current !== 'updated' && orderBy === 'updated';
-        previousOrderBy.current = orderBy;
-        const accounts = [
-            ...workspaces.map(workspace => ({
-                key: workspace.workspaceId,
-                sessionIds: workspace.sessionIds.filter(id => list.byId[id] !== undefined),
-            })),
-            { key: UNGROUPED_KEY, sessionIds: ungroupedSessionIds },
-        ];
-        for (const { key, sessionIds } of accounts) {
-            const previousOrder = sessionOrderByAccount[key];
-            const previousUpdatedAt = sessionUpdatedAtByAccount[key] ?? {};
-            const next = nextSessionOrderAccount({
-                sessionIds,
-                previousOrder,
-                previousUpdatedAt,
-                list,
-                orderBy,
-                sortByRecency: orderBy === 'updated' && (previousOrder === undefined || switchedToUpdated),
-            });
-            if (next.changed) {
-                syncSessionOrderAccount(key, next.order.map(id => id), next.updatedAt);
+        for (let key = revealGroup; key !== undefined; key = parents.get(key)) {
+            if (groupExpansion[key] === false || (key === revealGroup && groupExpansion[key] !== true)) {
+                setGroupExpanded(key, true);
             }
         }
-    }, [list, orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, ungroupedSessionIds, workspaces]);
-    const orderedWorkspaces = useMemo(() => {
-        return workspaces.map((workspace) => {
-            const stored = sessionOrderByAccount[workspace.workspaceId];
-            const sessionIds = reconciledSessionOrder(workspace.sessionIds, stored);
-            return { ...workspace, sessionIds };
-        });
-    }, [sessionOrderByAccount, workspaces]);
-    const orderedUngroupedSessionIds = useMemo(() => reconciledSessionOrder(ungroupedSessionIds, sessionOrderByAccount[UNGROUPED_KEY]), [sessionOrderByAccount, ungroupedSessionIds]);
-    const groups = useMemo(() => deriveGroups(list, orderedWorkspaces, archivedSessionIds, pendingInteractions, {
-        expandedGroups,
-        ...(sessionOrderByAccount[UNGROUPED_KEY] === undefined
-            ? {}
-            : { ungroupedOrder: sessionOrderByAccount[UNGROUPED_KEY] }),
-    }), [list, orderedWorkspaces, archivedSessionIds, pendingInteractions, expandedGroups, sessionOrderByAccount]);
+    }, [groupExpansion, parents, revealGroup, setGroupExpanded]);
+    useEffect(() => {
+        if (revealSessionId === undefined || revealGroup === undefined)
+            return;
+        const group = groups.find(candidate => candidate.key === revealGroup);
+        if (group === undefined || !group.expanded || !group.sessions.some(row => row.id === revealSessionId))
+            return;
+        if (collapsedSessionRows(group.sessions).rows.some(row => row.id === revealSessionId))
+            return;
+        setSessionLimits(limits => limits[revealGroup] === Infinity ? limits : { ...limits, [revealGroup]: Infinity });
+    }, [groups, revealGroup, revealSessionId]);
     const now = Date.now();
     const commitSessionDrag = (activeDrag, over) => {
         if (sessionDropCommitted.current)
@@ -248,267 +231,253 @@ function SessionTree({ useSessions, useSessionPendingInteraction, startSession, 
         const group = groups.find(candidate => candidate.key === activeDrag.accountKey);
         if (group === undefined)
             return;
-        const sessionsExpanded = expandedSessionGroups.includes(group.key);
-        const renderedSessions = sessionsExpanded ? group.sessions : collapsedSessionRows(group.sessions).rows;
-        const targetIndex = renderedSessions.findIndex(session => session.id === over.id);
-        if (targetIndex === -1)
-            return;
-        const sourceIndex = renderedSessions.findIndex(session => session.id === activeDrag.sessionId);
         if (over.id === activeDrag.sessionId)
             return;
-        const withoutSource = renderedSessions.filter(session => session.id !== activeDrag.sessionId);
-        const targetWithoutSourceIndex = withoutSource.findIndex(session => session.id === over.id);
-        if (targetWithoutSourceIndex === -1)
-            return;
-        const visibleInsertAt = over.half === 'before' ? targetWithoutSourceIndex : targetWithoutSourceIndex + 1;
-        if (sourceIndex !== -1 && visibleInsertAt === sourceIndex)
-            return;
         const accountSessionIds = activeDrag.accountKey === UNGROUPED_KEY
-            ? orderedUngroupedSessionIds
-            : orderedWorkspaces.find(workspace => workspace.workspaceId === activeDrag.accountKey)?.sessionIds;
+            ? ungroupedSessionIds
+            : workspaces.find(workspace => workspace.workspaceId === activeDrag.accountKey)?.sessionIds;
         if (accountSessionIds === undefined)
             return;
-        const nextOrder = accountSessionIds.filter(id => id !== activeDrag.sessionId);
-        let anchor;
-        if (sessionsExpanded) {
-            anchor = over.half === 'before' ? over.id : renderedSessions[targetIndex + 1]?.id;
-        }
-        else {
-            // A collapsed group may render the blank row after hidden ordinary rows.
-            // Place the source at the visible boundary before those hidden account members.
-            const previousVisible = withoutSource[visibleInsertAt - 1]?.id;
-            if (previousVisible === undefined) {
-                anchor = nextOrder[0];
-            }
-            else {
-                const previousIndex = nextOrder.indexOf(previousVisible);
-                if (previousIndex === -1)
-                    return;
-                anchor = nextOrder[previousIndex + 1];
-            }
-        }
-        const insertAt = anchor === undefined ? nextOrder.length : nextOrder.indexOf(anchor);
-        nextOrder.splice(insertAt === -1 ? nextOrder.length : insertAt, 0, activeDrag.sessionId);
-        if (!sessionsExpanded && sourceIndex !== -1) {
-            const nodes = new Map(group.sessions.map(node => [node.id, node]));
-            const nextGroup = nextOrder.flatMap((id) => {
-                const node = nodes.get(id);
-                return node === undefined ? [] : [node];
-            });
-            if (!collapsedSessionRows(nextGroup).rows.some(node => node.id === activeDrag.sessionId))
-                return;
-        }
-        setSessionOrder(activeDrag.accountKey, nextOrder.map(id => id));
-        if (orderBy === 'updated' || activeDrag.accountKey === UNGROUPED_KEY)
-            return;
-        insertSessionBefore(activeDrag.accountKey, activeDrag.sessionId, anchor).catch((reason) => {
-            console.warn('session reorder rejected:', reason);
-        });
+        const renderedSessions = collapsedSessionRows(group.sessions, sessionLimits[group.key]).rows;
+        const nextOrder = sessionDragOrder(accountSessionIds, renderedSessions, activeDrag, over);
+        if (nextOrder !== undefined)
+            setSessionOrder(activeDrag.accountKey, nextOrder);
     };
     const commitWorkspaceDrag = (activeDrag, over) => {
         if (workspaceDropCommitted.current)
             return;
         workspaceDropCommitted.current = true;
         setWorkspaceDrag(null);
-        const rowIndex = workspaces.findIndex(workspace => workspace.workspaceId === over.id);
+        const owner = parents.get(activeDrag.workspaceId);
+        const siblings = workspaces.filter(workspace => parents.get(workspace.workspaceId) === owner);
+        const rowIndex = siblings.findIndex(workspace => workspace.workspaceId === over.id);
         if (rowIndex === -1)
             return;
-        const anchor = over.half === 'before' ? over.id : workspaces[rowIndex + 1]?.workspaceId;
+        const anchor = over.half === 'before' ? over.id : siblings[rowIndex + 1]?.workspaceId;
         if (anchor === activeDrag.workspaceId)
             return;
-        const sourceIndex = workspaces.findIndex(workspace => workspace.workspaceId === activeDrag.workspaceId);
+        const sourceIndex = siblings.findIndex(workspace => workspace.workspaceId === activeDrag.workspaceId);
         const anchorIndex = anchor === undefined
-            ? workspaces.length
-            : workspaces.findIndex(workspace => workspace.workspaceId === anchor);
+            ? siblings.length
+            : siblings.findIndex(workspace => workspace.workspaceId === anchor);
         if (sourceIndex !== -1 && (anchorIndex === sourceIndex || anchorIndex === sourceIndex + 1))
             return;
         insertWorkspaceBefore(activeDrag.workspaceId, anchor).catch((reason) => {
             console.warn('workspace reorder rejected:', reason);
         });
     };
-    const workspaceDropAtListStart = groups[0]?.workspaceId !== undefined
-        && workspaceDrag?.over?.id === groups[0].workspaceId
+    const childrenByParent = useMemo(() => {
+        const rendered = new Set(groups.map(group => group.key));
+        const children = new Map();
+        for (const group of groups) {
+            // The archived-only view drops empty groups, so an ancestor may be
+            // absent; nest under the nearest rendered one.
+            let parent = parents.get(group.key);
+            while (parent !== undefined && !rendered.has(parent))
+                parent = parents.get(parent);
+            const siblings = children.get(parent);
+            if (siblings === undefined)
+                children.set(parent, [group]);
+            else
+                siblings.push(group);
+        }
+        return children;
+    }, [groups, parents]);
+    const rootGroups = childrenByParent.get(undefined) ?? [];
+    const workspaceDropAtListStart = rootGroups[0]?.workspaceId !== undefined
+        && workspaceDrag?.over?.id === rootGroups[0].workspaceId
         && workspaceDrag.over.half === 'before';
-    return (_jsxs("div", { className: clsx(css.treeBody, css.wide), children: [workspaceDropAtListStart && _jsx("span", { className: css.listTopDropIndicator, "aria-hidden": "true" }), _jsxs("div", { className: clsx(css.list, workspaceDropAtListStart && css.listTopDropActive), role: "tree", "aria-label": t('section.sessions'), children: [groups.length === 0 && (_jsx("div", { className: css.empty, children: t('empty.none') })), groups.map((group) => {
-                        const workspaceId = group.workspaceId;
-                        const collapsed = collapsedSessionRows(group.sessions);
-                        const sessionsExpanded = expandedSessionGroups.includes(group.key);
-                        const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
-                            ? workspaceDrag.over.half
-                            : null;
-                        const workspaceDragProps = workspaceId === undefined ? undefined : {
-                            start: () => {
-                                workspaceDropCommitted.current = false;
-                                setWorkspaceDrag({ workspaceId, over: null });
+    const rowKeys = groups.length === 0 ? ['empty'] : [];
+    const renderGroup = (group, depth) => {
+        const workspaceId = group.workspaceId;
+        const children = childrenByParent.get(group.key) ?? [];
+        const compatibleDrag = workspaceDrag !== null && parents.get(workspaceDrag.workspaceId) === parents.get(group.key);
+        const collapsed = collapsedSessionRows(group.sessions);
+        const visible = collapsedSessionRows(group.sessions, sessionLimits[group.key]);
+        const sessionsExpanded = visible.hiddenCount === 0;
+        rowKeys.push(`workspace:${group.key}`);
+        const childRows = group.expanded ? children.map(child => renderGroup(child, depth + 1)) : [];
+        const sessions = visible.rows;
+        for (const node of sessions)
+            rowKeys.push(`session:${node.id}`);
+        if (collapsed.hiddenCount > 0)
+            rowKeys.push(`overflow:${group.key}`);
+        const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
+            ? workspaceDrag.over.half
+            : null;
+        const workspaceDragProps = workspaceId === undefined ? undefined : {
+            start: () => {
+                workspaceDropCommitted.current = false;
+                setWorkspaceDrag({ workspaceId, over: null });
+            },
+            end: () => {
+                if (workspaceDrag?.over !== null && workspaceDrag?.over !== undefined) {
+                    commitWorkspaceDrag(workspaceDrag, workspaceDrag.over);
+                }
+                else {
+                    setWorkspaceDrag(null);
+                }
+                workspaceDropCommitted.current = false;
+            },
+        };
+        const hoverWorkspace = workspaceId === undefined || !compatibleDrag
+            ? undefined
+            : (half) => {
+                setWorkspaceDrag(active => active === null
+                    ? active
+                    : { ...active, over: { id: workspaceId, half } });
+            };
+        const dropWorkspace = workspaceId === undefined || !compatibleDrag
+            ? undefined
+            : (half) => {
+                commitWorkspaceDrag(workspaceDrag, { id: workspaceId, half });
+            };
+        return (_jsxs("div", { style: { '--dsh-workspace-indent': `${depth * 12}px` }, className: clsx(css.groupSection, workspaceMarker === 'before' && css.workspaceDropBefore, workspaceMarker === 'after' && css.workspaceDropAfter), onDragOver: workspaceDrag === null
+                ? undefined
+                : (e) => {
+                    e.preventDefault();
+                    if (hoverWorkspace === undefined && parents.get(group.key) !== undefined)
+                        return;
+                    e.stopPropagation();
+                    if (hoverWorkspace === undefined) {
+                        e.dataTransfer.dropEffect = 'none';
+                        if (workspaceDrag.over !== null)
+                            setWorkspaceDrag({ ...workspaceDrag, over: null });
+                    }
+                    else {
+                        e.dataTransfer.dropEffect = 'move';
+                        hoverWorkspace(workspaceGroupHalf(e));
+                    }
+                }, onDrop: workspaceDrag === null
+                ? undefined
+                : (e) => {
+                    e.preventDefault();
+                    if (dropWorkspace === undefined && parents.get(group.key) !== undefined)
+                        return;
+                    e.stopPropagation();
+                    if (dropWorkspace === undefined) {
+                        workspaceDropCommitted.current = true;
+                        setWorkspaceDrag(null);
+                    }
+                    else {
+                        dropWorkspace(workspaceGroupHalf(e));
+                    }
+                }, children: [_jsx(ProjectRowItem, { newShortcut: shortcuts.find(row => row.id === 'session.new'), group: group, containsCurrentDescendant: currentAncestors.has(group.key), home: home, t: t, onToggle: () => {
+                        if (group.expanded) {
+                            setSessionLimits(limits => ({ ...limits, [group.key]: COLLAPSED_SESSION_LIMIT }));
+                        }
+                        setGroupExpanded(group.key, !group.expanded);
+                    }, onCreate: () => {
+                        if (group.workspaceId !== undefined) {
+                            setGroupExpanded(group.key, true);
+                            startSession(group.workspaceId);
+                        }
+                    }, drag: workspaceDragProps, actions: group.workspaceId === undefined
+                        ? undefined
+                        : {
+                            rename: () => {
+                                /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
+                                if (group.workspaceId !== undefined)
+                                    onRenameRequest(group.workspaceId, group.label);
                             },
-                            end: () => {
-                                if (workspaceDrag?.over !== null && workspaceDrag?.over !== undefined) {
-                                    commitWorkspaceDrag(workspaceDrag, workspaceDrag.over);
-                                }
-                                else {
-                                    setWorkspaceDrag(null);
-                                }
-                                workspaceDropCommitted.current = false;
+                            delete: () => {
+                                /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
+                                if (group.workspaceId !== undefined)
+                                    onDeleteRequest(group.workspaceId, group.label);
                             },
-                        };
-                        const hoverWorkspace = workspaceId === undefined
-                            ? undefined
-                            : (half) => {
-                                setWorkspaceDrag(active => active === null
-                                    ? active
-                                    : { ...active, over: { id: workspaceId, half } });
-                            };
-                        const dropWorkspace = workspaceId === undefined
-                            ? undefined
-                            : (half) => {
-                                if (workspaceDrag === null)
-                                    return;
-                                commitWorkspaceDrag(workspaceDrag, { id: workspaceId, half });
-                            };
-                        return (_jsxs("div", { className: clsx(css.groupSection, workspaceMarker === 'before' && css.workspaceDropBefore, workspaceMarker === 'after' && css.workspaceDropAfter), onDragOver: workspaceDrag === null || hoverWorkspace === undefined
-                                ? undefined
-                                : (e) => {
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = 'move';
-                                    hoverWorkspace(workspaceGroupHalf(e));
-                                }, onDrop: workspaceDrag === null || dropWorkspace === undefined
-                                ? undefined
-                                : (e) => {
-                                    e.preventDefault();
-                                    dropWorkspace(workspaceGroupHalf(e));
-                                }, children: [_jsx(ProjectRowItem, { group: group, home: home, t: t, onToggle: () => {
-                                        if (group.expanded) {
-                                            setExpandedSessionGroups(keys => keys.filter(key => key !== group.key));
-                                        }
-                                        setGroupExpanded(group.key, !group.expanded);
-                                    }, onCreate: () => {
-                                        if (group.workspaceId !== undefined) {
-                                            setGroupExpanded(group.key, true);
-                                            startSession(group.workspaceId);
-                                        }
-                                    }, drag: workspaceDragProps, actions: group.workspaceId === undefined
-                                        ? undefined
-                                        : {
-                                            rename: () => {
-                                                /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
-                                                if (group.workspaceId !== undefined)
-                                                    onRenameRequest(group.workspaceId, group.label);
-                                            },
-                                            delete: () => {
-                                                /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
-                                                if (group.workspaceId !== undefined)
-                                                    onDeleteRequest(group.workspaceId, group.label);
-                                            },
-                                        } }), (sessionsExpanded
-                                    ? group.sessions
-                                    : collapsed.rows).map((node) => {
-                                    // Session drag never leaves its group. Ungrouped writes only the
-                                    // browser-local account; real Workspaces may also write Host order.
-                                    const sameGroupDrag = drag !== null && drag.accountKey === group.key;
-                                    const dragProps = {
-                                        start: () => {
-                                            sessionDropCommitted.current = false;
-                                            setDrag({ accountKey: group.key, sessionId: node.id, over: null });
-                                        },
-                                        active: sameGroupDrag,
-                                        marker: sameGroupDrag && drag.over?.id === node.id ? drag.over.half : null,
-                                        hover: (half) => {
-                                            /* v8 ignore next -- narrowing guard: Rows gates hover on `active`, which is false while the drag state is null. */
-                                            setDrag(d => (d === null ? d : { ...d, over: { id: node.id, half } }));
-                                        },
-                                        drop: (half) => {
-                                            /* v8 ignore next -- narrowing guard: Rows gates drop on `active`, which is false while the drag state is null. */
-                                            if (drag === null)
-                                                return;
-                                            commitSessionDrag(drag, { id: node.id, half });
-                                        },
-                                        end: () => {
-                                            if (drag?.over !== null && drag?.over !== undefined)
-                                                commitSessionDrag(drag, drag.over);
-                                            else
-                                                setDrag(null);
-                                            sessionDropCommitted.current = false;
-                                        },
-                                    };
-                                    return (_jsx(SessionNodeItem, { node: node, currentId: current, now: now, onOpen: open, onRename: onSessionRename, onFork: forkSession, onArchive: onSessionArchive, drag: dragProps, t: t }, node.id));
-                                }), collapsed.hiddenCount > 0 && (_jsx("button", { type: "button", className: css.sessionOverflowButton, "aria-expanded": sessionsExpanded, onClick: () => { setExpandedSessionGroups(keys => toggled(keys, group.key)); }, children: sessionsExpanded
-                                        ? t('sessions.collapse')
-                                        : t('sessions.expand', { n: collapsed.hiddenCount }) }))] }, group.key));
-                    })] }), _jsx("span", { className: css.fade })] }));
+                        } }), childRows.length > 0 && (_jsx("div", { role: "group", children: childRows })), sessions.map((node) => {
+                    // Session drag never leaves its browser-local account, and pinned
+                    // rows reorder only within their leading pinned block.
+                    const sameGroupDrag = drag !== null && drag.accountKey === group.key;
+                    const compatibleTarget = sameGroupDrag && drag.pinned === node.pinned;
+                    const normalizeHalf = (half) => node.blank ? 'after' : half;
+                    const dragProps = {
+                        start: () => {
+                            sessionDropCommitted.current = false;
+                            setDrag({ accountKey: group.key, sessionId: node.id, pinned: node.pinned, over: null });
+                        },
+                        active: compatibleTarget,
+                        marker: sameGroupDrag && drag.over?.id === node.id ? drag.over.half : null,
+                        hover: (half) => {
+                            /* v8 ignore next -- narrowing guard: Rows gates hover on `active`, which is false while the drag state is null. */
+                            setDrag(d => (d === null ? d : {
+                                ...d, over: { id: node.id, half: normalizeHalf(half) },
+                            }));
+                        },
+                        drop: (half) => {
+                            /* v8 ignore next -- narrowing guard: Rows gates drop on `active`, which is false while the drag state is null. */
+                            if (drag === null)
+                                return;
+                            commitSessionDrag(drag, { id: node.id, half: normalizeHalf(half) });
+                        },
+                        end: () => {
+                            if (drag?.over !== null && drag?.over !== undefined)
+                                commitSessionDrag(drag, drag.over);
+                            else
+                                setDrag(null);
+                            sessionDropCommitted.current = false;
+                        },
+                    };
+                    return (_jsx(SessionNodeItem, { node: node, currentId: current, now: now, onOpen: open, onRenameRequest: onSessionRenameRequest, renderSlot: renderSlot, onReveal: node.id === revealSessionId && group.key === revealGroup
+                            ? () => { onSessionRevealed(node.id); }
+                            : undefined, drag: dragProps, t: t }, node.id));
+                }), collapsed.hiddenCount > 0 && (_jsx("button", { type: "button", className: css.sessionOverflowButton, "data-row-key": `overflow:${group.key}`, "aria-expanded": sessionsExpanded, onClick: () => {
+                        setSessionLimits(limits => ({
+                            ...limits,
+                            [group.key]: sessionsExpanded
+                                ? COLLAPSED_SESSION_LIMIT
+                                : visible.hiddenCount <= COLLAPSED_SESSION_LIMIT
+                                    ? Infinity
+                                    : (limits[group.key] ?? COLLAPSED_SESSION_LIMIT) + COLLAPSED_SESSION_LIMIT,
+                        }));
+                    }, children: sessionsExpanded
+                        ? t('sessions.collapse')
+                        : t('sessions.expand', { n: visible.hiddenCount }) }))] }, group.key));
+    };
+    const groupRows = rootGroups.map(group => renderGroup(group, 0));
+    return (_jsxs("div", { className: clsx(css.treeBody, css.wide), children: [workspaceDropAtListStart && _jsx("span", { className: css.listTopDropIndicator, "aria-hidden": "true" }), _jsxs(AnimatedRows, { className: clsx(css.list, workspaceDropAtListStart && css.listTopDropActive), label: t('section.sessions'), rowKeys: rowKeys, ready: list.phase === 'ready' && workspaceReady && !nativeDragActive, resetKey: JSON.stringify([animationResetKey, sessionLimits]), children: [groups.length === 0 && (_jsx(EmptySessions, { rowState: rowState, onLeaveArchivedOnly: onLeaveArchivedOnly, t: t })), groupRows] }), _jsx("span", { className: css.fade })] }));
 }
 /** The flat "In one list" body: every session is one draggable top-level row. */
-function FlatList({ useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive, archivedSessionIds, orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t, }) {
-    const list = useSessions(s => s);
-    const pendingInteractions = useSessionPendingInteraction(s => s);
-    const baseRows = useMemo(() => deriveFlat(list, archivedSessionIds, pendingInteractions), [list, archivedSessionIds, pendingInteractions]);
-    const sessionIds = useMemo(() => baseRows.map(row => row.id), [baseRows]);
-    const previousOrderBy = useRef(orderBy);
-    useEffect(() => {
-        if (list.phase !== 'ready')
-            return;
-        const previousOrder = sessionOrderByAccount[FLAT_SESSION_ORDER_KEY];
-        const previousUpdatedAt = sessionUpdatedAtByAccount[FLAT_SESSION_ORDER_KEY] ?? {};
-        const switchedToUpdated = previousOrderBy.current !== 'updated' && orderBy === 'updated';
-        previousOrderBy.current = orderBy;
-        const next = nextSessionOrderAccount({
-            sessionIds,
-            previousOrder,
-            previousUpdatedAt,
-            list,
-            orderBy,
-            sortByRecency: orderBy === 'updated' && (previousOrder === undefined || switchedToUpdated),
-        });
-        if (next.changed) {
-            syncSessionOrderAccount(FLAT_SESSION_ORDER_KEY, next.order.map(id => id), next.updatedAt);
-        }
-    }, [list, orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, sessionIds, syncSessionOrderAccount]);
-    const rows = useMemo(() => {
-        const byId = new Map(baseRows.map(row => [row.id, row]));
-        return reconciledSessionOrder(sessionIds, sessionOrderByAccount[FLAT_SESSION_ORDER_KEY])
-            .flatMap((id) => {
-            const row = byId.get(id);
-            return row === undefined ? [] : [row];
-        });
-    }, [baseRows, sessionOrderByAccount, sessionIds]);
+function FlatList({ list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, open, onSessionRenameRequest, usePanelInfo, setSessionOrder, workspaceReady, animationResetKey, revealSessionId, onSessionRevealed, renderSlot, t, }) {
+    const panelActive = usePanelInfo(info => info.activePanelId !== null);
+    const statuses = useSessionStatus(s => s);
+    const rows = useMemo(() => deriveFlat(list, sessionIds, rowState, statuses), [list, sessionIds, rowState, statuses]);
     const [drag, setDrag] = useState(null);
     const dropCommitted = useRef(false);
     useNativeDragAcceptance(drag !== null);
+    const currentId = panelActive
+        ? undefined
+        : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id;
     const commitDrag = (activeDrag, over) => {
         if (dropCommitted.current)
             return;
         dropCommitted.current = true;
         setDrag(null);
-        const targetIndex = rows.findIndex(row => row.id === over.id);
-        if (targetIndex === -1)
-            return;
-        const anchor = over.half === 'before' ? over.id : rows[targetIndex + 1]?.id;
-        if (anchor === activeDrag.sessionId)
-            return;
-        const sourceIndex = rows.findIndex(row => row.id === activeDrag.sessionId);
-        const anchorIndex = anchor === undefined ? rows.length : rows.findIndex(row => row.id === anchor);
-        if (sourceIndex !== -1 && (anchorIndex === sourceIndex || anchorIndex === sourceIndex + 1))
-            return;
-        const nextOrder = rows.map(row => row.id).filter(id => id !== activeDrag.sessionId);
-        const insertAt = anchor === undefined ? nextOrder.length : nextOrder.indexOf(anchor);
-        nextOrder.splice(insertAt === -1 ? nextOrder.length : insertAt, 0, activeDrag.sessionId);
-        setSessionOrder(FLAT_SESSION_ORDER_KEY, nextOrder.map(id => id));
+        const nextOrder = sessionDragOrder(sessionIds, rows, activeDrag, over);
+        if (nextOrder !== undefined)
+            setSessionOrder(FLAT_SESSION_ORDER_KEY, nextOrder);
     };
     const now = Date.now();
-    return (_jsxs("div", { className: clsx(css.treeBody, css.wide), children: [_jsxs("div", { className: clsx(css.list, css.flatList), role: "tree", "aria-label": t('section.sessions'), children: [rows.length === 0 && (_jsx("div", { className: css.empty, children: t('empty.none') })), rows.map((node) => {
-                        const active = drag !== null;
-                        return (_jsx(SessionNodeItem, { node: node, currentId: list.current, now: now, onOpen: open, onRename: onSessionRename, onFork: forkSession, onArchive: onSessionArchive, flat: true, drag: {
+    return (_jsxs("div", { className: clsx(css.treeBody, css.wide), children: [_jsxs(AnimatedRows, { className: clsx(css.list, css.flatList), label: t('section.sessions'), rowKeys: rows.length === 0 ? ['empty'] : rows.map(row => `session:${row.id}`), ready: list.phase === 'ready' && workspaceReady && drag === null, resetKey: animationResetKey, children: [rows.length === 0 && (_jsx(EmptySessions, { rowState: rowState, onLeaveArchivedOnly: onLeaveArchivedOnly, t: t })), rows.map((node) => {
+                        const active = drag !== null && drag.pinned === node.pinned;
+                        const normalizeHalf = (half) => node.blank ? 'after' : half;
+                        return (_jsx(SessionNodeItem, { node: node, currentId: currentId, now: now, onOpen: open, onRenameRequest: onSessionRenameRequest, renderSlot: renderSlot, onReveal: node.id === revealSessionId
+                                ? () => { onSessionRevealed(node.id); }
+                                : undefined, drag: {
                                 start: () => {
                                     dropCommitted.current = false;
-                                    setDrag({ accountKey: FLAT_SESSION_ORDER_KEY, sessionId: node.id, over: null });
+                                    setDrag({ accountKey: FLAT_SESSION_ORDER_KEY, sessionId: node.id, pinned: node.pinned, over: null });
                                 },
                                 active,
                                 marker: active && drag.over?.id === node.id ? drag.over.half : null,
                                 hover: (half) => {
-                                    setDrag(current => current === null ? current : { ...current, over: { id: node.id, half } });
+                                    setDrag(current => current === null ? current : {
+                                        ...current, over: { id: node.id, half: normalizeHalf(half) },
+                                    });
                                 },
                                 drop: (half) => {
                                     if (drag !== null)
-                                        commitDrag(drag, { id: node.id, half });
+                                        commitDrag(drag, { id: node.id, half: normalizeHalf(half) });
                                 },
                                 end: () => {
                                     if (drag?.over !== null && drag?.over !== undefined)
@@ -521,62 +490,105 @@ function FlatList({ useSessions, useSessionPendingInteraction, open, forkSession
                     })] }), _jsx("span", { className: css.fade })] }));
 }
 /** Flat search body: local metadata matches plus the current Host result page. */
-function SearchResults({ useSessions, useSessionPendingInteraction, open, workspaces, archivedSessionIds, query, remote, resultLimit, t, }) {
+function SearchResults({ useSessions, useSessionStatus, open, onUnarchive, workspaces, archivedSessionIds, archivedFilter, query, remote, resultLimit, usePanelInfo, t, }) {
+    const panelActive = usePanelInfo(info => info.activePanelId !== null);
     const list = useSessions(s => s);
-    const pendingInteractions = useSessionPendingInteraction(s => s);
+    const statuses = useSessionStatus(s => s);
     const currentRemote = remote.query === query
         ? remote
         : { query, status: 'loading', items: [], hasMore: false };
-    const results = useMemo(() => deriveSearchResults(list, workspaces, query, archivedSessionIds, pendingInteractions, currentRemote, resultLimit), [list, workspaces, query, archivedSessionIds, pendingInteractions, currentRemote, resultLimit]);
+    const results = useMemo(() => deriveSearchResults(list, workspaces, query, archivedSessionIds, archivedFilter, statuses, currentRemote, resultLimit), [list, workspaces, query, archivedSessionIds, archivedFilter, statuses, currentRemote, resultLimit]);
     const pending = currentRemote.status === 'loading';
-    const failed = currentRemote.status === 'error';
-    return (_jsxs("div", { className: clsx(css.treeBody, css.wide), children: [_jsxs("div", { className: css.list, children: [_jsx("div", { className: css.searchTree, role: "tree", "aria-label": t('search.results.aria'), children: results.items.map(result => (_jsx(SearchResultItem, { result: result, currentId: list.current, onOpen: open, t: t }, result.id))) }), pending && (_jsx("div", { className: css.searchStatus, role: "status", children: t('search.pending') })), failed && (_jsx("div", { className: css.searchWarning, role: "status", children: t('search.unavailable') })), !pending && results.items.length === 0 && (_jsx("div", { className: css.empty, children: t('search.noMatches') })), results.hasMore && (_jsx("div", { className: css.searchStatus, children: t('search.hasMore', { n: resultLimit }) }))] }), _jsx("span", { className: css.fade })] }));
+    const currentId = panelActive
+        ? undefined
+        : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id;
+    return (_jsxs("div", { className: clsx(css.treeBody, css.wide), children: [_jsxs("div", { className: css.list, children: [_jsx("div", { className: css.searchTree, role: "tree", "aria-label": t('search.results.aria'), children: results.items.map(result => (_jsx(SearchResultItem, { result: result, currentId: currentId, onOpen: open, onUnarchive: onUnarchive, t: t }, result.id))) }), pending && (_jsx("div", { role: "status", "aria-label": t('search.pending'), children: (results.items.length === 0 ? [0, 1] : [0]).map(i => (_jsxs("div", { className: css.skeletonRow, "aria-hidden": "true", children: [_jsx("span", { className: css.skeletonDot }), _jsxs("span", { className: css.skeletonBars, children: [_jsx("span", { className: css.skeletonBar }), _jsx("span", { className: clsx(css.skeletonBar, css.skeletonBarWide) })] })] }, i))) })), !pending && results.items.length === 0 && (_jsx("div", { className: css.empty, children: t('search.noMatches') })), results.hasMore && (_jsx("div", { className: css.searchStatus, children: t('search.hasMore', { n: resultLimit }) }))] }), _jsx("span", { className: css.fade })] }));
 }
 /**
  * Render the browsing region.
  * @param props - composed slot props (shell owner share + store + injected actions).
  * @returns the region element tree.
  */
-export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionPendingInteraction, useWorkspaces, useStore, actions, startSession, open, renameSession, forkSession, renameWorkspace, deleteWorkspace, insertWorkspaceBefore, archiveSession, insertSessionBefore, createWorkspace, searchSessions, searchResultLimit, useDirectoryFlow, useConnectionGeneration, renderSlot, t, }) {
-    const home = useConnectionGeneration(generation => generation?.host.home);
-    const workspaces = useWorkspaces(state => state.items);
+export function WorkspaceBrowser({ wide, usePanelInfo, expandSidebar, useSessions, useSessionStatus, useWorkspaces, useStore, actions, startSession, open, requestSessionRename, notifyArchivedNotOpenable, renameWorkspace, deleteWorkspace, insertWorkspaceBefore, unarchiveSession, createWorkspace, searchSessions, searchResultLimit, useDirectoryFlow, useHostInfo, useShortcuts, useWorkspaceShortcuts, requestSearch, requestAddWorkspace, closeAddWorkspace, setDirectoryBusy, dismissForkError, renderSlot, t, }) {
+    const home = useHostInfo(info => info.home);
+    const shortcuts = useShortcuts(rows => rows);
+    const searchShortcut = shortcuts.find(row => row.id === 'session.search');
+    const addShortcut = shortcuts.find(row => row.id === 'workspace.add');
+    const shortcutState = useWorkspaceShortcuts(state => state);
+    // Ordering remains live while the rail or search replaces the list body.
+    const list = useSessions(state => state);
+    const storedWorkspaces = useWorkspaces(state => state.items);
+    // The resolved name, not `t`, is the memo dependency: the bound seat keeps
+    // its identity across a language switch.
+    const defaultWorkspaceName = t('workspace.defaultName');
+    const workspaces = useMemo(() => storedWorkspaces.map(workspace => ({
+        ...workspace,
+        title: workspaceDisplayTitle(workspace.title, defaultWorkspaceName),
+    })), [storedWorkspaces, defaultWorkspaceName]);
     const workspacePhase = useWorkspaces(state => state.phase);
+    const workspaceStreamState = useWorkspaces(state => state.state);
     const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds);
+    const pinnedSessionIds = useWorkspaces(state => state.pinnedSessionIds);
     // Live occupancy of this surface's directory-flow hole (the same source the
     // flow reads): a composition without a picking affordance can add nothing.
     const directoryFlowAvailable = useDirectoryFlow(occupied => occupied);
     const groupBy = useStore(s => s.groupBy);
     const orderBy = useStore(s => s.orderBy);
+    // Persisted view blobs written before the archived filter existed rehydrate
+    // without the field; they read as the default hide-archived view.
+    const archivedFilter = useStore(s => s.archivedFilter ?? 'default');
     const groupExpansion = useStore(s => s.groupExpansion);
     const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount);
-    const sessionUpdatedAtByAccount = useStore(s => s.sessionUpdatedAtByAccount);
-    const currentBlankSessionId = useSessions((state) => {
-        const current = state.current;
-        return current !== undefined && state.byId[current]?.blank === true ? current : undefined;
-    });
-    const currentBlankAccount = currentBlankSessionId === undefined
-        ? undefined
-        : workspaces.find(workspace => workspace.sessionIds.includes(currentBlankSessionId))
-            ?.workspaceId ?? UNGROUPED_KEY;
-    const promotedBlank = useRef(undefined);
-    useEffect(() => {
-        if (currentBlankSessionId === undefined || currentBlankAccount === undefined) {
-            promotedBlank.current = undefined;
+    // Archived sessions are not openable: the row stays visible under the
+    // filter but a click explains instead of navigating.
+    const guardedOpen = (sessionId) => {
+        if (archivedSessionIds.includes(sessionId)) {
+            notifyArchivedNotOpenable();
             return;
         }
-        const promoted = promotedBlank.current;
-        if (promoted !== undefined && promoted.sessionId === currentBlankSessionId
-            && promoted.accountKey === currentBlankAccount)
-            return;
-        promotedBlank.current = { sessionId: currentBlankSessionId, accountKey: currentBlankAccount };
-        for (const accountKey of new Set([currentBlankAccount, FLAT_SESSION_ORDER_KEY])) {
-            const previous = sessionOrderByAccount[accountKey] ?? [];
-            actions.setSessionOrder(accountKey, [
-                currentBlankSessionId,
-                ...previous.filter(id => id !== currentBlankSessionId),
-            ]);
-        }
-    }, [actions.setSessionOrder, currentBlankAccount, currentBlankSessionId, sessionOrderByAccount]);
+        open(sessionId);
+    };
+    const leaveArchivedOnly = () => { actions.setArchivedFilter('default'); };
+    const workspaceReady = workspacePhase === 'ready' && workspaceStreamState !== 'loading';
+    const mainSessionId = Object.values(list.byId)
+        .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id;
+    const currentBlank = mainSessionId !== undefined && list.byId[mainSessionId]?.blank === true
+        ? mainSessionId
+        : undefined;
+    const ungroupedMemberIds = useMemo(() => {
+        const accounted = new Set(workspaces.flatMap(workspace => workspace.sessionIds));
+        return list.ids.filter(id => list.byId[id] !== undefined && !accounted.has(id));
+    }, [list, workspaces]);
+    const orderState = useMemo(() => ({ pinnedSessionIds, archivedSessionIds }), [archivedSessionIds, pinnedSessionIds]);
+    const rowState = useMemo(() => ({ ...orderState, archivedFilter }), [orderState, archivedFilter]);
+    const flatMemberIds = useMemo(() => sessionMemberIds(list), [list]);
+    const orderedWorkspaces = useMemo(() => workspaces.map((workspace) => {
+        const memberIds = workspace.sessionIds;
+        const baseOrder = orderBy === 'updated'
+            ? orderByRecency(memberIds, list.byId)
+            : reconcileManualOrder(memberIds, sessionOrderByAccount[workspace.workspaceId], list.byId, orderState);
+        return {
+            ...workspace,
+            sessionIds: pinCurrentBlank(baseOrder, currentBlank !== undefined && memberIds.includes(currentBlank) ? currentBlank : undefined),
+        };
+    }), [currentBlank, list.byId, orderBy, orderState, sessionOrderByAccount, workspaces]);
+    const orderedUngroupedSessionIds = useMemo(() => {
+        const baseOrder = orderBy === 'updated'
+            ? orderByRecency(ungroupedMemberIds, list.byId)
+            : reconcileManualOrder(ungroupedMemberIds, sessionOrderByAccount[UNGROUPED_KEY], list.byId, orderState);
+        return pinCurrentBlank(baseOrder, currentBlank !== undefined && ungroupedMemberIds.includes(currentBlank) ? currentBlank : undefined);
+    }, [currentBlank, list.byId, orderBy, orderState, sessionOrderByAccount, ungroupedMemberIds]);
+    const orderedFlatSessionIds = useMemo(() => {
+        const baseOrder = orderBy === 'updated'
+            ? orderByRecency(flatMemberIds, list.byId)
+            : reconcileManualOrder(flatMemberIds, sessionOrderByAccount[FLAT_SESSION_ORDER_KEY], list.byId, orderState);
+        return pinCurrentBlank(baseOrder, currentBlank !== undefined && flatMemberIds.includes(currentBlank) ? currentBlank : undefined);
+    }, [currentBlank, flatMemberIds, list.byId, orderBy, orderState, sessionOrderByAccount]);
+    const activeSessionOrders = useMemo(() => Object.fromEntries([
+        ...orderedWorkspaces.map(workspace => [workspace.workspaceId, workspace.sessionIds]),
+        [UNGROUPED_KEY, orderedUngroupedSessionIds],
+        [FLAT_SESSION_ORDER_KEY, orderedFlatSessionIds],
+    ]), [orderedFlatSessionIds, orderedUngroupedSessionIds, orderedWorkspaces]);
     useEffect(() => {
         if (workspacePhase !== 'ready')
             return;
@@ -586,10 +598,55 @@ export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionP
             ...workspaces.map(workspace => workspace.workspaceId),
         ]);
     }, [actions.retainAccountKeys, workspacePhase, workspaces]);
+    useEffect(() => {
+        if (list.phase !== 'ready' || workspaceReady || orderBy !== 'manual' || currentBlank === undefined)
+            return;
+        // A first prompt can end blank pinning before the Workspace baseline arrives.
+        // Preserve saved members until that baseline can establish departures.
+        const changed = {};
+        for (const [key, ids] of Object.entries(activeSessionOrders)) {
+            if (key !== FLAT_SESSION_ORDER_KEY && workspacePhase !== 'ready')
+                continue;
+            const saved = sessionOrderByAccount[key] ?? [];
+            if (ids[0] !== currentBlank || saved[0] === currentBlank)
+                continue;
+            changed[key] = [currentBlank, ...saved.filter(id => id !== currentBlank)];
+        }
+        if (Object.keys(changed).length > 0)
+            actions.syncSessionOrders(changed);
+    }, [
+        actions.syncSessionOrders,
+        activeSessionOrders,
+        currentBlank,
+        list.phase,
+        orderBy,
+        sessionOrderByAccount,
+        workspacePhase,
+        workspaceReady,
+    ]);
+    useEffect(() => {
+        if (list.phase !== 'ready' || !workspaceReady || orderBy !== 'manual' || currentBlank === undefined)
+            return;
+        const moved = Object.entries(activeSessionOrders).some(([key, ids]) => ids[0] === currentBlank && sessionOrderByAccount[key]?.[0] !== currentBlank);
+        if (moved)
+            actions.syncSessionOrders(activeSessionOrders);
+    }, [
+        actions.syncSessionOrders,
+        activeSessionOrders,
+        currentBlank,
+        list.phase,
+        orderBy,
+        sessionOrderByAccount,
+        workspaceReady,
+    ]);
+    const saveSessionOrder = (accountKey, order) => {
+        actions.setSessionOrder(accountKey, order, activeSessionOrders);
+    };
     // The query outlives the tree and the input (both wide-only) so collapsing
     // does not silently drop an in-progress filter.
     const [query, setQuery] = useState('');
     const [searchExpanded, setSearchExpanded] = useState(false);
+    const [revealSessionId, setRevealSessionId] = useState(undefined);
     const normalizedQuery = sanitizeSearchQuery(query).trim();
     const [remoteSearch, setRemoteSearch] = useState({
         query: '',
@@ -601,9 +658,26 @@ export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionP
     const searchInput = useRef(null);
     // Section-header ＋ opens the picker menu (same popover in wide and rail
     // states; the menu anchors on this button).
-    const [wsPickerOpen, setWsPickerOpen] = useState(false);
+    const wsPickerOpen = shortcutState.addRequested;
     const wsPlusRef = useRef(null);
     const composingRef = useRef(false);
+    const openSearchResult = (sessionId) => {
+        if (archivedSessionIds.includes(sessionId)) {
+            notifyArchivedNotOpenable();
+            return;
+        }
+        setRevealSessionId(sessionId);
+        setQuery('');
+        setSearchExpanded(false);
+        open(sessionId);
+    };
+    const acknowledgeSessionReveal = (sessionId) => {
+        setRevealSessionId(current => current === sessionId ? undefined : current);
+    };
+    useEffect(() => {
+        if (normalizedQuery !== '')
+            setRevealSessionId(undefined);
+    }, [normalizedQuery]);
     // Rail search = expand + land in the search box: the flag arms before the
     // expand request; once the shell flips wide the input mounts and takes focus.
     const [searchOnExpand, setSearchOnExpand] = useState(false);
@@ -616,6 +690,18 @@ export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionP
             return () => { window.clearTimeout(timer); };
         }
     }, [wide, searchOnExpand]);
+    useEffect(() => {
+        if (shortcutState.searchRequest === 0)
+            return;
+        closeAddWorkspace();
+        setSearchExpanded(true);
+        if (!wide) {
+            setSearchOnExpand(true);
+            expandSidebar();
+        }
+        else
+            searchInput.current?.focus({ preventScroll: true });
+    }, [shortcutState.searchRequest]);
     useEffect(() => {
         if (!wide || !searchExpanded || searchOnExpand)
             return;
@@ -679,15 +765,21 @@ export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionP
         };
     }, [normalizedQuery, searchSessions]);
     // Rename dialog (browser-owned so it outlives row unmounts during collapse).
+    // The stored title decides whether confirming is a real rename; the draft is
+    // seeded with the label on screen. They differ for a Workspace still
+    // carrying its automatic title, so confirming the prefill pins that name.
     const [renameTarget, setRenameTarget] = useState(null);
     const [renameDraft, setRenameDraft] = useState('');
     const [renaming, setRenaming] = useState(false);
     const [renameError, setRenameError] = useState(null);
     const renameTrimmed = renameDraft.trim();
-    const renameDuplicate = renameTarget !== null && renameTrimmed !== '' && renameTrimmed !== renameTarget.currentTitle
-        && workspaces.some(w => w.title === renameTrimmed);
+    // Self is excluded by identity, not by title: the draft is seeded with the
+    // localized label, which for an automatically titled Workspace equals its
+    // own displayed title without being a conflict with itself.
+    const renameDuplicate = renameTarget !== null && renameTrimmed !== ''
+        && workspaces.some(w => w.workspaceId !== renameTarget.workspaceId && w.title === renameTrimmed);
     const renameBlocked = renaming || renameTrimmed === ''
-        || renameTarget === null || renameTrimmed === renameTarget.currentTitle || renameDuplicate;
+        || renameTarget === null || renameTrimmed === renameTarget.storedTitle || renameDuplicate;
     const closeRename = () => {
         if (renaming)
             return;
@@ -707,47 +799,11 @@ export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionP
             setRenameError(reason instanceof Error ? reason.message : String(reason));
         });
     };
-    // Session rename dialog (same browser-owned pattern as workspace rename;
-    // sessions have no client-side name-conflict rule — the host normalizes).
-    // Unlike workspace rename, an unchanged title is NOT blocked: confirming
-    // the current automatic title is the gesture that pins it.
-    const [sessionRenameTarget, setSessionRenameTarget] = useState(null);
-    const [sessionRenameDraft, setSessionRenameDraft] = useState('');
-    const [sessionRenaming, setSessionRenaming] = useState(false);
-    const [sessionRenameError, setSessionRenameError] = useState(null);
-    const sessionRenameTrimmed = sessionRenameDraft.trim();
-    const sessionRenameBlocked = sessionRenaming || sessionRenameTrimmed === '' || sessionRenameTarget === null;
-    const closeSessionRename = () => {
-        if (sessionRenaming)
-            return;
-        setSessionRenameTarget(null);
-        setSessionRenameError(null);
-    };
-    const confirmSessionRename = () => {
-        if (sessionRenameBlocked)
-            return;
-        setSessionRenaming(true);
-        setSessionRenameError(null);
-        renameSession(sessionRenameTarget.sessionId, sessionRenameTrimmed).then(() => {
-            setSessionRenaming(false);
-            setSessionRenameTarget(null);
-        }).catch((reason) => {
-            setSessionRenaming(false);
-            setSessionRenameError(reason instanceof Error ? reason.message : String(reason));
-        });
-    };
-    const onSessionRename = (sessionId, currentTitle) => {
-        setSessionRenameTarget({ sessionId, currentTitle });
-        setSessionRenameDraft(currentTitle);
-        setSessionRenameError(null);
-    };
-    // Archive is dialog-free: not destructive (the log and the accounting slot
-    // remain), so the menu action commits directly; the row disappears when the
-    // archive-set echo lands. Failures are non-fatal console diagnostics, the
-    // same posture as reorder rejections.
-    const onSessionArchive = (sessionId) => {
-        archiveSession(sessionId).catch((reason) => {
-            console.warn('session archive rejected:', reason);
+    // The search results' restore button; the row actions own the rest of the
+    // Session verbs as slot entries.
+    const onSessionUnarchive = (sessionId) => {
+        unarchiveSession(sessionId).catch((reason) => {
+            console.warn('session unarchive rejected:', reason);
         });
     };
     // Delete dialog is separate from the row so a successful removal can
@@ -788,13 +844,12 @@ export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionP
         });
     };
     return (_jsxs("div", { className: clsx(css.root, !wide && css.rail), children: [_jsxs("div", { className: css.sectionHeader, children: [wide && (_jsx("span", { className: clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden), children: groupBy === 'flat' ? t('section.sessions') : t('section.workspaces') })), wide && (_jsx("div", { className: clsx(css.searchSlot, searchExpanded && css.searchSlotExpanded), children: _jsxs("div", { ref: searchRoot, className: clsx(css.search, searchExpanded && css.searchExpanded), onClick: () => {
-                                setWsPickerOpen(false);
+                                closeAddWorkspace();
                                 setSearchExpanded(true);
                                 searchInput.current?.focus();
-                            }, children: [_jsx(Tooltip, { label: t('search'), side: "bottom", delayMs: 500, disabled: searchExpanded, children: _jsx("button", { type: "button", className: css.searchButton, "aria-label": t('search.sessions.aria'), "aria-expanded": searchExpanded, onClick: () => {
-                                            setWsPickerOpen(false);
-                                            setSearchExpanded(true);
-                                        }, children: _jsx(IconSearchOutline16, { size: searchExpanded ? 11 : 14 }) }) }), _jsx("input", { ref: searchInput, className: css.searchInput, type: "text", placeholder: t('search.placeholder'), maxLength: SEARCH_QUERY_MAX_CODE_UNITS, value: query, tabIndex: searchExpanded ? 0 : -1, onChange: (e) => { setQuery(sanitizeSearchQuery(e.target.value)); }, onKeyDown: (e) => {
+                            }, children: [_jsx(Tooltip, { label: t('search'), shortcutKeys: searchShortcut?.keys, side: "bottom", delayMs: 500, disabled: searchExpanded, children: _jsx("button", { type: "button", className: css.searchButton, "aria-label": t('search.sessions.aria'), "aria-keyshortcuts": searchShortcut?.aria, "aria-expanded": searchExpanded, onClick: () => {
+                                            requestSearch();
+                                        }, children: _jsx(IconSearchOutlineRegular, { size: searchExpanded ? 11 : 14 }) }) }), _jsx("input", { ref: searchInput, className: css.searchInput, type: "text", placeholder: t('search.placeholder'), maxLength: SEARCH_QUERY_MAX_CODE_UNITS, value: query, tabIndex: searchExpanded ? 0 : -1, onChange: (e) => { setQuery(sanitizeSearchQuery(e.target.value)); }, onKeyDown: (e) => {
                                         if (e.key !== 'Escape')
                                             return;
                                         setQuery('');
@@ -803,38 +858,34 @@ export function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionP
                                         e.stopPropagation();
                                         setQuery('');
                                         setSearchExpanded(false);
-                                    }, children: _jsx(IconCloseFill14, {}) }))] }) })), _jsxs("div", { className: clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden), children: [wide && (_jsx(ViewOptionsMenu, { groupBy: groupBy, orderBy: orderBy, onGroupPick: (mode) => { actions.setGroupBy(mode); }, onOrderPick: (mode) => { actions.setOrderBy(mode); }, t: t })), directoryFlowAvailable && (_jsx(Tooltip, { label: t('workspace.add'), side: "bottom", delayMs: 500, children: _jsx("button", { ref: wsPlusRef, type: "button", className: css.iconButton, "aria-label": t('workspace.add'), onClick: () => {
-                                        setWsPickerOpen(v => !v);
-                                    }, children: _jsx(IconProjectAddOutline16, { size: wide ? 16 : 18 }) }) }))] }), _jsx(WorkspacePickFlow, { t: t, open: wsPickerOpen, anchorRef: wsPlusRef, useWorkspaces: useWorkspaces, createWorkspace: createWorkspace, useDirectoryFlow: useDirectoryFlow, renderDirectoryFlow: owner => renderSlot('sidebar.workspaces.directoryFlow', owner), addOnly: true, side: "right", onPick: (workspaceId) => {
-                            setWsPickerOpen(false);
+                                    }, children: _jsx(IconCloseFillRegular, {}) }))] }) })), _jsxs("div", { className: clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden), children: [wide && (_jsx(ViewOptionsMenu, { groupBy: groupBy, orderBy: orderBy, archivedFilter: archivedFilter, onGroupPick: actions.setGroupBy, onOrderPick: (mode) => { actions.setOrderBy(mode, activeSessionOrders); }, onArchivedFilterPick: actions.setArchivedFilter, t: t })), directoryFlowAvailable && (_jsx(Tooltip, { label: t('workspace.add'), shortcutKeys: addShortcut?.keys, side: "bottom", delayMs: 500, children: _jsx("button", { ref: wsPlusRef, type: "button", className: css.iconButton, "aria-label": t('workspace.add'), "aria-keyshortcuts": addShortcut?.aria, onClick: () => {
+                                        requestAddWorkspace();
+                                    }, children: _jsx(IconProjectAddOutlineRegular, { size: wide ? 16 : 18 }) }) }))] }), _jsx(WorkspacePickFlow, { t: t, open: wsPickerOpen, anchorRef: wsPlusRef, useWorkspaces: useWorkspaces, createWorkspace: createWorkspace, useDirectoryFlow: useDirectoryFlow, renderDirectoryFlow: owner => renderSlot('sidebar.workspaces.directoryFlow', owner), addOnly: true, onBusyChange: setDirectoryBusy, side: "right", onPick: (workspaceId) => {
+                            closeAddWorkspace();
                             startSession(workspaceId);
-                        }, onClose: () => { setWsPickerOpen(false); } })] }), !wide && _jsx("div", { className: css.search, children: _jsx(Tooltip, { label: t('search'), children: _jsx("button", { type: "button", className: css.searchButton, "aria-label": t('search.sessions.aria'), onClick: () => {
-                            setSearchExpanded(true);
-                            setSearchOnExpand(true);
-                            expandSidebar();
-                        }, children: _jsx(IconSearchOutline16, { size: 18 }) }) }) }), _jsx("div", { className: css.listArea, children: wide && (normalizedQuery !== ''
-                    ? (_jsx(SearchResults, { useSessions: useSessions, useSessionPendingInteraction: useSessionPendingInteraction, open: open, workspaces: workspaces, archivedSessionIds: archivedSessionIds, query: normalizedQuery, remote: remoteSearch, resultLimit: searchResultLimit, t: t }))
+                        }, onClose: () => { closeAddWorkspace(); } })] }), !wide && _jsx("div", { className: css.search, children: _jsx(Tooltip, { label: t('search'), shortcutKeys: searchShortcut?.keys, children: _jsx("button", { type: "button", className: css.searchButton, "aria-label": t('search.sessions.aria'), "aria-keyshortcuts": searchShortcut?.aria, onClick: () => {
+                            requestSearch();
+                        }, children: _jsx(IconSearchOutlineRegular, { size: 18 }) }) }) }), _jsx("div", { className: css.listArea, children: wide && (normalizedQuery !== ''
+                    ? (_jsx(SearchResults, { usePanelInfo: usePanelInfo, useSessions: useSessions, useSessionStatus: useSessionStatus, open: openSearchResult, onUnarchive: onSessionUnarchive, workspaces: workspaces, archivedSessionIds: archivedSessionIds, archivedFilter: archivedFilter, query: normalizedQuery, remote: remoteSearch, resultLimit: searchResultLimit, t: t }))
                     : groupBy === 'flat'
-                        ? (_jsx(FlatList, { useSessions: useSessions, useSessionPendingInteraction: useSessionPendingInteraction, open: open, forkSession: forkSession, onSessionRename: onSessionRename, onSessionArchive: onSessionArchive, archivedSessionIds: archivedSessionIds, orderBy: orderBy, sessionOrderByAccount: sessionOrderByAccount, sessionUpdatedAtByAccount: sessionUpdatedAtByAccount, syncSessionOrderAccount: actions.syncSessionOrderAccount, setSessionOrder: actions.setSessionOrder, t: t }))
-                        : (_jsx(SessionTree, { useSessions: useSessions, useSessionPendingInteraction: useSessionPendingInteraction, onSessionRename: onSessionRename, onSessionArchive: onSessionArchive, forkSession: forkSession, workspaces: workspaces, groupExpansion: groupExpansion, setGroupExpanded: actions.setGroupExpanded, sessionOrderByAccount: sessionOrderByAccount, sessionUpdatedAtByAccount: sessionUpdatedAtByAccount, syncSessionOrderAccount: actions.syncSessionOrderAccount, setSessionOrder: actions.setSessionOrder, archivedSessionIds: archivedSessionIds, startSession: startSession, open: open, insertWorkspaceBefore: insertWorkspaceBefore, insertSessionBefore: insertSessionBefore, orderBy: orderBy, home: home, t: t, onRenameRequest: (workspaceId, currentTitle) => {
-                                setRenameTarget({ workspaceId, currentTitle });
-                                setRenameDraft(currentTitle);
+                        ? (_jsx(FlatList, { usePanelInfo: usePanelInfo, list: list, sessionIds: orderedFlatSessionIds, rowState: rowState, onLeaveArchivedOnly: leaveArchivedOnly, workspaceReady: workspaceReady, animationResetKey: `${groupBy}/${orderBy}/${archivedFilter}`, useSessionStatus: useSessionStatus, open: guardedOpen, onSessionRenameRequest: requestSessionRename, renderSlot: renderSlot, setSessionOrder: saveSessionOrder, revealSessionId: revealSessionId, onSessionRevealed: acknowledgeSessionReveal, t: t }))
+                        : (_jsx(SessionTree, { usePanelInfo: usePanelInfo, list: list, shortcuts: shortcuts, useSessionStatus: useSessionStatus, onSessionRenameRequest: requestSessionRename, renderSlot: renderSlot, workspaces: orderedWorkspaces, ungroupedSessionIds: orderedUngroupedSessionIds, workspaceReady: workspaceReady, nestWorkspaces: groupBy === 'workspace-tree', animationResetKey: `${groupBy}/${orderBy}/${archivedFilter}`, groupExpansion: groupExpansion, setGroupExpanded: actions.setGroupExpanded, setSessionOrder: saveSessionOrder, rowState: rowState, onLeaveArchivedOnly: leaveArchivedOnly, startSession: startSession, open: guardedOpen, insertWorkspaceBefore: insertWorkspaceBefore, revealSessionId: revealSessionId, onSessionRevealed: acknowledgeSessionReveal, home: home, t: t, onRenameRequest: (workspaceId, displayTitle) => {
+                                setRenameTarget({
+                                    workspaceId,
+                                    storedTitle: storedWorkspaces.find(w => w.workspaceId === workspaceId)?.title ?? displayTitle,
+                                });
+                                setRenameDraft(displayTitle);
                                 setRenameError(null);
                             }, onDeleteRequest: (workspaceId, title) => {
                                 setDeleteTarget({ workspaceId, title });
                                 setDeleteError(null);
-                            } }))) }), _jsxs(Modal, { open: renameTarget !== null, onClose: closeRename, closeLabel: t('close'), title: t('rename.workspace.title'), footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", disabled: renaming, onClick: closeRename, children: t('cancel') }), _jsx(Button, { variant: "primary", disabled: renameBlocked, onClick: confirmRename, children: t('rename') })] })), children: [_jsx("input", { className: css.renameInput, value: renameDraft, "aria-label": t('field.workspaceName'), autoFocus: true, disabled: renaming, onFocus: (e) => { e.target.select(); }, onChange: (e) => { setRenameDraft(e.target.value); setRenameError(null); }, onCompositionStart: () => { composingRef.current = true; }, onCompositionEnd: () => { composingRef.current = false; }, onKeyDown: (e) => {
+                            } }))) }), _jsxs(Modal, { open: renameTarget !== null, onClose: closeRename, closeLabel: t('close'), title: t('rename.workspace.title'), footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", disabled: renaming, onClick: closeRename, children: t('cancel') }), _jsx(Button, { variant: "primary", disabled: renameBlocked, onClick: confirmRename, children: t('rename') })] })), children: [_jsx("input", { className: css.renameInput, value: renameDraft, "aria-label": t('field.workspaceName'), "data-modal-autofocus": true, disabled: renaming, onFocus: (e) => { e.target.select(); }, onChange: (e) => { setRenameDraft(e.target.value); setRenameError(null); }, onCompositionStart: () => { composingRef.current = true; }, onCompositionEnd: () => { composingRef.current = false; }, onKeyDown: (e) => {
                             if (e.key === 'Enter' && !composingRef.current) {
                                 e.preventDefault();
                                 confirmRename();
                             }
-                        } }), renameDuplicate && (_jsx("div", { className: css.renameError, role: "alert", children: t('conflict.named', { name: renameTrimmed }) })), renameError !== null && _jsx("div", { className: css.renameError, role: "alert", children: renameError })] }), _jsxs(Modal, { open: sessionRenameTarget !== null, onClose: closeSessionRename, closeLabel: t('close'), title: t('rename.session.title'), footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", disabled: sessionRenaming, onClick: closeSessionRename, children: t('cancel') }), _jsx(Button, { variant: "primary", disabled: sessionRenameBlocked, onClick: confirmSessionRename, children: t('rename') })] })), children: [_jsx("input", { className: css.renameInput, value: sessionRenameDraft, "aria-label": t('field.sessionName'), autoFocus: true, disabled: sessionRenaming, onFocus: (e) => { e.target.select(); }, onChange: (e) => { setSessionRenameDraft(e.target.value); setSessionRenameError(null); }, onCompositionStart: () => { composingRef.current = true; }, onCompositionEnd: () => { composingRef.current = false; }, onKeyDown: (e) => {
-                            if (e.key === 'Enter' && !composingRef.current) {
-                                e.preventDefault();
-                                confirmSessionRename();
-                            }
-                        } }), sessionRenameError !== null && _jsx("div", { className: css.renameError, role: "alert", children: sessionRenameError })] }), _jsxs(Modal, { open: deleteTarget !== null, onClose: closeDelete, closeLabel: t('close'), title: t('delete.workspace'), ...deleteTarget === null
+                        } }), renameDuplicate && (_jsx("div", { className: css.renameError, role: "alert", children: t('conflict.named', { name: renameTrimmed }) })), renameError !== null && _jsx("div", { className: css.renameError, role: "alert", children: renameError })] }), _jsxs(Modal, { open: deleteTarget !== null, onClose: closeDelete, closeLabel: t('close'), title: t('delete.workspace'), ...deleteTarget === null
                     ? {}
-                    : { description: t('delete.desc', { name: deleteTarget.title }) }, footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", disabled: deleting, onClick: closeDelete, children: t('cancel') }), _jsx(Button, { variant: "outline", className: css.deleteAction, disabled: deleting, onClick: confirmDelete, children: t('delete.workspace') })] })), children: [deleting && _jsx("div", { className: css.deleteStatus, role: "status", children: t('delete.pending') }), deleteError !== null && _jsx("div", { className: css.renameError, role: "alert", children: deleteError })] })] }));
+                    : { description: t('delete.desc', { name: deleteTarget.title }) }, footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", disabled: deleting, onClick: closeDelete, children: t('cancel') }), _jsx(Button, { variant: "outline", className: css.deleteAction, disabled: deleting, onClick: confirmDelete, children: t('delete.workspace') })] })), children: [deleting && _jsx("div", { className: css.deleteStatus, role: "status", children: t('delete.pending') }), deleteError !== null && _jsx("div", { className: css.renameError, role: "alert", children: deleteError })] }), shortcutState.forkError !== null && _jsx(Toast, { text: t(shortcutState.forkError.reason === 'unavailable' ? 'shortcut.noCompletedTurn' : 'shortcut.forkFailed'), onDone: dismissForkError }, shortcutState.forkError.seq)] }));
 }
 //# sourceMappingURL=WorkspaceBrowser.js.map

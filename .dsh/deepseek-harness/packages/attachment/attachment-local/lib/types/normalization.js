@@ -1,8 +1,8 @@
 /** Deterministic provider-independent image normalization. */
-import sharp from 'sharp';
 import { AttachmentError, requestImageDimensions } from '@deepseek-ai/dsh-attachment';
 import { encodeFirstWithinLimit, encodingLadder, isExhaustedEncoding } from "./encoding.js";
 import { detectImage, encodedAlphaIsCompatible } from "./image.js";
+import { requireSharp } from "./sharp.js";
 /**
  * Whether bytes already satisfy the normalization requirements.
  * @param detected - fully decoded source facts.
@@ -36,7 +36,7 @@ async function verifyNormalizedImage(image, expectedAlpha) {
     return image;
 }
 /** Build one fixed-size, oriented, metadata-free sRGB pipeline from submitted bytes. */
-function preparedPipeline(data, width, height) {
+function preparedPipeline(sharp, data, width, height) {
     return sharp(data, { failOn: 'error', limitInputPixels: false })
         .rotate()
         .toColourspace('srgb')
@@ -69,9 +69,10 @@ export async function normalizeImage(data, detected, policy) {
     if (canPassThroughNormalization(detected, data.byteLength, policy)) {
         return { data, mediaType: detected.mediaType, width: detected.width, height: detected.height };
     }
+    const sharp = requireSharp();
     try {
         const { width, height } = initialDimensions(detected, policy);
-        const encoded = await encodeFirstWithinLimit(encodingLadder(preparedPipeline(data, width, height), detected.hasAlpha), policy.maxBytes);
+        const encoded = await encodeFirstWithinLimit(encodingLadder(preparedPipeline(sharp, data, width, height), detected.hasAlpha), policy.maxBytes);
         const chosen = isExhaustedEncoding(encoded) ? encoded.smallest : encoded;
         return await verifyNormalizedImage(chosen, detected.mediaType === 'image/gif' ? undefined : detected.hasAlpha);
     }

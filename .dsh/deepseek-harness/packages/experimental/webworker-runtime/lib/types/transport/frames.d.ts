@@ -5,14 +5,14 @@
  */
 /** Request identifier minted by the page. */
 export type TunnelRequestId = string | number;
-/** One request; `body` carries the raw bytes for methods that have one. */
+/** One request; `body` carries cloneable or transferable raw bytes. */
 export interface TunnelRequestFrame {
     readonly t: 'req';
     readonly id: TunnelRequestId;
     readonly method: string;
     readonly url: string;
     readonly headers: Readonly<Record<string, string>>;
-    readonly body?: ArrayBuffer | undefined;
+    readonly body?: ArrayBuffer | Blob | ReadableStream<Uint8Array> | undefined;
 }
 /** Open one Gateway Remote stream over the worker-local carrier. */
 export interface TunnelStreamOpenFrame {
@@ -20,6 +20,17 @@ export interface TunnelStreamOpenFrame {
     readonly id: TunnelRequestId;
     readonly endpoint: string;
     readonly payload: unknown;
+}
+/** One uplink item for an open Remote stream; `value` absent and `undefined` are equivalent. */
+export interface TunnelStreamUplinkItemFrame {
+    readonly t: 'stream-uplink-item';
+    readonly id: TunnelRequestId;
+    readonly value?: unknown;
+}
+/** Page-side half-close of a Remote stream's uplink. */
+export interface TunnelStreamUplinkEndFrame {
+    readonly t: 'stream-uplink-end';
+    readonly id: TunnelRequestId;
 }
 /** Page-side cancellation of an in-flight request or stream. */
 export interface TunnelAbortFrame {
@@ -37,7 +48,7 @@ export interface TunnelInitFrame {
     readonly overlays: readonly string[];
 }
 /** Every frame the page sends the worker. */
-export type TunnelInboundFrame = TunnelInitFrame | TunnelRequestFrame | TunnelStreamOpenFrame | TunnelAbortFrame;
+export type TunnelInboundFrame = TunnelInitFrame | TunnelRequestFrame | TunnelStreamOpenFrame | TunnelStreamUplinkItemFrame | TunnelStreamUplinkEndFrame | TunnelAbortFrame;
 /** Complete response for unary requests and static files. */
 export interface TunnelResponseFrame {
     readonly t: 'res';
@@ -97,8 +108,15 @@ export interface TunnelStreamErrorFrame {
         readonly message: string;
     };
 }
+/** Worker request to show one VFS text file in the page's read-only viewer; no reply follows. */
+export interface TunnelViewTextFrame {
+    readonly t: 'view-text';
+    /** Absolute VFS path, shown as the viewer title. */
+    readonly path: string;
+    readonly text: string;
+}
 /** Frames the worker emits. */
-export type TunnelOutboundFrame = TunnelResponseFrame | TunnelResponseHeadFrame | TunnelResponseChunkFrame | TunnelResponseEndFrame | TunnelResponseErrorFrame | TunnelStreamItemFrame | TunnelStreamEndFrame | TunnelStreamErrorFrame;
+export type TunnelOutboundFrame = TunnelViewTextFrame | TunnelResponseFrame | TunnelResponseHeadFrame | TunnelResponseChunkFrame | TunnelResponseEndFrame | TunnelResponseErrorFrame | TunnelStreamItemFrame | TunnelStreamEndFrame | TunnelStreamErrorFrame;
 /**
  * Validate a `postMessage` payload as a tunnel frame.
  * @param data - Message data received by the worker.

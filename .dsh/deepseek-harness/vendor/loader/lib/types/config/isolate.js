@@ -71,7 +71,7 @@ export default function isolate(ctx) {
         entry.ctx[Context.intercept] = Object.create(entry.ctx[Context.intercept]);
         entry.ctx[Context.isolate] = Object.create(entry.ctx[Context.isolate]);
     });
-    ctx.on('loader/patch-context', async (entry, next) => {
+    ctx.on('loader/patch-context', (entry, next) => {
         // step 1: generate new isolate map
         const newMap = Object.create(entry.parent.ctx[Context.isolate]);
         for (const name of Object.keys(entry.options.isolate ?? {})) {
@@ -104,7 +104,7 @@ export default function isolate(ctx) {
         swap(entry.ctx[Context.isolate], newMap);
         swap(entry.ctx[Context.intercept], entry.options.intercept);
         // step 4: reload fiber
-        await next();
+        next();
         // step 5: replace service impl
         for (const [symbol1, symbol2, flag1, flag2] of Object.values(diff)) {
             if (flag1 === flag2 && entry.ctx.reflect.store[symbol1] && !entry.ctx.reflect.store[symbol2]) {

@@ -5,12 +5,6 @@ export interface MessageIconActionsProps {
     text: string;
     /** Unix epoch ms for the clock label; omitted for transient messages. */
     time?: number | undefined;
-    /** Turn wall time in ms, appended to the clock as `· Ran for 15s`; omitted when the turn's start is unknown. */
-    runMs?: number | undefined;
-    /** Turn first-step TTFT in ms, appended as `· TTFT 1.2s`; omitted when unrecorded. */
-    ttftMs?: number | undefined;
-    /** Turn decode throughput, appended as `· 34 tok/s`; omitted when unrecorded. */
-    tokensPerSecond?: number | undefined;
     /** Clock before icons (user) or after (assistant). */
     clock: 'start' | 'end';
     /** Fork the session at this message; omission hides the branch action. */
@@ -24,6 +18,11 @@ export interface MessageIconActionsProps {
      * built-in copy and branch controls.
      */
     extraActions?: ReactNode;
+    /**
+     * Icon-row Turn-usage trigger (the TurnUsagePanel pill), seated after the
+     * branch control at the end of the icon cluster.
+     */
+    usageAction?: ReactNode;
     /** The owning view's locale seat, passed down as a plain prop. */
     t: ChatViewSlotProps['t'];
 }
@@ -32,5 +31,5 @@ export interface MessageIconActionsProps {
  * @param props - Copy text, event time, clock side, branch callback, className.
  * @returns The actions row element.
  */
-export declare function MessageIconActions({ text, time, runMs, ttftMs, tokensPerSecond, clock, onBranch, branchUnavailable, className, extraActions, t, }: MessageIconActionsProps): import("react").JSX.Element;
+export declare function MessageIconActions({ text, time, clock, onBranch, branchUnavailable, className, extraActions, usageAction, t, }: MessageIconActionsProps): import("react").JSX.Element;
 //# sourceMappingURL=MessageIconActions.d.ts.map

@@ -12,10 +12,12 @@ import { isDeepStrictEqual } from 'node:util';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { Config, resolveConfig, workspaceBaselineIdentity } from "./config.js";
 import { findProjectRoot, loadBaselineInstructionSet } from "./files.js";
-import { applyInstructionVersionUpdates, baselineInstructionState, name, reconcileInstructionContext, workspaceContextMessage, } from "./state.js";
+import { applyInstructionVersionUpdates, baselineInstructionState, name, reconcileInstructionContext, agentInstructionsMessage, } from "./state.js";
 export { Config, name };
+/** Services required by workspace instruction projection. */
+export const inject = ['sessionProjections'];
 export { discoverBaselineInstructionFiles, loadBaselineInstructions, } from "./files.js";
-export { renderWorkspaceContext } from "./render.js";
+export { renderAgentInstructions } from "./render.js";
 function visibleBaselineSource(agent, authorityMessages) {
     for (const message of authorityMessages.toReversed()) {
         if (message.source.kind === 'agent-instructions' && message.source.baseline === true) {
@@ -23,7 +25,8 @@ function visibleBaselineSource(agent, authorityMessages) {
         }
     }
     for (const seq of agent.session.surface.nodes.toReversed()) {
-        const event = agent.session.events[seq];
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+        const event = agent.session.eventAt(seq);
         if (event?.type === 'user/message'
             && event.data.source.kind === 'agent-instructions'
             && event.data.source.baseline === true)
@@ -31,7 +34,7 @@ function visibleBaselineSource(agent, authorityMessages) {
     }
     return undefined;
 }
-function isWorkspaceContext(message) {
+function isAgentInstructionsMessage(message) {
     return message.source.kind === 'agent-instructions';
 }
 function sameContextPayload(left, right) {
@@ -64,7 +67,6 @@ export function apply(ctx, config) {
     const projectionTails = new WeakMap();
     // Execution ancestry and the enclosing durable step are the two commit
     // boundaries before an asynchronous projection may mutate the agent inbox.
-    const openSteps = new WeakMap();
     const stepTouches = new WeakMap();
     const compose = async (agent, signal, claimed, pending, touchedPaths = []) => {
         signal.throwIfAborted();
@@ -121,7 +123,7 @@ export function apply(ctx, config) {
             for (const [scope, state] of baseline.versions)
                 versionStates?.set(scope, state);
             if (!keepVisibleBaseline && instructions !== undefined && instructions.rendered.text.length > 0) {
-                const baselineContent = workspaceContextMessage(instructions.rendered.text).content;
+                const baselineContent = agentInstructionsMessage(instructions.rendered.text).content;
                 content.push(...baselineContent);
                 const replacementScopes = new Set(baseline.changes.keys());
                 const replacementRemovals = replacePreviousBaseline
@@ -177,10 +179,11 @@ export function apply(ctx, config) {
         });
     };
     const syncInbox = (agent, claimed, desired) => {
-        const pending = agent.inbox.nextStep.filter(isWorkspaceContext);
+        const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage);
         const alreadySupplied = desired !== undefined && (claimed.some(message => sameContextPayload(message, desired))
             || agent.session.surface.nodes.some((seq) => {
-                const event = agent.session.events[seq];
+                // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+                const event = agent.session.eventAt(seq);
                 return event?.type === 'user/message' && sameContextPayload(event.data, desired);
             }));
         if (desired === undefined || alreadySupplied) {
@@ -205,7 +208,7 @@ export function apply(ctx, config) {
             agent.inbox.remove(message.id);
     };
     const composeAndSync = async (agent, signal, claimed, touchedPaths = []) => {
-        const pending = agent.inbox.nextStep.filter(isWorkspaceContext);
+        const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage);
         const desired = await compose(agent, signal, claimed, pending, touchedPaths);
         signal.throwIfAborted();
         syncInbox(agent, claimed, desired);
@@ -229,18 +232,13 @@ export function apply(ctx, config) {
             await projection;
     };
     const stepIsOpen = (session) => {
-        const known = openSteps.get(session);
-        if (known !== undefined)
-            return known;
-        let open = false;
-        for (const event of session.events) {
-            if (event.type === 'step/start')
-                open = true;
-            else if (event.type === 'step/end' || event.type === 'turn/end')
-                open = false;
+        const boundary = ctx.sessionProjections.stateOf(session, 'turnBoundary');
+        if (boundary === undefined) {
+            throw new Error('agent-instructions requires the turnBoundary session projection');
         }
-        openSteps.set(session, open);
-        return open;
+        return boundary.openTurnStartSeq !== null
+            && boundary.lastStepBoundary?.kind === 'start'
+            && boundary.lastStepBoundary.seq > boundary.openTurnStartSeq;
     };
     const projectTouch = (touch) => {
         const session = touch.agent.session;
@@ -255,17 +253,8 @@ export function apply(ctx, config) {
             pending.push(touch);
     };
     ctx.on('session/event', (session, event) => {
-        if (event.type === 'step/start') {
-            openSteps.set(session, true);
-            return;
-        }
-        if (event.type === 'turn/end') {
-            openSteps.set(session, false);
-            return;
-        }
         if (event.type !== 'step/end')
             return;
-        openSteps.set(session, false);
         const pending = stepTouches.get(session);
         if (pending === undefined)
             return;
@@ -276,7 +265,7 @@ export function apply(ctx, config) {
     ctx.on('agent/pre-step', async ({ agent, messages, step, signal }, next) => {
         const decision = await next();
         await waitForProjections(agent);
-        const pending = agent.inbox.nextStep.filter(isWorkspaceContext);
+        const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage);
         const desired = await compose(agent, signal, messages, pending);
         signal.throwIfAborted();
         // An empty first entry owns a no-step turn; keep context pending instead

@@ -16,7 +16,7 @@ export function transportError(error) {
     return {
         ok: false,
         error: {
-            code: 'internal',
+            code: 'gateway/internal',
             message: error instanceof Error ? error.message : String(error),
             details: {},
         },

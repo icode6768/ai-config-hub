@@ -4,8 +4,8 @@
  * cache frozen blocks as React elements; the rendered DOM is pinned
  * byte-for-byte by `tests/fixtures/markdown-dom` and must not drift.
  *
- * Untrusted-output policy (unchanged from the replaced pipeline): link and
- * image destinations pass a protocol allowlist, images additionally require
+ * External link and image destinations pass a protocol allowlist; settled
+ * local file links use an explicit owner callback. Images additionally require
  * absolute HTTP(S), raw HTML renders as literal text (no HTML enters the
  * DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
  * the allowlist, so footnote references and back-references render as plain
@@ -17,6 +17,7 @@
  */
 import type { ReactNode } from 'react';
 import type * as Md from 'mdast';
+import type { CodeToolbarLabels } from '../CodeToolbar.tsx';
 import type { PositionedBlock } from './incremental.ts';
 /** Copy-button labels forwarded to fence CodeBlocks (this package is cordis-free, so copy arrives via props). */
 export interface MarkdownCodeLabels {
@@ -24,6 +25,8 @@ export interface MarkdownCodeLabels {
     copyLabel: string;
     /** Copy-button label during the post-copy confirmation window. */
     copiedLabel: string;
+    /** Shared card controls; omitted for custom toolbar layouts. */
+    toolbarLabels?: CodeToolbarLabels | undefined;
 }
 /** Localized chrome for a Markdown document. */
 export interface MarkdownLabels {
@@ -49,6 +52,23 @@ export declare function createReferenceTargets(): ReferenceTargets;
  * @param targets - Accumulator, typically shared across incremental segments.
  */
 export declare function collectReferenceTargets(nodes: readonly Md.RootContent[], targets: ReferenceTargets): void;
+/**
+ * Local-path image vocabulary for image destinations: the owner maps an
+ * authored destination that fails the remote-URL allowlist (an absolute local
+ * file path, for example) to a displayable URL it can vouch for. Absent
+ * wherever no such vocabulary exists, authored local destinations keep their
+ * documented fallback (the image's alt text). Rewritten destinations must be
+ * absolute; the renderer re-checks their protocol before emitting them.
+ */
+export interface MarkdownPathImages {
+    /**
+     * Resolve one authored image destination.
+     * @param value - The destination exactly as the markdown author wrote it.
+     * @returns A displayable absolute URL, or undefined when the destination
+     * names no displayable image — it then stays inert alt text.
+     */
+    resolve(value: string): string | undefined;
+}
 /**
  * File-mention affordance for inline code: the owner resolves an authored
  * token to the file it names, using its own vocabulary of real files — the
@@ -80,6 +100,8 @@ export interface MarkdownRenderContext {
     readonly inBlockquote?: boolean;
     /** Inline-code file mentions; absent wherever no opener vocabulary exists. */
     readonly fileMentions: MarkdownFileMentions | undefined;
+    /** Local-path image vocabulary; absent wherever no rewriting owner exists. */
+    readonly pathImages: MarkdownPathImages | undefined;
     /** Inside an anchor's children: interactive mentions must not nest there. */
     readonly inLink?: boolean;
     /** Reference targets visible to this pass. */

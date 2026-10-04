@@ -1,3 +1,7 @@
+// Value re-export for spec-side failure construction: the api-remotes facade
+// cannot carry it — its src top-level imports owner /remote lib artifacts, so a
+// value import from a spec would load the unbuilt assembly chain.
+export { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 /**
  * Remote service test double for the forwarded-event path. Feature specs need
  * `ctx.remote.$on` to exist (their plugins inject `remote`) and need forwarded
@@ -16,7 +20,13 @@
  * against the real service.
  */
 export class TestRemote {
+    ctx;
     subscriptions = new Map();
+    /**
+     * Fixed Host facts mirrored from the production `ctx.remote.$host`. Plain
+     * mutable field: a spec assigns it to script a non-loopback or homed Host.
+     */
+    $host = { home: undefined, isLoopback: true };
     /**
      * Register the double as `ctx.remote`, plus one service per scripted
      * namespace so a plugin injecting `remote.<name>` also unparks.
@@ -24,17 +34,32 @@ export class TestRemote {
      * @param namespaces - scripted namespace faces reached as `ctx.remote.<name>`.
      */
     constructor(ctx, namespaces = {}) {
+        this.ctx = ctx;
+        this.validateNamespaces(namespaces);
+        ctx.provide('remote', this);
+        this.installNamespaces(namespaces);
+    }
+    /**
+     * Add scripted namespace faces to this Remote service.
+     * @param namespaces - scripted namespace faces reached as `ctx.remote.<name>`.
+     */
+    provideNamespaces(namespaces) {
+        this.validateNamespaces(namespaces);
+        this.installNamespaces(namespaces);
+    }
+    validateNamespaces(namespaces) {
         for (const name of Object.keys(namespaces)) {
             // A namespace named after one of the double's own members would replace
             // it, and `$mount`'s rejection is the contract a spec relies on.
-            if (name in TestRemote.prototype || name === 'subscriptions') {
+            if (name in this) {
                 throw new TypeError(`TestRemote: scripted namespace "${name}" would shadow the double's own member`);
             }
         }
+    }
+    installNamespaces(namespaces) {
         Object.assign(this, namespaces);
-        ctx.provide('remote', this);
         for (const [name, face] of Object.entries(namespaces))
-            ctx.provide(`remote.${name}`, face);
+            this.ctx.provide(`remote.${name}`, face);
     }
     /**
      * Deliver one forwarded host event to its subscribers, standing in for the

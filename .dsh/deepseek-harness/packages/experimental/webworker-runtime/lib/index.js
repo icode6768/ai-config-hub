@@ -107,6 +107,15 @@ function parseInboundFrame(data) {
 		t: "abort",
 		id
 	};
+	if (frame.t === "stream-uplink-end") return {
+		t: "stream-uplink-end",
+		id
+	};
+	if (frame.t === "stream-uplink-item") return {
+		t: "stream-uplink-item",
+		id,
+		value: frame.value
+	};
 	if (frame.t === "stream-open") {
 		if (typeof frame.endpoint !== "string" || frame.endpoint.length === 0) throw new Error(`webworker tunnel: stream ${String(id)} needs a non-empty endpoint`);
 		return {
@@ -122,7 +131,7 @@ function parseInboundFrame(data) {
 	const headers = {};
 	for (const [key, value] of Object.entries(frame.headers)) if (typeof value === "string") headers[key.toLowerCase()] = value;
 	const body = frame.body;
-	if (body !== void 0 && !(body instanceof ArrayBuffer)) throw new Error(`webworker tunnel: request ${String(id)} body must be an ArrayBuffer`);
+	if (body !== void 0 && !(body instanceof ArrayBuffer) && !(body instanceof Blob) && !(body instanceof ReadableStream)) throw new Error(`webworker tunnel: request ${String(id)} body must be an ArrayBuffer, Blob, or ReadableStream`);
 	return {
 		t: "req",
 		id,
@@ -673,6 +682,100 @@ function requireActiveModuleLoader() {
 	return active$1;
 }
 //#endregion
+//#region src/module-proxies.ts
+/**
+* The worker bundle's module proxy table: the ONLY platform fork of the host
+* tree. Entries replace Node builtins, external npm packages, and the native
+* flock subpath; other workspace and vendored modules are mounted as they ship.
+*
+* The build turns these into bundler aliases, and `node/builtins.ts` turns the
+* same modules into the loader's static table — one list, two consumers.
+*
+* The replacement path states the classification. `./node/builtin_modules/implemented/<module>.ts`
+* carries the module's real semantics over a worker-side data source (VFS, the
+* tunnel, a wasm codec, a browser primitive); `./node/builtin_modules/mock/<module>.ts` is a
+* structural placeholder that mounts silently and reports the missing capability
+* when a call finally reaches it. External npm replacements live in
+* `./externals/`, named after the package they stand in for.
+* @module @deepseek-ai/dsh-experimental-webworker-runtime/src/module-proxies
+*/
+/**
+* Module proxy table — the ONLY platform fork of the worker host. Keys are
+* exact module specifiers; the native system package's Landlock entry stays
+* unmodified while its flock subpath is replaced.
+*/
+const MODULE_PROXIES = {
+	"node:fs": "./node/builtin_modules/implemented/fs.ts",
+	"fs": "./node/builtin_modules/implemented/fs.ts",
+	"node:fs/promises": "./node/builtin_modules/implemented/fs/promises.ts",
+	"fs/promises": "./node/builtin_modules/implemented/fs/promises.ts",
+	"node:path": "./node/builtin_modules/implemented/path.ts",
+	"path": "./node/builtin_modules/implemented/path.ts",
+	"node:path/posix": "./node/builtin_modules/implemented/path.ts",
+	"node:os": "./node/builtin_modules/implemented/os.ts",
+	"os": "./node/builtin_modules/implemented/os.ts",
+	"node:url": "./node/builtin_modules/implemented/url.ts",
+	"node:module": "./node/builtin_modules/implemented/module.ts",
+	"node:crypto": "./node/builtin_modules/implemented/crypto.ts",
+	"crypto": "./node/builtin_modules/implemented/crypto.ts",
+	"node:buffer": "./node/builtin_modules/implemented/buffer.ts",
+	"node:http": "./node/builtin_modules/implemented/http.ts",
+	"node:async_hooks": "./node/builtin_modules/implemented/async_hooks.ts",
+	"node:assert/strict": "./node/builtin_modules/implemented/assert/strict.ts",
+	"assert/strict": "./node/builtin_modules/implemented/assert/strict.ts",
+	"node:util": "./node/builtin_modules/implemented/util.ts",
+	"node:util/types": "./node/builtin_modules/implemented/util/types.ts",
+	"node:events": "./node/builtin_modules/implemented/events.ts",
+	"node:timers/promises": "./node/builtin_modules/implemented/timers/promises.ts",
+	"node:perf_hooks": "./node/builtin_modules/implemented/perf_hooks.ts",
+	"node:tty": "./node/builtin_modules/implemented/tty.ts",
+	"tty": "./node/builtin_modules/implemented/tty.ts",
+	"node:zlib": "./node/builtin_modules/implemented/zlib.ts",
+	"node:child_process": "./node/builtin_modules/implemented/child_process.ts",
+	"node:dns/promises": "./node/builtin_modules/mock/dns/promises.ts",
+	"dns/promises": "./node/builtin_modules/mock/dns/promises.ts",
+	"node:net": "./node/builtin_modules/mock/net.ts",
+	"node:stream": "./node/builtin_modules/implemented/stream.ts",
+	"node:stream/promises": "./node/builtin_modules/implemented/stream/promises.ts",
+	"stream/promises": "./node/builtin_modules/implemented/stream/promises.ts",
+	"node:vm": "./node/builtin_modules/mock/vm.ts",
+	"node:worker_threads": "./node/builtin_modules/mock/worker_threads.ts",
+	"node:sqlite": "./node/builtin_modules/mock/sqlite.ts",
+	"@deepseek-ai/libreoffice-kit": "./node/external_packages/libreoffice-kit.ts",
+	"@deepseek-ai/node-addon-system/flock": "./node/external_packages/node-addon-system-flock.ts",
+	"koffi": "./node/external_packages/koffi.ts",
+	"sharp": "./node/external_packages/sharp.ts",
+	"node-pty": "./node/external_packages/node-pty.ts",
+	"execa": "./node/external_packages/execa.ts",
+	"got": "./node/external_packages/got.ts",
+	"@vscode/ripgrep": "./node/external_packages/ripgrep.ts",
+	"@earendil-works/pi-ai": "./node/external_packages/pi-ai.ts",
+	"ws": "./node/external_packages/ws.ts"
+};
+/** pi-ai subpaths (`/providers/all`, `/api/*.lazy`) share the one structural stub. */
+const MODULE_PROXY_PREFIXES = { "@earendil-works/pi-ai/": "./node/external_packages/pi-ai.ts" };
+//#endregion
+//#region src/node/external_packages/replaced-externals.ts
+/**
+* Exact package or subpath specifiers served from the worker bundle. Kept
+* import-free for the runtime builtin table and the VFS image collector.
+* Whole-package entries are omitted from the image; subpath entries leave
+* their parent package available to other consumers.
+*/
+/** Package or subpath specifiers served from the worker bundle instead of the VFS. */
+const REPLACED_EXTERNAL_PACKAGES = [
+	"@earendil-works/pi-ai",
+	"@vscode/ripgrep",
+	"@deepseek-ai/libreoffice-kit",
+	"@deepseek-ai/node-addon-system/flock",
+	"koffi",
+	"node-pty",
+	"execa",
+	"got",
+	"sharp",
+	"ws"
+];
+//#endregion
 //#region src/transport/synthetic-http.ts
 const encoder$3 = new TextEncoder();
 /**
@@ -703,7 +806,23 @@ function createSyntheticExchange(frame, sink) {
 			aborted = true;
 		},
 		async *[Symbol.asyncIterator]() {
-			if (frame.body === void 0 || frame.body.byteLength === 0) return;
+			if (frame.body === void 0) return;
+			if (frame.body instanceof Blob) {
+				for await (const chunk of frame.body.stream()) {
+					if (aborted) return;
+					if (chunk.byteLength > 0) yield chunk;
+				}
+				return;
+			}
+			if (frame.body instanceof ReadableStream) {
+				for await (const chunk of frame.body) {
+					if (aborted) return;
+					if (!(chunk instanceof Uint8Array)) throw new TypeError("webworker tunnel: request stream produced a non-Uint8Array chunk");
+					if (chunk.byteLength > 0) yield chunk;
+				}
+				return;
+			}
+			if (aborted || frame.body.byteLength === 0) return;
 			yield new Uint8Array(frame.body);
 		}
 	};
@@ -770,6 +889,7 @@ function createSyntheticExchange(frame, sink) {
 			if (finished) return;
 			aborted = true;
 			finished = true;
+			emit("aborted");
 			emit("close");
 		}
 	};
@@ -1414,6 +1534,61 @@ var BufferedSink = class {
 		for (const call of this.calls.splice(0)) call();
 	}
 };
+/** Uplink items of one worker-local logical stream, read once by the Host method as its `uplink`. */
+var TunnelUplink = class {
+	items = [];
+	ended = false;
+	closed = false;
+	wake;
+	push(value) {
+		if (this.ended || this.closed) return;
+		this.items.push(value);
+		this.signal();
+	}
+	/** Page half-close or stream end; buffered items still drain. */
+	end() {
+		this.ended = true;
+		this.signal();
+	}
+	[Symbol.asyncIterator]() {
+		return this;
+	}
+	async next() {
+		while (true) {
+			if (this.closed) return {
+				value: void 0,
+				done: true
+			};
+			if (this.items.length > 0) return {
+				value: this.items.shift(),
+				done: false
+			};
+			if (this.ended) return {
+				value: void 0,
+				done: true
+			};
+			if (this.wake !== void 0) throw new Error("webworker tunnel: stream uplink has one pending read");
+			await new Promise((resolve) => {
+				this.wake = resolve;
+			});
+		}
+	}
+	/** The Host stopped reading: buffered and later items are dropped. */
+	return() {
+		this.closed = true;
+		this.items.length = 0;
+		this.signal();
+		return Promise.resolve({
+			value: void 0,
+			done: true
+		});
+	}
+	signal() {
+		const wake = this.wake;
+		this.wake = void 0;
+		wake?.();
+	}
+};
 /** One tunnel per worker; wire {@link TunnelServer.handleMessage} to `onmessage` first. */
 var TunnelServer = class {
 	port;
@@ -1422,6 +1597,8 @@ var TunnelServer = class {
 	unaryApiLane;
 	queue = [];
 	inFlight = /* @__PURE__ */ new Map();
+	/** Uplinks of accepted `stream-open` frames, buffering items that arrive before or while the stream serves. */
+	uplinks = /* @__PURE__ */ new Map();
 	seams;
 	failure;
 	listener;
@@ -1438,9 +1615,18 @@ var TunnelServer = class {
 	handleMessage(data) {
 		const frame = parseInboundFrame(data);
 		if (frame.t === "init") throw new Error("webworker tunnel: duplicate init frame; the tunnel is already open");
+		if (frame.t === "stream-uplink-item") {
+			this.uplinks.get(frame.id)?.push(frame.value);
+			return;
+		}
+		if (frame.t === "stream-uplink-end") {
+			this.uplinks.get(frame.id)?.end();
+			return;
+		}
 		if (frame.t === "abort") {
 			this.inFlight.get(frame.id)?.abort();
 			this.inFlight.delete(frame.id);
+			this.dropUplink(frame.id);
 			const queued = this.queue.findIndex((request) => request.id === frame.id);
 			if (queued !== -1) this.queue.splice(queued, 1);
 			return;
@@ -1449,6 +1635,7 @@ var TunnelServer = class {
 			this.refuse(frame, this.failure);
 			return;
 		}
+		if (frame.t === "stream-open") this.uplinks.set(frame.id, new TunnelUplink());
 		if (this.seams === void 0) {
 			this.queue.push(frame);
 			return;
@@ -1474,11 +1661,24 @@ var TunnelServer = class {
 		this.failure = message;
 		for (const frame of this.queue.splice(0)) this.refuse(frame, message);
 	}
+	/**
+	* Ask the page to show one text file in its read-only viewer.
+	* @param path - Absolute VFS path the viewer names.
+	* @param text - File contents.
+	*/
+	viewText(path, text) {
+		this.send({
+			t: "view-text",
+			path,
+			text
+		});
+	}
 	send(frame, transfer) {
 		this.port.postMessage(frame, transfer);
 	}
 	refuse(frame, message) {
 		if (frame.t === "stream-open") {
+			this.dropUplink(frame.id);
 			this.send({
 				t: "stream-error",
 				id: frame.id,
@@ -1509,12 +1709,13 @@ var TunnelServer = class {
 			return;
 		}
 		const seams = this.seams;
+		const uplink = this.uplinks.get(frame.id) ?? new TunnelUplink();
 		const controller = new AbortController();
 		this.inFlight.set(frame.id, { abort: () => {
 			controller.abort();
 		} });
 		try {
-			const source = await seams.openStream(frame.endpoint, frame.payload, controller.signal);
+			const source = await seams.openStream(frame.endpoint, frame.payload, uplink, controller.signal);
 			for await (const value of source) {
 				if (controller.signal.aborted) return;
 				this.send({
@@ -1541,7 +1742,14 @@ var TunnelServer = class {
 			}
 		} finally {
 			this.inFlight.delete(frame.id);
+			this.dropUplink(frame.id);
 		}
+	}
+	/** The stream is over: settle any Host read still waiting on its uplink and stop buffering. */
+	dropUplink(id) {
+		const uplink = this.uplinks.get(id);
+		this.uplinks.delete(id);
+		uplink?.end();
 	}
 	sinkFor(id) {
 		const send = this.send.bind(this);
@@ -1787,6 +1995,8 @@ function signalProcess(pid, signal) {
 * packages use the presence of `process.title` to avoid browser-only globals.
 * @module @deepseek-ai/dsh-experimental-webworker-runtime/src/node/globals/process
 */
+/** Virtual executable identity; the worker has no Node binary behind it. */
+const EXEC_PATH = "/dsh/bin/node";
 /**
 * Publish `globalThis.process`.
 *
@@ -1804,8 +2014,9 @@ function installProcessGlobal(options) {
 	};
 	const shim = {
 		env: { ...options.env },
-		argv: [...options.argv ?? ["node", "dsh-webworker"]],
+		argv: [...options.argv ?? [EXEC_PATH]],
 		execArgv: [],
+		execPath: EXEC_PATH,
 		title: "dsh-webworker",
 		platform: "linux",
 		arch: "x64",
@@ -2442,9 +2653,27 @@ var MemoryVfs = class {
 	truncateFile(node, length) {
 		this.replaceFile(node, resize(node.bytes, length));
 	}
+	/** Change one file identity's permission bits and notify every linked path. */
+	chmodFile(node, mode) {
+		node.mode = mode & 511;
+		if (typeof node.paths === "string") this.publish({
+			kind: "chmod",
+			path: node.paths,
+			mode: node.mode
+		});
+		else if (node.paths !== void 0) for (const path of node.paths) this.publish({
+			kind: "chmod",
+			path,
+			mode: node.mode
+		});
+	}
 	/** @returns Plain stats for an open file, including after its last name is removed. */
 	fileStats(node) {
 		return statsOf(node.bytes.length, node.mtimeMs, false, this.identityOfFile(node), node.mode);
+	}
+	/** @returns BigInt stats for an open file, including its device and inode identity. */
+	fileBigIntStats(node) {
+		return bigIntStatsOf(node.bytes.length, node.mtimeMs, false, this.identityOfFile(node), node.mode, this.fileLinkCount(node));
 	}
 	/** Forget removed directory identities, so recreated paths report new ones. */
 	forgetIdentity(target) {
@@ -2665,7 +2894,10 @@ var MemoryVfs = class {
 			truncate: async (length = 0) => {
 				current("ftruncate").truncate(length);
 			},
-			stat: async () => current("fstat").stat(),
+			chmod: async (mode) => {
+				current("fchmod").chmod(mode);
+			},
+			stat: async (options) => options?.bigint === true ? current("fstat").statBigInt() : current("fstat").stat(),
 			sync: async () => {
 				current("fsync");
 				await this.flush();
@@ -2713,7 +2945,11 @@ var MemoryVfs = class {
 				if (!access.writable) fail("EINVAL", "ftruncate", target);
 				this.truncateFile(node, length);
 			},
-			stat: () => this.fileStats(node)
+			chmod: (mode) => {
+				this.chmodFile(node, mode);
+			},
+			stat: () => this.fileStats(node),
+			statBigInt: () => this.fileBigIntStats(node)
 		};
 	}
 	/**
@@ -2725,7 +2961,10 @@ var MemoryVfs = class {
 	*/
 	handleTail(target) {
 		return {
-			stat: async () => this.plainStats(target),
+			chmod: async (mode) => {
+				this.chmodSync(target, mode);
+			},
+			stat: async (options) => this.statSync(target, options),
 			sync: async () => {
 				await this.flush();
 			},
@@ -2888,17 +3127,7 @@ var MemoryVfs = class {
 		const target = this.key(path);
 		const node = this.files.get(target);
 		if (node !== void 0) {
-			node.mode = mode & 511;
-			if (typeof node.paths === "string") this.publish({
-				kind: "chmod",
-				path: node.paths,
-				mode: node.mode
-			});
-			else if (node.paths !== void 0) for (const path of node.paths) this.publish({
-				kind: "chmod",
-				path,
-				mode: node.mode
-			});
+			this.chmodFile(node, mode);
 			return;
 		}
 		if (this.directories.has(target)) {
@@ -3162,8 +3391,11 @@ function createWorkerHost(options) {
 			const require = loader.requireFrom(dirname(configPath));
 			const appBoot = require("@deepseek-ai/dsh-app-boot");
 			const cmdline = require("@deepseek-ai/dsh-cmdline");
-			const { patches, presetOverlay } = bootPatches(loader, mounted, configPath, root);
-			const ctx = await appBoot.boot("dsh-webworker", configPath, patches, (hostCtx) => {
+			const started = Promise.withResolvers();
+			const { patches, profile } = bootPatches(loader, mounted, configPath, root);
+			const profileConfig = join(profile.dir, "cordis.yml");
+			const ctx = await appBoot.boot("dsh-webworker", profileConfig, patches, (hostCtx) => {
+				hostCtx.provide("profileContext", profile);
 				hostCtx.loader.internal = loader.internal;
 				installLogSink(hostCtx, require);
 				cmdline.provideCmdline(hostCtx, {
@@ -3176,7 +3408,16 @@ function createWorkerHost(options) {
 					]],
 					exit: (code) => {
 						console.warn(`webworker host: tree requested exit(${String(code)})`);
-					}
+					},
+					ready: { onReady: (listener) => {
+						let pending = true;
+						started.promise.then(() => {
+							if (pending) listener();
+						});
+						return () => {
+							pending = false;
+						};
+					} }
 				});
 			});
 			context = ctx;
@@ -3186,13 +3427,14 @@ function createWorkerHost(options) {
 			if (typertGateway === void 0) throw new Error("webworker host: the tree activated without a typertGateway service");
 			const handler = connection.createSharedFetchHandler("/api");
 			const usage = loader.usage();
-			console.info(`webworker host: tree active (modules=${String(usage.modules)}, data overlays=${String(overlays.length)}, preset root overlay=${presetOverlay ? "applied" : "already in roster"}, direct lane=connection.createSharedFetchHandler, als causality=${options.alsCausality === void 0 ? "inert" : "snapshot/restore"}, image lowering=${LOWERING_VERSION})`);
+			console.info(`webworker host: tree active (modules=${String(usage.modules)}, data overlays=${String(overlays.length)}, direct lane=connection.createSharedFetchHandler, als causality=${options.alsCausality === void 0 ? "inert" : "snapshot/restore"}, image lowering=${LOWERING_VERSION})`);
 			tunnel.serve({
 				directFetch: (request) => handler.fetch(request),
 				bootPayload: () => readBootPayload(ctx),
-				openStream: typertGateway.wireStream.open,
+				openStream: (endpoint, payload, uplink, signal) => typertGateway.wireStream.open(endpoint, payload, uplink, void 0, signal),
 				streamFailure: typertGateway.wireStream.failure
 			});
+			started.resolve();
 		} catch (reason) {
 			tunnel.fail(reason);
 			throw reason;
@@ -3262,30 +3504,22 @@ function requireLoweredImage(vfs, path) {
 	if (lowered !== "dsh-worker-transform/1") throw new Error(`webworker host: image was lowered by ${String(lowered)}, this build runs ${LOWERING_VERSION}; rebuild the image`);
 }
 /**
-* The shipped preset root, as the application layer that owns the composition
-* supplies it.
-*
-* A launcher appends this root itself rather than writing it into the roster —
-* `apps/cli` does it in `composeProfile` (`profile-boot.ts:159-166`) because only
-* the application knows where its own presets sit. The worker's presets travel
-* in the image, so the same overlay names their virtual path. Patching replaces
-* a row's whole `config`, so the current one is read and spread, and a roster
-* that already names roots keeps them.
+* Prepare an editable VFS profile from the packed rows and deployment overlays.
+* ConfigEditor writes overrides beside the insertion rows; reconciliation starts
+* at the empty profile root and retains the Worker deployment overlays.
 * @param loader - Module loader, for the image's YAML reader.
 * @param vfs - Filesystem holding the composed configuration.
 * @param configPath - Composed configuration path.
 * @param root - Virtual root.
-* @returns Boot patches (preset root overlay, frontend serving off) and
-* whether the preset overlay was applied.
+* @returns Profile locations and effective boot patches.
 */
 function bootPatches(loader, vfs, configPath, root) {
 	const text = vfs.readFileSync(configPath, "utf8");
+	const include = loader.load(loader.resolve("@deepseek-ai/cordis-plugin-include", root));
+	const yaml = loader.load(loader.resolve("js-yaml", root));
 	let rows;
 	if (configPath.endsWith(".json")) rows = JSON.parse(text);
-	else {
-		const include = loader.load(loader.resolve("@deepseek-ai/cordis-plugin-include", root));
-		rows = loader.load(loader.resolve("js-yaml", root)).load(text, { schema: include.entryListSchema });
-	}
+	else rows = yaml.load(text, { schema: include.entryListSchema });
 	const find = (entries, id) => {
 		if (!Array.isArray(entries)) return void 0;
 		for (const entry of entries) {
@@ -3296,21 +3530,6 @@ function bootPatches(loader, vfs, configPath, root) {
 	};
 	const configOf = (row) => typeof row.config === "object" && row.config !== null && !Array.isArray(row.config) ? row.config : {};
 	const patches = [];
-	let presetOverlay = false;
-	const presets = find(rows, "agent-presets");
-	if (presets !== void 0 && configOf(presets).roots === void 0) {
-		presetOverlay = true;
-		patches.push({
-			id: "agent-presets",
-			config: {
-				...configOf(presets),
-				roots: [{
-					path: join(root, "config/agent-presets"),
-					trust: "system"
-				}]
-			}
-		});
-	}
 	const jsonl = find(rows, "session-persistence-jsonl");
 	if (jsonl !== void 0) patches.push({
 		id: "session-persistence-jsonl",
@@ -3319,9 +3538,24 @@ function bootPatches(loader, vfs, configPath, root) {
 			compression: "none"
 		}
 	});
+	const dir = join(root, IMAGE_HOME_DIRECTORY, "profiles/preview");
+	const profile = {
+		name: "preview",
+		dir,
+		patchPath: join(dir, "cordis.patch.yml"),
+		installAnchor: join(dir, "package.json"),
+		cwd: root,
+		home: join(root, IMAGE_HOME_DIRECTORY),
+		startedBundles: [],
+		overlays: patches,
+		telemetryDisabledEnv: void 0
+	};
+	vfs.seed(join(dir, "package.json"), "{\"private\":true,\"dsh\":{\"profile\":{\"bundles\":[]}}}\n");
+	vfs.seed(join(dir, "cordis.yml"), "[]\n");
+	if (!vfs.existsSync(profile.patchPath)) vfs.seed(profile.patchPath, yaml.dump([{ insert: rows }], { schema: include.entryListSchema }));
 	return {
-		patches,
-		presetOverlay
+		patches: loader.load(loader.resolve("@deepseek-ai/dsh-app-boot", root)).readProfilePatches("dsh-webworker", profile),
+		profile
 	};
 }
 /**
@@ -3383,4 +3617,4 @@ function parsePreviewFixtureManifest(value) {
 	};
 }
 //#endregion
-export { API_PREFIX, DEFAULT_CONDITIONS, DEFAULT_ROOT, IMAGE_CONFIG_PATH, IMAGE_EMPTY_DIRECTORIES, IMAGE_FILE_NAME, IMAGE_HOME_DIRECTORY, IMAGE_MANIFEST_PATH, IMAGE_OVERLAY_DIRECTORIES, LOWERING_VERSION, MemoryVfs, PREVIEW_FIXTURE_MANIFEST_FILE, PREVIEW_FIXTURE_MANIFEST_VERSION, SYNTHETIC_HOST, TunnelServer, WRAPPER_PARAMS, WorkerModuleLoader, createAlsRuntime, createSyntheticExchange, createWorkerHost, inflateImage, inflateImageStream, installProcessGlobal, loadVfsImage, loadVfsOverlay, lowerModuleSource, packTar, parseInboundFrame, parsePreviewFixtureManifest, parseTar, posix_path_exports as posixPath, requireActiveModuleLoader, requireActiveVfs, setActiveModuleLoader, setActiveVfs };
+export { API_PREFIX, DEFAULT_CONDITIONS, DEFAULT_ROOT, IMAGE_CONFIG_PATH, IMAGE_EMPTY_DIRECTORIES, IMAGE_FILE_NAME, IMAGE_HOME_DIRECTORY, IMAGE_MANIFEST_PATH, IMAGE_OVERLAY_DIRECTORIES, LOWERING_VERSION, MODULE_PROXIES, MODULE_PROXY_PREFIXES, MemoryVfs, PREVIEW_FIXTURE_MANIFEST_FILE, PREVIEW_FIXTURE_MANIFEST_VERSION, REPLACED_EXTERNAL_PACKAGES, SYNTHETIC_HOST, TunnelServer, WRAPPER_PARAMS, WorkerModuleLoader, createAlsRuntime, createSyntheticExchange, createWorkerHost, inflateImage, inflateImageStream, installProcessGlobal, loadVfsImage, loadVfsOverlay, lowerModuleSource, packTar, parseInboundFrame, parsePreviewFixtureManifest, parseTar, posix_path_exports as posixPath, requireActiveModuleLoader, requireActiveVfs, setActiveModuleLoader, setActiveVfs };

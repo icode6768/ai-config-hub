@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { execFile as execFileCallback, spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
@@ -13,6 +13,7 @@ const execFile = promisify(execFileCallback)
 const children = new Map<AppId, ChildProcess>()
 const phases = new Map<AppId, AppRuntimeStatus['phase']>()
 const errors = new Map<AppId, string>()
+const DEEPSEEK_HARNESS_REMOTE = 'https://github.com/deepseek-ai/deepseek-harness.git'
 
 type CommandSpec = { command: string; args: string[]; cwd: string; env?: NodeJS.ProcessEnv }
 
@@ -278,6 +279,13 @@ export async function getAppRuntimeStatuses(config: LauncherConfig, suppliedVers
     const installed = installedFor(appId, versions)
     const childRunning = isAlive(children.get(appId))
     const phase = resolveRuntimePhase(phases.get(appId), webReady, childRunning)
+    // A web service that answers (including its authenticated 401 response)
+    // is healthy even if the detached launcher wrapper has already exited.
+    // Do not leave a stale child error visible after the service is reachable.
+    if (webReady) {
+      errors.delete(appId)
+      if (phases.get(appId) === 'error' || phases.get(appId) === 'starting') phases.set(appId, 'running')
+    }
     if (phase === 'running' && phases.get(appId) === 'starting') phases.set(appId, 'running')
     const version = versions[appId === 'deepseek-harness' ? 'deepseekHarness' : appId].version
     return [appId, {
@@ -365,14 +373,47 @@ export async function restartApp(appId: AppId, config: LauncherConfig): Promise<
   await startApp(appId, config)
 }
 
-async function runCommand(command: string, args: string[], cwd: string): Promise<void> {
+async function runCommand(command: string, args: string[], cwd: string, extraEnv: NodeJS.ProcessEnv = {}): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env: runtimeEnv(), shell: process.platform === 'win32' && command.toLowerCase().endsWith('.cmd'), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    const child = spawn(command, args, { cwd, env: { ...runtimeEnv(), ...extraEnv }, shell: process.platform === 'win32' && command.toLowerCase().endsWith('.cmd'), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     child.stdout?.on('data', chunk => process.stdout.write(`[launcher update] ${chunk}`))
     child.stderr?.on('data', chunk => process.stderr.write(`[launcher update] ${chunk}`))
     child.once('error', reject)
-    child.once('exit', code => code === 0 ? resolve() : reject(new Error(`${command} 退出，代码 ${code ?? 'unknown'}`)))
+    let stderr = ''
+    child.stderr?.on('data', chunk => { stderr += String(chunk) })
+    child.once('exit', code => code === 0
+      ? resolve()
+      : reject(new Error(`${command} 退出，代码 ${code ?? 'unknown'}${stderr.trim() ? `：${stderr.trim()}` : ''}`)))
   })
+}
+
+async function updateGitSource(source: string, remote: string): Promise<void> {
+  const nestedGit = join(source, '.git')
+  if (!existsSync(nestedGit)) {
+    await runCommand('git', ['init', '-b', 'main'], source)
+  }
+  const configuredRemote = await new Promise<string>(resolve => {
+    execFile('git', ['-C', source, 'remote', 'get-url', 'origin'], { windowsHide: true })
+      .then(result => resolve(result.stdout.trim()))
+      .catch(() => resolve(''))
+  })
+  if (configuredRemote !== remote) {
+    if (configuredRemote) await runCommand('git', ['remote', 'set-url', 'origin', remote], source)
+    else await runCommand('git', ['remote', 'add', 'origin', remote], source)
+  }
+  await runCommand('git', ['fetch', '--depth=1', 'origin', 'master'], source)
+  await runCommand('git', ['reset', '--hard', 'origin/master'], source)
+}
+
+function ensureDeepseekWorkspaceCompatibility(source: string): void {
+  const workspaceFile = join(source, 'pnpm-workspace.yaml')
+  if (!existsSync(workspaceFile)) return
+  const raw = readFileSync(workspaceFile, 'utf8')
+  if (raw.includes('native/landlock-run/packages/*')) return
+  const marker = '  - native/system/packages/*'
+  if (raw.includes(marker)) {
+    writeFileSync(workspaceFile, raw.replace(marker, `${marker}\n  - native/landlock-run/packages/*`), 'utf8')
+  }
 }
 
 export async function updateApp(appId: AppId, config: LauncherConfig): Promise<void> {
@@ -390,7 +431,13 @@ export async function updateApp(appId: AppId, config: LauncherConfig): Promise<v
       await runCommand(hermesPythonCommand(), ['-m', 'pip', 'install', '-e', '.'], source)
     } else {
       const source = deepseekHarnessSourcePath()
-      await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['install'], source)
+      await updateGitSource(source, DEEPSEEK_HARNESS_REMOTE)
+      ensureDeepseekWorkspaceCompatibility(source)
+      await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['install', '--filter', '@deepseek-ai/dsh...', '--no-frozen-lockfile'], source, {
+        CI: 'true',
+        npm_config_confirm_modules_purge: 'false',
+        npm_config_node_linker: 'hoisted',
+      })
       await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['run', 'build'], source)
     }
     phases.set(appId, 'stopped')
@@ -477,8 +524,38 @@ function writeWindowsTerminalBatch(appId: AppId, config: LauncherConfig, options
 }
 
 export async function openAppTerminal(appId: AppId, config: LauncherConfig, options: { desktop?: boolean } = {}): Promise<void> {
+  if (appId === 'hermes') {
+    try {
+      await execFile(process.execPath, [join(rootPath(), 'webui', 'scripts', 'launch-hermes.mjs'), ...(options.desktop ? ['desktop'] : []), '--help'], { cwd: rootPath(), env: runtimeEnv(config), timeout: 30000, windowsHide: true })
+    } catch (error) {
+      const detail = error as Error & { stderr?: string }
+      const message = `Hermes 启动检查失败：${detail.stderr?.trim() || detail.message}`
+      errors.set(appId, message)
+      phases.set(appId, 'error')
+      throw new Error(message)
+    }
+  }
   if (appId === 'openclaw' && !await probeUrl(config.global.launch.webUrls.openclaw)) {
     throw new Error('OpenClaw 实例未运行，请先启动后再打开终端')
+  }
+  if (appId === 'deepseek-harness' && options.desktop) {
+    const source = deepseekHarnessSourcePath()
+    const pnpm = process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'pnpm.cmd') : 'pnpm'
+    const runtimeFolder = process.platform === 'darwin' ? 'macos' : 'windows'
+    const desktopTemp = join(rootPath(), 'runtime', runtimeFolder, 'tmp', 'deepseek-desktop')
+    const desktopCache = join(rootPath(), 'runtime', runtimeFolder, 'cache', 'electron')
+    mkdirSync(desktopTemp, { recursive: true })
+    mkdirSync(desktopCache, { recursive: true })
+    const desktopEnv = { ...runtimeEnv(config), DSH_HOME: join(rootPath(), '.dsh'), ELECTRON_CACHE: desktopCache, TEMP: desktopTemp, TMP: desktopTemp }
+    const child = process.platform === 'win32'
+      ? spawn('cmd.exe', ['/d', '/c', 'call', pnpm, '--filter', '@deepseek-ai/dsh-desktop', 'start'], { cwd: source, env: desktopEnv, detached: true, stdio: 'ignore', windowsHide: false })
+      : spawn(pnpm, ['--filter', '@deepseek-ai/dsh-desktop', 'start'], { cwd: source, env: desktopEnv, detached: true, stdio: 'ignore' })
+    child.once('error', error => {
+      errors.set(appId, `DeepSeek Harness 桌面端启动失败：${error.message}`)
+      phases.set(appId, 'error')
+    })
+    child.unref()
+    return
   }
   if (process.platform === 'win32') {
     const batchPath = writeWindowsTerminalBatch(appId, config, options)

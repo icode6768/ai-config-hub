@@ -21,11 +21,25 @@ export class ClientInspectorSource extends InspectorSourceConnection {
     generation;
     accepted = false;
     closed = false;
+    suspended = false;
     runtime;
     runtimeRequests = new Map();
     console;
     queries;
     lifecycle;
+    /** Claimed page identity, unchanged across transport reconnects. */
+    get sourceId() { return this.realmSource.sourceId; }
+    onPageHide = () => {
+        this.suspended = true;
+        this.lifecycle.cancelReconnect();
+        this.disconnect('Client page hidden');
+    };
+    onPageShow = () => {
+        if (!this.suspended || this.closed)
+            return;
+        this.suspended = false;
+        this.connect();
+    };
     constructor(bootstrap, label = document.title || 'Client', sourceCatalog = discoverInspectorClientSourceCatalog(), realmSource = new ClientRealmSource(label)) {
         super();
         this.bootstrap = bootstrap;
@@ -74,22 +88,46 @@ export class ClientInspectorSource extends InspectorSourceConnection {
             maxFrameBytes: bootstrap.maxFrameBytes,
         });
         this.connect();
+        if (typeof window !== 'undefined') {
+            window.addEventListener('pagehide', this.onPageHide);
+            window.addEventListener('pageshow', this.onPageShow);
+        }
     }
     /** Permanently stop reconnecting and close the active source generation. */
     close() {
         if (this.closed)
             return;
         this.closed = true;
-        this.console.close();
-        this.cancelRuntimeRequests();
-        this.runtime.reset();
-        this.queries.close('Inspector Client source closed');
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('pagehide', this.onPageHide);
+            window.removeEventListener('pageshow', this.onPageShow);
+        }
         this.lifecycle.close();
-        this.publisher.close();
+        try {
+            this.disconnect('Client source closed');
+        }
+        finally {
+            this.console.close();
+            this.queries.close('Inspector Client source closed');
+            this.publisher.close();
+            this.realmSource.close();
+        }
+    }
+    disconnect(reason) {
         const socket = this.socket;
         const generation = this.generation;
+        const accepted = this.accepted;
+        this.socket = undefined;
+        this.generation = undefined;
+        this.accepted = false;
+        this.console.reset();
+        this.cancelRuntimeRequests();
+        this.runtime.reset();
+        this.queries.disconnect(reason);
+        if (socket !== undefined)
+            this.publisher.disconnect(socket);
         try {
-            if (socket?.readyState === WebSocket.OPEN && generation !== undefined) {
+            if (socket?.readyState === WebSocket.OPEN && generation !== undefined && accepted) {
                 const frame = {
                     v: INSPECTOR_PROTOCOL_VERSION,
                     t: 'source/close',
@@ -97,19 +135,14 @@ export class ClientInspectorSource extends InspectorSourceConnection {
                     generation,
                 };
                 socket.send(JSON.stringify(frame));
-                socket.close(1000, 'Client source closed');
-            }
-            else {
-                socket?.close();
             }
         }
         finally {
-            this.socket = undefined;
-            this.realmSource.close();
+            socket?.close(1000, reason);
         }
     }
     connect() {
-        if (this.closed)
+        if (this.closed || this.suspended)
             return;
         this.console.reset();
         this.cancelRuntimeRequests();

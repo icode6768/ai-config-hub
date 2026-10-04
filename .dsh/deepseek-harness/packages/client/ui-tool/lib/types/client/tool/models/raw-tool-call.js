@@ -1,10 +1,12 @@
 const parsedCalls = new WeakMap();
 /**
  * Parse the call head paired with one immutable Tool block.
- * @param block - running or settled Tool block.
- * @returns the Tool name and object arguments, or null when the call head or valid JSON object is unavailable.
+ * @param block - preparing, dispatched, or settled Tool block.
+ * @returns the Tool name and object arguments, or null during preparation or when valid arguments are unavailable.
  */
 export function parsedToolCall(block) {
+    if (!('kind' in block) && block.phase === 'preparing')
+        return null;
     const cached = parsedCalls.get(block);
     if (cached !== undefined || parsedCalls.has(block))
         return cached ?? null;
@@ -39,20 +41,5 @@ export function singleResultText(block) {
         return undefined;
     const only = block.content[0];
     return only?.type === 'text' ? only.text : undefined;
-}
-/**
- * Validate the optional escalation pair shared by first-party shell and file
- * mutation tools.
- * @param args - parsed open-root Tool arguments.
- * @returns whether the declared escalation fields form a valid pair.
- */
-export function validEscalationFields(args) {
-    const permission = args.sandbox_permissions;
-    const justification = args.justification;
-    if (permission === undefined && justification === undefined)
-        return true;
-    if (permission !== 'workspace-write' && permission !== 'danger-full-access')
-        return false;
-    return typeof justification === 'string' && justification.trim() !== '';
 }
 //# sourceMappingURL=raw-tool-call.js.map

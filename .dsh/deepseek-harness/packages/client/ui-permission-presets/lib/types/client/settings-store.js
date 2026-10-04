@@ -1,7 +1,6 @@
 /**
  * Permission default-settings controller. The permission descriptor comes
- * from the shared describe mirror (the dynamic preset enum lives in the
- * namespace schema, which per-namespace scopes do not carry); writes target
+ * from the shared describe mirror and choices from the permission catalog; writes target
  * only `defaultPreset`, carry the descriptor revision, and fold their answer
  * back into the mirror.
  */
@@ -9,44 +8,25 @@ import { createSnapshotStore, } from '@deepseek-ai/dsh-client-store';
 import { displayPermissionPreset } from "./presentation.js";
 /** Permission's settings namespace on the host wire. */
 export const PERMISSION_SETTINGS_NS = 'permission';
-/**
- * Read the dynamic preset enum encoded by the host's `defaultPreset` schema.
- * @param view - permission namespace descriptor.
- * @param schema - settings schema operations.
- * @returns current value and selectable options.
+/** Resolve the new-session choices from the permission domain's catalog.
+ * @param view Live configuration descriptor.
+ * @param catalog Configured permission options and effective default.
+ * @returns Current choice and labels for its allowed options.
  */
-export function permissionDefaultOf(view, schema) {
-    const value = view.value?.defaultPreset;
-    if (typeof value !== 'string')
-        throw new Error('permission settings has no defaultPreset value');
-    const node = schema.nodeAtPath(schema.rehydrate(view.schema), ['defaultPreset']);
-    if (node === undefined)
-        throw new Error('permission settings schema has no defaultPreset field');
-    const rawChoices = node.type === 'union'
-        ? node.list ?? []
-        : [node];
-    const options = rawChoices.flatMap((candidate) => {
-        const choice = candidate;
-        if (choice.type !== 'const' || typeof choice.value !== 'string')
-            return [];
-        const described = choice.meta?.description;
-        return [{
-                id: choice.value,
-                label: typeof described === 'string' && described.length > 0
-                    ? displayPermissionPreset(choice.value, described)
-                    : displayPermissionPreset(choice.value, choice.value),
-            }];
-    });
-    if (options.length === 0 || !options.some(option => option.id === value)) {
-        throw new Error('permission settings schema does not advertise its current preset');
-    }
-    return { currentValue: value, options };
+export function permissionDefaultOf(view, catalog) {
+    const currentValue = view.value.defaultPreset ?? catalog.defaultPreset;
+    const options = catalog.defaultOptions.map(option => ({
+        id: option.value, label: displayPermissionPreset(option.value, option.name),
+    }));
+    if (!options.some(option => option.id === currentValue))
+        throw new Error('permission catalog does not advertise its current default');
+    return { currentValue, options };
 }
 /** Controller deriving the row from the shared mirror and writing the default through it. */
 export class PermissionPresetSettingsController {
     describeFace;
-    api;
-    schema;
+    ctx;
+    catalog;
     /** Row snapshot consumed through a bound selector hook. */
     store = createSnapshotStore({
         status: 'idle',
@@ -57,17 +37,19 @@ export class PermissionPresetSettingsController {
         revision: 0,
     });
     following;
+    followingCatalog;
     saving = false;
     disposed = false;
     /**
      * @param describeFace - the shared mirror's read/fold face (descriptor and schema source).
-     * @param api - settings wire face for the `defaultPreset` write.
-     * @param schema - settings-owned schema operations.
+     * @param ctx - the row plugin's context, whose `remote.settings` namespace
+     * carries the `defaultPreset` write.
+     * @param catalog - configured permission choices and their effective default.
      */
-    constructor(describeFace, api, schema) {
+    constructor(describeFace, ctx, catalog) {
         this.describeFace = describeFace;
-        this.api = api;
-        this.schema = schema;
+        this.ctx = ctx;
+        this.catalog = catalog;
     }
     /**
      * Begin following the mirror (idempotent) and reflect its current answer.
@@ -77,11 +59,21 @@ export class PermissionPresetSettingsController {
         if (this.disposed)
             return;
         this.following ??= this.describeFace.subscribe(() => { this.derive(); });
+        this.followingCatalog ??= this.catalog.store.subscribe(() => { this.derive(); });
         this.store.update((state) => {
             state.status = 'loading';
             state.error = null;
         });
         await this.describeFace.ensure();
+        if (this.describeFace.getSnapshot().status !== 'unavailable') {
+            try {
+                await this.catalog.load();
+            }
+            catch (error) {
+                this.fail(error);
+                return;
+            }
+        }
         this.derive();
     }
     /**
@@ -103,29 +95,32 @@ export class PermissionPresetSettingsController {
             draft.status = 'saving';
             draft.error = null;
         });
+        let response;
         try {
-            const response = await this.api.settings.mutate(PERMISSION_SETTINGS_NS, [{ op: 'set', path: ['defaultPreset'], value: preset }], view.revision);
-            if (!response.ok)
-                throw new Error(response.error.message);
-            this.saving = false;
-            if (this.disposed)
-                return;
-            // The mirror publish reaches this row's own subscription, so the fold
-            // is also what republishes the accepted value here.
-            this.describeFace.acceptView(response.value);
+            response = await this.ctx.remote.settings.mutate(PERMISSION_SETTINGS_NS, [{ op: 'set', path: ['defaultPreset'], value: preset }], view.revision);
         }
-        catch (error) {
+        finally {
+            // Cleared before the fold below, whose publish reaches `derive` through
+            // this row's own subscription and is skipped while a save is pending.
             this.saving = false;
-            if (this.disposed)
-                return;
-            this.fail(error);
         }
+        if (this.disposed)
+            return;
+        if (!response.ok) {
+            this.fail(response.error);
+            return;
+        }
+        // The mirror publish reaches this row's own subscription, so the fold
+        // is also what republishes the accepted value here.
+        this.describeFace.acceptView(response.value);
     }
     /** Stop following the mirror; later publishes leave the snapshot alone. */
     dispose() {
         this.disposed = true;
         this.following?.();
         this.following = undefined;
+        this.followingCatalog?.();
+        this.followingCatalog = undefined;
     }
     derive() {
         if (this.disposed || this.saving)
@@ -160,7 +155,10 @@ export class PermissionPresetSettingsController {
             return;
         }
         try {
-            const resolved = permissionDefaultOf(view, this.schema);
+            const catalog = this.catalog.store.getSnapshot().value;
+            if (catalog === null)
+                return;
+            const resolved = permissionDefaultOf(view, catalog);
             const { writable } = mirrored.view;
             this.store.update((state) => {
                 state.status = 'ready';

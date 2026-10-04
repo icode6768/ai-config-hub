@@ -93,8 +93,8 @@ export function validateTypertManifest(pkgName, exported) {
         }
         const schema = value;
         requireString(pkgName, schema, 'name', 'schema');
-        if (typeof schema.schema !== 'object' || schema.schema === null || !('_zod' in schema.schema)) {
-            throw new Error(`typert-loader: ${pkgName} TYPERT schema "${schema.name}" is not a zod v4 schema instance`);
+        if (typeof schema.create !== 'function') {
+            throw new Error(`typert-loader: ${pkgName} TYPERT schema "${schema.name}" has no create() factory`);
         }
     }
     const model = requireObject(pkgName, manifest.model, 'TYPERT.model');
@@ -252,11 +252,13 @@ function requireStrictCodec(pkgName, value, subject) {
         throw new Error(`typert-loader: ${pkgName} ${subject} must use a strict codec`);
     }
     requireString(pkgName, codec, 'typeSymbol', subject);
-    if (typeof codec.schema !== 'object'
-        || codec.schema === null
-        || !('_zod' in codec.schema)
-        || typeof codec.schema.parse !== 'function') {
-        throw new Error(`typert-loader: ${pkgName} ${subject} is not backed by a zod v4 schema`);
+    for (const method of ['decode', 'encode']) {
+        if (codec[method] !== undefined && typeof codec[method] !== 'function') {
+            throw new Error(`typert-loader: ${pkgName} ${subject} ${method} must be a function`);
+        }
+    }
+    if (typeof codec.create !== 'function') {
+        throw new Error(`typert-loader: ${pkgName} ${subject} has no create() factory`);
     }
 }
 /**
@@ -273,15 +275,16 @@ export async function apply(ctx, config) {
     if (ctx.baseUrl === undefined) {
         throw new Error('typert-loader: ctx.baseUrl is unset — the loader needs the config-tree anchor to resolve plugin packages');
     }
-    const require = createRequire(ctx.baseUrl);
+    const baseUrl = ctx.baseUrl;
+    const require = createRequire(baseUrl);
     const configured = new Set(config.packages);
     // Registered contributions by entry name; the disposer withdraws the entry's registration.
     const registered = new Map();
     // In-flight import/register tasks by entry name.
     const pending = new Map();
     // Artifact paths by package name. Negative verdicts (unresolvable specifier —
-    // loader builtins, subpath rows — or no typert export) are cached as null and
-    // never expire: plugin-set changes take effect on restart.
+    // unconfigured loader builtins and subpath rows — or no typert export) are
+    // cached as null and never expire: plugin-set changes take effect on restart.
     const artifactPath = new Map();
     // Imported+validated manifests by package name (one import per package per process).
     const manifests = new Map();
@@ -298,9 +301,25 @@ export async function apply(ctx, config) {
         const cached = artifactPath.get(pkgName);
         if (cached !== undefined)
             return cached;
+        const firstSlash = pkgName.indexOf('/');
+        if (firstSlash >= 0 && (pkgName[0] !== '@' || pkgName.indexOf('/', firstSlash + 1) >= 0)) {
+            if (configured.has(pkgName)) {
+                throw new Error(`typert-loader: configured package "${pkgName}" cannot be resolved from the config tree — add it to the composition package dependencies or remove it from packages`);
+            }
+            artifactPath.set(pkgName, null);
+            return null;
+        }
         let pkgPath;
+        let pkg;
         try {
-            pkgPath = require.resolve(`${pkgName}/package.json`);
+            const packages = ctx.get('pluginPackages');
+            const resolvedPackage = packages?.packageOf(pkgName, baseUrl);
+            if (packages !== undefined && resolvedPackage === undefined)
+                throw new Error('package is absent from the active resolver');
+            pkgPath = resolvedPackage === undefined
+                ? require.resolve(`${pkgName}/package.json`)
+                : resolvedPackage.manifestPath;
+            pkg = resolvedPackage?.manifest;
         }
         catch (cause) {
             if (configured.has(pkgName)) {
@@ -311,12 +330,13 @@ export async function apply(ctx, config) {
             artifactPath.set(pkgName, null);
             return null;
         }
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-        const rel = typertExportOf(pkgName, pkg.exports);
+        pkg ??= JSON.parse(readFileSync(pkgPath, 'utf8'));
+        const manifestName = typeof pkg.name === 'string' ? pkg.name : pkgName;
+        const rel = typertExportOf(manifestName, pkg.exports);
         if (rel === undefined && configured.has(pkgName)) {
             throw new Error(`typert-loader: configured package "${pkgName}" does not export "${TYPERT_HOST_EXPORT}"`);
         }
-        const resolved = rel === undefined ? null : join(dirname(pkgPath), rel);
+        const resolved = rel === undefined ? null : { packageName: manifestName, path: join(dirname(pkgPath), rel) };
         artifactPath.set(pkgName, resolved);
         return resolved;
     };
@@ -351,10 +371,10 @@ export async function apply(ctx, config) {
         }
         if (registered.has(entryName) || pending.has(entryName))
             return undefined;
-        const path = resolveArtifact(entryName);
-        if (path === null)
+        const artifact = resolveArtifact(entryName);
+        if (artifact === null)
             return undefined;
-        const task = loadManifest(entryName, path).then((manifest) => {
+        const task = loadManifest(artifact.packageName, artifact.path).then((manifest) => {
             // The entry may have unmounted (or already re-registered) while the import was in flight.
             if (!active || !qualifies(entryName) || registered.has(entryName))
                 return;

@@ -3,8 +3,8 @@ import { isAbsolute, resolve } from "node:path";
 import z from "@deepseek-ai/schemastery";
 import { AssistantOutputFold, NO_START_CAPABILITIES, assertPositiveFinite, resolveChildCwd, settleRunResult, subprocessRunHandle, validateConfiguredCwd } from "@deepseek-ai/dsh-subagent";
 import { randomUUID } from "node:crypto";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { DeepSeekHarness, JsonRpcResponseError, SdkProtocolError, TransportClosedError } from "@deepseek-ai/dsh-sdk-client";
-import { SessionId } from "@deepseek-ai/dsh-session";
 import { scrubbedParentEnv } from "@deepseek-ai/dsh-subprocess";
 //#region lib/types/run.js
 /**
@@ -151,7 +151,7 @@ function sdkStartupFailure(spec, error) {
 */
 async function startSdkRun(request, spec) {
 	if (request.signal.aborted) throw new Error("subagent request was aborted before the SDK child started");
-	const id = SessionId(randomUUID());
+	const id = brandString(randomUUID());
 	const harness = internals.createHarness({
 		...spec.dshBin === void 0 ? {} : { dshBin: spec.dshBin },
 		profile: spec.profile,

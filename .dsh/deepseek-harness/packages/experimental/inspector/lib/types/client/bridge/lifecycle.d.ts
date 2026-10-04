@@ -16,5 +16,7 @@ export declare class ClientBridgeLifecycle {
     reconnect(connect: () => void): void;
     /** Stop pending and future reconnect attempts. */
     close(): void;
+    /** Cancel a scheduled attempt while the page is outside its active lifetime. */
+    cancelReconnect(): void;
 }
 //# sourceMappingURL=lifecycle.d.ts.map

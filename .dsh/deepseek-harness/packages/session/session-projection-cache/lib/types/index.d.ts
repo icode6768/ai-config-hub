@@ -17,6 +17,7 @@
  */
 import { Context, Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
+import { SessionLogOffset } from '@deepseek-ai/dsh-session';
 import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session';
 import type { ProjectionSnapshot, SessionProjectionMap } from '@deepseek-ai/dsh-session-projection';
 export { checkpointIdentity, checkpointRecord, checkpointRow, projectionCacheDomainSpec } from './spec.ts';
@@ -73,29 +74,58 @@ export declare class SessionProjectionCache extends Service {
     private recordFor;
     /**
      * The zero-I/O listing read: whole values viewed straight from the stored
-     * rows (version-matching keys only), each cut carried with its watermark so
-     * a client value store can seed under its higher-seq-wins rule — as stale
-     * as the last durable checkpoint but never wrong, and never from an
-     * unrelated log (the caller's header is the identity witness). Fresher
-     * paths (the history tail baseline) supersede these values whenever a
-     * session is actually opened.
+     * rows (version-matching keys only) of the record bound to the caller's
+     * lifecycle. The header is the only identity witness a listing holds, so
+     * this face matches the lifecycle identity (`formatVersion`, `createdAt`,
+     * `cwd`, `isSeeded`) and not the inherited cut: within one format
+     * generation the cut is fixed at fork time, so it distinguishes no
+     * lifecycle the other fields do not, and a viewed value never seeds a fold.
+     * The view is as stale as the last durable checkpoint but never wrong and
+     * never from an unrelated log. Its `asOfSeq` is the lowest watermark among
+     * the served rows: the stored record's own position, which the header
+     * cannot relate to the log the caller later opens. The Session list
+     * therefore labels the block as cached, and the client lets every value the
+     * connected Session produces supersede it whatever this number says.
      * @param meta - the listed session's header (identity witness; no log read).
      * @param keys - optional projection keys required by the caller's audience.
-     * @returns the cut (`asOfSeq` = lowest served-row watermark), or
-     *   `undefined` when no usable row exists for this lifecycle.
+     * @returns the viewed block, or `undefined` when no usable row exists for
+     *   this lifecycle at the current Session format.
      */
     cachedSnapshot(meta: SessionHeader, keys?: readonly Extract<keyof SessionProjectionMap, string>[]): ProjectionSnapshot | undefined;
+    /**
+     * Read only a predecessor checkpoint's title as a zero-I/O listing hint.
+     *
+     * The authoritative Session header supplies the lifecycle identity. A cache
+     * checkpoint can lag that log but cannot lead it because writes flush the
+     * log first, so a matching predecessor title is a genuine (possibly stale)
+     * fact from this Session. The registry still requires the current title
+     * projection's row version and schema. No other predecessor projection is
+     * exposed: format normalization can change their current meaning, and the
+     * {@link cachedSnapshot} / hydration paths continue to reject them.
+     * @param meta - authoritative listed Session header.
+     * @returns a title-only block at the stored title row's watermark, or
+     *   `undefined` when the record is current, newer, unrelated, missing, or
+     *   incompatible with the title unit.
+     */
+    cachedPredecessorTitle(meta: SessionHeader): ProjectionSnapshot | undefined;
+    /**
+     * View selected wire rows as one block bound to the lowest served
+     * watermark: the seq every served value has folded through at least. The
+     * number is the record's own; whether a consumer may compare it with a
+     * live Session's seqs is decided by the face that serves the block, not
+     * here.
+     */
+    private viewRecord;
     /**
      * Hydrate projection cells for an already-prepared Session without another
      * persistence read. The cache seeds matching rows; the supplied exact log
      * advances every unit to the observation cut. No checkpoint is written
      * because the logical observation may contain recovery events not yet durable.
      * @param session - exact unpublished Session retained by persistence.
-     * @param meta - observed lifecycle header.
      * @param events - exact logical event prefix represented by the observation.
      * @returns all projection values at the event cut.
      */
-    hydratePrepared(session: Session, meta: SessionHeader, events: readonly SessionEvent[]): ProjectionSnapshot;
+    hydratePrepared(session: Session, events: readonly SessionEvent[]): ProjectionSnapshot;
     /**
      * Durably checkpoint one live session NOW (all mandatory points call
      * this; tests and carriers may too). The registry cut is snapshotted at
@@ -115,10 +145,11 @@ export declare class SessionProjectionCache extends Service {
      * The caller supplies the complete log in seq order: this service never
      * consults the persistence layer.
      * @param meta - the stored session header (identity witness).
+     * @param inheritedEventCount - exact inherited prefix length for projection initialization and identity.
      * @param events - the session's complete log, in seq order.
      * @returns the projection cut at the log end.
      */
-    coldSnapshot(meta: SessionHeader, events: readonly SessionEvent[]): ProjectionSnapshot;
+    coldSnapshot(meta: SessionHeader, inheritedEventCount: SessionLogOffset, events: readonly SessionEvent[]): ProjectionSnapshot;
     private installWritePath;
     /**
      * One fail-soft durable checkpoint. Every caller has work by construction:

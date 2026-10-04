@@ -1,25 +1,42 @@
 import { ConnectionController, } from "./connection.js";
-import { createFixtureConnectionRpc } from "./fixture.js";
 import { createWebConnectionRpc } from "./rpc.js";
 import { isLoopbackHostname } from "../loopback-hostname.js";
+import { resolveConnectionConfig } from "../recovery-config.js";
 export { RpcId, transportError, } from "./api.js";
 /** Required services (none — this is the wire root). */
 export const inject = [];
+function watchBrowserNetwork(controller) {
+    const browser = globalThis.window;
+    const initiallyAvailable = browser?.navigator?.onLine;
+    if (browser === undefined || initiallyAvailable === undefined)
+        return () => { };
+    const online = () => { controller.setNetworkAvailable(true); };
+    const offline = () => { controller.setNetworkAvailable(false); };
+    controller.setNetworkAvailable(initiallyAvailable);
+    browser.addEventListener('online', online);
+    browser.addEventListener('offline', offline);
+    return () => {
+        browser.removeEventListener('online', online);
+        browser.removeEventListener('offline', offline);
+    };
+}
 /**
- * Client plugin body: pick the api by page mode and provide ctx.connection.
- * @param ctx - client cordis context.
+ * Install one Context-owned Connection service from explicit composition inputs.
+ * @param ctx - client Cordis context.
+ * @param options - physical carrier, reconnect timing, and page location.
  */
-export function apply(ctx) {
-    const pageLocation = typeof location === 'undefined' ? undefined : location;
-    const fixture = pageLocation !== undefined && new URLSearchParams(pageLocation.search).has('fixture');
-    const fixtureRpc = fixture ? createFixtureConnectionRpc() : undefined;
-    const transport = globalThis.__DSH_TRANSPORT__;
-    const rpc = fixtureRpc ?? createWebConnectionRpc(transport?.fetch, transport?.openStream);
+export function installConnection(ctx, options = {}) {
+    const pageLocation = options.location;
+    const transport = options.transport;
+    const recovery = options.recovery ?? {};
+    const rpc = transport?.rpc ?? createWebConnectionRpc(transport?.fetch, transport?.openStream);
     let generationSource;
     let owner;
     let generationId = 0;
     let generation;
+    let state;
     const generationListeners = new Set();
+    const stateListeners = new Set();
     const publishGeneration = (next) => {
         if (Object.is(generation, next))
             return;
@@ -33,12 +50,27 @@ export function apply(ctx) {
             }
         }
     };
+    const publishState = (next) => {
+        if (state === next)
+            return;
+        state = next;
+        for (const listener of [...stateListeners]) {
+            try {
+                listener();
+            }
+            catch (error) {
+                console.error('[connection] state listener threw:', error);
+            }
+        }
+    };
     const releaseOwner = (current) => {
         if (owner !== current)
             return;
         owner = undefined;
+        current.stopNetworkWatch();
         current.controller.stop();
         publishGeneration(undefined);
+        publishState(undefined);
     };
     const handle = {
         isLoopback: transport?.ownsHost === true || pageLocation === undefined || isLoopbackHostname(pageLocation.hostname),
@@ -49,7 +81,17 @@ export function apply(ctx) {
                 return () => { generationListeners.delete(listener); };
             },
         },
+        state: {
+            getSnapshot: () => state,
+            subscribe: (listener) => {
+                stateListeners.add(listener);
+                return () => { stateListeners.delete(listener); };
+            },
+        },
         rpc,
+        reconnect() {
+            owner?.controller.reconnect();
+        },
         registerGenerationSource(source) {
             if (generationSource !== undefined) {
                 throw new Error('connection: a generation source is already registered');
@@ -82,15 +124,16 @@ export function apply(ctx) {
                     sinks.onConnected?.(host);
                 },
                 onStateChange: (state) => {
-                    if (state === 'reconnecting') {
+                    if (state !== 'connected') {
                         publishGeneration(undefined);
                     }
                     if (!ownsGeneration())
                         return;
+                    publishState(state);
                     sinks.onStateChange?.(state);
                 },
-            }, config ?? {});
-            const current = { token, source, controller };
+            }, { ...recovery, ...config });
+            const current = { token, source, controller, stopNetworkWatch: watchBrowserNetwork(controller) };
             owner = current;
             controller.start();
             return {
@@ -99,5 +142,19 @@ export function apply(ctx) {
         },
     };
     ctx.provide('connection', handle);
+}
+/**
+ * Client plugin body: read the page composition and install its Connection service.
+ * @param ctx - client Cordis context.
+ */
+export function apply(ctx) {
+    const globals = globalThis;
+    const pageLocation = typeof location === 'undefined' ? undefined : location;
+    const transport = globals.__DSH_TRANSPORT__;
+    installConnection(ctx, {
+        ...(transport === undefined ? {} : { transport }),
+        recovery: resolveConnectionConfig(globals.__DSH_CONNECTION_RECOVERY__),
+        ...(pageLocation === undefined ? {} : { location: pageLocation }),
+    });
 }
 //# sourceMappingURL=index.js.map

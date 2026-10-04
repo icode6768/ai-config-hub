@@ -5,11 +5,12 @@
  */
 import { Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { BlockAssembler, deepFreeze } from '@deepseek-ai/dsh-llm';
-import { canonicalHeader, headerEquals, isSurfaceEvent } from '@deepseek-ai/dsh-session';
+import { assembleAssistantStream } from '@deepseek-ai/dsh-llm';
+import { deepFreeze } from '@deepseek-ai/dsh-util-values';
+import { canonicalHeader, headerEquals, isSurfaceEvent, SessionLogOffset, SessionSeq, } from '@deepseek-ai/dsh-session';
 import { contextBreakdownProjectionDefinition } from "./breakdown-projection.js";
 import { contextPressureProjectionDefinition, tokenUsageProjectionDefinition } from "./usage-projection.js";
-import { estimateContent, estimateHeader, estimateMessage, ROLE_OVERHEAD } from "./estimate.js";
+import { estimateContent, estimateMessage, estimateToolsTokens, ROLE_OVERHEAD } from "./estimate.js";
 import { commitSurfaceTokens, planSurfaceTokens } from "./surface-fold.js";
 import { priceSurface } from "./route-pricing.js";
 /** Sum disjoint provider usage buckets without double-counting reasoning output. */
@@ -36,17 +37,14 @@ export class TokenMeter extends Service {
     // Schemastery preserves untrusted loader keys on an empty object schema;
     // the public type excludes settings while validateConfigKeys rejects them.
     static Config = z.object({});
+    static inject = ['sessionProjections'];
     states = new WeakMap();
     constructor(ctx, config = {}) {
         super(ctx, 'tokenMeter');
         validateConfigKeys(config);
-        // Projection registration is an optional child: compositions without the
-        // generic registry keep the meter's standalone read shape.
-        ctx.inject(['sessionProjections'], (projectionCtx) => {
-            projectionCtx.sessionProjections.register(tokenUsageProjectionDefinition);
-            projectionCtx.sessionProjections.register(contextPressureProjectionDefinition);
-            projectionCtx.sessionProjections.register(contextBreakdownProjectionDefinition);
-        });
+        ctx.sessionProjections.register(tokenUsageProjectionDefinition);
+        ctx.sessionProjections.register(contextPressureProjectionDefinition);
+        ctx.sessionProjections.register(contextBreakdownProjectionDefinition);
         // Readers catch up independently, while eager observation bounds ordinary
         // read latency without creating state for sessions no consumer has read.
         ctx.on('session/event', (session) => {
@@ -64,7 +62,8 @@ export class TokenMeter extends Service {
      * usage is reused only when the latest successful call's canonical request
      * envelope matches `requestHeader` and its total is no lower than that
      * call's full route-priced anchor; otherwise the complete envelope and
-     * surface are repriced.
+     * surface are repriced. The anchor includes all surface nodes immediately
+     * before the assistant message, including inputs admitted after step/start.
      *
      * `requestHeader` replaces the latest logged envelope for pressure and node
      * pricing; the node set always describes the current session surface. Every
@@ -80,7 +79,8 @@ export class TokenMeter extends Service {
             ? state.header
             : canonicalHeader(requestHeader);
         const pricing = this._routeImagePricing(header);
-        const surface = priceSurface(state.surface, pricing);
+        const fileText = this._fileRequestText();
+        const surface = priceSurface(state.surface, pricing, fileText);
         const anchor = state.anchor;
         let baseline;
         let surfaceDeltaTokens;
@@ -88,9 +88,9 @@ export class TokenMeter extends Service {
             // Matching headers share one route, so the anchored snapshot reprices
             // under the same pricing as the current surface and the signed delta
             // compares like with like.
-            const anchorSurfaceTokens = priceSurface(anchor.nodes, pricing).surfaceTokens
+            const anchorSurfaceTokens = priceSurface(anchor.nodes, pricing, fileText).surfaceTokens
                 + anchor.assistantTokens;
-            const estimatedAnchorTokens = estimateHeader(header) + anchorSurfaceTokens;
+            const estimatedAnchorTokens = estimateToolsTokens(header) + anchorSurfaceTokens;
             const usage = anchor.usage;
             // Signed heuristic deltas remain conservative only from an anchor
             // that is at least as large as the matching full heuristic price.
@@ -106,7 +106,7 @@ export class TokenMeter extends Service {
         else {
             baseline = {
                 kind: 'estimated',
-                tokens: estimateHeader(header) + surface.surfaceTokens,
+                tokens: estimateToolsTokens(header) + surface.surfaceTokens,
             };
             surfaceDeltaTokens = 0;
         }
@@ -126,6 +126,11 @@ export class TokenMeter extends Service {
             return undefined;
         return this.ctx.get('llm')?.imageRequestPricing(config.provider, config.model);
     }
+    /** Resolve request-time file projection when an LLM service is mounted. */
+    _fileRequestText() {
+        const llm = this.ctx.get('llm');
+        return llm === undefined ? undefined : ref => llm.fileRequestText(ref);
+    }
     /**
      * Heuristically price one model-visible message (instance face of the pure
      * `estimateMessage` export from `estimate.ts`).
@@ -140,7 +145,7 @@ export class TokenMeter extends Service {
         let state = this.states.get(session);
         if (state === undefined) {
             state = {
-                consumedEvents: 0,
+                consumedEvents: SessionLogOffset(0),
                 header: undefined,
                 surface: [],
                 stepStart: undefined,
@@ -148,11 +153,12 @@ export class TokenMeter extends Service {
             };
             this.states.set(session, state);
         }
-        while (state.consumedEvents < session.events.length) {
-            // oxlint-disable-next-line typescript/no-non-null-assertion -- contiguous session seqs index the durable log
-            const event = session.events[state.consumedEvents];
-            this._foldEvent(session, state, event);
-            state.consumedEvents += 1;
+        while (state.consumedEvents < session.seq) {
+            // Contiguous session seqs index the durable log; existing Session history read, migration deferred.
+            // oxlint-disable-next-line typescript/no-non-null-assertion, typescript/no-deprecated
+            const event = session.eventAt(SessionSeq(state.consumedEvents));
+            this._foldEvent(state, event);
+            state.consumedEvents = SessionLogOffset(state.consumedEvents + 1);
         }
         return state;
     }
@@ -161,11 +167,24 @@ export class TokenMeter extends Service {
      * mutating replay state, so a malformed event remains unread on every
      * retry instead of half-applying.
      */
-    _foldEvent(session, state, event) {
+    _foldEvent(state, event) {
         let nextHeader = state.header;
         let nextStepStart = state.stepStart;
         let nextAnchor = state.anchor;
         switch (event.type) {
+            case 'image/offload': {
+                const offloaded = new Map(event.data.targets.map(target => [target.seq, new Set(target.imageIndexes)]));
+                state.surface = state.surface.map((node) => {
+                    const indexes = offloaded.get(node.seq);
+                    if (indexes === undefined)
+                        return node;
+                    return {
+                        ...node,
+                        images: node.images.map((image, index) => (indexes.has(index) ? { ...image, offloaded: true } : image)),
+                    };
+                });
+                break;
+            }
             case 'request/header':
                 nextHeader = canonicalHeader(event.data.header);
                 break;
@@ -173,7 +192,7 @@ export class TokenMeter extends Service {
                 if (state.stepStart !== undefined) {
                     throw new Error(`token meter: step/start at seq ${event.seq} arrived before turn ${state.stepStart.turn}/step ${state.stepStart.step} ended`);
                 }
-                nextStepStart = { ...event.data, nodes: [...state.surface] };
+                nextStepStart = { ...event.data };
                 break;
             case 'step/end':
                 if (state.stepStart === undefined
@@ -199,18 +218,21 @@ export class TokenMeter extends Service {
             // assistant/message is surface-mandatory at every append/seed boundary.
             // oxlint-disable-next-line typescript/no-non-null-assertion
             const eventTokens = plan.tokens;
+            // The loop admits prompts and user messages after step/start; retries may
+            // replace them before succeeding. Only the pre-assistant surface is priced
+            // by this call. Provider output stays separate from durable output rewrites.
             if (event.data.usage !== undefined && nextHeader !== undefined) {
                 nextAnchor = {
                     header: nextHeader,
-                    nodes: stepStart.nodes,
-                    assistantTokens: this._estimateProviderAssistant(session, event, eventTokens),
+                    nodes: [...state.surface],
+                    assistantTokens: this._estimateProviderAssistant(event),
                     usage: event.data.usage,
                 };
             }
             else {
                 nextAnchor = {
                     header: nextHeader,
-                    nodes: stepStart.nodes,
+                    nodes: [...state.surface],
                     assistantTokens: eventTokens,
                     usage: undefined,
                 };
@@ -224,38 +246,10 @@ export class TokenMeter extends Service {
         state.anchor = nextAnchor;
     }
     /**
-     * Reassemble provider output from the exact cited chunk seqs for a usage anchor.
-     * Missing legacy source seqs conservatively treat the durable output as the
-     * provider output; an explicit empty list prices a known empty stream.
+     * Reassemble provider output from the message's exact embedded stream.
      */
-    _estimateProviderAssistant(session, event, durableEventTokens) {
-        const sourceSeqs = event.sourceEventSeqs;
-        if (sourceSeqs === undefined)
-            return durableEventTokens;
-        const assembler = new BlockAssembler();
-        const seen = new Set();
-        for (const seq of sourceSeqs) {
-            if (seq >= event.seq) {
-                throw new Error(`token meter: assistant/message at seq ${event.seq} source seq ${seq} is not earlier`);
-            }
-            if (seen.has(seq)) {
-                throw new Error(`token meter: assistant/message at seq ${event.seq} repeats source seq ${seq}`);
-            }
-            seen.add(seq);
-            // Session construction validates contiguous seqs, and the explicit
-            // earlier-than-assistant check above therefore guarantees existence.
-            const source = session.events[seq];
-            // oxlint-disable-next-line typescript/no-non-null-assertion
-            const sourceEvent = source;
-            if (sourceEvent.type !== 'assistant/chunk') {
-                throw new Error(`token meter: assistant/message at seq ${event.seq} source seq ${seq} is not assistant/chunk`);
-            }
-            if (sourceEvent.data.turn !== event.data.turn || sourceEvent.data.step !== event.data.step) {
-                throw new Error(`token meter: assistant/message at seq ${event.seq} source seq ${seq} belongs to another step`);
-            }
-            assembler.push(sourceEvent.data.chunk);
-        }
-        const providerContent = assembler.blocks();
+    _estimateProviderAssistant(event) {
+        const providerContent = assembleAssistantStream(event.data.stream).blocks();
         return providerContent.length === 0 ? 0 : estimateContent(providerContent) + ROLE_OVERHEAD;
     }
 }

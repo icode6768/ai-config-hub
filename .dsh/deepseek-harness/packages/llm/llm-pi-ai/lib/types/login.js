@@ -6,10 +6,10 @@
  *
  * @module dsh-llm-pi-ai/login
  */
-import { createModels } from '@earendil-works/pi-ai';
 import { isCredentialKeySegment } from '@deepseek-ai/dsh-credentials';
 import { catalogProvider, catalogProviderIds } from "./catalog.js";
 import { recordKeyFor } from "./auth.js";
+import { createModels } from "./models.js";
 /**
  * The login methods one catalog provider offers.
  *

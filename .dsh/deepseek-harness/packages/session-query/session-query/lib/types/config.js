@@ -2,8 +2,10 @@
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 /** Default maximum `before`/`after` raw-event window. */
 export const SESSION_QUERY_READ_WINDOW_MAX = 50;
-/** Default maximum number of concurrent persisted-log inspections in one batch read. */
+/** Default maximum number of concurrent persisted-log reads in one batch read. */
 export const SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY = 4;
+/** Default maximum number of cold prepared-Session observations retained for reuse. */
+export const SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE = 5;
 /** Typed session-query failure whose `code` is one closed taxonomy member. */
 export class SessionQueryError extends HarnessError {
     // The base stores the value; this signature narrows its open string code.

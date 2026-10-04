@@ -1,7 +1,13 @@
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots';
+import { closeTopModal } from '@deepseek-ai/dsh-client-ui-primitives';
+import { createSettingsShellStore } from "./shell-store.js";
 import { SettingsRoot } from "./SettingsRoot.js";
+import { DesktopUpdateBadge } from "./DesktopUpdateIndicator.js";
+import { DesktopUpdateSource } from "./desktop-update-source.js";
 import { CloseLabel, HeaderContent, TriggerContent } from "./chrome.js";
 import { GeneralSection } from "./GeneralSection.js";
+import { CurrentVersionRow } from "./CurrentVersionRow.js";
+import { DeveloperToolsRow } from "./DeveloperToolsRow.js";
 import { SettingsDocumentAction } from "./SettingsDocumentAction.js";
 import { SettingsDocumentStore } from "./settings-document-store.js";
 import { en, zh } from "./locales.js";
@@ -13,22 +19,40 @@ const NS = 'settings';
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registrations depend on their slots through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'settingsScope'];
+export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'configForms', 'shortcuts'];
 /**
  * Register the `settings` dictionaries, the chrome content, and the General
  * section, each once its slot declaration is on the ledger.
  * @param ctx - client root context.
  */
 export function apply(ctx) {
+    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+        name: 'settings.general.item', id: 'developer-tools', order: 15, locale: NS,
+        inject: () => ({
+            hooks: { developerTools: ctx.configForms.developerTools.enabled },
+            setEnabled: enabled => ctx.configForms.developerTools.setEnabled(enabled),
+        }),
+    }, DeveloperToolsRow));
+    // Version information follows the core preferences.
+    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+        name: 'settings.general.item', id: 'current-version', order: 100, locale: NS,
+    }, CurrentVersionRow));
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-general: dictionaries');
+    const connection = ctx.get('connection');
+    const carrier = globalThis.dshDesktop;
+    const desktopUpdate = new DesktopUpdateSource(carrier?.protocolVersion === 1 ? carrier.updates : undefined);
+    ctx.effect(() => () => { desktopUpdate.dispose(); }, 'ui-settings-general: desktop update carrier');
+    ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register({
+        name: 'sidebar.toggle.badge', locale: NS,
+        inject: () => ({ hooks: { desktopUpdate: desktopUpdate.store, connectionState: connection.state } }),
+    }, DesktopUpdateBadge));
     // Copy freshness is framework-owned: components read the standard `t`
     // seat, and the nav label is a thunk the owner resolves per render — no
     // locale/change re-registration wiring.
     const t = ctx.locale.bind(NS);
-    const connection = ctx.get('connection');
-    // The shared SettingsScope mirror updates after document commits and reconnects.
-    const documentController = connection.isLoopback
-        ? new SettingsDocumentStore(ctx.remote, ctx.settingsScope.describe())
+    // The shared ConfigForm mirror updates after document commits and reconnects.
+    const documentController = ctx.remote.$host.isLoopback
+        ? new SettingsDocumentStore(ctx, ctx.configForms.describe())
         : undefined;
     const documentInjected = documentController === undefined
         ? undefined
@@ -48,7 +72,12 @@ export function apply(ctx) {
     let onboardingVersion = -1;
     let onboardingSteps = [];
     const shellInjected = () => ({
+        openDesktopUpdate: () => { desktopUpdate.open(); },
+        reconnect: () => { connection.reconnect(); },
         hooks: {
+            shortcuts: ctx.shortcuts.catalog,
+            desktopUpdate: desktopUpdate.store,
+            connectionState: connection.state,
             sections: {
                 getSnapshot: () => {
                     const version = ctx.slots.getVersion('settings.section');
@@ -95,18 +124,48 @@ export function apply(ctx) {
             },
         },
     });
-    ctx.slots.inject('sidebar.settings', () => ctx.slots.register({
-        name: 'sidebar.settings',
-        children: {
-            'settings.trigger': { kind: 'single', scope: 'root' },
-            'settings.header': { kind: 'single', scope: 'root' },
-            'settings.action': { kind: 'list', scope: 'root' },
-            'settings.close': { kind: 'single', scope: 'root' },
-            'settings.section': { kind: 'list', scope: 'root' },
-            'settings.onboarding': { kind: 'list', scope: 'root' },
-        },
-        inject: shellInjected,
-    }, SettingsRoot));
+    ctx.slots.inject('sidebar.settings', () => {
+        const shellHandle = createSettingsShellStore();
+        const shellInstance = shellHandle.create();
+        const shellStore = { ...shellHandle, create: () => shellInstance };
+        const disposeCommand = ctx.shortcuts.register({
+            id: 'settings.open', label: () => t('shortcut.open'), aliases: ['settings', 'preferences'],
+            defaults: {
+                'desktop:macos': { code: 'Comma', modifiers: ['primary'] },
+                'desktop:windows': { code: 'Comma', modifiers: ['primary'] },
+                'desktop:linux': { code: 'Comma', modifiers: ['primary'] },
+                'web:macos': { code: 'Comma', modifiers: ['primary', 'alt'] },
+                'web:windows': { code: 'Comma', modifiers: ['primary', 'alt'] },
+            },
+            regions: ['page', 'editable', 'terminal'], modals: ['settings'],
+            resolve: ({ modal }) => {
+                if (modal !== null && modal !== 'settings')
+                    return { status: 'blocked', reason: 'modal' };
+                return { status: 'handled', run: () => {
+                        if (modal === 'settings')
+                            closeTopModal(document);
+                        else
+                            shellInstance.actions.open();
+                    } };
+            },
+        });
+        const disposeSlot = ctx.slots.register({
+            name: 'sidebar.settings',
+            locale: NS,
+            store: shellStore,
+            children: {
+                'settings.launcher': { kind: 'single', scope: 'root' },
+                'settings.trigger': { kind: 'single', scope: 'root' },
+                'settings.header': { kind: 'single', scope: 'root' },
+                'settings.action': { kind: 'list', scope: 'root' },
+                'settings.close': { kind: 'single', scope: 'root' },
+                'settings.section': { kind: 'list', scope: 'root' },
+                'settings.onboarding': { kind: 'list', scope: 'root' },
+            },
+            inject: shellInjected,
+        }, SettingsRoot);
+        return () => { disposeCommand(); disposeSlot(); };
+    });
     ctx.slots.inject('settings.trigger', () => ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent));
     ctx.slots.inject('settings.header', () => ctx.slots.register({ name: 'settings.header', locale: NS }, HeaderContent));
     if (documentInjected !== undefined) {

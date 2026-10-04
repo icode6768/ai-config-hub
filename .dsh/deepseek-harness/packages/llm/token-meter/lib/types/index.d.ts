@@ -9,6 +9,8 @@ import type { Message } from '@deepseek-ai/dsh-llm';
 import type { EpochHeader, Session } from '@deepseek-ai/dsh-session';
 import type { TokenMeasurement, TokenMeterConfig } from './types.ts';
 export type * from './types.ts';
+export type * from './usage-projection.ts';
+export type * from './breakdown-projection.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         tokenMeter: TokenMeter;
@@ -17,6 +19,7 @@ declare module '@deepseek-ai/cordis' {
 /** Replay owner for one service-wide estimator and isolated per-session folds. */
 export declare class TokenMeter extends Service {
     static Config: z<TokenMeterConfig>;
+    static inject: string[];
     private readonly states;
     constructor(ctx: Context, config?: TokenMeterConfig);
     /**
@@ -29,7 +32,8 @@ export declare class TokenMeter extends Service {
      * usage is reused only when the latest successful call's canonical request
      * envelope matches `requestHeader` and its total is no lower than that
      * call's full route-priced anchor; otherwise the complete envelope and
-     * surface are repriced.
+     * surface are repriced. The anchor includes all surface nodes immediately
+     * before the assistant message, including inputs admitted after step/start.
      *
      * `requestHeader` replaces the latest logged envelope for pressure and node
      * pricing; the node set always describes the current session surface. Every
@@ -42,6 +46,8 @@ export declare class TokenMeter extends Service {
     measure(session: Session, requestHeader?: EpochHeader): TokenMeasurement;
     /** Resolve the routed model's image pricing, when the llm service and route declare one. */
     private _routeImagePricing;
+    /** Resolve request-time file projection when an LLM service is mounted. */
+    private _fileRequestText;
     /**
      * Heuristically price one model-visible message (instance face of the pure
      * `estimateMessage` export from `estimate.ts`).
@@ -58,9 +64,7 @@ export declare class TokenMeter extends Service {
      */
     private _foldEvent;
     /**
-     * Reassemble provider output from the exact cited chunk seqs for a usage anchor.
-     * Missing legacy source seqs conservatively treat the durable output as the
-     * provider output; an explicit empty list prices a known empty stream.
+     * Reassemble provider output from the message's exact embedded stream.
      */
     private _estimateProviderAssistant;
 }

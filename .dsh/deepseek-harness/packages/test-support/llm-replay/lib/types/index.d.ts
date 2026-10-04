@@ -1,6 +1,6 @@
 /**
  * Keyless snapshot-test LLM replay. It derives one model-call script per
- * recorded session from `assistant/chunk` events and explicitly marked local
+ * recorded session from v3 embedded Assistant streams and explicitly marked local
  * compaction calls, then binds fresh live sessions to parent/child scripts by
  * first-call order. Throw and hang cases require an explicit override because
  * a session log cannot reconstruct them alone.
@@ -8,7 +8,8 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { type SessionEvent } from '@deepseek-ai/dsh-session';
-import type { GenerateOptions, ModelModality, RetryPolicyConfig, StreamChunk } from '@deepseek-ai/dsh-llm';
+import type { SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session';
+import type { GenerateOptions, ModelModality, RetryPolicyConfig, StreamChunk, SystemPromptUpdate, ToolUpdate } from '@deepseek-ai/dsh-llm';
 /**
  * One recorded model call. `throw` may replay prefix chunks before failing;
  * `hang` models cancellation. Derived chunk entries come from ordinary model
@@ -62,6 +63,10 @@ export interface ReplayModelConfig {
      * {@link reasoningEfforts} or call resolution rejects the route.
      */
     defaultReasoningEffort?: string;
+    /** Optional in-history system prompt replacement for a keyless replay route. */
+    systemPromptUpdate?: SystemPromptUpdate;
+    /** Optional mid-conversation tool declaration mode for a keyless replay route. */
+    toolUpdate?: ToolUpdate;
 }
 /** One provider route exposed by the replay adapter. */
 export interface ReplayProviderConfig {
@@ -77,16 +82,17 @@ export interface ReplayProviderConfig {
 /** Resolved plugin configuration. */
 export interface ReplayConfig {
     /**
-     * Path to the PRIMARY (parent) `session.jsonl` fixture. For a single-session
-     * scenario this is the only log; for a nested-agent scenario it is the parent,
-     * and the child logs ride in {@link childFiles}.
+     * Path to the selected PRIMARY fixture (`session.jsonl` for v0 or
+     * `session.vN.jsonl` for vN). For a single-session scenario this is the only
+     * log; for a nested-agent scenario it is the parent, and child logs ride in
+     * {@link childFiles}.
      */
     file: string;
     /**
      * Optional sidecar for the PRIMARY session: a bare `ReplayEntry[]` replaces
      * the derived script; `{ patches }` keeps it and swaps the named call
      * indexes ({@link ReplayOverrideDoc}). Used by single-session scenarios not
-     * expressible as `assistant/chunk` (throw-before-chunk, cancel/hang,
+     * expressible as a durable embedded stream (throw-before-chunk, cancel/hang,
      * injected transient failures). Absent for normal and nested scenarios.
      */
     overrideFile?: string;
@@ -147,32 +153,37 @@ export interface SessionScript {
     primary: boolean;
 }
 /**
- * Parse a session `.jsonl` buffer into its event list. Line 0 is the session
- * header (a `{type:'session',…}` record), every subsequent non-empty line is a
- * {@link SessionEvent} or a packed chunk row. Packed rows expand back into
- * events, and JSONL storage-form provenance ranges expand back into
- * `number[]`, so physical fixture encodings derive the same script. The
- * header is skipped; malformed lines fail loud.
+ * Parse a projected session `.jsonl` buffer into current events. The first
+ * non-empty line is the physical header. Body rows either all carry complete
+ * persistence envelopes or all omit them; projected rows receive deterministic
+ * dense sequences and zero timestamps. The build-static format catalog then
+ * decodes and migrates the complete artifact before this function returns.
  * @param text - the raw `.jsonl` file contents.
- * @returns every event after the header, in log order.
+ * @returns every migrated current event, in log order.
  */
 export declare function parseSessionLog(text: string): SessionEvent[];
 /**
+ * Convert one persisted or projected snapshot fixture to the current physical format in memory for expected-output comparison.
+ * Projected cwd and request-tool tokens remain tokens for comparison with a fresh run.
+ * @param text - one complete Session fixture.
+ * @returns current-format JSONL with complete event envelopes; the input string and source file remain unchanged.
+ */
+export declare function prepareSessionSnapshotFixtureForComparison(text: string): string;
+/**
  * Read replay identity, ordering, and fork-seed facts from the JSONL header.
  *
- * @param text - the raw `.jsonl` file contents (only the header line is read).
- * @returns the header's `id`, `createdAt`, and `seedLength`, defaulted when absent.
+ * @param text - the raw `.jsonl` file contents; the complete artifact is validated and migrated.
+ * @returns the migrated header's `id`, `createdAt`, and exact inherited-event count.
  */
 export declare function parseSessionHeader(text: string): {
     id: string;
     createdAt: number;
-    seedLength: number;
+    inheritedEventCount: SessionLogOffsetType;
 };
 /**
  * Reconstruct the per-`stream()` replay script from a recorded session log.
  *
- * Splits `assistant/chunk` events at every `finish`, using turn and step changes
- * to detect an unterminated prior call. A `compaction/summary` explicitly marked
+ * Reads one embedded stream from each Assistant settlement. A `compaction/summary` explicitly marked
  * as one local LLM-stream call becomes a canonical successful stream from its
  * complete `rawOutput` at the summary's log position. A
  * missing assistant terminator means the live stream threw, so derivation
@@ -231,7 +242,7 @@ export declare function resolveScriptedEntry(entry: ReplayEntry, messages: Gener
 export declare function loadReplayScript(config: ReplayConfig): ReplayEntry[];
 /**
  * Load the primary and child scripts in bind order. Child derivation begins at
- * `seedLength` so inherited parent chunks are never replayed as child calls.
+ * the v0 header's inherited-event cut so parent chunks are never replayed as child calls.
  *
  * @param config - the fixture paths: the primary log plus any recorded child logs.
  * @returns the primary script first, then the child scripts in bind order.

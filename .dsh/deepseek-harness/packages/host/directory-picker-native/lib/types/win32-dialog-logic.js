@@ -45,6 +45,7 @@ export function runFolderDialog(bindings, title, onShowing) {
             check(dialog.setOptions(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_NOCHANGEDIR), 'SetOptions');
             check(dialog.setTitle(title), 'SetTitle');
             onShowing(bindings.currentThreadId());
+            bindings.pressAltForForeground();
             const shown = dialog.show();
             if (shown === HRESULT_CANCELLED)
                 return null;

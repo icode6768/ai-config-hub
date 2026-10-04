@@ -47,8 +47,8 @@ export interface TunnelSeams {
     readonly directFetch: (request: Request) => Promise<Response>;
     /** Boot payload for `GET /__boot__`: the structured index injection table. */
     readonly bootPayload: () => unknown;
-    /** Open one decoded Gateway Remote stream without another network carrier. */
-    readonly openStream: (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<AsyncIterable<unknown>>;
+    /** Open one decoded Gateway Remote stream without another network carrier; `uplink` carries the page's items. */
+    readonly openStream: (endpoint: string, payload: unknown, uplink: AsyncIterable<unknown>, signal: AbortSignal) => Promise<AsyncIterable<unknown>>;
     /** Convert a Gateway stream failure to stable Client fields. */
     readonly streamFailure: (error: unknown) => {
         readonly code: string;
@@ -85,6 +85,8 @@ export declare class TunnelServer {
     private readonly unaryApiLane;
     private readonly queue;
     private readonly inFlight;
+    /** Uplinks of accepted `stream-open` frames, buffering items that arrive before or while the stream serves. */
+    private readonly uplinks;
     private seams;
     private failure;
     private listener;
@@ -105,10 +107,18 @@ export declare class TunnelServer {
      * @param reason - Boot failure to report.
      */
     fail(reason: unknown): void;
+    /**
+     * Ask the page to show one text file in its read-only viewer.
+     * @param path - Absolute VFS path the viewer names.
+     * @param text - File contents.
+     */
+    viewText(path: string, text: string): void;
     private send;
     private refuse;
     private dispatchFrame;
     private serveStream;
+    /** The stream is over: settle any Host read still waiting on its uplink and stop buffering. */
+    private dropUplink;
     private sinkFor;
     /** The page sends an absolute URL; route handlers read `req.url` as a path. */
     private pathFrame;

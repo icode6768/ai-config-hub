@@ -2,7 +2,7 @@
  * Test-only direct-agent turn driver shared by assembled Loader fixtures.
  * @module @deepseek-ai/dsh-loader-smoke/agent-turn
  */
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { createUserMessage, expandAssistantStream } from '@deepseek-ai/dsh-llm';
 function addUsage(total, step) {
     const next = {
         inputTokens: (total?.inputTokens ?? 0) + step.inputTokens,
@@ -18,8 +18,22 @@ function assistantText(event) {
     const blocks = event.data.message.content.filter(block => block.type === 'text');
     return blocks.length === 0 ? undefined : blocks.map(block => block.text).join('');
 }
-function onlyRootAgent(ctx) {
-    const agents = ctx.get('agents')?.roots() ?? [];
+async function onlyRootAgent(ctx) {
+    const registry = ctx.get('agents');
+    if (registry === undefined)
+        throw new Error('fixture turn requires exactly one top-level agent, found 0');
+    // Configured agents publish asynchronously (persistence create/resume runs
+    // before publication), so a settled Loader does not imply a registered
+    // agent yet; wait for the first publication instead of requiring it.
+    if (registry.roots().length === 0) {
+        await new Promise((resolve) => {
+            const dispose = ctx.on('agent/created', () => {
+                dispose();
+                resolve();
+            });
+        });
+    }
+    const agents = registry.roots();
     const [agent] = agents;
     if (agent === undefined || agents.length !== 1) {
         throw new Error(`fixture turn requires exactly one top-level agent, found ${agents.length}`);
@@ -33,7 +47,7 @@ function onlyRootAgent(ctx) {
  * @returns the final assistant text and accumulated model usage.
  */
 export async function runFixtureTurn(ctx, options) {
-    const agent = onlyRootAgent(ctx);
+    const agent = await onlyRootAgent(ctx);
     await agent.whenIdle();
     const message = createUserMessage({
         content: [{ type: 'text', text: options.task }],
@@ -52,13 +66,17 @@ export async function runFixtureTurn(ctx, options) {
             received = true;
         }
         options.onEvent?.(session.id, event);
-        if (event.type === 'assistant/chunk' && event.data.chunk.type === 'usage') {
-            usageByStep.set(`${event.data.turn}/${event.data.step}`, event.data.chunk.usage);
-        }
         if (event.type === 'assistant/message') {
             output = assistantText(event) ?? output;
             if (event.data.usage !== undefined) {
                 usageByStep.set(`${event.data.turn}/${event.data.step}`, event.data.usage);
+            }
+        }
+        else if (event.type === 'assistant/attempt') {
+            const usage = expandAssistantStream(event.data.stream)
+                .findLast(member => member.chunk.type === 'usage')?.chunk;
+            if (usage?.type === 'usage') {
+                usageByStep.set(`${event.data.turn}/${event.data.step}`, usage.usage);
             }
         }
     });

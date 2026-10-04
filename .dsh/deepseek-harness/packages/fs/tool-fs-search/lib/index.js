@@ -2,7 +2,6 @@ import z from "@deepseek-ai/schemastery";
 import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
 import { isAbsolute, join, parse, relative, sep } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { existsSync } from "node:fs";
 import { HarnessError } from "@deepseek-ai/dsh-llm";
 import { ItemRetainer, TextRetainer } from "@deepseek-ai/dsh-output-retention";
@@ -123,7 +122,8 @@ function resolveRgPath() {
 		const executable = parse(process.execPath);
 		const executableSidecar = process.platform === "win32" ? join(executable.dir, `${executable.name}-rg.exe`) : `${process.execPath}-rg`;
 		if ("pkg" in process && existsSync(executableSidecar)) return executableSidecar;
-		return (await import("@vscode/ripgrep")).rgPath;
+		const dependency = (await import("@vscode/ripgrep")).rgPath;
+		return process.versions.electron === void 0 ? dependency : dependency.replace(/\.asar(?=[\\/])/u, ".asar.unpacked");
 	});
 	return rgPathPromise;
 }
@@ -148,9 +148,10 @@ function resolveRgPath() {
 * `SEARCH_INVALID_PATTERN`, the rest → `SEARCH_FAILED` /
 * `SEARCH_RAW_OUTPUT_OVERFLOW`). Both launch-time failure domains are
 * classified: a synchronous throw at spawn CREATION (a NUL in argv, an abort
-* racing the pre-check, a rejected `@vscode/ripgrep` resolution) and a
-* rejection of `handle.done` (the seam's infrastructure failures) both become
-* `SEARCH_FAILED` with the original as `cause` — an abort already observed by
+* racing the pre-check, a rejected `@vscode/ripgrep` resolution) reports that
+* the command could not start, while a rejection of `handle.done` reports a
+* provider failure without claiming whether execution began. Both become
+* `SEARCH_FAILED` with the original as `cause`; an abort already observed by
 * creation time becomes `SEARCH_ABORTED` instead.
 *
 * @param ctx - the plugin context; execution uses its `subprocess` service.
@@ -190,7 +191,7 @@ async function runRipgrep(ctx, exec, toolName, argv, rawOutputMaxBytes, graceMs,
 	try {
 		outcome = await handle.done;
 	} catch (error) {
-		throw new SearchError(`${toolName} could not start its search command (ripgrep launch failed)`, "SEARCH_FAILED", { cause: error });
+		throw new SearchError(`${toolName} subprocess failed before reporting an outcome (ripgrep provider failure)`, "SEARCH_FAILED", { cause: error });
 	}
 	const stdout = handle.collected.stdout?.readFrom(0);
 	const stderr = handle.collected.stderr?.readFrom(0);
@@ -296,6 +297,7 @@ async function trySaveFormattedResult(ctx, exec, suggestedName, content) {
 	const save = {
 		owner: { sessionId },
 		source: {
+			kind: "tool",
 			toolName: exec.name,
 			callId: exec.callId,
 			label: "result"
@@ -763,23 +765,22 @@ function presentGlobResult(_args, result) {
 	return view;
 }
 /**
-* Register the `glob` tool and its system-prompt guidance.
+* Register the `glob` tool and its scope-aware system-prompt guidance.
 *
 * @param ctx - the plugin context; registrations are effects scoped to it, and
 *   execution uses its `subprocess` service.
 * @param caps - the deployment's resolved glob caps (plugin config after defaulting).
 */
 function applyGlobTool(ctx, caps) {
-	const overCapGuidance = caps.sampleOverCapGlobResults ? "while a larger one is sampled across top-level entries, so it spans the tree instead of one subtree." : "while a larger one keeps the modification-time-ordered head.";
 	ctx.systemPrompt.section({
 		name: "tool:glob",
-		order: FIRST_PARTY_SECTION_ORDER.TOOL_GLOB,
-		text: `Use the glob tool — not shell find — to discover files by path pattern. A pattern with no "/" matches basenames at any depth, so "*" matches every file in the tree rather than its top level. Results are files only, never directories, and include hidden and ignored files: a result that fits comes back in modification-time order, ${overCapGuidance}`
+		order: ctx.systemPrompt.getSectionOrder("TOOL_GLOB"),
+		text: ({ scope }) => ctx.tools.get("glob", scope) === void 0 ? "" : "Use the glob tool — not shell find — to discover files by path pattern."
 	});
-	const overCapDescription = caps.sampleOverCapGlobResults ? `a larger result instead returns ${caps.maxResults} paths sampled across top-level entries` : `a larger result returns the first ${caps.maxResults} paths in modification-time order`;
+	const overCapDescription = caps.sampleOverCapGlobResults ? "is sampled across top-level entries" : "keeps the first paths";
 	const tool = defineTool({
 		name: "glob",
-		description: `Find files whose paths match a glob pattern. Returns matching file paths — never directories — including hidden and ignored files (VCS metadata directories are excluded). Up to ${caps.maxResults} paths come back in modification-time order; ${overCapDescription}, says so, and reports where the complete sorted list was saved. This tool does not enumerate directory entries.`,
+		description: `Find files, not directories, whose paths match a glob pattern, including hidden and ignored files. Returns up to ${caps.maxResults} paths in modification-time order; a larger result ${overCapDescription} and reports where the complete list was saved.`,
 		parameters: {
 			pattern: {
 				type: "string",
@@ -1073,7 +1074,7 @@ function presentGrepResult(_args, result) {
 	return view;
 }
 /**
-* Register the `grep` tool and its system-prompt guidance.
+* Register the `grep` tool and its scope-aware system-prompt guidance.
 *
 * @param ctx - the plugin context; registrations are effects scoped to it, and
 *   execution uses its `subprocess` service.
@@ -1082,12 +1083,12 @@ function presentGrepResult(_args, result) {
 function applyGrepTool(ctx, caps) {
 	ctx.systemPrompt.section({
 		name: "tool:grep",
-		order: FIRST_PARTY_SECTION_ORDER.TOOL_GREP,
-		text: "Use the grep tool — not shell grep or rg — to search file contents. Use read on a matched file when you need surrounding context."
+		order: ctx.systemPrompt.getSectionOrder("TOOL_GREP"),
+		text: ({ scope }) => ctx.tools.get("grep", scope) === void 0 ? "" : "Use the grep tool — not shell grep or rg — to search file contents." + (ctx.tools.get("read", scope) === void 0 ? "" : " Use read on a matched file when you need surrounding context.")
 	});
 	const tool = defineTool({
 		name: "grep",
-		description: `Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. Returns the first ${caps.maxMatches} matches inline; a capped result reports where the complete match list was saved. Use read on a matched file for surrounding context.`,
+		description: `Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. Returns up to ${caps.maxMatches} matches; a larger result reports where the complete match list was saved.`,
 		parameters: {
 			pattern: {
 				type: "string",

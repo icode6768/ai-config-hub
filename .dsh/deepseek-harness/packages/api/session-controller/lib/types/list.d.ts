@@ -2,8 +2,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session';
 import type { SessionListMetadata, SessionSearchValue, SessionSummary } from './types.ts';
-/** Default maximum artifact size eligible for one cold projection observation. */
-export declare const DEFAULT_COLD_BLANK_PROBE_MAX_BYTES = 1024;
 /**
  * Advance the Session-list metadata projection by one committed event.
  * @param state - metadata before the event.
@@ -21,12 +19,12 @@ export declare function truncateUnicodeCodePoints(value: string, maximum: number
 /** Owns list projection registration, bounded cold summaries, and authorized search. */
 export declare class ApiSessionList {
     private readonly ctx;
-    private readonly coldBlankProbeMaxBytes;
+    private readonly workSliceMs;
     /**
      * @param ctx - Host context carrying Session, query, persistence, and projection services.
-     * @param coldBlankProbeMaxBytes - maximum physical artifact size eligible for a full observation.
+     * @param workSliceMs - Resolved positive integral list-work budget in milliseconds.
      */
-    constructor(ctx: Context, coldBlankProbeMaxBytes: number);
+    constructor(ctx: Context, workSliceMs: number);
     /**
      * Build one current attached-Session summary.
      * @param session - attached Session to summarize.
@@ -35,12 +33,11 @@ export declare class ApiSessionList {
     summaryFor(session: Session): SessionSummary;
     /**
      * Read every visible attached and persisted Session without activating an Agent.
-     * @param signal - optional cancellation for persistence reads.
+     * @param signal - optional cancellation for persistence reads and summary generation.
      * @returns visible Session summaries ordered by activity.
      */
     list(signal?: AbortSignal): Promise<SessionSummary[]>;
     private summarizeCold;
-    private probeSmallCold;
     /**
      * Search current visible message content without activating any matching Session.
      * @param query - literal message-content query.

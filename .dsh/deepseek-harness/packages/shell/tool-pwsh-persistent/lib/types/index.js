@@ -58,13 +58,13 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
 });
 import { randomUUID } from 'node:crypto';
 import z from '@deepseek-ai/schemastery';
+import { truncateWithoutSplittingSurrogatePair } from '@deepseek-ai/dsh-output-retention';
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 // TODO: Replace the file-search advice; arbitrary command output need not come from a searchable file.
 const TRUNCATED_MESSAGE = '<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with Select-String in order to find the line numbers of what you are looking for.</NOTE>';
 const LOST_PREFIX_MESSAGE = '<response clipped><NOTE>The beginning of this command output was dropped by the terminal scrollback limit. The following text is the earliest retained output.</NOTE>\n';
 const SHELL_RESET_MESSAGE = 'The persistent pwsh shell was reset; the next pwsh call starts from the workspace with a fresh current directory and environment.';
-const SHELL_PROMPT = '__DSH_PERSISTENT_PWSH_PROMPT__ ';
 const TIMEOUT_CODE = 'PERSISTENT_PWSH_TIMEOUT';
 // One page is enough to find a just-emitted completion marker; the full
 // scrollback is assembled only when a command settles or needs partial output.
@@ -76,7 +76,7 @@ function maybeTruncate(content, maxOutputChars, incomplete = false) {
         return content;
     return content.length <= maxOutputChars
         ? content + TRUNCATED_MESSAGE
-        : content.slice(0, maxOutputChars) + TRUNCATED_MESSAGE;
+        : truncateWithoutSplittingSurrogatePair(content, maxOutputChars) + TRUNCATED_MESSAGE;
 }
 function markers() {
     const nonce = randomUUID();
@@ -112,17 +112,14 @@ function wrapCommand(command, marker) {
     const body = quoteForPwsh(command);
     return `Write-Output '${marker.start}'; $LASTEXITCODE = $null; $__s = 1; try { Invoke-Expression "${body}"; $__ok = $? } catch { $__ok = $false }; if ($null -ne $LASTEXITCODE) { $__s = [int]$LASTEXITCODE } else { $__s = if ($__ok) { 0 } else { 1 } }; Write-Output ('${marker.end}' + $__s)`;
 }
-function stripPrompt(text) {
-    let result = text.replace(/\r?\n$/, '');
-    while (result.endsWith(SHELL_PROMPT)) {
-        result = result.slice(0, -SHELL_PROMPT.length);
-    }
-    return result.endsWith('\n') ? result.slice(0, -1) : result;
+function trimTrailingNewline(text) {
+    return text.replace(/\r?\n$/, '');
 }
 function commandOutput(snapshot, marker, wrapper) {
     const text = snapshot.text;
     const end = text.lastIndexOf(marker.end);
-    const status = /^(\d+)\r?\n/.exec(text.slice(end + marker.end.length))?.[1];
+    // Terminal padding belongs to the status line, not to captured command output.
+    const status = /^(\d+) *\r?\n/.exec(text.slice(end + marker.end.length))?.[1];
     if (status === undefined)
         return undefined;
     const startMarker = text.lastIndexOf(marker.start, end);
@@ -139,16 +136,11 @@ function commandOutput(snapshot, marker, wrapper) {
         exitCode: Number(status),
     };
 }
-function promptCompleted(result) {
-    return result.viewport.endsWith(SHELL_PROMPT)
-        || result.viewport.endsWith(`${SHELL_PROMPT}\r\n`)
-        || result.viewport.endsWith(`${SHELL_PROMPT}\n`);
-}
 function partialOutput(snapshot, marker, wrapper, fallback, fallbackTruncated = false) {
     const startMarker = snapshot.text.lastIndexOf(marker.start);
     if (startMarker >= 0) {
         return {
-            text: stripPrompt(snapshot.text.slice(startMarker + marker.start.length).replace(/^\r?\n/, '')),
+            text: trimTrailingNewline(snapshot.text.slice(startMarker + marker.start.length).replace(/^\r?\n/, '')),
             incomplete: false,
         };
     }
@@ -159,7 +151,7 @@ function partialOutput(snapshot, marker, wrapper, fallback, fallbackTruncated = 
     const fallbackEnd = afterStart.lastIndexOf(marker.end);
     const beforeEnd = fallbackEnd < 0 ? afterStart : afterStart.slice(0, fallbackEnd);
     return {
-        text: stripPrompt(beforeEnd.replaceAll(SHELL_PROMPT, '').replaceAll(wrapper, '')),
+        text: trimTrailingNewline(beforeEnd.replaceAll(wrapper, '')),
         incomplete: fallbackTruncated || fallbackStart < 0,
     };
 }
@@ -227,13 +219,6 @@ async function respondToSessionExit(ctx, shells, owner, id, status, marker, wrap
         SHELL_RESET_MESSAGE,
     ].filter(part => part.length > 0).join('\n');
 }
-/**
- * The pwsh prompt function that overrides the backend bootstrap value with
- * this tool's own prompt. `[char]27`/`[char]7` build the OSC bytes at runtime
- * because raw ESC characters in submitted input are unreliable under
- * PSReadLine.
- */
-const PWSH_PROMPT_SETUP = "function prompt { [Console]::Write([char]27 + ']133;D;' + [int]$LASTEXITCODE + [char]7); '" + SHELL_PROMPT + "' }";
 function persistentShells(ctx, config) {
     const pending = new WeakMap();
     const live = new Map();
@@ -279,15 +264,6 @@ function persistentShells(ctx, config) {
                         live.delete(owner);
                     }, 'tool-pwsh-persistent owner cache cleanup');
                 }
-                const setup = ctx.terminals.startSend(owner, spawned.sessionId, {
-                    text: PWSH_PROMPT_SETUP,
-                    submit: true,
-                    signal: combinedSignal,
-                });
-                const result = await setup.done;
-                if (result.sessionStatus.kind === 'exited' || result.waitReason === 'timeout') {
-                    throw new Error('persistent pwsh shell did not accept initialization');
-                }
                 return spawned.sessionId;
             }
             catch (error) {
@@ -308,7 +284,16 @@ async function executeCommand(ctx, shells, owner, command, config, upstream) {
     const env_1 = { stack: [], error: void 0, hasError: false };
     try {
         const commandDeadline = __addDisposableResource(env_1, deadline(upstream, config.timeoutMs, TIMEOUT_CODE), false);
-        const id = await shells.get(owner, commandDeadline.signal);
+        let id;
+        try {
+            id = await shells.get(owner, commandDeadline.signal);
+        }
+        catch (error) {
+            // Initialization owns rollback; only this caller's cancellation becomes ABORTED.
+            if (upstream.aborted && error === upstream.reason)
+                return '';
+            throw error;
+        }
         const marker = markers();
         const wrapped = wrapCommand(command, marker);
         let first = true;
@@ -356,7 +341,8 @@ async function executeCommand(ctx, shells, owner, command, config, upstream) {
             }
             if (commandDeadline.signal.aborted) {
                 await shells.reset(owner, 'persistent pwsh command aborted');
-                commandDeadline.signal.throwIfAborted();
+                // ToolRuntime publishes ABORTED after this cancelled invocation settles.
+                return '';
             }
             if (latest.text.includes(marker.end)) {
                 const complete = commandOutput(retainedScrollback(ctx, owner, id, latest), marker, wrapped);
@@ -366,7 +352,11 @@ async function executeCommand(ctx, shells, owner, command, config, upstream) {
             if (result.sessionStatus.kind === 'exited') {
                 return await respondToSessionExit(ctx, shells, owner, id, result.sessionStatus, marker, wrapped, fallback, fallbackTruncated, config);
             }
-            if (promptCompleted(result)) {
+            // The shell reads stdin again (its prompt, or a foreground child's own
+            // read) without having printed the end marker — an interrupt, a replaced
+            // shell, or an interactive child. Return what was captured instead of
+            // spinning until the command deadline.
+            if (result.waitReason === 'stdin_read') {
                 const snapshot = retainedScrollback(ctx, owner, id, latest);
                 return renderCaptured(partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated), config.maxOutputChars);
             }
@@ -423,7 +413,8 @@ function registerPersistentPwsh(ctx, config) {
             if (owner === undefined)
                 throw new Error('pwsh requires an owning agent session');
             return serialized(owner, async () => {
-                exec.signal.throwIfAborted();
+                if (exec.signal.aborted)
+                    return ''; // ToolRuntime publishes ABORTED after settlement.
                 return executeCommand(ctx, shells, owner, args.command, config, exec.signal);
             });
         },

@@ -17,6 +17,7 @@ export declare class CordisDomSession {
     private readonly runtime;
     private readonly nodeIdByBackend;
     private readonly backendByNodeId;
+    private readonly nodesSent;
     private readonly childrenSent;
     private readonly backendByObjectId;
     private readonly objectIdsByGroup;
@@ -59,6 +60,8 @@ export declare class CordisDomSession {
     private selectNode;
     private fromNodeId;
     private serialize;
+    /** Preserve frontend DOMNode identities by delivering each child list only once. */
+    private pushChildNodes;
     /** Deliver the not-yet-sent ancestor levels of one node so its NodeId attaches to the frontend tree. */
     private pushNodePath;
     private forgetSubtree;
@@ -66,6 +69,7 @@ export declare class CordisDomSession {
     private parentNodeId;
     private resetDocument;
     private updateDocument;
+    private sentNodeId;
     private sendMutation;
     private pruneDocumentState;
     private releaseSourceObjects;

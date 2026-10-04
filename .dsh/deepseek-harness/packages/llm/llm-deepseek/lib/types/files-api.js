@@ -1,6 +1,7 @@
-/** OpenAI-compatible DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
+/** DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
 import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm';
 import { DeepSeekFileId } from "./file-id.js";
+import { messagesApiRoot, MESSAGES_FILES_BETA } from "./messages-api.js";
 /** Minimum provider-supported file lifetime. */
 export const MIN_FILE_EXPIRY_SECONDS = 3_600;
 /** Maximum provider-supported file lifetime. */
@@ -44,27 +45,38 @@ export function isFilesQuotaError(error) {
 function invalidResponse(operation) {
     return new LlmError(`DeepSeek Files API returned an invalid ${operation} response.`, 'INVALID_RESPONSE');
 }
+/** Decode successful Files JSON with operation context; body transport and abort failures retain their identity. */
+async function responseJson(response, operation) {
+    try {
+        return await response.json();
+    }
+    catch (error) {
+        if (!(error instanceof SyntaxError))
+            throw error;
+        throw new LlmError(`DeepSeek Files API returned invalid JSON for ${operation} (HTTP ${response.status}).`, 'INVALID_RESPONSE', {
+            status: response.status,
+            cause: error,
+        });
+    }
+}
 function parseFileObject(value, operation) {
     if (value === null || typeof value !== 'object' || Array.isArray(value))
         throw invalidResponse(operation);
     const wire = value;
+    const createdAt = typeof wire.created_at === 'string' ? Math.floor(Date.parse(wire.created_at) / 1_000) : NaN;
     if (typeof wire.id !== 'string' || wire.id.length === 0
-        || wire.object !== 'file'
-        || !Number.isSafeInteger(wire.bytes) || wire.bytes < 0
-        || !Number.isSafeInteger(wire.created_at) || wire.created_at < 0
-        || typeof wire.filename !== 'string' || wire.filename.length === 0
-        || wire.purpose !== 'user_data'
-        || (wire.expires_at !== undefined
-            && (!Number.isSafeInteger(wire.expires_at) || wire.expires_at < 0))) {
+        || wire.type !== 'file'
+        || typeof wire.mime_type !== 'string'
+        || typeof wire.size_bytes !== 'number' || !Number.isSafeInteger(wire.size_bytes) || wire.size_bytes < 0
+        || !Number.isSafeInteger(createdAt) || createdAt < 0
+        || typeof wire.filename !== 'string' || wire.filename.length === 0) {
         throw invalidResponse(operation);
     }
     return {
         id: DeepSeekFileId(wire.id),
-        bytes: wire.bytes,
-        createdAt: wire.created_at,
+        bytes: wire.size_bytes,
+        createdAt,
         filename: wire.filename,
-        purpose: 'user_data',
-        ...wire.expires_at === undefined ? {} : { expiresAt: wire.expires_at },
     };
 }
 function providerErrorDetail(value) {
@@ -82,26 +94,30 @@ function providerErrorDetail(value) {
             .join(' '),
     };
 }
-/** Direct client for the OpenAI-compatible `/files` endpoints. */
+/** Direct Files client retaining the configured URL root and refusing redirects before credentials can leave its origin. */
 export class DeepSeekFilesClient {
     baseURL;
-    apiKey;
+    authHeaders;
     fetchImpl;
     /**
-     * @param options - endpoint, API-key snapshot, and optional test transport.
+     * @param options - endpoint, authentication headers, and optional test transport.
      */
     constructor(options) {
-        this.baseURL = options.baseURL.replace(/\/+$/u, '');
-        this.apiKey = options.apiKey;
+        this.authHeaders = options.headers;
         this.fetchImpl = options.fetch ?? globalThis.fetch;
+        this.baseURL = messagesApiRoot(options.baseURL);
     }
     async request(path, init, signal) {
         let response;
         try {
             const headers = new Headers(attributionHeaders());
-            headers.set('authorization', `Bearer ${this.apiKey}`);
+            for (const [name, value] of Object.entries(this.authHeaders))
+                headers.set(name, value);
+            headers.set('anthropic-version', '2023-06-01');
+            headers.set('anthropic-beta', MESSAGES_FILES_BETA);
             response = await this.fetchImpl(`${this.baseURL}${path}`, {
                 ...init,
+                redirect: 'error',
                 headers,
                 ...signal === undefined ? {} : { signal },
             });
@@ -126,7 +142,8 @@ export class DeepSeekFilesClient {
     /**
      * Upload one image with an explicit expiry.
      * @param input - deterministic request-version bytes, media type, filename, lifetime, and cancellation.
-     * @returns the validated provider file object, including `expires_at`.
+     * @returns the validated file and reuse deadline. Messages omits expiry metadata;
+     *   its deadline uses upload creation plus the requested lifetime.
      */
     async upload(input) {
         if (input.data.byteLength > MAX_FILE_UPLOAD_BYTES) {
@@ -138,43 +155,40 @@ export class DeepSeekFilesClient {
             throw new LlmError('DeepSeek file expiry must be between 3600 and 2592000 seconds.', 'INVALID_REQUEST');
         }
         const form = new FormData();
-        form.set('purpose', 'user_data');
         form.set('expires_after[anchor]', 'created_at');
         form.set('expires_after[seconds]', String(input.expiresAfterSeconds));
         form.set('file', new Blob([Uint8Array.from(input.data).buffer], { type: input.mediaType }), input.filename);
         const response = await this.request('/files', { method: 'POST', body: form }, input.signal);
-        const file = parseFileObject(await response.json(), 'upload');
-        if (file.expiresAt === undefined)
-            throw invalidResponse('upload');
-        return { ...file, expiresAt: file.expiresAt };
+        const file = parseFileObject(await responseJson(response, 'upload'), 'upload');
+        return { ...file, expiresAt: file.createdAt + input.expiresAfterSeconds };
     }
     /**
-     * List one ascending or descending page of user-data files.
-     * @param options - pagination, ordering, and cancellation.
-     * @returns the validated page.
+     * List one provider-ordered page of files.
+     * @param options - pagination and cancellation.
+     * @returns the validated page with null cursors omitted.
      */
     async list(options = {}) {
-        const query = new URLSearchParams({ purpose: 'user_data' });
+        const query = new URLSearchParams();
         if (options.after !== undefined)
-            query.set('after', options.after);
+            query.set('after_id', options.after);
         if (options.limit !== undefined)
             query.set('limit', String(options.limit));
-        if (options.order !== undefined)
-            query.set('order', options.order);
         const response = await this.request(`/files?${query.toString()}`, { method: 'GET' }, options.signal);
-        const value = await response.json();
+        const value = await responseJson(response, 'list');
         if (value === null || typeof value !== 'object' || Array.isArray(value))
             throw invalidResponse('list');
         const wire = value;
-        if (wire.object !== 'list' || !Array.isArray(wire.data) || typeof wire.has_more !== 'boolean'
-            || (wire.first_id !== undefined && typeof wire.first_id !== 'string')
-            || (wire.last_id !== undefined && typeof wire.last_id !== 'string')) {
+        const firstId = wire.first_id ?? undefined;
+        const lastId = wire.last_id ?? undefined;
+        if (!Array.isArray(wire.data) || typeof wire.has_more !== 'boolean'
+            || (firstId !== undefined && typeof firstId !== 'string')
+            || (lastId !== undefined && typeof lastId !== 'string')) {
             throw invalidResponse('list');
         }
         return {
             data: wire.data.map(item => parseFileObject(item, 'list')),
-            ...typeof wire.first_id === 'string' ? { firstId: DeepSeekFileId(wire.first_id) } : {},
-            ...typeof wire.last_id === 'string' ? { lastId: DeepSeekFileId(wire.last_id) } : {},
+            ...typeof firstId === 'string' ? { firstId: DeepSeekFileId(firstId) } : {},
+            ...typeof lastId === 'string' ? { lastId: DeepSeekFileId(lastId) } : {},
             hasMore: wire.has_more,
         };
     }
@@ -186,7 +200,7 @@ export class DeepSeekFilesClient {
      */
     async retrieve(fileId, signal) {
         const response = await this.request(`/files/${encodeURIComponent(fileId)}`, { method: 'GET' }, signal);
-        return parseFileObject(await response.json(), 'retrieve');
+        return parseFileObject(await responseJson(response, 'retrieve'), 'retrieve');
     }
     /**
      * Delete one provider file.
@@ -195,11 +209,11 @@ export class DeepSeekFilesClient {
      */
     async delete(fileId, signal) {
         const response = await this.request(`/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' }, signal);
-        const value = await response.json();
+        const value = await responseJson(response, 'delete');
         if (value === null || typeof value !== 'object' || Array.isArray(value))
             throw invalidResponse('delete');
         const wire = value;
-        if (wire.id !== fileId || wire.object !== 'file' || wire.deleted !== true)
+        if (wire.id !== fileId || wire.type !== 'file_deleted')
             throw invalidResponse('delete');
     }
 }

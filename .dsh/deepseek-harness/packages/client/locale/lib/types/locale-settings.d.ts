@@ -18,5 +18,13 @@ export interface LocaleSettings {
     preference?: LocaleId;
 }
 /** Durable locale schema; also the wire envelope the browser scope validates against. */
-export declare const LocaleSettingsSchema: z<LocaleSettings>;
+export declare const LocaleSettingsFields: {
+    preference: z<string, string, "plain">;
+};
+/** Schema for the shared locale preference. */
+export declare const LocaleSettingsSchema: z<Schemastery.ObjectS<NoInfer<{
+    preference: z<string, string, "plain">;
+}>>, Schemastery.ObjectT<NoInfer<{
+    preference: z<string, string, "plain">;
+}>>, "plain">;
 //# sourceMappingURL=locale-settings.d.ts.map

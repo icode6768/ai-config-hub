@@ -1,11 +1,11 @@
 /**
- * Wire protocol of the `/plugins/events` dev SSE channel — single source for
+ * Wire protocol of the `/plugins/events` SSE channel — single source for
  * both halves of this package. Frames still cross a wire boundary: the
  * browser half validates them at its JSON parse point; sharing the type keeps
  * the two ends from drifting, not from parsing.
  */
 /**
- * Validate one JSON-decoded SSE payload before it can mutate module state.
+ * Validate the frame envelope; the module controller parses the complete graph before updating its index.
  * @param value - Parsed JSON value from the EventSource message.
  * @returns the known frame, an unknown-type marker, or an invalid marker.
  */
@@ -28,4 +28,9 @@ export function parsePluginsEventFrame(value) {
 }
 /** System SSE endpoint pushing graph/rebuilt frames (wire protocol constant). */
 export const EVENTS_ENDPOINT = '/plugins/events';
+/**
+ * Document-relative form of {@link EVENTS_ENDPOINT} used by the browser half.
+ * See .agents/notes/implemented/architecture/2026-09-14-web-document-relative-app-routes.md.
+ */
+export const EVENTS_ROUTE = EVENTS_ENDPOINT.slice(1);
 //# sourceMappingURL=events.js.map

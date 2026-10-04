@@ -1,6 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import clsx from 'clsx';
 import { MarkdownText } from "./markdown/MarkdownText.js";
+import { LinkIconMedium } from "./LinkIcon.js";
 import css from './WebBlock.module.css';
 /**
  * The URL to link to, or undefined when the URL must render as plain text. Only
@@ -53,7 +54,7 @@ function SafeLink({ url, label, className }) {
     const href = safeHref(url);
     if (href === undefined)
         return _jsx("span", { className: className, children: label });
-    return (_jsx("a", { className: className, href: href, target: "_blank", rel: "noopener noreferrer", children: label }));
+    return (_jsxs("a", { className: className, href: href, target: "_blank", rel: "noopener noreferrer", children: [_jsx(LinkIconMedium, { kind: "url", href: href, className: css.linkIcon }), label] }));
 }
 /**
  * One source row in a search card: the safe link plus its snippet and date. The

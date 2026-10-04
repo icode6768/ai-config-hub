@@ -18,9 +18,22 @@ const NAME = 'dsh';
  * (the recovery diagnostic for a broken `cordis.patch.yml`, which is then
  * never parsed).
  * @param patches - `--patch` overlay paths, in argv order.
+ * @param fromDefaultProfile - shipped template used once to initialize a missing profile.
  */
-export function runDumpConfig(profile, defaultOnly, patches) {
-    const loaded = prepareProfile(profile, !defaultOnly);
+export function runDumpConfig(profile, defaultOnly, patches, fromDefaultProfile) {
+    const loaded = prepareProfile(profile, !defaultOnly, fromDefaultProfile);
+    const layers = collectConfigDumpLayers(loaded, defaultOnly, patches);
+    // The dump anchors on the same empty root file the boot includes.
+    process.stdout.write(renderConfigDump(NAME, join(loaded.dir, PROFILE_ROOT_FILENAME), layers));
+}
+/**
+ * Read dump layers in bundle, profile, home, then argv order without composing them.
+ * @param loaded - prepared profile and parsed bundle and profile patches.
+ * @param defaultOnly - omit profile, home, and argv layers without reading their files.
+ * @param patches - overlay paths relative to the invoking directory, in argv order.
+ * @returns the labeled layers shared by YAML and schema dumps.
+ */
+export function collectConfigDumpLayers(loaded, defaultOnly, patches) {
     const layers = loaded.layers.map(layer => ({
         label: layer.packageName,
         patches: layer.patches,
@@ -39,8 +52,7 @@ export function runDumpConfig(profile, defaultOnly, patches) {
             layers.push({ label: absolute, patches: loadOverlayPatches(NAME, absolute) });
         }
     }
-    // The dump anchors on the same empty root file the boot includes.
-    process.stdout.write(renderConfigDump(NAME, join(loaded.dir, PROFILE_ROOT_FILENAME), layers));
+    return layers;
 }
 /* v8 ignore stop */
 //# sourceMappingURL=dump-config.js.map

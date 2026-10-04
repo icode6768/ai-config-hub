@@ -3,12 +3,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, parse } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import z from "@deepseek-ai/schemastery";
-import { SessionId } from "@deepseek-ai/dsh-session";
+import { brandString } from "@deepseek-ai/dsh-brand";
 //#region lib/types/index.js
 /**
 * Active Loader-backed plugin package inventory for official DeepSeek requests.
 * Host entries and the requesting agent's standing preset are resolved at request time;
-* installed dependencies and plugin fibers without Loader package provenance are excluded.
+* installed dependencies and plugin fibers without Loader-backed package identity are excluded.
 * @module @deepseek-ai/dsh-plugin-package-inventory-deepseek
 */
 /** Cordis plugin name. */
@@ -38,12 +38,12 @@ function identityFromManifest(path, allowAnonymous) {
 	};
 }
 /** Resolve a bare package without requiring it to export `./package.json`. */
-function barePackageManifest(packageName, anchors) {
+function barePackageManifest(packageName, anchors, packages) {
 	for (const anchor of anchors) {
-		const searchPaths = createRequire(anchor).resolve.paths(packageName);
-		/* v8 ignore next -- active non-builtin package entries always have Node package search paths */
-		if (searchPaths === null) continue;
-		for (const searchPath of searchPaths) {
+		const pkg = packages?.packageOf(packageName, anchor);
+		if (pkg !== void 0) return pkg.manifestPath;
+		if (packages !== void 0) continue;
+		for (const searchPath of createRequire(anchor).resolve.paths(packageName)) {
 			const manifest = join(searchPath, packageName, "package.json");
 			if (existsSync(manifest)) return manifest;
 		}
@@ -63,29 +63,31 @@ function nearestManifest(modulePath) {
 /** Exact package identity resolver with immutable per-process manifest caching. */
 var PackageIdentityResolver = class {
 	hostBaseUrl;
+	packages;
 	cache = /* @__PURE__ */ new Map();
-	constructor(hostBaseUrl) {
+	constructor(hostBaseUrl, packages) {
 		this.hostBaseUrl = hostBaseUrl;
+		this.packages = packages;
 	}
 	/** Resolve one Loader entry's owning package, or absence for a non-package loose module. */
-	resolve({ entry, bareBaseUrl }) {
+	resolve({ moduleName, baseUrl, bareBaseUrl }) {
 		/* v8 ignore next -- Loader entry trees inherit a base URL; the fallback supports direct embedders. */
-		const treeBase = entry.parent.tree.ctx.baseUrl ?? this.hostBaseUrl;
+		const treeBase = baseUrl ?? this.hostBaseUrl;
 		const anchors = [...new Set([
 			bareBaseUrl ?? treeBase,
 			treeBase,
 			this.hostBaseUrl,
 			import.meta.url
 		])];
-		const key = `${anchors.join("\0")}\u0000${entry.options.name}`;
+		const key = `${anchors.join("\0")}\u0000${moduleName}`;
 		if (this.cache.has(key)) return this.cache.get(key);
-		const packageName = barePackageName(entry.options.name);
+		const packageName = barePackageName(moduleName);
 		let manifest;
 		if (packageName !== void 0) {
-			manifest = barePackageManifest(packageName, anchors);
+			manifest = barePackageManifest(packageName, anchors, this.packages);
 			if (manifest === void 0) throw new Error(`plugin-package-inventory-deepseek: cannot resolve active package ${JSON.stringify(packageName)}`);
-		} else if (!entry.options.name.startsWith("cordis:")) {
-			const moduleUrl = isAbsolute(entry.options.name) ? pathToFileURL(entry.options.name) : new URL(entry.options.name, treeBase);
+		} else if (!moduleName.startsWith("cordis:")) {
+			const moduleUrl = isAbsolute(moduleName) ? pathToFileURL(moduleName) : new URL(moduleName, treeBase);
 			if (moduleUrl.protocol === "file:") manifest = nearestManifest(fileURLToPath(moduleUrl));
 		}
 		const identity = manifest === void 0 ? void 0 : identityFromManifest(manifest, packageName === void 0);
@@ -94,10 +96,10 @@ var PackageIdentityResolver = class {
 	}
 };
 /** Yield active, non-structural entries from one Loader tree. */
-function activeEntries(tree, rootBareBaseUrl) {
+function activeEntries(tree) {
 	return [...tree.entries()].filter((entry) => !entry.options.group && !entry.disabled && entry.fiber?.state === 2).map((entry) => ({
-		entry,
-		...entry.parent.tree === tree && rootBareBaseUrl !== void 0 ? { bareBaseUrl: rootBareBaseUrl } : {}
+		moduleName: entry.options.name,
+		...entry.parent.tree.ctx.baseUrl === void 0 ? {} : { baseUrl: entry.parent.tree.ctx.baseUrl }
 	}));
 }
 /** Deterministic text order independent of the host's ICU data and locale. */
@@ -105,15 +107,15 @@ function compareWireText(left, right) {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 /** Collect the full active package set for one request. */
-async function collectActivePluginPackages(ctx, resolver, hostBaseUrl, sessionId) {
+function collectActivePluginPackages(ctx, resolver, hostBaseUrl, sessionId) {
 	const entries = activeEntries(ctx.loader);
-	if (sessionId !== void 0 && ctx.get("agentPresets") !== void 0) {
-		const agent = ctx.agents.get(SessionId(sessionId));
-		if (agent !== void 0) {
-			const { standingMountFor } = await import("@deepseek-ai/dsh-agent-presets");
-			const presetTree = standingMountFor(agent.ctx)?.tree;
-			if (presetTree !== void 0) entries.push(...activeEntries(presetTree, hostBaseUrl));
-		}
+	const presets = ctx.get("agentPresets");
+	if (sessionId !== void 0 && presets !== void 0) {
+		const agent = ctx.agents.get(brandString(sessionId));
+		if (agent !== void 0) for (const composition of presets.inspectCompositions(agent.ctx)) entries.push(...composition.modules.map(({ useHostBase, ...entry }) => ({
+			...entry,
+			...useHostBase ? { bareBaseUrl: hostBaseUrl } : {}
+		})));
 	}
 	const unique = /* @__PURE__ */ new Map();
 	for (const activeEntry of entries) {
@@ -125,17 +127,17 @@ async function collectActivePluginPackages(ctx, resolver, hostBaseUrl, sessionId
 }
 /**
 * Register the complete `dsh_plugin_packages` request contribution when enabled.
-* @param ctx - plugin context carrying Loader provenance and the DeepSeek request-extension registry.
+* @param ctx - plugin context carrying Loader entry metadata and the DeepSeek request-extension registry.
 * @param config - validated default-on configuration.
 */
 function apply(ctx, config) {
 	if (config.enabled === false) return;
 	const hostBaseUrl = ctx.baseUrl ?? import.meta.url;
-	const resolver = new PackageIdentityResolver(hostBaseUrl);
-	ctx.deepseekLlmApiExtensions.register("dsh_plugin_packages", { prepare: async (request) => {
+	const resolver = new PackageIdentityResolver(hostBaseUrl, ctx.get("pluginPackages"));
+	ctx.deepseekLlmApiExtensions.register("dsh_plugin_packages", { prepare: (request) => {
 		return { value: {
 			version: 1,
-			packages: await collectActivePluginPackages(ctx, resolver, hostBaseUrl, request.sessionId)
+			packages: collectActivePluginPackages(ctx, resolver, hostBaseUrl, request.sessionId)
 		} };
 	} });
 }

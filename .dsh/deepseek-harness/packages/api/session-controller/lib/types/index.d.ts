@@ -1,11 +1,13 @@
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session';
+import { nativeFileApplications, openNativeFileApplication } from '@deepseek-ai/dsh-native-command';
+import type { SessionId } from '@deepseek-ai/dsh-session';
+import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import { type ApiSessionAgentResult } from './agent.ts';
 import { buildModelCatalog } from './catalog.ts';
-import type { ModelCatalog, SessionAttachmentRequest, SessionAttachmentValue, SessionCancelRequest, SessionCancelValue, SessionControlFrame, SessionCreateRequest, SessionCreateValue, SessionFollowFrame, SessionFollowRequest, SessionForkRequest, SessionForkValue, SessionListRequest, SessionListValue, SessionOpenWorkspacePathRequest, SessionOpenWorkspacePathValue, SessionPage, SessionPageRequest, SessionPromptRequest, SessionPromptValue, SessionRenameRequest, SessionRenameValue, SessionSearchRequest, SessionSearchValue, SessionSelectModelRequest, SessionSelectModelValue, SessionUpdateQueueRequest, SessionUpdateQueueValue } from './types.ts';
+import type { ModelCatalog, SessionWorkspacePathApplication, SessionAttachmentRequest, SessionAttachmentValue, SessionCancelRequest, SessionCancelValue, SessionControlFrame, SessionCreateRequest, SessionCreateValue, SessionFollowFrame, SessionFollowRequest, SessionForkRequest, SessionForkValue, SessionListRequest, SessionListValue, SessionOpenWorkspacePathRequest, SessionOpenWorkspacePathValue, SessionPage, SessionPageRequest, SessionPromptRequest, SessionPromptValue, SessionRenameRequest, SessionRenameValue, SessionSearchRequest, SessionSearchValue, SessionSelectModelRequest, SessionSelectModelValue, SessionProjectionsRequest, SessionProjectionsValue, SessionUpdateQueueRequest, SessionUpdateQueueValue } from './types.ts';
 export type * from './types.ts';
 export { ApiSessionNotFound } from './agent.ts';
 export { SessionFileReferences } from './file-references.ts';
@@ -18,33 +20,47 @@ declare module '@deepseek-ai/cordis' {
 }
 /** Session Controller deployment policy. */
 export interface Config {
-    /** Maximum cold Session artifact size eligible for one full projection observation. */
-    readonly coldBlankProbeMaxBytes?: number;
     /** Override platform desktop-opener detection. */
     readonly nativeOpen?: boolean;
+    /** Positive integral milliseconds of list work before yielding between complete rows. */
+    readonly listWorkSliceMs?: number;
 }
+/** Deployment policy after schema defaults have been applied. */
+type ResolvedConfig = Config & {
+    readonly listWorkSliceMs: number;
+};
 /** Host integrations replaceable by direct unit tests. */
 export interface SessionControllerInternals {
     /** Native default-application handoff. */
     readonly openPath?: (path: string, signal: AbortSignal) => Promise<void>;
+    /** Native file-association query. */
+    readonly fileApplications?: typeof nativeFileApplications;
+    /** Explicit registered-application handoff. */
+    readonly openFileApplication?: typeof openNativeFileApplication;
+    /** Native file-manager handoff. */
+    readonly revealPath?: (path: string, signal: AbortSignal) => Promise<void>;
     /** Native handoff availability probe. */
     readonly canOpenPath?: () => boolean;
 }
 /** Host service backing the generated `ctx.remote.session` namespace. */
 export declare class SessionController extends TypertRemoteService {
     static inject: string[];
-    static Config: z<Config>;
+    static Config: z<Config, ResolvedConfig>;
     private readonly agents;
     private readonly commands;
     private readonly controlState;
     private readonly history;
     private readonly listState;
     private readonly openPath;
+    private readonly fileApplications;
+    private readonly openFileApplication;
+    private readonly revealPath;
     private readonly canOpenPath;
     private readonly promotions;
     /**
      * @param ctx - Host context containing the Session capability assembly.
-     * @param config - cold-list observation policy.
+     * @param config - native-opener and list-scheduling deployment policy.
+     * @param internals - host integrations replaceable by direct unit tests.
      */
     constructor(ctx: Context, config: Config, internals?: SessionControllerInternals);
     private promote;
@@ -60,14 +76,11 @@ export declare class SessionController extends TypertRemoteService {
      * @param signal - optional caller cancellation for persistence reads.
      * @returns the current attached state or persisted header and event prefix.
      */
-    inspect(sessionId: SessionId, signal?: AbortSignal): Promise<{
-        meta: SessionHeader;
-        events: SessionEvent[];
-    }>;
+    inspect(sessionId: SessionId, signal?: AbortSignal): Promise<SessionInspection>;
     /**
      * Read all visible Session rows without resuming an Agent.
      * @param _request - reserved empty list request.
-     * @param signal - cancellation for persistence reads.
+     * @param signal - cancellation for persistence reads and summary generation.
      * @returns visible Session summaries ordered by activity.
      */
     list(_request: SessionListRequest, signal: AbortSignal): Promise<SessionListValue>;
@@ -85,11 +98,16 @@ export declare class SessionController extends TypertRemoteService {
      */
     create(request: SessionCreateRequest): Promise<SessionCreateValue>;
     /**
-     * Select one Session-local model after explicitly resuming the Session.
+     * Select one Session-local model after explicitly resuming the Session; save the default in the background.
      * @param request - Session identity and requested model selection.
-     * @returns the normalized selection installed for the Session.
+     * @returns the normalized selection installed for the Session, without waiting for default persistence.
      */
     selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>;
+    /**
+     * Select the first available account model after login when no provider API key is configured.
+     * @returns after saving the first available model or retaining the existing default.
+     */
+    initializeDefaultModel(): Promise<void>;
     /**
      * Describe every currently routable model for Host-generation selectors.
      * @returns provider-grouped models, the deployment default, and isolated provider failures.
@@ -101,13 +119,33 @@ export declare class SessionController extends TypertRemoteService {
      */
     canOpenWorkspacePath(): boolean;
     /**
-     * Open one path prepared by a Session-aware caller on the Host desktop.
+     * Describe the serving desktop for authenticated file-action routes.
+     * @returns Host name, configured availability, and platform-specific file-manager behavior.
+     */
+    workspaceDesktop(): {
+        name: string;
+        available: boolean;
+        fileManager: 'finder' | 'explorer' | 'directory' | null;
+    };
+    /**
+     * Verify one path through the composed filesystem and open it on the Host desktop.
      * @param request - path after best-effort Session workspace resolution.
      * @param signal - caller lifetime; abort terminates the native command.
      * @returns confirmation after the native opener accepts the path.
-     * @throws TypertRemoteFailure when the request is invalid, cancelled, or the opener fails.
+     * @throws RemoteError when the request is invalid, has no verified Host mapping, is cancelled, or the opener fails.
      */
     openWorkspacePath(request: SessionOpenWorkspacePathRequest, signal: AbortSignal): Promise<SessionOpenWorkspacePathValue>;
+    /**
+     * Query current file handlers on the serving desktop without activating an Agent.
+     * @param request - file path in Host filesystem syntax.
+     * @param signal - caller lifetime, propagated to filesystem and desktop queries.
+     * @returns OS application names, icons, and default selection; empty when desktop opening is unavailable.
+     * @throws RemoteError when the path is invalid, the query is cancelled, or native discovery fails.
+     */
+    workspacePathApplications(request: {
+        readonly path: string;
+    }, signal: AbortSignal): Promise<readonly SessionWorkspacePathApplication[]>;
+    private verifyDesktopPath;
     /**
      * Rename one Session after explicitly resuming it.
      * @param request - Session identity and proposed title.
@@ -115,8 +153,10 @@ export declare class SessionController extends TypertRemoteService {
      */
     rename(request: SessionRenameRequest): Promise<SessionRenameValue>;
     /**
-     * Fork one cold-readable completed-turn prefix into a new Session.
-     * @param request - source Session and optional event anchor.
+     * Fork one cold-readable exact event prefix into a new Session. An omitted
+     * boundary selects the latest completed-turn prefix; an open cut receives
+     * synthetic fork closers.
+     * @param request - source Session and optional exact inclusive event boundary.
      * @returns the new Session identity.
      */
     fork(request: SessionForkRequest): Promise<SessionForkValue>;
@@ -134,11 +174,11 @@ export declare class SessionController extends TypertRemoteService {
      */
     attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>;
     /**
-     * Mutate one still-pending queue occurrence on a live Agent.
+     * Mutate one still-pending queue occurrence, resuming a cold Agent first.
      * @param request - Session, queue item, and requested mutation.
      * @returns acknowledgement that the queue mutation was applied.
      */
-    updateQueue(request: SessionUpdateQueueRequest): SessionUpdateQueueValue;
+    updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue>;
     /**
      * Cancel one active Agent turn without dropping its pending inbox.
      * @param request - Session whose active Agent turn is cancelled.
@@ -156,9 +196,17 @@ export declare class SessionController extends TypertRemoteService {
      * Follow one Session log from its opening or resume cursor.
      * @param request - durable address and last committed sequence already held by the caller.
      * @param signal - cancellation owned by the Remote stream carrier.
-     * @returns a complete opening snapshot followed by gap-free event frames.
+     * @returns a complete opening snapshot followed by gap-free durable event
+     *   frames and optional cursorless assistant-stream frames.
      */
     follow(request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<SessionFollowFrame>;
+    /**
+     * Read all registered projections without activating an Agent.
+     * @param request - Session whose current values are required.
+     * @param signal - cancellation for the Session observation.
+     * @returns complete baseline, or null when the Session does not exist.
+     */
+    projections(request: SessionProjectionsRequest, signal: AbortSignal): Promise<SessionProjectionsValue>;
     /**
      * Stream a complete live-control baseline followed by replacement frames.
      * @param signal - cancellation owned by the Remote stream carrier.

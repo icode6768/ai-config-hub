@@ -1,12 +1,20 @@
 /** Localized copy adapters for Cordis-free UI primitives used by Tool cards. */
 /**
+ * Localize the shared code-card toolbar.
+ * @param t - Conversation locale seat.
+ * @returns Language fallback and wrapping actions.
+ */
+export function codeToolbarLabels(t) {
+    return { codeLabel: t('codeBlock.title'), wrapLabel: t('codeBlock.wrap'), unwrapLabel: t('codeBlock.unwrap') };
+}
+/**
  * Build localized Markdown chrome labels.
  * @param t - Conversation locale seat.
  * @returns Markdown chrome labels.
  */
 export function markdownLabels(t) {
     return {
-        code: { copyLabel: t('copy'), copiedLabel: t('copied') },
+        code: { copyLabel: t('copy'), copiedLabel: t('copied'), toolbarLabels: codeToolbarLabels(t) },
         footnotes: t('markdown.footnotes'),
     };
 }
@@ -17,13 +25,13 @@ export function markdownLabels(t) {
  */
 export function diffBlockLabels(t) {
     return {
+        ...codeToolbarLabels(t),
         copy: t('copy'),
         copied: t('copied'),
         collapseAria: t('diff.collapseAria'),
         expandAria: count => t('diff.expandAria', { count }),
         collapse: t('collapse'),
         expand: count => t('diff.expandRest', { count }),
-        files: count => t(count === 1 ? 'diff.files.one' : 'diff.files.other', { count }),
     };
 }
 /**
@@ -33,6 +41,7 @@ export function diffBlockLabels(t) {
  */
 export function readBlockLabels(t) {
     return {
+        ...codeToolbarLabels(t),
         window: (shown, total) => t('read.window', { shown, total }),
         copy: t('copy'),
         copied: t('copied'),

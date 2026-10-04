@@ -1,7 +1,7 @@
 /**
  * Claim-token highlight: while a command claim holds, the draft's leading
- * token renders in the warn color. A TextNode transform keeps the token in
- * its own styled node (splitting when typing merges text into it), and the
+ * token renders in the business accent. A TextNode transform keeps the token
+ * in its own styled node (splitting when typing merges text into it), and the
  * shell nudges the first leaf dirty when the claim flips so entering and
  * leaving claimed restyles without a text edit.
  */

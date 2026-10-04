@@ -65,14 +65,10 @@ export interface ExampleLaunch {
  * @returns the command, argument vector, and mode-specific environment to spawn with.
  */
 export declare function resolveExampleLaunch(options: ExampleLaunchOptions): ExampleLaunch;
-/** Inputs that vary between real-Loader example smokes. */
-export interface LoaderSmokeOptions {
+/** Inputs every real-Loader example smoke supplies. */
+interface LoaderSmokeBaseOptions {
     /** Human-readable example name used in failure diagnostics. */
     readonly label: string;
-    /** Prefix for the isolated temporary process cwd. */
-    readonly tempDirPrefix: string;
-    /** Existing parent for the generated cwd; defaults to the platform temporary directory. */
-    readonly tempDirParent?: string;
     /** Absolute app-bin source path (`<pkg>/src/bin.ts`); the `lib` bin is derived from it. */
     readonly binScript: string;
     /** Explicit plain-Node entry for `lib` mode; intended for test fixtures outside a package `src/` tree. */
@@ -85,6 +81,8 @@ export interface LoaderSmokeOptions {
     readonly tsconfigPath: string;
     /** Boot from source via tsx (`src`) or built lib via plain Node (`lib`); defaults to the environment's mode. */
     readonly mode?: ExampleMode;
+    /** Source hook selection; see {@link ExampleLaunchOptions.sourceImport}. */
+    readonly sourceImport?: 'tsx/esm';
     /** Environment overrides layered over the parent and isolated DSH homes. */
     readonly env?: Readonly<NodeJS.ProcessEnv>;
     /** Process deadline override for harness tests. */
@@ -101,6 +99,23 @@ export interface LoaderSmokeOptions {
      */
     readonly expectedExitCode?: number;
 }
+/**
+ * Inputs that vary between real-Loader example smokes. The cwd is either one
+ * the harness expands from a prefix and owns, or a caller-provided directory it
+ * reuses and leaves in place; the two cannot be combined.
+ */
+export type LoaderSmokeOptions = LoaderSmokeBaseOptions & ({
+    /** Prefix for the isolated temporary process cwd. */
+    readonly tempDirPrefix: string;
+    /** Existing parent for the generated cwd; defaults to the platform temporary directory. */
+    readonly tempDirParent?: string;
+    readonly cwd?: never;
+} | {
+    /** Existing directory to use as the process cwd; the caller owns its cleanup. */
+    readonly cwd: string;
+    readonly tempDirPrefix?: never;
+    readonly tempDirParent?: never;
+});
 /** Captured output from a Loader smoke that exited successfully. */
 export interface LoaderSmokeResult {
     /** Complete stdout after clean exit. */
@@ -110,8 +125,10 @@ export interface LoaderSmokeResult {
 }
 /**
  * Boot one real Loader tree from an isolated cwd, close stdin immediately, and
- * await a clean exit. The helper owns process kill and temp-directory cleanup on
- * every outcome, and picks src/lib via {@link resolveExampleLaunch}.
+ * await a clean exit. The helper owns process kill on every outcome and removes
+ * the temporary directory it created; a caller-provided cwd is left in place so
+ * consecutive smokes can share one world. It picks src/lib via
+ * {@link resolveExampleLaunch}.
  * @param options - example paths, mode, environment, and diagnostic identity.
  * @returns captured stdout and stderr after a zero exit.
  */

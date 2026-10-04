@@ -3,7 +3,8 @@
  *
  * @module @deepseek-ai/dsh-compaction-basic/summarizer
  */
-import { contentHasImage, createUserMessage, BlockAssembler, LlmError } from '@deepseek-ai/dsh-llm';
+import { contentHasImage, BlockAssembler, LlmError } from '@deepseek-ai/dsh-llm';
+import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 /** Tags wrapping the structured summary inside the landed checkpoint node. */
 const SUMMARY_OPEN_TAG = '<compacted-summary>';
 const SUMMARY_CLOSE_TAG = '</compacted-summary>';
@@ -81,16 +82,16 @@ export async function summarizeWithLlm(ctx, config, input, agent, signal) {
     const assembler = new BlockAssembler();
     const messages = [
         ...input.messages,
-        createUserMessage({
+        deepFreeze({
+            role: 'user',
             content: [{ type: 'text', text: COMPACTION_INSTRUCTION }],
-            source: { kind: 'plugin', plugin: 'dsh-compaction-basic' },
         }),
     ];
     const options = {
         provider: target.provider,
         model: target.model,
         messages,
-        ...input.system === undefined ? {} : { system: input.system },
+        toolHistory: agent.session.toolHistory(),
         ...input.tools === undefined ? {} : { tools: [...input.tools] },
         maxTokens: config.maxTokens,
         sessionId: agent.session.id,
@@ -134,9 +135,7 @@ function finishError(finish) {
     switch (finish.kind) {
         case 'error':
         case 'aborted': {
-            const error = new Error(finish.failure.message);
-            error.code = finish.failure.code;
-            return error;
+            return new LlmError(finish.failure.message, finish.failure.code, finish.failure);
         }
         case 'max-tokens': {
             const error = new Error('summarization truncated at the token cap (incomplete checkpoint)');

@@ -9,7 +9,6 @@
  * guard prevent later calls from reopening a completed structured run.
  * @module @deepseek-ai/dsh-subagent-in-process-driver/structured
  */
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt';
 import { ToolArgsError, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools';
 /** The model-facing tool name a structured child must call to finish. */
 export const STRUCTURED_OUTPUT_TOOL = 'structured_output';
@@ -78,7 +77,7 @@ export function attachStructuredRuntime(childCtx, schema) {
     });
     childCtx.systemPrompt.section({
         name: `tool:${STRUCTURED_OUTPUT_TOOL}`,
-        order: FIRST_PARTY_SECTION_ORDER.STRUCTURED_OUTPUT,
+        order: childCtx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'),
         text: STRUCTURED_OUTPUT_INSTRUCTION,
     });
     // Terminal WITHIN the step. Guards run after the whole pre-execute

@@ -2,6 +2,7 @@
 /** English strings (the key-set source of truth for this pair). */
 export declare const en: {
     nav: string;
+    deepSeekAccount: string;
     title: string;
     intro: string;
     edit: string;
@@ -14,6 +15,13 @@ export declare const en: {
     deleteConfirm: string;
     deleting: string;
     add: string;
+    addMode: string;
+    addCatalog: string;
+    addCustom: string;
+    addCatalogHint: string;
+    addCustomHint: string;
+    addCatalogExhausted: string;
+    addCustomUnavailable: string;
     provider: string;
     close: string;
     cancel: string;
@@ -34,6 +42,8 @@ export declare const en: {
     customized: string;
     baseUrl: string;
     baseUrlDefault: string;
+    deepSeekBaseUrl: string;
+    deepSeekEndpointHint: string;
     models: string;
     modelsInherited: string;
     modelsCustomized: string;
@@ -47,6 +57,9 @@ export declare const en: {
     maxTokens: string;
     maxTokensPlaceholder: string;
     modelAdvanced: string;
+    modelInputTypes: string;
+    modelInputText: string;
+    modelInputImage: string;
     addModel: string;
     removeModel: string;
     modelsEmpty: string;
@@ -61,19 +74,17 @@ export declare const en: {
     advancedHint: string;
     modelCapacityInvalid: string;
     modelDuplicate: string;
-    modelContextWindow: string;
-    modelMaxTokens: string;
     fetchModels: string;
     fetching: string;
     fetchNeedsBaseUrl: string;
     fetchEmpty: string;
     fetchTitle: string;
     fetchDescription: string;
+    fetchSearch: string;
+    fetchNoMatches: string;
     fetchSelectAll: string;
     fetchDeselectAll: string;
     fetchAdopt: string;
-    customAdd: string;
-    customTitle: string;
     customTag: string;
     customRoute: string;
     customRouteHint: string;
@@ -82,9 +93,14 @@ export declare const en: {
     customDisplayName: string;
     customApi: string;
     customApiUnset: string;
+    protocolOpenAiCompletions: string;
+    protocolOpenAiResponses: string;
+    protocolAnthropicMessages: string;
     customNeedsBaseUrl: string;
+    customBaseUrlInvalid: string;
     customNeedsModels: string;
     customBaseUrlPlaceholder: string;
+    customAnthropicBaseUrlPlaceholder: string;
     settingsPathUnresolvable: string;
     create: string;
     creating: string;

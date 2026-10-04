@@ -3,7 +3,7 @@ function checkpointId(event) {
     if (event.type !== 'user/message')
         return undefined;
     const source = event.data.source;
-    return source.kind === 'plugin' && source.plugin === 'compact'
+    return source.kind === 'compact-checkpoint'
         && typeof source.compactionId === 'string' && source.compactionId !== ''
         ? source.compactionId
         : undefined;
@@ -42,7 +42,7 @@ function requestFromState(state) {
                 resultSeq: summary.seq,
                 summary: summary.data.summary,
                 ...(summary.data.rawOutput === undefined ? {} : { rawOutput: summary.data.rawOutput }),
-                provenance: { provider: summary.data.provider, model: summary.data.model },
+                providerMetadata: { provider: summary.data.provider, model: summary.data.model },
                 requestConfig: {
                     provider: summary.data.provider,
                     model: summary.data.model,

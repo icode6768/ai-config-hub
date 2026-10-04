@@ -1,5 +1,18 @@
+import { en } from "./locales.js";
 /** Machine value of the preset that requires an explicit GUI risk gate. */
 export const FULL_ACCESS_PRESET = 'danger-full-access';
+/** Machine value of the experimental current-session review preset. */
+export const AUTO_REVIEW_PRESET = 'auto';
+const PRESET_LABEL_KEYS = new Map([
+    ['read-only', 'preset.readOnly'],
+    ['workspace-write', 'preset.workspaceWrite'],
+    [FULL_ACCESS_PRESET, 'preset.fullAccess'],
+]);
+const DEFAULT_PRESET_LABELS = {
+    'preset.readOnly': en['preset.readOnly'],
+    'preset.workspaceWrite': en['preset.workspaceWrite'],
+    'preset.fullAccess': en['preset.fullAccess'],
+};
 /**
  * Convert conventional kebab-case preset names into user-facing title case.
  * @param name - host-supplied preset label or key.
@@ -14,9 +27,14 @@ export function displayPresetName(name) {
  * Render a permission preset under its product label.
  * @param value - preset machine value.
  * @param name - host-supplied preset name.
- * @returns the Full access product label or the conventional display name.
+ * @param t - optional locale dictionary lookup for built-in product labels.
+ * @returns the built-in product label or the conventional display name.
  */
-export function displayPermissionPreset(value, name) {
-    return value === FULL_ACCESS_PRESET ? 'Full access' : displayPresetName(name);
+export function displayPermissionPreset(value, name, t) {
+    const key = PRESET_LABEL_KEYS.get(value);
+    if (key !== undefined && (name === value || name === DEFAULT_PRESET_LABELS[key])) {
+        return t?.(key) ?? DEFAULT_PRESET_LABELS[key];
+    }
+    return displayPresetName(name);
 }
 //# sourceMappingURL=presentation.js.map

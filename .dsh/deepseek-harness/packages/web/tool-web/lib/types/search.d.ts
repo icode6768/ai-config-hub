@@ -5,7 +5,8 @@
  * never provider selection or network access.
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { GenericCallView, JsonValue, ToolResult, WebSearchResultView, WebSource } from '@deepseek-ai/dsh-tools';
+import type { GenericCallView, ToolResult, WebSearchResultView, WebSource } from '@deepseek-ai/dsh-tools';
+import type { JsonValue } from '@deepseek-ai/dsh-util-values';
 import type { WebSearchResult } from '@deepseek-ai/dsh-web';
 /**
  * Default upper bound on returned sources (the `searchMaxResults` config).
@@ -102,7 +103,7 @@ export declare function presentSearchResult(args: WebSearchArgs, result: ToolRes
  * @param timeoutMs - the cooperative tool-call budget (ms) attached as the tool's
  *   `ToolDefinition.timeoutMs` for `@deepseek-ai/dsh-tool-call-timeout-policy` to enforce.
  * @param fetchEnabled - whether the same composition exposes `web_fetch`, which
- *   controls whether search guidance may recommend that follow-up tool.
+ *   permits recommending that follow-up tool when it is also visible at assembly.
  */
 export declare function applyWebSearchTool(ctx: Context, maxResults: number, maxQueries: number, timeoutMs: number, fetchEnabled: boolean): void;
 export {};

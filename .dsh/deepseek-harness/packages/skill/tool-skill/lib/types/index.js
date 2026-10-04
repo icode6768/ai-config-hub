@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import z from '@deepseek-ai/schemastery';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { SessionSeq } from '@deepseek-ai/dsh-session';
 import { escapeText, isModelInvocable, isSkillName, isUserInvocable, renderSkillContent, } from '@deepseek-ai/dsh-skill';
 export const name = 'tool-skill';
 export const inject = ['agents', 'tools', 'skills'];
@@ -33,7 +34,7 @@ export function apply(ctx, config = {}) {
     assertPositiveInteger('catalogDescriptionMaxLength', catalogDescriptionMaxLength, 3);
     const skillTool = defineTool({
         name: 'skill',
-        description: 'Load the full instructions for an available skill. Call this with the exact skill name from the session skill catalog before acting on a task that names or clearly matches that skill.',
+        description: 'Load the full instructions for a skill. Call it before acting on a task that names or clearly matches a skill in the session skill catalog.',
         parameters: {
             name: { type: 'string', required: true, description: 'The exact skill name from the available skills list.' },
         },
@@ -285,7 +286,7 @@ function digestCatalogEntries(entries) {
  * Entries of one durable catalog message, or undefined when the record is not a
  * usable catalog.
  *
- * `agent.session.events` may be a resumed, forked, or externally written seed,
+ * `agent.session.snapshotEvents()` may contain a resumed, forked, or externally written seed,
  * and seed validation only guarantees a source object with a non-empty `kind`;
  * no per-kind field is checked there. An unreadable record is therefore treated
  * as "not this plugin's catalog" — the posture the replaced content digest had —
@@ -309,12 +310,13 @@ function readCatalogEntries(source) {
 }
 function catalogHistory(agent) {
     const visible = new Set(agent.session.surface.nodes);
-    const events = agent.session.events;
     let published = false;
-    for (let index = events.length - 1; index >= 0; index -= 1) {
-        // The loop bounds prove the read-only event view contains this index.
-        // oxlint-disable-next-line typescript/no-non-null-assertion
-        const event = events[index];
+    for (let index = agent.session.seq - 1; index >= 0; index -= 1) {
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+        const event = agent.session.eventAt(SessionSeq(index));
+        if (event === undefined) {
+            throw new Error(`skill catalog cannot read seq ${String(index)} below the current Session length`);
+        }
         if (event.type !== 'user/message' || event.data.source.kind !== 'skill-catalog')
             continue;
         const entries = readCatalogEntries(event.data.source);

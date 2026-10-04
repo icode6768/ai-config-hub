@@ -4,7 +4,7 @@ export interface ProcessShimOptions {
     readonly cwd: string;
     /** Environment the tree reads; `DSH_HOME` belongs here. */
     readonly env: Readonly<Record<string, string>>;
-    /** Argument vector reported to the tree. */
+    /** Argument vector reported to the tree; defaults to the executable alone, since no entry script exists. */
     readonly argv?: readonly string[];
 }
 /** The members this shim publishes. */
@@ -12,6 +12,8 @@ export interface ProcessShim {
     readonly env: Record<string, string>;
     readonly argv: string[];
     readonly execArgv: string[];
+    /** Virtual host identity; spawning this path reports ENOENT because Node execution is unavailable. */
+    readonly execPath: string;
     /** Node process identity used by dependencies for environment detection. */
     readonly title: string;
     /**

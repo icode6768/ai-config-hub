@@ -1,8 +1,9 @@
 /** Team membership, continuable-child provisioning, and roster-owned teardown. */
 import { randomUUID } from 'node:crypto';
-import { SessionId } from '@deepseek-ai/dsh-session';
+import { brandString } from '@deepseek-ai/dsh-brand';
 import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent';
 import { errorMessage, TeamError } from "./error.js";
+import { readPersistedSession } from "./persisted.js";
 import { messageAccepted } from "./session-message.js";
 import { TeamId } from "./types.js";
 import { requiredText } from "./validation.js";
@@ -10,7 +11,7 @@ const MEMBER_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /**
  * Resolve one active Team member by model-facing name, including the Lead pseudo-row.
  * @param root - exact live Team Lead.
- * @param state - current Team fold.
+ * @param state - current Team state.
  * @param rawName - candidate member name.
  * @returns resolved durable id and normalized name.
  */
@@ -18,8 +19,7 @@ export function resolveActiveMember(root, state, rawName) {
     const name = rawName.trim();
     if (name === 'lead')
         return { id: root.id, name };
-    const id = state.memberIdsByName.get(name);
-    const member = id === undefined ? undefined : state.members.get(id);
+    const member = state.members.find(candidate => candidate.name === name);
     if (member === undefined || member.phase !== 'active') {
         throw new TeamError(`active teammate "${name}" not found`, 'TEAM_MEMBER_NOT_FOUND');
     }
@@ -69,7 +69,7 @@ export class TeamRoster {
             if (parentId !== undefined) {
                 const root = this.ctx.agents.get(parentId);
                 if (root !== undefined) {
-                    const member = this.journal.state(root).members.get(agent.id);
+                    const member = this.journal.state(root).members.find(candidate => candidate.id === agent.id);
                     if (member?.phase === 'active' || member?.phase === 'provisioning') {
                         return { root, id: TeamId(root.id), role: 'teammate', name: member.name };
                     }
@@ -84,7 +84,7 @@ export class TeamRoster {
             // A continuation can briefly outlive its parent during child-first teardown.
             // Do not reinterpret that durable child as a new implicit root Team. A host-
             // resumed ordinary fork has no descriptor in its own suffix and remains a
-            // valid new root whose inherited Team records fold out by TeamId.
+            // valid new root whose inherited Team records stay outside its projected Team state.
             if (this.subagentDescriptor(agent))
                 return undefined;
             return { root: agent, id: TeamId(agent.id), role: 'lead', name: 'lead' };
@@ -108,11 +108,11 @@ export class TeamRoster {
                 id: root.id,
                 name: 'lead',
                 role: 'lead',
-                status: root.status,
+                status: availability(root),
                 ...root.options.model === undefined ? {} : { model: root.options.model },
                 diagnostics: [],
             }];
-        for (const member of state.members.values()) {
+        for (const member of state.members) {
             const live = this.ctx.agents.get(member.id);
             const model = live?.options.model ?? root.options.model;
             result.push({
@@ -123,7 +123,7 @@ export class TeamRoster {
                     ? 'failed'
                     : member.phase === 'provisioning'
                         ? 'provisioning'
-                        : live?.status ?? 'inactive',
+                        : availability(live),
                 description: member.description,
                 provider: member.provider,
                 context: member.context,
@@ -186,7 +186,7 @@ export class TeamRoster {
         const live = this.ctx.agents.get(target.id);
         if (live === undefined)
             return { previousStatus: 'inactive' };
-        const previousStatus = live.status;
+        const previousStatus = availability(live);
         this.ctx.subagents.interrupt(target.id, { kind: 'ancestor', agent: caller });
         return { previousStatus };
     }
@@ -201,7 +201,8 @@ export class TeamRoster {
             if (rootId === undefined)
                 continue;
             const root = this.ctx.agents.get(rootId);
-            if (root === undefined || !this.journal.state(root).members.has(agent.id))
+            if (root === undefined
+                || !this.journal.state(root).members.some(member => member.id === agent.id))
                 continue;
             const children = teams.get(root) ?? [];
             children.push(agent.id);
@@ -228,7 +229,7 @@ export class TeamRoster {
         const root = membership.root;
         const name = this.memberName(request.name);
         const description = requiredText(request.description, 'description', 200);
-        const childId = SessionId(randomUUID());
+        const childId = brandString(randomUUID());
         const member = {
             id: childId,
             name,
@@ -239,13 +240,13 @@ export class TeamRoster {
         };
         await this.journal.transact(root.id, async () => {
             const state = this.journal.state(root);
-            if (state.memberIdsByName.has(name)) {
+            if (state.members.some(member => member.name === name)) {
                 throw new TeamError(`teammate name "${name}" was already used in this Team`, 'TEAM_MEMBER_NAME_TAKEN');
             }
-            if (state.members.size >= this.maxMembers) {
+            if (state.members.length >= this.maxMembers) {
                 throw new TeamError(`Team member limit ${this.maxMembers} reached`, 'TEAM_MEMBER_LIMIT');
             }
-            await this.journal.appendAndFlush(root, 'team/member', { version: 1, teamId: TeamId(root.id), member });
+            await this.journal.appendAndFlush(root, 'team/member', { version: 2, teamId: TeamId(root.id), member });
         });
         let started;
         try {
@@ -307,8 +308,8 @@ export class TeamRoster {
             signal.throwIfAborted();
             const session = this.ctx.sessions.get(childId);
             if (session === undefined) {
-                const stored = await this.ctx.sessionPersistence.inspect(childId, signal);
-                const suffix = stored.events.slice(stored.meta.seedLength ?? 0);
+                const stored = await readPersistedSession(this.ctx.sessionPersistence, childId, signal);
+                const suffix = stored.events.slice(stored.inheritedEventCount);
                 if (messageAccepted(suffix, message => message.id === messageId))
                     return;
                 throw new TeamError(`teammate "${childId}" initial prompt was not durably accepted`, 'TEAM_PROVISIONING_CONFLICT');
@@ -335,7 +336,8 @@ export class TeamRoster {
             try {
                 signal.throwIfAborted();
                 await this.ctx.sessions.flush(session);
-                const suffix = session.events.slice(session.header.seedLength ?? 0);
+                // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+                const suffix = session.snapshotEvents(session.inheritedEventCount);
                 if (messageAccepted(suffix, message => message.id === messageId))
                     return;
                 if (this.ctx.sessions.get(childId) !== session)
@@ -351,7 +353,7 @@ export class TeamRoster {
     }
     /** Settle provisioning-only members from their independently durable child Sessions. */
     async reconcileProvisioning(root, signal) {
-        const provisioning = [...this.journal.state(root).members.values()].filter(member => member.phase === 'provisioning');
+        const provisioning = this.journal.state(root).members.filter(member => member.phase === 'provisioning');
         for (const member of provisioning) {
             signal.throwIfAborted();
             // A live child means creation is still completing in this process. Its
@@ -361,11 +363,11 @@ export class TeamRoster {
             let phase = 'failed';
             let failure = 'provisioning did not leave a resumable child Session';
             try {
-                const loaded = await this.ctx.sessionPersistence.inspect(member.id, signal);
-                const suffix = loaded.events.slice(loaded.meta.seedLength ?? 0);
+                const loaded = await readPersistedSession(this.ctx.sessionPersistence, member.id, signal);
+                const suffix = loaded.events.slice(loaded.inheritedEventCount);
                 const descriptor = foldSubagentDescriptor(suffix);
                 const acceptedInitialPrompt = messageAccepted(suffix, message => message.source.kind === 'user');
-                if (loaded.meta.parentSession === root.id
+                if (loaded.header.parentSession === root.id
                     && descriptor?.mode === 'continuable'
                     && descriptor.provider === member.provider
                     && acceptedInitialPrompt) {
@@ -381,7 +383,7 @@ export class TeamRoster {
             signal.throwIfAborted();
             await this.journal.transact(root.id, async () => {
                 signal.throwIfAborted();
-                const current = this.journal.state(root).members.get(member.id);
+                const current = this.journal.state(root).members.find(candidate => candidate.id === member.id);
                 if (current?.phase !== 'provisioning')
                     return;
                 const settled = {
@@ -390,7 +392,7 @@ export class TeamRoster {
                     ...phase === 'failed' ? { error: failure } : {},
                 };
                 await this.journal.appendAndFlush(root, 'team/member', {
-                    version: 1,
+                    version: 2,
                     teamId: TeamId(root.id),
                     member: settled,
                 });
@@ -404,7 +406,7 @@ export class TeamRoster {
             id: member.id,
             name: member.name,
             role: 'teammate',
-            status: live?.status ?? 'inactive',
+            status: availability(live),
             description: member.description,
             provider: member.provider,
             context: member.context,
@@ -422,7 +424,7 @@ export class TeamRoster {
     /** Append one terminal provisioning edge unless recovery already settled it. */
     async settleProvisioning(root, terminal) {
         return this.journal.transact(root.id, async () => {
-            const current = this.journal.state(root).members.get(terminal.id);
+            const current = this.journal.state(root).members.find(member => member.id === terminal.id);
             /* v8 ignore next 3 -- the append-only provisioning event is committed by this operation before settlement. */
             if (current === undefined) {
                 throw new TeamError(`provisioned teammate "${terminal.id}" disappeared`, 'TEAM_PROVISIONING_CONFLICT');
@@ -430,7 +432,7 @@ export class TeamRoster {
             if (current.phase !== 'provisioning')
                 return current.phase;
             await this.journal.appendAndFlush(root, 'team/member', {
-                version: 1,
+                version: 2,
                 teamId: TeamId(root.id),
                 member: terminal,
             });
@@ -439,7 +441,12 @@ export class TeamRoster {
     }
     /** Whether a Session's own suffix identifies a provider-owned subagent child. */
     subagentDescriptor(agent) {
-        return foldSubagentDescriptor(agent.session.events.slice(agent.session.header.seedLength ?? 0)) !== undefined;
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+        return foldSubagentDescriptor(agent.session.snapshotEvents(agent.session.inheritedEventCount)) !== undefined;
     }
+}
+/** Turn availability is independent of whether the Agent is loaded. */
+function availability(agent) {
+    return agent?.status === 'running' ? 'running' : 'inactive';
 }
 //# sourceMappingURL=roster.js.map

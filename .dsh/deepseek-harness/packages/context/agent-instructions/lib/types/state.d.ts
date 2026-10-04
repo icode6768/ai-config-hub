@@ -55,7 +55,7 @@ export interface ReconciledInstructionContext {
  * @param text - complete plugin-owned system-reminder text.
  * @returns a user-role prefix message.
  */
-export declare function workspaceContextMessage(text: string): Message;
+export declare function agentInstructionsMessage(text: string): Message;
 /**
  * Convert retained baseline files into comparison and metadata-cache state.
  * @param files - baseline files that survived rendering.

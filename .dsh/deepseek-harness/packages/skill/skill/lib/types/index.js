@@ -10,7 +10,7 @@
  * @module @deepseek-ai/dsh-skill
  */
 import { Service } from '@deepseek-ai/cordis';
-import { assertNever } from '@deepseek-ai/dsh-llm';
+import { assertNever } from '@deepseek-ai/dsh-util-values';
 import { NamedEntries, ScopedLayers, scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope';
 import z from '@deepseek-ai/schemastery';
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -538,6 +538,7 @@ function toSummary(skill) {
     const { name, description, whenToUse, invocation, source, provider, resourceBase } = skill;
     return {
         name,
+        ...skill.path === undefined ? {} : { path: skill.path },
         description,
         ...whenToUse !== undefined ? { whenToUse } : {},
         invocation,

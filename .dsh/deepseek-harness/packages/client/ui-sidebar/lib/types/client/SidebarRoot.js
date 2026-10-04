@@ -1,13 +1,14 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 /**
- * Sidebar shell: column geometry only. Collapse is a slide plus crossfade:
+ * Sidebar shell: column geometry and global panel navigation.
+ * Collapse is a slide plus crossfade:
  * content freezes at its expanded width (inline style) and fades out in place
  * while the sliding column (AppFrame grid tracks) clips it — nothing reflows
- * mid-slide. At settle the wide-only content unmounts and the four upper
+ * mid-slide. At settle the wide-only content unmounts and the upper
  * controls enter the 56px rail from the same horizontal offset (one icon each,
  * same top-down order) on one fade that ends with the slide. The bottom-pinned
  * settings control only fades. The workspace/session browsing region between
- * the New Session button and the foot is the `sidebar.workspaces` registrant's,
+ * global panel rows and the foot is the `sidebar.workspaces` registrant's,
  * and the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
  * hands them the wide flag (plus an expand request callback for the browser).
  *
@@ -18,7 +19,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  */
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { FishLogo, IconNewChatOutline16, IconPanelLeftOutline16, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { FishLogo, IconNewChatOutlineMedium, IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, isDarwinDesktop, ShortcutKeys, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './SidebarRoot.module.css';
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
 const COLLAPSE_SETTLE_MS = 150;
@@ -39,12 +40,21 @@ function localBuildVersion() {
         + (commit === undefined ? '' : `-${commit}`)
         + (process.env.DSH_CLIENT_GIT_DIRTY === 'true' ? '-dirty' : '');
 }
+/** Each panel row subscribes only to its own selection state. */
+function PanelRow({ id, label, wide, usePanelInfo, selectPanel, renderSlot }) {
+    const active = usePanelInfo(info => info.activePanelId === id);
+    return (_jsx(Tooltip, { label: label, delayMs: 500, disabled: wide, children: _jsxs("button", { type: "button", className: clsx(css.panelRow, active && css.panelActive), "aria-label": label, "aria-current": active ? 'page' : undefined, onClick: () => { selectPanel(id); }, children: [_jsx("span", { className: css.panelGlyph, "aria-hidden": "true", children: renderSlot('sidebar.panellist', { size: wide ? 16 : 18, active }, { only: id }) }), wide && (_jsx("span", { className: clsx(css.panelTitle, css.wide), children: label }))] }) }));
+}
 /**
  * Render the sidebar column shell.
  * @param props - composed slot props (runtime share + injected callbacks, contract/slots.ts).
  * @returns the sidebar element tree.
  */
-export function SidebarRoot({ collapsed, width, startSession, toggleSidebar, t, renderSlot, }) {
+export function SidebarRoot({ collapsed, width, startSession, toggleSidebar, selectPanel, usePanels, useShortcuts, usePanelInfo, t, renderSlot, }) {
+    const panels = usePanels(snapshot => snapshot);
+    const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'));
+    const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'));
+    const toggleLabel = collapsed ? t('toggle.open') : t('toggle.collapse');
     // Wide content stays mounted while the collapse animates (fading via
     // .collapsed .wide), unmounts at settle, and remounts right away on expand.
     const [settled, setSettled] = useState(collapsed);
@@ -56,7 +66,12 @@ export function SidebarRoot({ collapsed, width, startSession, toggleSidebar, t, 
         const timer = window.setTimeout(() => { setSettled(true); }, COLLAPSE_SETTLE_MS);
         return () => { window.clearTimeout(timer); };
     }, [collapsed]);
-    const wide = !collapsed || !settled;
+    const windowsTitlebar = document.documentElement.hasAttribute('data-windows-titlebar');
+    const wide = windowsTitlebar ? !collapsed : !collapsed || !settled;
+    // The Windows caption menus occupy the strip to the right of these controls
+    // (that is what --dsh-windows-menu-start reserves), so a right-side bubble
+    // lands under their text. Below the caption is the only clear side.
+    const captionTooltipSide = windowsTitlebar ? 'bottom' : 'right';
     // Freeze the content at its expanded width while it fades out (collapsed
     // && wide): the sliding column then clips it instead of reflowing it. The
     // rail layout (.collapsed styles) only applies once the fade settles.
@@ -116,14 +131,26 @@ export function SidebarRoot({ collapsed, width, startSession, toggleSidebar, t, 
         };
     }, [pointerInside]);
     const buildVersion = localBuildVersion();
+    const darwinDesktop = isDarwinDesktop();
+    // Rail resting state is the whale mark; hovering swaps in the panel icon
+    // (the expand affordance, figma sidebar-hover flow). Expanded it is a plain
+    // panel icon.
+    const toggle = (_jsx(Tooltip, { label: toggleLabel, shortcutKeys: shortcut?.keys, delayMs: 500, side: captionTooltipSide, children: _jsxs("button", { type: "button", className: clsx(css.iconButton, css.toggle), "aria-label": toggleLabel, "aria-keyshortcuts": shortcut?.aria, onClick: () => { toggleSidebar(); }, children: [!wide && !windowsTitlebar && (_jsx("span", { className: css.railMark, "aria-hidden": "true", children: renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: _jsx(FishLogo, { size: 24 }) }) })), _jsx(IconPanelLeftOutlineRegular, { className: css.panelIcon, size: wide || windowsTitlebar ? 16 : 18 }), !wide && renderSlot('sidebar.toggle.badge', {})] }) }));
     return (_jsxs("div", { ref: column, className: clsx(css.root, !wide && css.collapsed, !wide && everWide.current && css.railIn, collapsed && wide && css.fading, !pointerInside && css.quietBars), style: wide ? { width: collapsed ? lastWideWidth.current : width } : undefined, onPointerEnter: () => {
             cancelLinger();
             setPointerInside(true);
-        }, onPointerLeave: () => { armLinger(); }, children: [_jsxs("div", { className: css.logoRow, children: [wide && (_jsx("button", { type: "button", className: clsx(css.brand, css.wide), "aria-label": t('session.new.label'), onClick: () => { startSession(); }, children: _jsxs("span", { className: css.brandIdentity, "aria-hidden": "true", children: [_jsx("span", { className: css.brandMark, children: renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: _jsx(FishLogo, { size: 24 }) }) }), _jsx("span", { className: css.brandName, children: renderSlot('sidebar.brand.name', {}, {
+        }, onPointerLeave: () => { armLinger(); }, children: [darwinDesktop && _jsx("div", { className: css.topStrip, "data-window-drag": true, children: toggle }), _jsxs("div", { className: css.logoRow, "data-window-drag": true, children: [wide && (() => {
+                        const identity = (_jsxs("span", { className: css.brandIdentity, "aria-hidden": "true", children: [_jsx("span", { className: css.brandMark, children: renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: _jsx(FishLogo, { size: 24 }) }) }), _jsx("span", { className: css.brandName, children: renderSlot('sidebar.brand.name', {}, {
                                         fallback: buildVersion === undefined
                                             ? _jsx("span", { className: css.fallbackBrandName, children: t('brand.localBuild') })
                                             : (_jsxs("span", { className: css.localBuildBrand, children: [_jsx("span", { className: css.localBuildTitle, children: t('brand.localBuild') }), _jsx("span", { className: css.buildVersion, children: buildVersion })] })),
-                                    }) })] }) })), _jsx(Tooltip, { label: collapsed ? t('toggle.open') : t('toggle.collapse'), delayMs: 500, children: _jsxs("button", { type: "button", className: clsx(css.iconButton, css.toggle), "aria-label": collapsed ? t('toggle.open') : t('toggle.collapse'), onClick: () => { toggleSidebar(); }, children: [!wide && (_jsx("span", { className: css.railMark, "aria-hidden": "true", children: renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: _jsx(FishLogo, { size: 24 }) }) })), _jsx(IconPanelLeftOutline16, { className: css.panelIcon, size: wide ? 16 : 18 })] }) })] }), _jsx(Tooltip, { label: t('session.new.label'), delayMs: 500, disabled: wide, children: _jsxs("button", { type: "button", className: css.newSession, "aria-label": t('session.new.label'), onClick: () => { startSession(); }, children: [_jsx(IconNewChatOutline16, { size: wide ? 14 : 18 }), wide && _jsx("span", { className: clsx(css.newSessionLabel, css.wide), children: t('session.new') })] }) }), _jsx("div", { className: css.regionArea, children: renderSlot('sidebar.workspaces', {
+                                    }) })] }));
+                        return darwinDesktop
+                            ? _jsx("span", { className: clsx(css.brand, css.wide), children: identity })
+                            : (_jsx("button", { type: "button", className: clsx(css.brand, css.wide), "aria-label": t('session.new.label'), "aria-keyshortcuts": newShortcut?.aria, onClick: () => { startSession(); }, children: identity }));
+                    })(), !darwinDesktop && toggle] }), _jsx(Tooltip, { label: t('session.new.label'), shortcutKeys: newShortcut?.keys, delayMs: 500, side: captionTooltipSide, disabled: wide, children: _jsxs("button", { type: "button", className: css.newSession, "aria-label": t('session.new.label'), "aria-keyshortcuts": newShortcut?.aria, onClick: () => { startSession(); }, children: [_jsx("span", { className: css.newSessionLabelMask, children: _jsxs("span", { className: css.newSessionContent, children: [wide
+                                        ? _jsx(IconNewChatOutlineMedium, { size: 14 })
+                                        : _jsx(IconNewChatOutlineRegular, { size: windowsTitlebar ? 16 : 18 }), wide && _jsx("span", { className: clsx(css.newSessionLabel, css.wide), children: t('session.new') })] }) }), wide && newShortcut !== undefined && newShortcut.keys.length > 0 && _jsx("span", { className: css.newSessionShortcut, "aria-hidden": "true", children: _jsx(ShortcutKeys, { keys: newShortcut.keys }) })] }) }), panels.length > 0 && (_jsx("nav", { className: css.panelList, "aria-label": t('panels.label'), children: panels.map(({ id, label }) => (_jsx(PanelRow, { id: id, label: label, wide: wide, usePanelInfo: usePanelInfo, selectPanel: selectPanel, renderSlot: renderSlot }, id))) })), _jsx("div", { className: css.regionArea, children: renderSlot('sidebar.workspaces', {
                     wide,
                     expandSidebar: () => { if (collapsed)
                         toggleSidebar(); },

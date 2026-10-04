@@ -99,8 +99,12 @@ export function redactSessionSnapshotIds(logs) {
         }
     };
     for (const log of parsed) {
-        for (const record of log.records)
+        for (const record of log.records) {
+            if (record.type === 'feedback/message-put' && isRecord(record.data) && isRecord(record.data.item)) {
+                claim(record.data.item.version, 'id');
+            }
             collect(record, record.type);
+        }
     }
     const replacements = [...tokenByValue]
         .sort(([left], [right]) => right.length - left.length);

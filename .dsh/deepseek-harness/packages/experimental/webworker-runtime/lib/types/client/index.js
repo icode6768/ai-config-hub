@@ -83,11 +83,14 @@ export async function connectWorkerHost(worker, options) {
         const payload = await tunnel.bootPayload();
         globalThis.__DSH_TRANSPORT__ = {
             fetch: (input, init) => tunnel.fetch(input, init),
-            openStream: (endpoint, payload, signal) => tunnel.open(endpoint, payload, signal),
+            openStream: (endpoint, payload, signal, uplink) => tunnel.open(endpoint, payload, signal, uplink),
             loadBundle: (url) => tunnel.loadBundle(url),
             // The host lives in a worker this page spawned: the page owns it, so
             // the privileged surface stays reachable off loopback authorities.
             ownsHost: true,
+        };
+        globalThis.__DSH_FILE_UPLOAD__ = {
+            fetch: (input, init) => tunnel.fetch(input, init),
         };
         await applyIndexInjections(payload.injections, src => tunnel.loadBundle(src));
         ready.resolve();

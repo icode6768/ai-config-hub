@@ -117,9 +117,10 @@ export class ClientSourceCatalog {
         entry.sourceBytes ??= this.source(entry, maxContentBytes).then(source => new TextEncoder().encode(source));
         return entry.sourceBytes;
     }
-    sourceMapBytes(entry, maxContentBytes) {
+    async sourceMapBytes(entry, maxContentBytes) {
         if (entry.asset.loadSourceMap === undefined)
-            return Promise.resolve(undefined);
+            return undefined;
+        await this.source(entry, maxContentBytes);
         entry.sourceMapBytes ??= entry.asset.loadSourceMap().then(value => value === undefined ? undefined : new TextEncoder().encode(value)).catch((error) => {
             throw new ClientSourceCatalogError('load-failed', `Cannot load Client source map: ${renderError(error)}`);
         });
@@ -132,7 +133,7 @@ export class ClientSourceCatalog {
     }
 }
 /**
- * Discover this package's bundle URL from the Host-injected web boot graph.
+ * Discover this package's bundle URL from the Host-injected web boot graph and its map from the loaded script trailer.
  * @returns A lazy catalog, or `undefined` outside the assembled web application.
  */
 export function discoverInspectorClientSourceCatalog() {
@@ -149,20 +150,25 @@ export function discoverInspectorClientSourceCatalog() {
     });
     if (row === undefined || typeof row.url !== 'string' || typeof row.rev !== 'string')
         return undefined;
-    const base = browserLocation();
+    const base = documentBase();
     if (base === undefined)
         return undefined;
     const sourceUrl = new URL(row.url, base);
-    const sourceMapUrl = new URL(sourceUrl.href);
-    sourceMapUrl.pathname = `${sourceMapUrl.pathname}.map`;
+    let sourceMapUrl;
     return new ClientSourceCatalog([{
             scriptKey: CLIENT_SCRIPT_KEY,
             url: sourceUrl.href,
             hash: row.rev,
-            sourceMapUrl: sourceMapUrl.href,
+            get sourceMapUrl() { return sourceMapUrl; },
             isModule: false,
-            loadSource: async () => fetchText(sourceUrl.href),
-            loadSourceMap: async () => fetchText(sourceMapUrl.href),
+            loadSource: async () => {
+                const source = await fetchText(sourceUrl.href);
+                const reference = /\/\/#\s*sourceMappingURL=(\S+)\s*$/u.exec(source)?.[1];
+                if (reference !== undefined)
+                    sourceMapUrl = new URL(reference, sourceUrl).href;
+                return source;
+            },
+            loadSourceMap: async () => sourceMapUrl === undefined ? undefined : fetchText(sourceMapUrl),
         }]);
 }
 async function fetchText(url) {
@@ -171,7 +177,17 @@ async function fetchText(url) {
         throw new Error(`${String(response.status)} ${response.statusText}`);
     return response.text();
 }
-function browserLocation() {
+/**
+ * Base every app-owned route reference resolves against: the document's
+ * `baseURI`, else the location URL, else undefined outside a browser.
+ */
+function documentBase() {
+    const document = Reflect.get(globalThis, 'document');
+    if (typeof document === 'object' && document !== null) {
+        const baseURI = Reflect.get(document, 'baseURI');
+        if (typeof baseURI === 'string' && baseURI !== '')
+            return baseURI;
+    }
     const location = Reflect.get(globalThis, 'location');
     if (typeof location !== 'object' || location === null)
         return undefined;
@@ -191,7 +207,7 @@ function renderError(error) {
 }
 function normalizedUrl(value) {
     try {
-        const url = new URL(value, browserLocation());
+        const url = new URL(value, documentBase());
         url.hash = '';
         return url.href;
     }

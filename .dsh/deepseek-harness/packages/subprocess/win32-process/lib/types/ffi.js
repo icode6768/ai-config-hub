@@ -1,9 +1,7 @@
 /** Lazy Koffi bindings for generic Win32 process, stdio, and Job operations. */
-import koffi from 'koffi';
 import * as abi from "./abi.js";
 import { Win32Error } from "./errors.js";
-const PVOID = koffi.pointer('void');
-const PPVOID = koffi.pointer(PVOID);
+import { requireKoffi } from "./koffi.js";
 /**
  * Return whether a Koffi pointer represents NULL.
  * @param value - pointer value returned by Koffi or a Win32 call.
@@ -12,55 +10,62 @@ const PPVOID = koffi.pointer(PVOID);
 export function isNullPtr(value) {
     return value === null || value === undefined || value === 0n;
 }
-/** Koffi STARTUPINFOW layout. */
-export const STARTUPINFOW = koffi.struct('DSH_STARTUPINFOW', {
-    cb: 'uint32',
-    lpReserved: 'str16',
-    lpDesktop: 'str16',
-    lpTitle: 'str16',
-    dwX: 'uint32',
-    dwY: 'uint32',
-    dwXSize: 'uint32',
-    dwYSize: 'uint32',
-    dwXCountChars: 'uint32',
-    dwYCountChars: 'uint32',
-    dwFillAttribute: 'uint32',
-    dwFlags: 'uint32',
-    wShowWindow: 'uint16',
-    cbReserved2: 'uint16',
-    lpReserved2: koffi.pointer('uint8'),
-    hStdInput: PVOID,
-    hStdOutput: PVOID,
-    hStdError: PVOID,
-});
-/** Koffi PROCESS_INFORMATION layout. */
-export const PROCESS_INFORMATION = koffi.struct('DSH_PROCESS_INFORMATION', {
-    hProcess: PVOID,
-    hThread: PVOID,
-    dwProcessId: 'uint32',
-    dwThreadId: 'uint32',
-});
-/* v8 ignore start -- ABI guards are pinned by native header probes. */
-if (STARTUPINFOW.size !== abi.STARTUPINFOW_SIZE) {
-    throw new Error(`STARTUPINFOW layout mismatch: koffi computed ${STARTUPINFOW.size}, expected ${abi.STARTUPINFOW_SIZE}`);
+let cachedTypes;
+/** Resolve Koffi pointer and process layouts on the first native operation. */
+function win32Types() {
+    if (cachedTypes !== undefined)
+        return cachedTypes;
+    const koffi = requireKoffi();
+    const PVOID = koffi.pointer('void');
+    const PPVOID = koffi.pointer(PVOID);
+    const STARTUPINFOW = koffi.struct('DSH_STARTUPINFOW', {
+        cb: 'uint32', lpReserved: 'str16', lpDesktop: 'str16', lpTitle: 'str16',
+        dwX: 'uint32', dwY: 'uint32', dwXSize: 'uint32', dwYSize: 'uint32',
+        dwXCountChars: 'uint32', dwYCountChars: 'uint32', dwFillAttribute: 'uint32',
+        dwFlags: 'uint32', wShowWindow: 'uint16', cbReserved2: 'uint16',
+        lpReserved2: koffi.pointer('uint8'), hStdInput: PVOID, hStdOutput: PVOID, hStdError: PVOID,
+    });
+    const PROCESS_INFORMATION = koffi.struct('DSH_PROCESS_INFORMATION', {
+        hProcess: PVOID, hThread: PVOID, dwProcessId: 'uint32', dwThreadId: 'uint32',
+    });
+    /* v8 ignore start -- ABI guards are pinned by native header probes. */
+    if (STARTUPINFOW.size !== abi.STARTUPINFOW_SIZE) {
+        throw new Error(`STARTUPINFOW layout mismatch: koffi computed ${STARTUPINFOW.size}, expected ${abi.STARTUPINFOW_SIZE}`);
+    }
+    if (PROCESS_INFORMATION.size !== abi.PROCESS_INFORMATION_SIZE) {
+        throw new Error(`PROCESS_INFORMATION layout mismatch: koffi computed ${PROCESS_INFORMATION.size}, expected ${abi.PROCESS_INFORMATION_SIZE}`);
+    }
+    /* v8 ignore stop */
+    return cachedTypes = { PVOID, PPVOID, STARTUPINFOW, PROCESS_INFORMATION };
 }
-if (PROCESS_INFORMATION.size !== abi.PROCESS_INFORMATION_SIZE) {
-    throw new Error(`PROCESS_INFORMATION layout mismatch: koffi computed ${PROCESS_INFORMATION.size}, expected ${abi.PROCESS_INFORMATION_SIZE}`);
+/**
+ * Materialize the Koffi STARTUPINFOW layout on first native use.
+ * @returns the cached native struct type.
+ */
+export function startupInfoType() {
+    return win32Types().STARTUPINFOW;
 }
-/* v8 ignore stop */
+/**
+ * Materialize the Koffi PROCESS_INFORMATION layout on first native use.
+ * @returns the cached native struct type.
+ */
+export function processInformationType() {
+    return win32Types().PROCESS_INFORMATION;
+}
 /**
  * Allocate a pointer-sized out-parameter slot.
  * @returns allocated native slot.
  */
 export function allocPtrSlot() {
-    return koffi.alloc(PVOID, 1);
+    const { PVOID } = win32Types();
+    return requireKoffi().alloc(PVOID, 1);
 }
 /**
  * Allocate a uint32 out-parameter slot.
  * @returns allocated native slot.
  */
 export function allocUint32() {
-    return koffi.alloc('uint32', 1);
+    return requireKoffi().alloc('uint32', 1);
 }
 /**
  * Decode a pointer out-parameter.
@@ -68,7 +73,7 @@ export function allocUint32() {
  * @returns decoded pointer, or null for address zero.
  */
 export function decodePtr(slot) {
-    const value = koffi.decode(slot, PVOID);
+    const value = requireKoffi().decode(slot, win32Types().PVOID);
     return isNullPtr(value) ? null : value;
 }
 /**
@@ -77,14 +82,14 @@ export function decodePtr(slot) {
  * @returns decoded unsigned value.
  */
 export function decodeUint32(slot) {
-    return koffi.decode(slot, 'uint32');
+    return requireKoffi().decode(slot, 'uint32');
 }
 /**
  * Allocate a zeroed STARTUPINFOW.
  * @returns allocated struct pointer.
  */
 export function allocStartupInfo() {
-    return koffi.alloc(STARTUPINFOW, 1);
+    return requireKoffi().alloc(win32Types().STARTUPINFOW, 1);
 }
 /**
  * Encode the stdio-bearing STARTUPINFOW fields.
@@ -92,14 +97,14 @@ export function allocStartupInfo() {
  * @param fields - fields required for inherited stdio.
  */
 export function encodeStartupInfo(startupInfo, fields) {
-    koffi.encode(startupInfo, STARTUPINFOW, fields);
+    requireKoffi().encode(startupInfo, win32Types().STARTUPINFOW, fields);
 }
 /**
  * Allocate a zeroed PROCESS_INFORMATION.
  * @returns allocated struct pointer.
  */
 export function allocProcessInfo() {
-    return koffi.alloc(PROCESS_INFORMATION, 1);
+    return requireKoffi().alloc(win32Types().PROCESS_INFORMATION, 1);
 }
 /**
  * Decode PROCESS_INFORMATION.
@@ -107,7 +112,7 @@ export function allocProcessInfo() {
  * @returns process/thread handles and ids.
  */
 export function decodeProcessInfo(processInfo) {
-    return koffi.decode(processInfo, PROCESS_INFORMATION);
+    return requireKoffi().decode(processInfo, win32Types().PROCESS_INFORMATION);
 }
 let cachedContext;
 let cached;
@@ -115,6 +120,7 @@ let cached;
 function bindingContext() {
     if (cachedContext !== undefined)
         return cachedContext;
+    const koffi = requireKoffi();
     const kernel32 = koffi.load('kernel32.dll');
     const advapi32 = koffi.load('advapi32.dll');
     const bind = (lib, name, result, args) => lib.func('__stdcall', name, result, args);
@@ -124,10 +130,14 @@ function bindingContext() {
 function bindings() {
     if (cached !== undefined)
         return cached;
+    const koffi = requireKoffi();
+    const { PVOID, PPVOID, STARTUPINFOW, PROCESS_INFORMATION } = win32Types();
     const { kernel32, advapi32, bind } = bindingContext();
+    const node = koffi.load(null);
     cached = {
         closeHandle: bind(kernel32, 'CloseHandle', 'int', [PVOID]),
         getLastError: bind(kernel32, 'GetLastError', 'uint32', []),
+        getFileType: bind(kernel32, 'GetFileType', 'uint32', [PVOID]),
         formatMessageW: bind(kernel32, 'FormatMessageW', 'uint32', [
             'uint32', PVOID, 'uint32', 'uint32', PVOID, 'uint32', PVOID,
         ]),
@@ -135,6 +145,10 @@ function bindings() {
         setHandleInformation: bind(kernel32, 'SetHandleInformation', 'int', [PVOID, 'uint32', 'uint32']),
         createProcessAsUserW: bind(advapi32, 'CreateProcessAsUserW', 'int', [
             PVOID, 'str16', 'str16', PVOID, PVOID, 'int', 'uint32', PVOID, 'str16',
+            koffi.pointer(STARTUPINFOW), koffi.pointer(PROCESS_INFORMATION),
+        ]),
+        createProcessW: bind(kernel32, 'CreateProcessW', 'int', [
+            'str16', 'str16', PVOID, PVOID, 'int', 'uint32', PVOID, 'str16',
             koffi.pointer(STARTUPINFOW), koffi.pointer(PROCESS_INFORMATION),
         ]),
         readFile: bind(kernel32, 'ReadFile', 'int', [PVOID, PVOID, 'uint32', koffi.pointer('uint32'), PVOID]),
@@ -145,10 +159,15 @@ function bindings() {
         getExitCodeProcess: bind(kernel32, 'GetExitCodeProcess', 'int', [PVOID, koffi.pointer('uint32')]),
         createJobObjectW: bind(kernel32, 'CreateJobObjectW', PVOID, [PVOID, 'str16']),
         setInformationJobObject: bind(kernel32, 'SetInformationJobObject', 'int', [PVOID, 'int', PVOID, 'uint32']),
+        queryInformationJobObject: bind(kernel32, 'QueryInformationJobObject', 'int', [
+            PVOID, 'int', PVOID, 'uint32', PVOID,
+        ]),
         assignProcessToJobObject: bind(kernel32, 'AssignProcessToJobObject', 'int', [PVOID, PVOID]),
         resumeThread: bind(kernel32, 'ResumeThread', 'uint32', [PVOID]),
         terminateProcess: bind(kernel32, 'TerminateProcess', 'int', [PVOID, 'uint32']),
+        terminateJobObject: bind(kernel32, 'TerminateJobObject', 'int', [PVOID, 'uint32']),
         getStdHandle: bind(kernel32, 'GetStdHandle', PVOID, ['int']),
+        uvGetOsfhandle: node.func('uv_get_osfhandle', PVOID, ['int']),
     };
     return cached;
 }
@@ -159,6 +178,13 @@ function bindings() {
  */
 export function extendWin32ProcessBindings(create) {
     return { ...bindings(), ...create(bindingContext()) };
+}
+/**
+ * Load the generic process binding table without policy-specific extensions.
+ * @returns shared Win32 process, stdio, and Job operations.
+ */
+export function loadWin32ProcessBindings() {
+    return bindings();
 }
 /* v8 ignore stop */
 /**

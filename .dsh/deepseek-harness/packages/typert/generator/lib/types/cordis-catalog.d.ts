@@ -72,6 +72,8 @@ export interface CordisCatalogPolicy {
     readonly inheritedEvents: readonly InheritedEntry[];
     /** Manually curated framework context members inherited by every plugin. */
     readonly inheritedServices: readonly InheritedEntry[];
+    /** Maximum rendered characters per runtime type declaration. */
+    readonly runtimeDeclarationMaxChars?: number;
 }
 /** Complete model-level Cordis projection used by every text renderer. */
 export interface CordisCatalogModel {

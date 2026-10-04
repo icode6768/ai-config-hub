@@ -192,10 +192,7 @@ export declare abstract class CredentialProvider extends Service {
     /**
      * Fan `credentials/reference-updated` out with contained listener failures: every
      * listener runs, and a sync throw or async rejection is logged without
-     * changing the committed operation's outcome — except `INVARIANT`-coded
-     * failures, which rethrow after every listener ran (the rethrow reaches the
-     * caller only from synchronous listeners, so invariant checks on this event
-     * must not be async functions). Providers call this only after the write or
+     * changing the committed operation's outcome. Providers call this only after the write or
      * reload actually committed, so a broken observer can never make a durable
      * change look failed.
      * @param ref - the reference whose stored value changed.

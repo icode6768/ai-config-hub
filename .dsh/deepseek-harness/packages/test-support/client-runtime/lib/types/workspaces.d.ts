@@ -53,6 +53,12 @@ export declare class TestWorkspaces implements IWorkspaces {
         path: string;
     }): Promise<WorkspaceView>;
     /**
+     * Initialize the default Workspace through a test stub; defaults to an ineligible first use.
+     * @param signal - caller lifetime.
+     * @returns the stubbed Workspace, or undefined when initialization is ineligible.
+     */
+    initializeDefault(signal?: AbortSignal): Promise<WorkspaceView | undefined>;
+    /**
      * Rename a Workspace (recorded). The default echoes a minimal view.
      * @param workspaceId - target workspace.
      * @param title - new title.
@@ -84,6 +90,24 @@ export declare class TestWorkspaces implements IWorkspaces {
      * @param sessionId - session to archive.
      */
     archiveSession(sessionId: SessionId): Promise<void>;
+    /**
+     * Unarchive a session (recorded). The default mirrors the production face's
+     * observable effect: the id leaves the list state's archive set.
+     * @param sessionId - session to unarchive.
+     */
+    unarchiveSession(sessionId: SessionId): Promise<void>;
+    /**
+     * Pin a session (recorded). The default mirrors the production face's
+     * observable effect: the id leads the list state's pin set.
+     * @param sessionId - session to pin.
+     */
+    pinSession(sessionId: SessionId): Promise<void>;
+    /**
+     * Unpin a session (recorded). The default mirrors the production face's
+     * observable effect: the id leaves the list state's pin set.
+     * @param sessionId - session to unpin.
+     */
+    unpinSession(sessionId: SessionId): Promise<void>;
 }
 export {};
 //# sourceMappingURL=workspaces.d.ts.map

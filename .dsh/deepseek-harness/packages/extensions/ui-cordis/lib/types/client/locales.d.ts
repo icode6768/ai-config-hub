@@ -3,6 +3,7 @@ export declare const NS = "cordis";
 /** Simplified Chinese Cordis UI messages. */
 export declare const zh: {
     'row.defineTitle': string;
+    'a11y.preparing': string;
     'row.runTitle': string;
     'row.updateTitle': string;
     'row.stopTitle': string;
@@ -64,6 +65,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** English Cordis UI messages. */
 export declare const en: {
     'row.defineTitle': string;
+    'a11y.preparing': string;
     'row.runTitle': string;
     'row.updateTitle': string;
     'row.stopTitle': string;

@@ -8,6 +8,7 @@ export declare class AppWebEntry {
     private readonly seams;
     private readonly page;
     private ctx;
+    private stopDragRecall;
     private modules;
     private manifest;
     /**
@@ -19,18 +20,13 @@ export declare class AppWebEntry {
     /**
      * Load and activate every client entry, then hand the mount point to the
      * UI renderer. Plugin failures remain visible on the boot page.
-     * @returns Resolves after application mount or failure rendering.
+     * @param onFailure - Optional carrier-owned fatal presentation; keeps the boot page visible.
+     * @returns Resolves after application mount or failure reporting.
      */
-    run(): Promise<void>;
+    run(onFailure?: (reason: unknown) => void): Promise<void>;
     /** Dispose the client plugin tree and whichever page owns the mount point. */
     dispose(): Promise<void>;
-    /** Mount through a dependency fiber so replacing uiRenderer remounts the application. */
-    private mountApp;
     /** Prefetch stage-one bundles and their dynamic requests before concurrent plugin imports. */
     private prefetchImmediateTier;
-    /** Mount the Loader, create all graph entries, await quiescence, and audit activation. */
-    private runPluginBoot;
-    /** Reject entries that failed import/apply or still wait on missing services. */
-    private assertEntriesActive;
 }
 //# sourceMappingURL=boot.d.ts.map

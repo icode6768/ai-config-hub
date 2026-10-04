@@ -56,13 +56,13 @@ export class Loader extends EntryTree {
                 return config;
             return interpolate(this.ctx, config);
         }, { global: true });
-        ctx.on('internal/update', async function (config, noSave, next) {
+        ctx.on('internal/update', function (config, noSave, next) {
             if (!this.entry || noSave || this.parent.fiber?.entry === this.entry)
                 return next();
-            await next();
             const unparse = this.runtime?.Config?.['simplify'];
-            this.entry.options.config = unparse ? unparse(config) : config;
+            this.entry.options.config = unparse ? unparse.call(this.runtime.Config, config) : config;
             this.entry.parent.tree.write();
+            return next();
         }, { global: true, prepend: true });
         ctx.on('internal/update', function (config, _, next) {
             if (!this.entry || this.parent.fiber?.entry === this.entry)
@@ -97,11 +97,8 @@ export class Loader extends EntryTree {
             const treeOwner = fiber.entry.parent.tree.ctx.fiber;
             if (!treeOwner.uid || treeOwner.state === 5 /* FiberState.UNLOADING */)
                 return;
-            // case 6: Loader is replacing or removing this exact fiber
-            if (fiber.entry._disposing)
-                return;
             this.showLog(fiber.entry, 'unload');
-            // case 7: fiber is disposed by loader behavior
+            // case 6: fiber is disposed by loader behavior
             // such as inject checker, config file update, ancestor group disable
             if (fiber.entry.disabled)
                 return;

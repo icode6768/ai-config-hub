@@ -107,6 +107,52 @@ class BufferedSink {
             call();
     }
 }
+/** Uplink items of one worker-local logical stream, read once by the Host method as its `uplink`. */
+class TunnelUplink {
+    items = [];
+    ended = false;
+    closed = false;
+    wake;
+    push(value) {
+        if (this.ended || this.closed)
+            return;
+        this.items.push(value);
+        this.signal();
+    }
+    /** Page half-close or stream end; buffered items still drain. */
+    end() {
+        this.ended = true;
+        this.signal();
+    }
+    [Symbol.asyncIterator]() {
+        return this;
+    }
+    async next() {
+        while (true) {
+            if (this.closed)
+                return { value: undefined, done: true };
+            if (this.items.length > 0)
+                return { value: this.items.shift(), done: false };
+            if (this.ended)
+                return { value: undefined, done: true };
+            if (this.wake !== undefined)
+                throw new Error('webworker tunnel: stream uplink has one pending read');
+            await new Promise((resolve) => { this.wake = resolve; });
+        }
+    }
+    /** The Host stopped reading: buffered and later items are dropped. */
+    return() {
+        this.closed = true;
+        this.items.length = 0;
+        this.signal();
+        return Promise.resolve({ value: undefined, done: true });
+    }
+    signal() {
+        const wake = this.wake;
+        this.wake = undefined;
+        wake?.();
+    }
+}
 /** One tunnel per worker; wire {@link TunnelServer.handleMessage} to `onmessage` first. */
 export class TunnelServer {
     port;
@@ -115,6 +161,8 @@ export class TunnelServer {
     unaryApiLane;
     queue = [];
     inFlight = new Map();
+    /** Uplinks of accepted `stream-open` frames, buffering items that arrive before or while the stream serves. */
+    uplinks = new Map();
     seams;
     failure;
     listener;
@@ -135,9 +183,18 @@ export class TunnelServer {
             // one reaching a live server is a client double-connect.
             throw new Error('webworker tunnel: duplicate init frame; the tunnel is already open');
         }
+        if (frame.t === 'stream-uplink-item') {
+            this.uplinks.get(frame.id)?.push(frame.value);
+            return;
+        }
+        if (frame.t === 'stream-uplink-end') {
+            this.uplinks.get(frame.id)?.end();
+            return;
+        }
         if (frame.t === 'abort') {
             this.inFlight.get(frame.id)?.abort();
             this.inFlight.delete(frame.id);
+            this.dropUplink(frame.id);
             // A request still parked in the boot queue must not run after its
             // caller gave up; serve() would otherwise execute it post-boot.
             const queued = this.queue.findIndex(request => request.id === frame.id);
@@ -149,6 +206,8 @@ export class TunnelServer {
             this.refuse(frame, this.failure);
             return;
         }
+        if (frame.t === 'stream-open')
+            this.uplinks.set(frame.id, new TunnelUplink());
         if (this.seams === undefined) {
             this.queue.push(frame);
             return;
@@ -176,11 +235,20 @@ export class TunnelServer {
         for (const frame of this.queue.splice(0))
             this.refuse(frame, message);
     }
+    /**
+     * Ask the page to show one text file in its read-only viewer.
+     * @param path - Absolute VFS path the viewer names.
+     * @param text - File contents.
+     */
+    viewText(path, text) {
+        this.send({ t: 'view-text', path, text });
+    }
     send(frame, transfer) {
         this.port.postMessage(frame, transfer);
     }
     refuse(frame, message) {
         if (frame.t === 'stream-open') {
+            this.dropUplink(frame.id);
             this.send({
                 t: 'stream-error',
                 id: frame.id,
@@ -210,10 +278,11 @@ export class TunnelServer {
             return;
         }
         const seams = this.seams;
+        const uplink = this.uplinks.get(frame.id) ?? new TunnelUplink();
         const controller = new AbortController();
         this.inFlight.set(frame.id, { abort: () => { controller.abort(); } });
         try {
-            const source = await seams.openStream(frame.endpoint, frame.payload, controller.signal);
+            const source = await seams.openStream(frame.endpoint, frame.payload, uplink, controller.signal);
             for await (const value of source) {
                 if (controller.signal.aborted)
                     return;
@@ -234,7 +303,14 @@ export class TunnelServer {
         }
         finally {
             this.inFlight.delete(frame.id);
+            this.dropUplink(frame.id);
         }
+    }
+    /** The stream is over: settle any Host read still waiting on its uplink and stop buffering. */
+    dropUplink(id) {
+        const uplink = this.uplinks.get(id);
+        this.uplinks.delete(id);
+        uplink?.end();
     }
     sinkFor(id) {
         const send = this.send.bind(this);

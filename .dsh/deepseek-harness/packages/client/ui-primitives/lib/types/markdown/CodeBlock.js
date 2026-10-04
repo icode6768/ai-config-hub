@@ -2,7 +2,9 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Fragment, useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import clsx from 'clsx';
 import { writeClipboard } from "../clipboard.js";
+import { CodeToolbar } from "../CodeToolbar.js";
 import { StreamingHighlightSession, grammarLoadCount, highlightToHtml, subscribeGrammarLoaded, } from "./highlight.js";
+import { useViewportHighlighting } from "./useViewportHighlighting.js";
 import css from './CodeBlock.module.css';
 /**
  * The `pre` attributes shiki's HTML arm emits for the css-variables theme,
@@ -15,41 +17,86 @@ const SHIKI_PRE_PROPS = {
     style: { backgroundColor: 'var(--shiki-background)', color: 'var(--shiki-foreground)' },
     tabIndex: 0,
 };
-export function CodeBlock({ code, lang, streaming, className, copyLabel, copiedLabel }) {
+/** Completed-line group size; React reconciles groups while the DOM remains line-for-line identical. */
+const STREAMING_LINE_GROUP_SIZE = 32;
+function renderLine(line, index) {
+    return (_jsxs(Fragment, { children: [index > 0 && '\n', _jsx("span", { className: "line", children: line.map((span, spanIndex) => _jsx("span", { style: span.style, children: span.text }, spanIndex)) })] }, index));
+}
+export function CodeBlock({ code, lang, streaming, className, contentRef, lineNumbers = false, showHeader = true, copyLabel, copiedLabel, toolbarLabels, wrap, }) {
     const trimmed = code.endsWith('\n') ? code.slice(0, -1) : code;
+    const sourceLines = lineNumbers ? trimmed.split('\n') : undefined;
+    const rootRef = useRef(null);
+    const highlighting = useViewportHighlighting(rootRef, lang);
     // Re-render when a lazy grammar finishes loading, so a fence that showed plain
     // text while its language's grammar imported picks up highlighting. The
     // snapshot value is opaque; only its change across renders drives the memo.
     const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount);
-    const html = useMemo(() => (streaming === true ? undefined : highlightToHtml(trimmed, lang)), [streaming, trimmed, lang, loaded]);
     // Streaming state lives in refs mutated inside the memo (the MarkdownText
     // streaming-cache pattern): the session's caches carry across chunks only
     // because the owner keys this instance stably while the fence grows.
     const sessionRef = useRef(null);
     const lineCacheRef = useRef(null);
+    const settledRef = useRef(false);
     const streamedBody = useMemo(() => {
-        if (streaming !== true) {
+        if (!highlighting) {
             sessionRef.current = null;
             lineCacheRef.current = null;
+            settledRef.current = false;
             return undefined;
         }
+        if (streaming !== true) {
+            const previous = lineCacheRef.current;
+            if (previous !== null && previous.code === trimmed && previous.lang === lang) {
+                settledRef.current = true;
+                return previous.body;
+            }
+            sessionRef.current = null;
+            lineCacheRef.current = null;
+            settledRef.current = true;
+            return undefined;
+        }
+        if (settledRef.current) {
+            sessionRef.current = null;
+            lineCacheRef.current = null;
+            settledRef.current = false;
+        }
         sessionRef.current ??= new StreamingHighlightSession();
-        const lines = sessionRef.current.update(trimmed, lang);
-        if (lines === undefined) {
+        const frame = sessionRef.current.updateFrame(trimmed, lang);
+        if (frame === undefined) {
             lineCacheRef.current = null;
             return undefined;
         }
-        // A retained line keeps its span-array identity across chunks, so its
-        // cached element is reused and React leaves that line's DOM untouched.
         const previous = lineCacheRef.current;
-        const elements = lines.map((line, index) => previous !== null && previous.lines[index] === line
-            ? previous.elements[index]
-            : (_jsxs(Fragment, { children: [index > 0 && '\n', _jsx("span", { className: "line", children: line.map((span, spanIndex) => _jsx("span", { style: span.style, children: span.text }, spanIndex)) })] }, index)));
-        lineCacheRef.current = { lines, elements };
-        return _jsx("pre", { ...SHIKI_PRE_PROPS, children: _jsx("code", { children: elements }) });
-    }, [streaming, trimmed, lang, loaded]);
-    const rootRef = useRef(null);
+        if (previous?.frame === frame && previous.code === trimmed && previous.lang === lang) {
+            return previous.body;
+        }
+        const sameGeneration = previous?.generation === frame.generation;
+        const groups = sameGeneration ? [...previous.groups] : [];
+        let pending = sameGeneration ? [...previous.pending] : [];
+        let nextLine = sameGeneration ? previous.nextLine : 0;
+        for (const line of frame.appended) {
+            pending.push(renderLine(line, nextLine));
+            nextLine += 1;
+            if (pending.length !== STREAMING_LINE_GROUP_SIZE)
+                continue;
+            const start = nextLine - pending.length;
+            groups.push(_jsx(Fragment, { children: pending }, start));
+            pending = [];
+        }
+        const tail = frame.tail.map((line, index) => renderLine(line, nextLine + index));
+        const tailGroup = _jsx(Fragment, { children: [...pending, ...tail] }, nextLine - pending.length);
+        const body = _jsx("pre", { ...SHIKI_PRE_PROPS, children: _jsxs("code", { children: [groups, tailGroup] }) });
+        lineCacheRef.current = {
+            code: trimmed, lang, generation: frame.generation, frame, groups, pending, nextLine, body,
+        };
+        return body;
+    }, [streaming, highlighting, trimmed, lang, loaded]);
+    const html = useMemo(() => (highlighting && streaming !== true && streamedBody === undefined
+        ? highlightToHtml(trimmed, lang)
+        : undefined), [streaming, highlighting, streamedBody, trimmed, lang, loaded]);
     const [copied, setCopied] = useState(false);
+    const [localWrapped, setWrapped] = useState(true);
+    const wrapped = wrap ?? localWrapped;
     const onCopy = useCallback(() => {
         if (copied)
             return;
@@ -69,8 +116,10 @@ export function CodeBlock({ code, lang, streaming, className, copyLabel, copiedL
     const body = streamedBody !== undefined
         ? streamedBody
         : html === undefined
-            ? (_jsx("pre", { className: css.plain, children: _jsx("code", { children: trimmed }) }))
+            ? (_jsx("pre", { className: css.plain, children: _jsx("code", { children: sourceLines === undefined ? trimmed : sourceLines.map((line, index) => (_jsxs(Fragment, { children: [index > 0 && '\n', _jsx("span", { className: "line", children: line })] }, index))) }) }))
             : (_jsx("div", { dangerouslySetInnerHTML: { __html: html } }));
-    return (_jsxs("div", { ref: rootRef, className: clsx(css.block, 'md-code-block', className), children: [_jsx("div", { className: css.bannerWrap, children: _jsxs("div", { className: css.banner, children: [_jsx("div", { className: css.infostring, children: lang ?? '' }), _jsx("div", { className: css.action, children: _jsx("button", { type: "button", className: css.copyButton, onClick: onCopy, children: copied ? copiedLabel : copyLabel }) })] }) }), body] }));
+    return (_jsxs("div", { ref: rootRef, className: clsx(css.block, 'md-code-block', lineNumbers && css.numbered, toolbarLabels !== undefined && css.card, className), "data-line-numbers": lineNumbers || undefined, "data-code-wrap": toolbarLabels === undefined ? undefined : wrapped, style: sourceLines === undefined ? undefined : {
+            '--dsl-code-block-line-number-width': `${Math.max(2, String(sourceLines.length).length)}ch`,
+        }, children: [showHeader && _jsx("div", { className: css.bannerWrap, children: toolbarLabels !== undefined ? _jsx(CodeToolbar, { lang: lang, labels: toolbarLabels, copyLabel: copyLabel, copiedLabel: copiedLabel, copied: copied, wrapped: wrapped, onCopy: onCopy, onWrap: wrap === undefined ? () => { setWrapped(value => !value); } : undefined }) : _jsxs("div", { className: css.banner, "data-code-block-banner": true, children: [_jsx("div", { className: css.infostring, children: lang ?? '' }), _jsx("div", { className: css.action, children: _jsx("button", { type: "button", className: css.copyButton, onClick: onCopy, children: copied ? copiedLabel : copyLabel }) })] }) }), _jsx("div", { ref: contentRef, className: css.content, "data-code-block-content": true, children: body })] }));
 }
 //# sourceMappingURL=CodeBlock.js.map

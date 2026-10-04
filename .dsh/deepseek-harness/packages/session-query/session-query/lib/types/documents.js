@@ -1,4 +1,5 @@
 /** Shared event metadata and semantic-document projection. */
+import { currentSessionMessageProjections } from '@deepseek-ai/dsh-session-format-catalog/message-projections';
 import { foldSurface } from '@deepseek-ai/dsh-session';
 import { SessionQueryError } from "./config.js";
 import { extractSessionEventText } from "./extraction.js";
@@ -45,7 +46,7 @@ export function buildSessionEventSearchDocuments(sessionId, events) {
 function classifySurface(events) {
     let folded;
     try {
-        folded = foldSurface(events);
+        folded = foldSurface(events, currentSessionMessageProjections);
     }
     catch (error) {
         throw new SessionQueryError(

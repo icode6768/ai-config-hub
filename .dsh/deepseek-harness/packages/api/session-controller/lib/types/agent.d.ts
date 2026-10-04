@@ -1,9 +1,10 @@
 /** Agent activation, composition, and model-selection policy owned by API Session. */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent, AgentSetup, ModelSelection as AgentModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent';
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session';
+import type { Session, SessionId } from '@deepseek-ai/dsh-session';
+import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence';
 import { type SessionObservation } from '@deepseek-ai/dsh-session-query';
-import type { SessionError } from './types.ts';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 /** Cold Session identity absent from persistence. */
 export declare class ApiSessionNotFound extends Error {
 }
@@ -28,9 +29,7 @@ export declare class ApiSessionPresetConflict extends Error {
     constructor(sessionId: SessionId, requestedPreset: string, existingPreset: string | undefined);
 }
 /** Failures produced while resolving one ordinary Session identity to its live Agent. */
-export type ApiSessionAgentError = Extract<SessionError, {
-    readonly code: 'session-not-found' | 'agent-busy' | 'internal';
-}>;
+export type ApiSessionAgentError = RemoteError<'session/not-found' | 'session/agent-busy' | 'session/writer-held' | 'gateway/internal'>;
 /** Result of resolving one ordinary Session identity to its live Agent. */
 export type ApiSessionAgentResult = {
     readonly agent: Agent;
@@ -62,10 +61,7 @@ export declare function apiSessionSubagentOwnershipError(sessionId: SessionId): 
  * @param signal - optional cancellation for persistence reads.
  * @returns the persisted header and complete event prefix.
  */
-export declare function inspectApiSession(ctx: Context, sessionId: SessionId, signal?: AbortSignal): Promise<{
-    meta: SessionHeader;
-    events: SessionEvent[];
-}>;
+export declare function inspectApiSession(ctx: Context, sessionId: SessionId, signal?: AbortSignal): Promise<SessionInspection>;
 /** Owns every operation that may create, resume, or configure a Web Agent. */
 export declare class ApiSessionAgentController {
     private readonly ctx;

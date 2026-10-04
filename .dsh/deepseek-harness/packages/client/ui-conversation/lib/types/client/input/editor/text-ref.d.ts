@@ -1,14 +1,3 @@
-/**
- * Plain-text reference decoration (the plain-text-reference decision;
- * see .agents/notes/implemented/architecture/2026-07-25-web-input-machine-and-slash-pipeline.md):
- * a `/name` or `@name` token whose name is on the trigger's lexicon, and
- * syntax-recognizable `@dir/` folder tokens, render in the chip family
- * colors. Color only, no icon: a token still carrying its trigger character
- * is editable text, not a settled chip — the domain icon marks exactly the
- * settled state. Pure derivation as before — the entity transform converts
- * matching text into TextRefNode and back as edits move it in and out of
- * match shape; no occurrence identity exists.
- */
 import type { EditorConfig, LexicalEditor, SerializedTextNode } from 'lexical';
 import { TextNode } from 'lexical';
 /** JSON form of one text-ref node. */

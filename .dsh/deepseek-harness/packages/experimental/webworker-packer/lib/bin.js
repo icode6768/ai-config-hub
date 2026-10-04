@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { a as previewFixtures, i as indexWorkspacePackages, l as packVfsImage, n as configTrees, r as describePack, t as composeProfile, u as packVfsOverlay } from "./repository-Cw6M0GyB.js";
+import { a as previewFixtures, i as indexWorkspacePackages, n as configTrees, o as packPreviewFixture, r as describePack, t as composeProfile, u as packVfsImage } from "./repository-Bszxcf0w.js";
 import { PREVIEW_FIXTURE_MANIFEST_FILE, PREVIEW_FIXTURE_MANIFEST_VERSION } from "@deepseek-ai/dsh-experimental-webworker-runtime";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -50,7 +50,7 @@ const fixtureDefinitions = previewFixtures(repoRoot);
 mkdirSync(join(dirname(outputFile), "fixtures"), { recursive: true });
 const fixtureLines = [];
 const fixtures = fixtureDefinitions.map((fixture) => {
-	const packed = packVfsOverlay(fixture.trees);
+	const packed = packPreviewFixture(fixture.trees);
 	const file = `fixtures/${fixture.id}.tar.gz`;
 	writeFileSync(join(dirname(outputFile), file), packed.image);
 	fixtureLines.push(`  fixture overlay     ${fixture.id} (${String(packed.image.byteLength)} B compressed)`);

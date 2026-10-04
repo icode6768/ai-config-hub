@@ -7,19 +7,9 @@ import { AnonymousEntries, NamedEntries, ScopedLayers, scopeTarget } from "@deep
 *
 * @module @deepseek-ai/dsh-system-prompt
 */
-/**
-* Sparse integer placements for repository-owned prompt sections.
-*
-* Adjacent values differ by at least ten to keep the first-party groups sparse
-* and make accidental collisions mechanically detectable.
-* External plugins may use any finite order; equal orders are deterministic by
-* section name.
-*/
-const FIRST_PARTY_SECTION_ORDER = {
+const SECTION_ORDERS = {
 	HARNESS_IDENTITY: -1e3,
-	HARNESS_SOURCE: -900,
-	WEB_SURFACE: -800,
-	DEPLOYMENT_PERSONA: 0,
+	DEPLOYMENT_PERSONA_PREFIX: 0,
 	PLAN_POLICY: 500,
 	TEAM_POLICY: 600,
 	PTC_ONLY: 800,
@@ -38,24 +28,33 @@ const FIRST_PARTY_SECTION_ORDER = {
 	TOOL_LSP: 2200,
 	TOOL_SESSION_QUERY: 2300,
 	TOOL_GOAL: 2400,
-	TOOL_CORDIS: 2500,
 	TOOL_WORKFLOW: 2600,
 	TOOL_RALPH: 2700,
 	TOOL_SUBAGENT: 2800,
 	TOOL_REPORT: 2900,
+	TOOL_COMPUTER_USE: 3e3,
+	MCP_SERVERS: 3100,
 	TOOLS_SDK: 5e3,
 	DELIVERABLE_FILE_REFERENCES: 9e3,
-	STRUCTURED_OUTPUT: 9900
+	STRUCTURED_OUTPUT: 9900,
+	HARNESS_SOURCE: 1e4,
+	WEB_SURFACE: 10100,
+	DEPLOYMENT_PERSONA_SUFFIX: 10200
+};
+const CONTEXT_ORDERS = {
+	SANDBOX_POLICY: 110,
+	APPROVAL_POLICY: 115,
+	SUBAGENT_DELEGATION: 120
 };
 /**
-* The deployment persona's section name and order. Exported because a
+* The deployment persona prefix's section name. Exported because a
 * composition can replace this slot — an agent preset shadows the
 * deployment's persona with its own — and both sides naming the same section
 * is what makes the replacement work rather than duplicate.
 */
-const PERSONA_SECTION = "deployment:persona";
-/** Prompt order of the persona slot. */
-const PERSONA_ORDER = FIRST_PARTY_SECTION_ORDER.DEPLOYMENT_PERSONA;
+const PERSONA_PREFIX_SECTION = "deployment:persona-prefix";
+/** Deployment persona suffix section name shared by global and scoped contributions. */
+const PERSONA_SUFFIX_SECTION = "deployment:persona-suffix";
 /** Valid variable names: how they are written between the braces. */
 const VARIABLE_NAME = /^[a-z][a-z0-9_]*$/;
 /** A complete `{{...}}` reference group at the scan position (validated after). */
@@ -104,14 +103,15 @@ function compareToolNames(a, b) {
 }
 /**
 * Interpolate strict `{{variable}}` references, drop empty sections, and join
-* the rest with blank lines. Malformed, unknown, or undefined references throw;
+* the rest with blank lines. Sections with `interpolate: false` retain literal
+* text. Malformed, unknown, or undefined references in other sections throw;
 * a lone `{{` without any later `}}` is literal prose, and substituted values
 * are not scanned again.
 * @param assembly - the assembly whose sections and variables to render.
 * @returns the rendered prompt, or `''` when all sections are empty.
 */
 function renderPrompt(assembly) {
-	return assembly.sections.map((section) => interpolate(section, assembly.variables, "section")).filter((text) => text.length > 0).join("\n\n");
+	return assembly.sections.map((section) => section.interpolate === false ? section.text : interpolate(section, assembly.variables, "section")).filter((text) => text.length > 0).join("\n\n");
 }
 /**
 * Render the complete dynamic context snapshot.
@@ -201,7 +201,8 @@ var SystemPrompt = class extends Service {
 	static Config = z.object({
 		includeHarnessIdentity: z.boolean().default(true),
 		includeRuntimeContext: z.boolean().default(true),
-		persona: z.string().default(""),
+		personaPrefix: z.string().default(""),
+		personaSuffix: z.string().default(""),
 		toolOrder: z.array(z.string()).default(void 0)
 	});
 	layers = new ScopedLayers((scope) => new PromptLayer(scope), () => {
@@ -213,13 +214,18 @@ var SystemPrompt = class extends Service {
 		this.toolOrder = validateToolOrder(config.toolOrder);
 		if (config.includeHarnessIdentity ?? true) this.section({
 			name: "harness:identity",
-			order: FIRST_PARTY_SECTION_ORDER.HARNESS_IDENTITY,
+			order: this.getSectionOrder("HARNESS_IDENTITY"),
 			text: "You are an AI agent powered by DeepSeek Harness."
 		});
 		this.section({
-			name: PERSONA_SECTION,
-			order: PERSONA_ORDER,
-			text: config.persona ?? ""
+			name: PERSONA_PREFIX_SECTION,
+			order: this.getSectionOrder("DEPLOYMENT_PERSONA_PREFIX"),
+			text: config.personaPrefix ?? ""
+		});
+		this.section({
+			name: PERSONA_SUFFIX_SECTION,
+			order: this.getSectionOrder("DEPLOYMENT_PERSONA_SUFFIX"),
+			text: config.personaSuffix ?? ""
 		});
 		if (!(config.includeRuntimeContext ?? true)) this.suppressRuntimeContext();
 	}
@@ -234,6 +240,22 @@ var SystemPrompt = class extends Service {
 	section(section) {
 		if (!Number.isFinite(section.order)) throw new TypeError(`prompt section "${section.name}" order must be a finite number`);
 		return this.layers.effect(this.ctx, (layer) => layer.sections.insert(section.name, section), { label: "systemPrompt.section()" });
+	}
+	/**
+	* Resolve the centrally owned placement of a repository prompt section.
+	* @param name - stable section placement name.
+	* @returns the section's numeric sort order.
+	*/
+	getSectionOrder(name) {
+		return SECTION_ORDERS[name];
+	}
+	/**
+	* Resolve the centrally owned placement of a repository runtime context.
+	* @param name - stable context placement name.
+	* @returns the context's numeric sort order.
+	*/
+	getContextOrder(name) {
+		return CONTEXT_ORDERS[name];
 	}
 	/**
 	* Register ordered dynamic context in the calling context's scope. Scoped
@@ -299,10 +321,11 @@ var SystemPrompt = class extends Service {
 		const knownNames = /* @__PURE__ */ new Set();
 		for (const provider of providers) {
 			const result = provider(context);
-			const schemas = result.schemas.map(({ name, description, parameters }) => ({
+			const schemas = result.schemas.map(({ name, description, parameters, deferLoading }) => ({
 				name,
 				description,
-				parameters: structuredClone(parameters)
+				parameters: structuredClone(parameters),
+				...deferLoading === true ? { deferLoading } : {}
 			}));
 			const acceptedKnownNames = result.knownNames ?? schemas.map((tool) => tool.name);
 			collected.push(...schemas);
@@ -316,7 +339,8 @@ var SystemPrompt = class extends Service {
 			sections: sectionDefinitions.map((section) => {
 				const assembled = {
 					name: section.name,
-					text: typeof section.text === "function" ? section.text(context) : section.text
+					text: typeof section.text === "function" ? section.text(context) : section.text,
+					...section.interpolate !== void 0 ? { interpolate: section.interpolate } : {}
 				};
 				if (section.complete === true) completeSection = { ...assembled };
 				return assembled;
@@ -338,4 +362,4 @@ var SystemPrompt = class extends Service {
 	}
 };
 //#endregion
-export { FIRST_PARTY_SECTION_ORDER, PERSONA_ORDER, PERSONA_SECTION, SystemPrompt, SystemPrompt as default, TOOL_ORDER_REST, joinContextSections, renderContextSections, renderContextSnapshot, renderPrompt };
+export { PERSONA_PREFIX_SECTION, PERSONA_SUFFIX_SECTION, SystemPrompt, SystemPrompt as default, TOOL_ORDER_REST, joinContextSections, renderContextSections, renderContextSnapshot, renderPrompt };

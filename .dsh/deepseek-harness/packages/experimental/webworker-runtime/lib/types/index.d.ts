@@ -3,9 +3,11 @@
  * @module @deepseek-ai/dsh-experimental-webworker-runtime
  */
 export { createAlsRuntime, type AlsCausality, type AlsRuntime, type AlsSnapshot, type AlsToken, } from './polyfill/async-context/als-runtime.ts';
-export { parseInboundFrame, type TunnelAbortFrame, type TunnelInboundFrame, type TunnelOutboundFrame, type TunnelRequestFrame, type TunnelRequestId, type TunnelResponseChunkFrame, type TunnelResponseEndFrame, type TunnelResponseErrorFrame, type TunnelResponseFrame, type TunnelResponseHeadFrame, type TunnelStreamEndFrame, type TunnelStreamErrorFrame, type TunnelStreamItemFrame, type TunnelStreamOpenFrame, } from './transport/frames.ts';
+export { parseInboundFrame, type TunnelAbortFrame, type TunnelInboundFrame, type TunnelOutboundFrame, type TunnelRequestFrame, type TunnelRequestId, type TunnelResponseChunkFrame, type TunnelResponseEndFrame, type TunnelResponseErrorFrame, type TunnelResponseFrame, type TunnelResponseHeadFrame, type TunnelStreamEndFrame, type TunnelStreamErrorFrame, type TunnelStreamUplinkEndFrame, type TunnelStreamUplinkItemFrame, type TunnelStreamItemFrame, type TunnelStreamOpenFrame, } from './transport/frames.ts';
 export { DEFAULT_CONDITIONS, requireActiveModuleLoader, setActiveModuleLoader, WorkerModuleLoader, type Resolution, type StaticModuleFactory, type WorkerModuleLoaderOptions, type WorkerRequire, } from './module-system/module-loader.ts';
 export * as posixPath from './module-system/posix-path.ts';
+export { MODULE_PROXIES, MODULE_PROXY_PREFIXES } from './module-proxies.ts';
+export { REPLACED_EXTERNAL_PACKAGES } from './node/external_packages/replaced-externals.ts';
 export { createSyntheticExchange, type RequestListener, type ResponseSink, type SyntheticExchange, } from './transport/synthetic-http.ts';
 export { lowerModuleSource, type LoweredModule } from './compile/transform.ts';
 export { API_PREFIX, SYNTHETIC_HOST, TunnelServer, type TunnelPort, type TunnelSeams, type TunnelServerOptions, } from './transport/tunnel.ts';

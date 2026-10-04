@@ -2,7 +2,9 @@
  * The sandbox POLICY home (`ctx.sandboxPolicy`): the single owner of the
  * deployment's sandbox fallbacks plus per-session resolution: the file-effect
  * {@link SandboxMode}, the `workspace-write` root, and the override kit (the
- * `sandbox/mode` event, its fold, and its write path, from `./session-mode.ts`).
+ * `sandbox/mode` event, its fold, and its write path; the fold is the
+ * `sandboxMode` session-projection unit registered here, while the event and
+ * write path come from `./session-mode.ts`).
  * Before each agent request, the owner also contributes the resolved policy to
  * the cache-safe runtime-context snapshot. The agent loop logs that snapshot as
  * model history, so replay reconstructs the same mode and root the enforcing
@@ -17,15 +19,16 @@
  *
  * @module @deepseek-ai/dsh-sandbox-policy
  */
-import { resolve as resolvePath } from 'node:path';
+import { isAbsolute } from 'node:path';
 import { Service } from '@deepseek-ai/cordis';
+import { z as zod } from 'zod';
 import z from '@deepseek-ai/schemastery';
-import { canonicalPath } from '@deepseek-ai/dsh-sandbox';
-import { effectiveSandboxMode } from "./session-mode.js";
-export { SANDBOX_MODES, effectiveSandboxMode, setSandboxMode } from "./session-mode.js";
-/** Resolve filesystem identity before lexical normalization can erase symlink-sensitive components. */
+export { SANDBOX_MODES, setSandboxMode } from "./session-mode.js";
+/** Preserve execution-world spelling; enforcing providers resolve filesystem identity on their host. */
 function resolveWorkspaceRoot(path) {
-    return resolvePath(canonicalPath(path));
+    if (!isAbsolute(path))
+        throw new Error('sandbox-policy: workspace root must be an absolute execution-world path');
+    return path;
 }
 /** Render the policy without claiming which capabilities are mounted. */
 function renderPolicyContext(policy) {
@@ -43,6 +46,12 @@ function renderPolicyContext(policy) {
         }
     }
 }
+/** The sandbox-mode projection's state schema (state equals the public shape). */
+const sandboxModeStateSchema = zod.union([
+    zod.literal('read-only'),
+    zod.literal('workspace-write'),
+    zod.literal('danger-full-access'),
+]).nullable();
 /**
  * The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment
  * default mode, fallback workspace root, and current request-time policy
@@ -57,6 +66,7 @@ export class SandboxPolicyService extends Service {
         // stored root is always absolute regardless of how it was supplied.
         workspaceRoot: z.string(),
     });
+    static inject = ['sessionProjections'];
     /** The deployment default mode — the fallback beneath a session override. */
     defaultMode;
     /** The absolute `workspace-write` fallback root for calls without a session cwd. */
@@ -68,10 +78,17 @@ export class SandboxPolicyService extends Service {
         // the process cwd is real branching, resolved absolute either way.
         this.defaultMode = config.mode;
         this.workspaceRoot = resolveWorkspaceRoot(config.workspaceRoot ?? process.cwd());
+        ctx.sessionProjections.register({
+            key: 'sandboxMode',
+            stateVersion: 1,
+            stateSchema: sandboxModeStateSchema,
+            init: () => null,
+            apply: (state, event) => (event.type === 'sandbox/mode' ? event.data.mode : state),
+        });
         ctx.inject(['systemPrompt'], (scope) => {
             scope.systemPrompt.context({
                 name: 'sandbox:policy',
-                order: 110,
+                order: scope.systemPrompt.getContextOrder('SANDBOX_POLICY'),
                 text: (context) => {
                     const session = context.agent?.session;
                     return session === undefined
@@ -104,7 +121,7 @@ export class SandboxPolicyService extends Service {
      * @returns the last logged mode, or `undefined` without one.
      */
     overrideOf(session) {
-        return effectiveSandboxMode(session.events);
+        return this.ctx.sessionProjections.stateOf(session, 'sandboxMode') ?? undefined;
     }
 }
 export default SandboxPolicyService;

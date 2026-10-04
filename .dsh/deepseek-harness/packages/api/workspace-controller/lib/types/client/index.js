@@ -3,7 +3,7 @@ import { RemoteSnapshotStream, RemoteStreamCarrierError, } from '@deepseek-ai/ds
 import { ClientWorkspaceModel } from "./model.js";
 import { WorkspaceController } from "./service.js";
 export { ClientWorkspaceModel } from "./model.js";
-export { WorkspaceController, WorkspaceCreateError } from "./service.js";
+export { WorkspaceArchiveError, WorkspaceController, WorkspaceCreateError } from "./service.js";
 /** Required Client Remote services. */
 export const inject = ['remote', 'remote.workspace'];
 /**
@@ -11,10 +11,9 @@ export const inject = ['remote', 'remote.workspace'];
  * @param ctx - Client root Context.
  */
 export function apply(ctx) {
-    const remote = ctx.remote;
-    const model = new ClientWorkspaceModel(remote.workspace);
+    const model = new ClientWorkspaceModel(ctx.remote.workspace);
     new WorkspaceController(ctx, model);
-    const control = createWorkspaceStateStream(remote, {
+    const control = createWorkspaceStateStream(ctx.remote, {
         accept: model,
         carrierFailed: () => { model.handleCarrierFailure(); },
         failed: (error) => { model.handleStreamFailure(error); },
@@ -24,7 +23,7 @@ export function apply(ctx) {
 }
 /**
  * Create the reconnecting Workspace state stream.
- * @param remote - generated Workspace namespace and Gateway stream factory.
+ * @param remote - Client Remote face carrying the Workspace namespace and the stream factory.
  * @param options - Workspace state destinations.
  * @returns an unstarted stream owned by the Client Workspace runtime.
  */
@@ -58,6 +57,9 @@ function acceptIncrement(accept, frame) {
             return;
         case 'archived':
             accept.replaceArchived(frame.archivedSessionIds);
+            return;
+        case 'pinned':
+            accept.replacePinned(frame.pinnedSessionIds);
             return;
         /* v8 ignore next -- the generated Remote codec validates this closed union */
         default:

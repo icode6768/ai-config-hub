@@ -8,7 +8,7 @@ import { instructionContentSha1, trimmedInstructionDigest } from "./digest.js";
 import { ancestorChain, descendantDirsBetween, findProjectRoot, probeScopeInstruction, readScopeInstruction, relativeDisplay, } from "./files.js";
 import { candidateScopeKey, decodeScopeKey, instructionScopeKey, renderInstructionChanges, USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE, } from "./render.js";
 export const name = 'agent-instructions';
-function workspaceContextHook(text, changes) {
+function agentInstructionsHook(text, changes) {
     return createUserMessage({
         content: [{ type: 'text', text }],
         source: { kind: 'agent-instructions', form: 'instructions', changes },
@@ -19,13 +19,13 @@ function workspaceContextHook(text, changes) {
  * @param text - complete plugin-owned system-reminder text.
  * @returns a user-role prefix message.
  */
-export function workspaceContextMessage(text) {
+export function agentInstructionsMessage(text) {
     return createUserMessage({
         content: [{ type: 'text', text }],
-        source: { kind: 'plugin', plugin: name },
+        source: { kind: name, form: 'instructions', changes: [] },
     });
 }
-function isWorkspaceContextSource(source) {
+function isAgentInstructionsSource(source) {
     return typeof source === 'object' && source !== null
         && 'kind' in source && source.kind === 'agent-instructions'
         && 'changes' in source && Array.isArray(source.changes);
@@ -60,19 +60,19 @@ function sameInstructionChange(a, b) {
         && a.digest === b.digest;
 }
 function visibleInstructionChanges(agent, authorityMessages) {
-    const visibleSeqs = new Set(agent.session.surface.nodes);
     const visible = new Map();
-    for (const [seq, event] of agent.session.events.entries()) {
-        if (event.type !== 'user/message' || !isWorkspaceContextSource(event.data.source))
+    for (const seq of agent.session.surface.nodes) {
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+        const event = agent.session.eventAt(seq);
+        if (event?.type !== 'user/message' || !isAgentInstructionsSource(event.data.source))
             continue;
         const changes = workspaceInstructionChanges(event.data.source);
         for (const change of changes) {
-            if (visibleSeqs.has(seq))
-                visible.set(change.scope, change);
+            visible.set(change.scope, change);
         }
     }
     for (const message of authorityMessages) {
-        if (!isWorkspaceContextSource(message.source))
+        if (!isAgentInstructionsSource(message.source))
             continue;
         for (const change of workspaceInstructionChanges(message.source)) {
             visible.set(change.scope, change);
@@ -186,7 +186,7 @@ export async function reconcileInstructionContext(agent, resolved, versionCache,
     }
     for (const message of options.scopeMessages) {
         /* v8 ignore next -- the plugin passes its workspace-only pending projection. */
-        if (!isWorkspaceContextSource(message.source))
+        if (!isAgentInstructionsSource(message.source))
             continue;
         for (const change of workspaceInstructionChanges(message.source)) {
             if (!options.includeBaselineScopes && baselineScopes.has(change.scope))
@@ -352,7 +352,7 @@ export async function reconcileInstructionContext(agent, resolved, versionCache,
     if (rendered.text.length === 0 || rendered.changes.length === 0)
         return undefined;
     return {
-        context: workspaceContextHook(rendered.text, rendered.changes),
+        context: agentInstructionsHook(rendered.text, rendered.changes),
         versionUpdates: retainedInstructionVersionUpdates(versionUpdates, rendered.changes),
     };
 }

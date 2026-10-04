@@ -8,7 +8,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * preference. The displayed value follows the persisted setting, never the
  * click echo.
  */
-import { IconChevronDownOutline14, IconChevronUpOutline14, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconChevronDownOutlineRegular, IconChevronUpOutlineRegular, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN } from "../theme-settings.js";
 import css from './FontSizeRow.module.css';
 /**
@@ -18,6 +18,6 @@ import css from './FontSizeRow.module.css';
  */
 export function FontSizeRow({ t, setFontSize, useStore }) {
     const fontSize = useStore(s => s.fontSize);
-    return (_jsxs("div", { className: css.row, children: [_jsxs("div", { className: css.rowText, children: [_jsx("div", { className: css.title, children: t('fontSize.title') }), _jsx("div", { className: css.desc, children: t('fontSize.description') })] }), _jsxs("div", { className: css.control, children: [_jsxs("div", { className: css.stepper, children: [_jsx("span", { className: css.value, children: fontSize }), _jsxs("span", { className: css.arrows, children: [_jsx("button", { type: "button", className: css.arrow, "aria-label": t('fontSize.increase'), disabled: fontSize >= FONT_SIZE_MAX, onClick: () => { setFontSize(fontSize + 1); }, children: _jsx(IconChevronUpOutline14, { size: 9 }) }), _jsx("button", { type: "button", className: css.arrow, "aria-label": t('fontSize.decrease'), disabled: fontSize <= FONT_SIZE_MIN, onClick: () => { setFontSize(fontSize - 1); }, children: _jsx(IconChevronDownOutline14, { size: 9 }) })] })] }), _jsx("span", { className: css.unit, children: t('fontSize.unit') })] })] }));
+    return (_jsxs("div", { className: css.row, children: [_jsxs("div", { className: css.rowText, children: [_jsx("div", { className: css.title, children: t('fontSize.title') }), _jsx("div", { className: css.desc, children: t('fontSize.description') })] }), _jsxs("div", { className: css.control, children: [_jsxs("div", { className: css.stepper, children: [_jsx("span", { className: css.value, children: fontSize }), _jsxs("span", { className: css.arrows, children: [_jsx("button", { type: "button", className: css.arrow, "aria-label": t('fontSize.increase'), disabled: fontSize >= FONT_SIZE_MAX, onClick: () => { setFontSize(fontSize + 1); }, children: _jsx(IconChevronUpOutlineRegular, { size: 9 }) }), _jsx("button", { type: "button", className: css.arrow, "aria-label": t('fontSize.decrease'), disabled: fontSize <= FONT_SIZE_MIN, onClick: () => { setFontSize(fontSize - 1); }, children: _jsx(IconChevronDownOutlineRegular, { size: 9 }) })] })] }), _jsx("span", { className: css.unit, children: t('fontSize.unit') })] })] }));
 }
 //# sourceMappingURL=FontSizeRow.js.map

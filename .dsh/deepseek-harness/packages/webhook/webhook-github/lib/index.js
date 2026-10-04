@@ -1,7 +1,7 @@
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
 import z from "@deepseek-ai/schemastery";
 import { Webhooks } from "@octokit/webhooks";
-import { snapshotJsonValue } from "@deepseek-ai/dsh-session";
+import { snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
 import { WebhookDeliveryId, WebhookSourceId } from "@deepseek-ai/dsh-webhook";
 //#region lib/types/body.js
 /** Bounded raw HTTP body intake for GitHub signature verification. */

@@ -9,7 +9,8 @@
  * @module dsh-subprocess-local/windows-inspector
  */
 import { spawnSync } from 'node:child_process';
-import koffi from 'koffi';
+import { createLazyRequire } from '@deepseek-ai/dsh-lazy-require';
+const requireKoffi = createLazyRequire('koffi', import.meta.url);
 /**
  * Walk a process table from one root in children-first order, retaining only
  * members whose start identity is readable (unreadable members are detector
@@ -105,7 +106,10 @@ function taskkillTree(pid, force) {
         return;
     // Outcome deliberately unchecked: an already-absent tree, exit races, and a
     // missing taskkill binary are as tolerable here as ESRCH is for POSIX.
-    spawnSync('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])], { stdio: 'ignore' });
+    spawnSync('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])], {
+        stdio: 'ignore',
+        windowsHide: true,
+    });
 }
 /**
  * True for NULL and INVALID_HANDLE_VALUE returns from Win32 handle APIs.
@@ -118,7 +122,6 @@ export function isInvalidHandle(value) {
     const asBigInt = value;
     return asBigInt === 0n || asBigInt === 0xffffffffffffffffn || asBigInt === -1n;
 }
-const PVOID = koffi.pointer('void');
 /**
  * Resolve the koffi Win32 struct types once. Registration is lazy and cached
  * because koffi's type registry is global per process: test runners that
@@ -128,6 +131,8 @@ const PVOID = koffi.pointer('void');
 function win32Structs() {
     if (cachedStructs !== undefined)
         return cachedStructs;
+    const koffi = requireKoffi();
+    const PVOID = koffi.pointer('void');
     // koffi PROCESSENTRY32W layout (tlhelp32.h); the size assert pins the x64 layout.
     const PROCESSENTRY32W = koffi.struct('PROCESSENTRY32W', {
         dwSize: 'uint32',
@@ -151,7 +156,7 @@ function win32Structs() {
         throw new Error(`PROCESSENTRY32W layout mismatch: koffi computed ${PROCESSENTRY32W.size}, Windows headers say 568`);
     }
     /* v8 ignore stop */
-    cachedStructs = { PROCESSENTRY32W, FILETIME };
+    cachedStructs = { PVOID, PROCESSENTRY32W, FILETIME };
     return cachedStructs;
 }
 let cachedStructs;
@@ -168,7 +173,8 @@ let cachedBindings;
 function win32Bindings() {
     if (cachedBindings !== undefined)
         return cachedBindings;
-    const { PROCESSENTRY32W, FILETIME } = win32Structs();
+    const koffi = requireKoffi();
+    const { PVOID, PROCESSENTRY32W, FILETIME } = win32Structs();
     const kernel32 = koffi.load('kernel32.dll');
     const bind = (name, result, args) => kernel32.func('__stdcall', name, result, args);
     cachedBindings = {
@@ -196,11 +202,13 @@ function win32Bindings() {
  * @returns the branded allocation pointer.
  */
 function allocNative(type, count) {
+    const koffi = requireKoffi();
     const value = koffi.alloc(type, count);
     return value;
 }
 /** Enumerate the current process table through Toolhelp32. */
 function snapshotWindowsProcesses(bindings) {
+    const koffi = requireKoffi();
     const { PROCESSENTRY32W } = win32Structs();
     const snapshot = bindings.createToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     /* v8 ignore next -- an invalid snapshot for the process flag is not producible through the public API;
@@ -225,6 +233,7 @@ function snapshotWindowsProcesses(bindings) {
 }
 /** Read one process's creation identity and current wait state. */
 function windowsProcessState(bindings, pid) {
+    const koffi = requireKoffi();
     const { FILETIME } = win32Structs();
     const handle = bindings.openProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, 0, pid);
     if (isInvalidHandle(handle))

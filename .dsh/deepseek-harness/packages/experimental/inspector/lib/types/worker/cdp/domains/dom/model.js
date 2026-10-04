@@ -3,6 +3,7 @@ import { cdpNumericId } from "../../ids.js";
 /** Assigns durable backend ids and projects the latest source snapshots. */
 export class CordisDomBackend {
     trees;
+    clientSourceId;
     backendIdByKey = new Map();
     listeners = new Set();
     documentValue;
@@ -10,18 +11,32 @@ export class CordisDomBackend {
     nextRevision = 1;
     unsubscribe;
     nodeByObject = new Map();
-    constructor(trees) {
+    /**
+     * @param trees - Shared store; this backend owns only its subscription and projection.
+     * @param clientSourceId - Restrict Clients to this source; omission includes every retained Client.
+     */
+    constructor(trees, clientSourceId) {
         this.trees = trees;
+        this.clientSourceId = clientSourceId;
         this.documentValue = this.build();
         this.unsubscribe = trees.subscribe((event) => {
             const previous = this.documentValue;
             this.documentValue = this.build();
-            if (event.type === 'source-disconnected')
+            if (event.type === 'source-disconnected' && this.includesSource(event.source)) {
                 this.emit({ type: 'source-disconnected', source: event.source });
+            }
             const mutations = diffDocument(previous, this.documentValue);
             if (mutations.length > 0)
                 this.emit({ type: 'tree-mutated', mutations });
         });
+    }
+    /**
+     * Create an independent Host-and-Client projection over the same retained snapshots.
+     * @param sourceId - Client source to include across its reconnect generations.
+     * @returns A new backend whose caller must close; closing it leaves this backend and the store intact.
+     */
+    forClient(sourceId) {
+        return new CordisDomBackend(this.trees, sourceId);
     }
     /**
      * Read the latest connection-neutral semantic document.
@@ -39,7 +54,7 @@ export class CordisDomBackend {
         this.listeners.add(listener);
         return () => { this.listeners.delete(listener); };
     }
-    /** Release repository subscriptions at Worker shutdown. */
+    /** Release only this backend's store subscription and listeners. */
     close() {
         this.unsubscribe();
         this.listeners.clear();
@@ -60,8 +75,15 @@ export class CordisDomBackend {
      * @returns The current projected node, when present.
      */
     nodeForObjectKind(kind, reference) {
+        if (kind === 'client' && this.clientSourceId !== undefined) {
+            const tree = this.trees.tree().clients.find(tree => tree.source.sourceId === this.clientSourceId);
+            return tree === undefined ? undefined : this.nodeForObject(tree.source, reference);
+        }
         const route = this.trees.resolveObjectInKind(kind, reference);
         return route === undefined ? undefined : this.nodeForObject(route.source, reference);
+    }
+    includesSource(source) {
+        return this.clientSourceId === undefined || source.kind === 'host' || source.sourceId === this.clientSourceId;
     }
     /**
      * Resolve one realm-neutral Runtime reference to its current projected node.
@@ -86,7 +108,12 @@ export class CordisDomBackend {
             host.children.push(this.entity(tree.host, tree.host.snapshot.root));
         const clients = this.node('clients', 'clients', [], '<clients>');
         for (const clientTree of tree.clients) {
-            const client = this.node(`client:${clientTree.source.sourceId}`, 'client', [], '<client>');
+            if (!this.includesSource(clientTree.source))
+                continue;
+            const attributes = clientTree.connection.state === 'disconnected'
+                ? [['disconnected', '']]
+                : [];
+            const client = this.node(`client:${clientTree.source.sourceId}`, 'client', attributes, elementDescription('client', attributes));
             client.children.push(this.entity(clientTree, clientTree.snapshot.root));
             clients.children.push(client);
         }

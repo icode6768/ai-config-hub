@@ -4,24 +4,25 @@
  * plugin reload cannot reuse a module-global handle.
  */
 import { defineStore } from '@deepseek-ai/dsh-client-store';
-const emptyProgress = () => ({ index: 0, drafts: [] });
 /**
- * Declare the question composer's transient Session store.
- * @returns a non-persisted store handle whose instance is owned by the Slot registry.
+ * Declare the question composer's Session store. Drafts persist per Session so
+ * leaving the Session or restarting the Client does not erase an unfinished answer.
+ * @returns a persisted store handle whose instance is owned by the Slot registry.
  */
 export function createQuestionDraftStore() {
     return defineStore({
-        init: () => ({ progress: emptyProgress() }),
+        init: () => ({ progressByRequest: {} }),
+        persist: 'dsh.user-questions.drafts.v1',
         actions: {
             replace: (draft, requestKey, progress) => {
-                draft.requestKey = requestKey;
-                draft.progress = progress;
+                draft.progressByRequest[requestKey] = progress;
             },
             clear: (draft, requestKey) => {
-                if (draft.requestKey !== requestKey)
-                    return;
-                delete draft.requestKey;
-                draft.progress = emptyProgress();
+                draft.progressByRequest = Object.fromEntries(Object.entries(draft.progressByRequest).filter(([key]) => key !== requestKey));
+            },
+            prune: (draft, keep) => {
+                const live = new Set(keep);
+                draft.progressByRequest = Object.fromEntries(Object.entries(draft.progressByRequest).filter(([key]) => live.has(key)));
             },
         },
     });

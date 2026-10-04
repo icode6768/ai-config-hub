@@ -10,15 +10,18 @@
  * memory unchanged.
  *
  * Per-record contract: a record document that is malformed or stamped with a
- * different version reads as an absent record — one bad or stale file never
- * bricks the whole unit, and a version bump discards stale records instead
- * of migrating them. Record keys become path segments, so they must be
- * path-safe (`[a-zA-Z0-9_-]+`); an unsafe key rejects at write.
+ * version outside the accepted set (the descriptor's current version plus
+ * its `compatibleVersions`) reads as an absent record — one bad or stale
+ * file never bricks the whole unit, and an unaccepted version stamp discards
+ * the record instead of migrating it. Record keys become path segments, so
+ * they must be path-safe (`[a-zA-Z0-9_-]+`); an unsafe key rejects at write.
  *
  * Legacy bootstrap: when the new tree has no document path, a legacy
  * whole-unit file `<root>/<name>.json` (the pre-per-record layout) seeds
- * per-record documents. Any new document path, including one whose contents
- * are unreadable or stale, suppresses the bootstrap for the whole unit. The
+ * per-record documents, provided its stored unit version is in the accepted
+ * set — a legacy file stamped with any other version is left alone and reads
+ * as the empty unit. Any new document path, including one whose contents are
+ * unreadable or stale, suppresses the bootstrap for the whole unit. The
  * legacy file is never changed or deleted.
  * @module @deepseek-ai/dsh-storage-json/src/per-record-unit
  */
@@ -56,6 +59,14 @@ export declare class PerRecordJsonUnit implements KvUnit {
     putRecord(table: string, key: string, value: unknown): Promise<void>;
     /** Durably delete one record. Idempotent: a missing key is a no-op. */
     deleteRecord(table: string, key: string): Promise<void>;
+    /**
+     * Move one record's document aside as `<key>.json.bak.<YYYYMMDDHHmm>`. The
+     * moved file no longer ends in `.json`, so every later read ignores it; the
+     * bytes stay on disk for inspection. A same-minute backup of the same
+     * key overwrites the previous backup (the newer bytes are the ones worth
+     * keeping).
+     */
+    backupRecord(table: string, key: string): Promise<string>;
     /** Durably replace the global singleton. Only valid when declared. */
     setGlobal(value: unknown): Promise<void>;
     /** Drain in-flight writes and release the unit. Idempotent. */

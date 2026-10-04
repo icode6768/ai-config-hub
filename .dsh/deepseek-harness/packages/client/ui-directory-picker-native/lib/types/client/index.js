@@ -8,7 +8,9 @@ export const inject = ['slots', 'uiWorkspace'];
  * @param ctx - client root context.
  */
 export function apply(ctx) {
-    const injected = () => ({ pick: () => ctx.uiWorkspace.pickDirectory() });
+    const desktop = globalThis.__DSH_DIRECTORY_PICKER__;
+    const pick = desktop === undefined ? () => ctx.uiWorkspace.pickDirectory() : () => desktop.pick();
+    const injected = () => ({ pick });
     // Both declaration lifetimes must be live before the pair installs; the
     // generator makes the two registrations one transactional effect. The
     // outer/inner nesting order is arbitrary; neither hole has precedence.

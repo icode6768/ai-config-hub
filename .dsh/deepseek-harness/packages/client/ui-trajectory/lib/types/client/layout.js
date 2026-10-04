@@ -6,15 +6,41 @@ function layoutEntryOrder(entry) {
         : entry.seq;
 }
 function inputCellDetail(node, t) {
-    // An empty text block yields an empty preview; treat it as absent so an
-    // image-bearing record still labels its row instead of rendering blank.
+    if (node.kind === 'context' && node.content.length > 0
+        && node.content.every(block => block.type === 'tool-addition' || block.type === 'tool-removal')) {
+        const added = node.content.flatMap(block => block.type === 'tool-addition' ? [block.toolName] : []);
+        const removed = node.content.flatMap(block => block.type === 'tool-removal' ? [block.toolName] : []);
+        const single = node.content.length === 1 ? node.content[0] : undefined;
+        const summary = added.length > 0 && removed.length > 0
+            ? t('layout.toolsChanged', { added: added.length, removed: removed.length })
+            : added.length > 0 ? t('layout.toolsAddedCount', { count: added.length })
+                : t('layout.toolsRemovedCount', { count: removed.length });
+        return {
+            text: single !== undefined
+                ? t(single.type === 'tool-addition' ? 'layout.toolAdded' : 'layout.toolRemoved', { name: single.toolName })
+                : `${t('layout.toolUpdateNotice')} · ${summary}`,
+            sourceSeq: node.seq,
+            sourceBlocks: node.content.map(block => ({ type: block.type, content: block.toolName })),
+            ...(single !== undefined ? {} : { inputDetail: [
+                    ...added.length > 0 ? [t('layout.toolsAdded', { names: added.join(', ') })] : [],
+                    ...removed.length > 0 ? [t('layout.toolsRemoved', { names: removed.join(', ') })] : [],
+                ].join('\n') }),
+            timeSeconds: 0,
+            startedAt: finiteTime(node.time),
+        };
+    }
     const preview = previewContent(node.content);
     const previewMarkdown = preview === '' ? undefined : preview;
     const images = imageBlockCount(node.content);
+    const files = fileBlockCount(node.content);
+    const attachmentSummary = [
+        images > 0
+            ? t('layout.imageCount', { count: images })
+            : undefined,
+        files > 0 ? t('layout.fileAttachments', { count: files }) : undefined,
+    ].filter((value) => value !== undefined).join(' · ');
     return {
-        text: previewMarkdown === undefined && images > 0
-            ? t('layout.imageOnly', { count: images })
-            : '',
+        text: attachmentSummary,
         ...(previewMarkdown === undefined ? {} : { previewMarkdown }),
         sourceSeq: node.seq,
         messageSource: node.source,
@@ -45,6 +71,8 @@ export function deriveTrajectoryLayout(input, t) {
             callStartById.set(result.callId, startedAt);
     }
     for (const call of runningCalls) {
+        if (call.phase === 'preparing')
+            continue;
         const startedAt = finiteTime(call.time);
         if (startedAt !== null)
             callStartById.set(call.callId, startedAt);
@@ -113,6 +141,10 @@ export function deriveTrajectoryLayout(input, t) {
             representedRequests.add(`${call.turn}\u0000${call.step}`);
     }
     const entries = [
+        ...(input.systemPrompts ?? []).map(prompt => ({
+            kind: 'system', seq: prompt.seq, systemPrompt: prompt.text,
+            change: { seq: prompt.seq, time: prompt.time, kind: prompt.update ? 'system' : 'initial' },
+        })),
         ...nodes.map((node, nodeIndex) => ({
             kind: 'node',
             seq: node.seq,
@@ -180,7 +212,8 @@ export function deriveTrajectoryLayout(input, t) {
                     kind: 'system',
                     text: promptChangeLabel(change, t),
                     sourceSeq: change.seq,
-                    ...(request.prompt === undefined ? {} : { promptDetail: request.prompt }),
+                    ...(request?.prompt === undefined ? {} : { promptDetail: request.prompt }),
+                    ...(entry.systemPrompt === undefined ? {} : { systemPromptDetail: entry.systemPrompt }),
                     ...(change.previous === undefined
                         ? {}
                         : { previousPromptDetail: change.previous }),
@@ -365,7 +398,7 @@ export function deriveTrajectoryLayout(input, t) {
     }
     const seenCalls = collectCallIds(turns);
     for (const call of runningCalls) {
-        if (seenCalls.has(call.callId))
+        if (call.phase === 'preparing' || seenCalls.has(call.callId))
             continue;
         const laidList = [{
                 absTime: null,
@@ -640,7 +673,7 @@ function summarizeAssistantActivity(blocks, t) {
     }
     const images = blocks.filter(block => block.kind === 'image').length;
     if (images > 0)
-        return t('layout.imageOnly', { count: images });
+        return t('layout.imageCount', { count: images });
     return '';
 }
 function promptChangeLabel(change, t) {
@@ -662,7 +695,7 @@ function assistantSourceBlock(block) {
             callId: block.callId,
             toolName: block.name,
         };
-        case 'image': return { type: 'image', content: '', attachment: block.attachment };
+        case 'image': return sourceBlock({ type: 'image', attachment: block.attachment });
         case 'other': return sourceBlock(block.block);
     }
 }
@@ -675,18 +708,27 @@ function sourceBlock(value) {
     if (typeof block.text === 'string') {
         return { type: type === 'reasoning' ? 'thinking' : type, content: block.text };
     }
-    if (type === 'image'
+    if ((type === 'image' || type === 'file')
         && typeof block.attachment === 'object' && block.attachment !== null
         && typeof block.attachment.attachmentId === 'string') {
         // Session-log content is validated into core ContentBlocks by the
         // Conversation node assembly; the `attachmentId` guard only keeps
         // wire-shaped 'other' blocks with an unrelated `attachment` member out.
-        return { type, content: '', attachment: block.attachment };
+        return {
+            type,
+            content: stringifySourceValue(value),
+            ...(type === 'image'
+                ? { attachment: block.attachment }
+                : { file: block.attachment }),
+        };
     }
     return { type, content: stringifySourceValue(value) };
 }
 function imageBlockCount(content) {
     return content.filter(block => block.type === 'image').length;
+}
+function fileBlockCount(content) {
+    return content.filter(block => block.type === 'file').length;
 }
 function stringifySourceValue(value) {
     const json = JSON.stringify(value, null, 2);
@@ -819,6 +861,8 @@ function expandSubCalls(subs, startIndex, t) {
     const out = [];
     let index = startIndex;
     for (const sub of subs) {
+        if (!('kind' in sub) && sub.phase === 'preparing')
+            continue;
         const settled = 'kind' in sub;
         const resultPreview = settled ? summarizeResult(sub, t) : undefined;
         const laid = {
@@ -863,6 +907,7 @@ function expandSubCalls(subs, startIndex, t) {
 }
 function summarizeCall(name, argsRaw) {
     return {
+        toolName: name,
         text: name,
         ...(argsRaw === '' ? {} : { previewMarkdown: argsRaw }),
     };
@@ -878,7 +923,7 @@ function summarizeResult(node, t) {
     }
     const images = imageBlockCount(node.content);
     if (images > 0)
-        return { result: t('layout.imageOnly', { count: images }) };
+        return { result: t('layout.imageCount', { count: images }) };
     return { result: t('record.noOutput') };
 }
 function resultAsText(result) {
@@ -903,7 +948,7 @@ function detailResult(node, t) {
         return text;
     const images = imageBlockCount(node.content);
     if (images > 0)
-        return t('layout.imageOnly', { count: images });
+        return t('layout.imageCount', { count: images });
     if (node.content.length === 0
         || node.content.every(block => block.type === 'text' && (typeof block.text !== 'string' || block.text === '')))
         return t('record.noOutput');

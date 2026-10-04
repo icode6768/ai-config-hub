@@ -9,7 +9,9 @@ export const LOCALE_ID_PATTERN = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u;
 /** Locale identifiers shipped by the browser client. */
 export const LOCALE_IDS = ['zh', 'en'];
 /** Durable locale schema; also the wire envelope the browser scope validates against. */
-export const LocaleSettingsSchema = z.object({
+export const LocaleSettingsFields = {
     [LOCALE_PREFERENCE_FIELD]: z.string().pattern(LOCALE_ID_PATTERN).required(false),
-});
+};
+/** Schema for the shared locale preference. */
+export const LocaleSettingsSchema = z.object(LocaleSettingsFields);
 //# sourceMappingURL=locale-settings.js.map

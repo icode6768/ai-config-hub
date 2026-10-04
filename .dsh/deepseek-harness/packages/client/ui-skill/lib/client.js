@@ -4,11 +4,69 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
-		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-skill\src\client\SkillRow.module.css.mjs
-		const css = ".RFJHfW_card{flex-direction:column;display:flex}.RFJHfW_row{align-items:center;min-width:0;height:24px;display:flex;position:relative;overflow:hidden}.RFJHfW_row[data-expandable]{cursor:pointer}.RFJHfW_card[data-state=running] .RFJHfW_row:after{content:\"\";background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);pointer-events:none;width:300px;animation:2.6s ease-out infinite RFJHfW_dsh-skill-row-sweep;position:absolute;inset:0 auto 0 0}@keyframes RFJHfW_dsh-skill-row-sweep{0%{left:-300px}90%,to{left:100%}}.RFJHfW_leading{width:16px;height:16px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.RFJHfW_chevron{color:var(--dsw-alias-label-secondary)}.RFJHfW_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.RFJHfW_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.RFJHfW_row:hover .RFJHfW_iconIdle{opacity:0}.RFJHfW_row:hover .RFJHfW_chevronHover{opacity:1}.RFJHfW_title{color:var(--dsw-alias-label-secondary);flex:none;font-size:14px;line-height:24px}.RFJHfW_separator{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.RFJHfW_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;font-size:14px;line-height:24px;overflow:hidden}.RFJHfW_errorSummary{color:var(--dsw-alias-state-error-primary)}.RFJHfW_bodyWrap{flex-direction:column;display:flex}.RFJHfW_instructionsCard{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);border-radius:12px;flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:hidden}.RFJHfW_instructionsHeader{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-markdown-code-block-banner);color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:8px 12px;font-size:11px;font-weight:500;line-height:16px}.RFJHfW_instructions{white-space:pre-wrap;overflow-wrap:anywhere;min-height:0;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);margin:0;padding:10px 12px 12px;overflow:auto}.RFJHfW_instructions[data-error]{color:var(--dsw-alias-state-error-primary)}.RFJHfW_instructions::-webkit-scrollbar-thumb{background-clip:padding-box;border:2px solid #0000;border-radius:6px}.RFJHfW_instructions::-webkit-scrollbar-track{margin:6px 0}.RFJHfW_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.RFJHfW_card:hover .RFJHfW_inspectButton,.RFJHfW_inspectButton:focus-visible{opacity:1}.RFJHfW_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.RFJHfW_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.RFJHfW_card[data-state=running] .RFJHfW_row:after{animation:none;display:none}.RFJHfW_iconIdle,.RFJHfW_chevronHover,.RFJHfW_inspectButton{transition:none}}";
+		//#region ../../util/workspace-path/src/file-address.ts
+		/** The scheme and type every file address opens with. */
+		const FILE_ADDRESS_PREFIX = "dsh-resource://file/";
+		/** Component-encode one id or path segment, keeping `:` literal for drive letters. */
+		function encodeSegment(segment) {
+			return encodeURIComponent(segment).replace(/%3A/gi, ":");
+		}
+		/** Encode a `/`-separated path segment by segment. */
+		function encodePath(path) {
+			return path.split("/").map(encodeSegment).join("/");
+		}
+		/**
+		* Build the address of a file read through one Session.
+		* @param sessionId - the Session whose Host workspace resolves the path.
+		* @param path - absolute or workspace-relative path; backslashes are normalized to `/`, and leading `./` prefixes are dropped.
+		* @returns the `dsh-resource://file/session/<sessionId>/<path>` address.
+		*/
+		function sessionFileAddress(sessionId, path) {
+			const normalized = path.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+			return `${FILE_ADDRESS_PREFIX}session/${encodeSegment(sessionId)}/${encodePath(normalized)}`;
+		}
+		//#endregion
+		//#region ../../util/workspace-path/src/index.ts
+		/**
+		* Browser-safe Workspace path and display helpers.
+		* @module @deepseek-ai/dsh-util-workspace-path
+		*/
+		/** Whether a path uses a Windows drive or UNC prefix. */
+		function isWindowsStylePath(value) {
+			return /^[A-Za-z]:[/\\]/.test(value) || value.startsWith("\\\\");
+		}
+		/**
+		* Whether a path is absolute in either spelling the Host accepts: POSIX (`/a/b`) or Windows drive or UNC.
+		* @param path - the path to classify.
+		* @returns `true` for an absolute path; `false` for a Workspace-relative one.
+		*/
+		function isAbsoluteWorkspacePath(path) {
+			return path.startsWith("/") || isWindowsStylePath(path);
+		}
+		/**
+		* The address for a path as a caller holds it: a relative path, or an absolute
+		* path inside the Session's workspace, becomes a `session`-scoped address; an
+		* absolute path outside it, or one whose workspace root is unknown, keeps its
+		* absolute path in that Session's address.
+		* @param sessionId - the Session the path is read in.
+		* @param cwd - that Session's workspace root, when known.
+		* @param path - absolute or workspace-relative path, in either separator spelling.
+		* @returns the `dsh-resource://file/…` address.
+		*/
+		function fileAddressFor(sessionId, cwd, path) {
+			const normalized = path.replace(/\\/g, "/");
+			if (!isAbsoluteWorkspacePath(normalized)) return sessionFileAddress(sessionId, normalized);
+			const root = cwd === void 0 ? "" : cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+			if (root !== "" && normalized === root) return sessionFileAddress(sessionId, "");
+			if (root !== "" && normalized.startsWith(`${root}/`)) return sessionFileAddress(sessionId, normalized.slice(root.length + 1));
+			return sessionFileAddress(sessionId, normalized);
+		}
+		//#endregion
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-skill\src\client\SkillRow.module.css.mjs
+		const css = ".VtDc3a_card{flex-direction:column;display:flex}.VtDc3a_row{height:calc(24px + var(--dsh-content-font-delta,0px));min-width:0;color:var(--dsw-alias-label-tertiary);align-items:center;transition:color .1s;display:flex;position:relative;overflow:hidden}.VtDc3a_row:hover{color:var(--dsw-alias-label-secondary)}.VtDc3a_row[data-expandable]{cursor:pointer}.VtDc3a_leading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:inherit;flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.VtDc3a_leading svg{width:calc(14px + var(--dsh-content-font-delta,0px));height:calc(14px + var(--dsh-content-font-delta,0px))}.VtDc3a_chevron{color:inherit}.VtDc3a_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.VtDc3a_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.VtDc3a_row:hover .VtDc3a_iconIdle{opacity:0}.VtDc3a_row:hover .VtDc3a_chevronHover{opacity:1}.VtDc3a_title{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:none}.VtDc3a_separator{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.VtDc3a_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:auto;overflow:hidden}.VtDc3a_errorSummary{color:var(--dsw-alias-state-error-primary)}.VtDc3a_stoppedSummary{color:var(--dsw-alias-state-warn-label)}.VtDc3a_bodyWrap{flex-direction:column;display:flex}.VtDc3a_instructionsCard{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:hidden}.VtDc3a_instructionsHeader{border-bottom:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-markdown-code-block-banner);color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:8px 12px;font-size:11px;font-weight:500;line-height:16px}.VtDc3a_instructions{white-space:pre-wrap;overflow-wrap:anywhere;min-height:0;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);margin:0;padding:10px 12px 12px;overflow:auto}.VtDc3a_instructions[data-error]{color:var(--dsw-alias-state-error-primary)}.VtDc3a_instructions::-webkit-scrollbar-thumb{border-radius:var(--dsw-radius-sm);background-clip:padding-box;border:2px solid #0000}.VtDc3a_instructions::-webkit-scrollbar-track{margin:6px 0}.VtDc3a_inspectButton{border:.5px solid var(--dsw-alias-border-l4);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.VtDc3a_card:hover .VtDc3a_inspectButton,.VtDc3a_inspectButton:focus-visible{opacity:1}.VtDc3a_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.VtDc3a_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.VtDc3a_row,.VtDc3a_iconIdle,.VtDc3a_chevronHover,.VtDc3a_inspectButton{transition:none}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-skill/SkillRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -18,23 +76,23 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var SkillRow_module_css_default = {
-			"bodyWrap": "RFJHfW_bodyWrap",
-			"card": "RFJHfW_card",
-			"chevron": "RFJHfW_chevron",
-			"chevronHover": "RFJHfW_chevronHover",
-			"dsh-skill-row-sweep": "RFJHfW_dsh-skill-row-sweep",
-			"errorSummary": "RFJHfW_errorSummary",
-			"iconIdle": "RFJHfW_iconIdle",
-			"inspectButton": "RFJHfW_inspectButton",
-			"instructions": "RFJHfW_instructions",
-			"instructionsCard": "RFJHfW_instructionsCard",
-			"instructionsHeader": "RFJHfW_instructionsHeader",
-			"leading": "RFJHfW_leading",
-			"row": "RFJHfW_row",
-			"separator": "RFJHfW_separator",
-			"summary": "RFJHfW_summary",
-			"title": "RFJHfW_title",
-			"visuallyHidden": "RFJHfW_visuallyHidden"
+			"bodyWrap": "VtDc3a_bodyWrap",
+			"card": "VtDc3a_card",
+			"chevron": "VtDc3a_chevron",
+			"chevronHover": "VtDc3a_chevronHover",
+			"errorSummary": "VtDc3a_errorSummary",
+			"iconIdle": "VtDc3a_iconIdle",
+			"inspectButton": "VtDc3a_inspectButton",
+			"instructions": "VtDc3a_instructions",
+			"instructionsCard": "VtDc3a_instructionsCard",
+			"instructionsHeader": "VtDc3a_instructionsHeader",
+			"leading": "VtDc3a_leading",
+			"row": "VtDc3a_row",
+			"separator": "VtDc3a_separator",
+			"stoppedSummary": "VtDc3a_stoppedSummary",
+			"summary": "VtDc3a_summary",
+			"title": "VtDc3a_title",
+			"visuallyHidden": "VtDc3a_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/SkillRow.js
@@ -76,30 +134,21 @@ window.__ModuleLoader__.load({
 				state
 			};
 		}
-		/** State substitution for the collapsed leading slot. */
-		function leadingFor(state) {
-			switch (state) {
-				case "error": return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "error" });
-				case "stopped": return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "warning" });
-				default: return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSkillOutline16, { size: 14 });
-			}
-		}
 		/** Leading disclosure slot: state icon at rest, chevron on hover or while open. */
-		function disclosureLeading(state, open, expandable) {
-			if (open) return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, { className: SkillRow_module_css_default.chevron });
-			const icon = leadingFor(state);
+		function disclosureLeading(open, expandable) {
+			if (open) return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { className: SkillRow_module_css_default.chevron });
+			const icon = (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSkillOutlineRegular, { size: 14 });
 			if (!expandable) return icon;
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)("span", {
 				className: SkillRow_module_css_default.iconIdle,
 				children: icon
-			}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, { className: `${SkillRow_module_css_default.chevron} ${SkillRow_module_css_default.chevronHover}` })] });
+			}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { className: `${SkillRow_module_css_default.chevron} ${SkillRow_module_css_default.chevronHover}` })] });
 		}
-		/** Visually hidden state copy for the colour-only lifecycle cues. */
+		/** Visually hidden state copy for the color-only running sweep and error tone. */
 		function stateStatus(state, t) {
 			switch (state) {
 				case "running": return t("row.running");
 				case "error": return t("row.failed");
-				case "stopped": return t("row.stopped");
 				default: return null;
 			}
 		}
@@ -108,13 +157,40 @@ window.__ModuleLoader__.load({
 		* @param props - keyed toolview payload plus the skill locale seat.
 		* @returns the dedicated skill row.
 		*/
-		function SkillRow({ block, inspect, t }) {
+		function SkillRow(props) {
+			if (props.phase === "preparing") return (0, react_jsx_runtime.jsx)("div", {
+				className: SkillRow_module_css_default.card,
+				"data-tool": "skill",
+				"data-state": "preparing",
+				children: (0, react_jsx_runtime.jsxs)("div", {
+					className: SkillRow_module_css_default.row,
+					children: [
+						(0, react_jsx_runtime.jsx)("span", {
+							className: SkillRow_module_css_default.leading,
+							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSkillOutlineRegular, { size: 14 })
+						}),
+						(0, react_jsx_runtime.jsx)("span", {
+							className: SkillRow_module_css_default.visuallyHidden,
+							children: props.t("row.preparing")
+						}),
+						(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.TextShimmer, {
+							active: true,
+							className: SkillRow_module_css_default.title,
+							children: props.t("row.title")
+						})
+					]
+				})
+			});
+			return (0, react_jsx_runtime.jsx)(StartedSkillRow, { ...props });
+		}
+		function StartedSkillRow({ block, inspect, t }) {
 			const model = skillRowModel(block);
 			const [expanded, setExpanded] = (0, react.useState)(false);
 			const expandable = model.output !== null;
 			const open = expanded && expandable;
 			const status = stateStatus(model.state, t);
-			const summary = model.errorSummary ?? model.name;
+			const running = model.state === "running";
+			const summary = model.state === "stopped" ? t("row.stopped") : model.errorSummary ?? model.name;
 			const toggleExpand = () => {
 				setExpanded((value) => !value);
 			};
@@ -130,7 +206,7 @@ window.__ModuleLoader__.load({
 				onClick: toggleExpand,
 				onKeyDown: toggleFromKeyboard
 			} : {};
-			const leading = disclosureLeading(model.state, open, expandable);
+			const leading = disclosureLeading(open, expandable);
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: SkillRow_module_css_default.card,
 				"data-tool": "skill",
@@ -148,17 +224,23 @@ window.__ModuleLoader__.load({
 							className: SkillRow_module_css_default.visuallyHidden,
 							children: status
 						}) : null,
-						(0, react_jsx_runtime.jsx)("span", {
-							className: SkillRow_module_css_default.title,
-							children: t("row.title")
-						}),
-						(0, react_jsx_runtime.jsx)("span", {
-							className: SkillRow_module_css_default.separator,
-							"aria-hidden": true
-						}),
-						(0, react_jsx_runtime.jsx)("span", {
-							className: model.errorSummary === null ? SkillRow_module_css_default.summary : `${SkillRow_module_css_default.summary} ${SkillRow_module_css_default.errorSummary}`,
-							children: summary
+						(0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.TextShimmer, {
+							active: running,
+							children: [
+								(0, react_jsx_runtime.jsx)("span", {
+									className: SkillRow_module_css_default.title,
+									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.TextShimmer, { children: t("row.title") })
+								}),
+								(0, react_jsx_runtime.jsx)("span", {
+									className: SkillRow_module_css_default.separator,
+									"data-shimmer-decoration": true,
+									"aria-hidden": true
+								}),
+								(0, react_jsx_runtime.jsx)("span", {
+									className: `${SkillRow_module_css_default.summary}${model.state === "error" ? ` ${SkillRow_module_css_default.errorSummary}` : model.state === "stopped" ? ` ${SkillRow_module_css_default.stoppedSummary}` : ""}`,
+									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.TextShimmer, { children: summary })
+								})
+							]
 						})
 					]
 				}), open ? (0, react_jsx_runtime.jsxs)("div", {
@@ -178,7 +260,7 @@ window.__ModuleLoader__.load({
 						type: "button",
 						className: SkillRow_module_css_default.inspectButton,
 						onClick: inspect,
-						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), t("row.inspect")]
+						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutlineRegular, {}), t("row.inspect")]
 					}) : null]
 				}) : null]
 			});
@@ -190,8 +272,9 @@ window.__ModuleLoader__.load({
 		const NS = "skill";
 		/** Simplified Chinese dictionary (the key-set source of truth). */
 		const zh = {
-			"row.title": "Skill",
+			"row.title": "加载技能",
 			"row.running": "正在加载 skill",
+			"row.preparing": "准备加载技能",
 			"row.failed": "skill 加载失败",
 			"row.stopped": "skill 加载已中止",
 			"row.instructions": "说明",
@@ -202,6 +285,7 @@ window.__ModuleLoader__.load({
 		const en = {
 			"row.title": "Skill",
 			"row.running": "Loading skill",
+			"row.preparing": "Preparing to load a skill",
 			"row.failed": "Skill load failed",
 			"row.stopped": "Skill load stopped",
 			"row.instructions": "Instructions",
@@ -213,12 +297,12 @@ window.__ModuleLoader__.load({
 		/** Required services: reference source faces plus the tool-row and locale registries. */
 		const inject = [
 			"inputTriggers",
-			"connection",
 			"sessions",
 			"slots",
 			"locale",
 			"remote",
-			"remote.skills"
+			"remote.skills",
+			"sidebarRight"
 		];
 		/**
 		* Client plugin body: register the '/' source, dictionaries, and keyed tool row.
@@ -246,14 +330,23 @@ window.__ModuleLoader__.load({
 				}
 			};
 			const fetchCatalog = (sessionId) => {
-				if (sessions.subagentAddress(sessionId) !== void 0) return Promise.resolve([]);
 				const existing = fetches.get(sessionId);
-				if (existing !== void 0) return existing.promise;
+				if (existing !== void 0) return existing;
 				const abort = new AbortController();
 				const promise = (async () => {
-					const result = await skills.list({ sessionId }, abort.signal);
-					if (!result.ok) throw new Error(`skills/list failed: ${result.error.code}: ${result.error.message}`);
-					return result.value.skills;
+					if (sessions.binding(sessionId) === void 0) throw new Error(`skill catalog requires a retained session "${sessionId}"`);
+					return sessions.using(sessionId, {
+						source: "skillCatalog",
+						signal: abort.signal
+					}, async (reference) => {
+						abort.signal.throwIfAborted();
+						const state = reference.binding.session.getSnapshot();
+						if (state.openState !== "open") throw state.openError ?? /* @__PURE__ */ new Error(`session "${sessionId}" is not open`);
+						const result = await skills.list({ sessionId }, abort.signal);
+						abort.signal.throwIfAborted();
+						if (!result.ok) throw new Error(`skills/list failed: ${result.error.code}: ${result.error.message}`);
+						return result.value.skills;
+					});
 				})();
 				const entry = {
 					promise,
@@ -266,7 +359,7 @@ window.__ModuleLoader__.load({
 				}, () => {
 					if (fetches.get(sessionId) === entry) fetches.delete(sessionId);
 				});
-				return promise;
+				return entry;
 			};
 			const invalidate = (key) => {
 				const entry = fetches.get(key);
@@ -284,15 +377,17 @@ window.__ModuleLoader__.load({
 				name: "skill",
 				order: 2,
 				async candidates(session, { query, signal }) {
-					const skills = await fetchCatalog(session.sessionId);
+					if (sessions.subagentAddress(session.sessionId) !== void 0) return [];
+					const skills = await fetchCatalog(session.sessionId).promise;
 					if (signal.aborted) return [];
-					return skills.filter((skill) => skill.name.startsWith(query)).map((skill) => ({
+					return (0, _deepseek_ai_dsh_client_ui_primitives.rankByName)(skills, query).map((skill) => ({
 						name: skill.name,
 						description: skill.modelInvocable ? skill.description : `${t("menu.userOnly")} · ${skill.description}`
 					}));
 				},
 				warm(session) {
-					fetchCatalog(session.sessionId).catch(() => {});
+					if (sessions.subagentAddress(session.sessionId) !== void 0) return;
+					fetchCatalog(session.sessionId).promise.catch(() => {});
 				},
 				lexicon(session) {
 					return fetches.get(session.sessionId)?.settled?.map((skill) => skill.name);
@@ -306,6 +401,25 @@ window.__ModuleLoader__.load({
 						listeners.delete(listener);
 						if (listeners.size === 0) lexiconListeners.delete(key);
 					};
+				},
+				openReference(session, { ref }) {
+					if (sessions.subagentAddress(session.sessionId) !== void 0) return false;
+					const cwd = sessions.list.getSnapshot().byId[session.sessionId]?.cwd;
+					const open = (catalog) => {
+						const path = catalog.find((skill) => `/${skill.name}` === ref)?.path;
+						if (path === void 0) return false;
+						ctx.sidebarRight.openResource(fileAddressFor(session.sessionId, cwd, path));
+						return true;
+					};
+					const settled = fetches.get(session.sessionId)?.settled;
+					if (settled !== void 0) return open(settled);
+					const entry = fetchCatalog(session.sessionId);
+					entry.promise.then((catalog) => {
+						if (!entry.abort.signal.aborted) open(catalog);
+					}).catch((error) => {
+						if (!entry.abort.signal.aborted) console.error("[ui-skill] reference preview failed:", error);
+					});
+					return true;
 				},
 				onPick({ candidate }) {
 					return { text: `/${candidate.name} ` };

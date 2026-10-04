@@ -25,6 +25,7 @@ export declare class SessionReferenceResolver extends TypertRemoteService {
     static inject: string[];
     static Config: z<Config>;
     private readonly config;
+    private readonly assembledRoutes;
     constructor(ctx: Context, config?: Config);
     /**
      * Replace canonical mentions in direct user messages and place each prepared
@@ -38,18 +39,17 @@ export declare class SessionReferenceResolver extends TypertRemoteService {
     /**
      * List reference candidates, ranked by working-directory affinity.
      *
-     * Discovery runs at keystroke rate, so a title only ever comes from a
-     * projection read: see {@link SessionReferenceResolver.projectedTitle} for
-     * which sessions can answer one and which fall back to their id.
+     * Discovery runs at keystroke rate, so titles and subagent labels only ever
+     * come from projection reads; sessions without either fall back to their id.
      * @param agent - target agent; self is excluded and its cwd drives ranking.
-     * @param query - optional case-insensitive session-id/cwd/title substring.
+     * @param query - optional case-insensitive session-id/cwd/title/display-title substring.
      * @param limit - optional positive result cap.
      * @param signal - optional cancellation boundary for host autocomplete teardown.
-     * @returns candidates labeled by latest title or, when absent, session id.
+     * @returns candidates with canonical mention labels and presentation titles.
      */
     listCandidates(agent: Agent, query?: string, limit?: number, signal?: AbortSignal): Promise<SessionReferenceCandidate[]>;
     /**
-     * The title a session's projections can answer without reading its log.
+     * The mention label and display title a Session's projections can answer without reading its log.
      *
      * Attachment is decided by the store at read time, not by the listing:
      * a session that attached in between would otherwise be answered from a
@@ -64,13 +64,12 @@ export declare class SessionReferenceResolver extends TypertRemoteService {
      * Nothing else is attempted. Folding a title from a log costs the whole
      * log, and this call sits under every keystroke of `@` completion. A
      * session that no projection can answer for — one persisted before the
-     * cache was composed, or seeded straight to disk — is labeled by its id
-     * and cannot be found by its title until it is opened once, which
-     * checkpoints it.
+     * cache was composed — is labeled by its id and cannot be found by its
+     * title until it is opened once, which checkpoints it.
      * @param record - the listed session, live or cold.
-     * @returns the projected title, or undefined when no projection holds one.
+     * @returns the title-backed mention label and the subagent-label-first display title.
      */
-    private projectedTitle;
+    private projectedLabels;
     /**
      * Remote face of {@link listCandidates}: the configured candidate limit
      * applies, and every candidate carries the canonical mention a host inserts
@@ -83,6 +82,10 @@ export declare class SessionReferenceResolver extends TypertRemoteService {
     remoteExportCandidates(agent: Agent, query: string, signal: AbortSignal): Promise<SessionReferenceMentionCandidate[]>;
     /**
      * Snapshot all references for one accepted direct message and return one aggregated durable context.
+     * Automatic budgets use the last assembled route, or agent options before any assembly.
+     * Missing model capacity or adapter uses 64 KiB; other metadata lookup failures and cancellation reject preparation.
+     * Truncated previews include omission facts and a full-snapshot spill locator, or an explicit unavailable notice.
+     * Cancellation prevents context publication, including when storage completes after cancellation.
      * @param agent - target agent; references to it are rejected.
      * @param content - already host-normalized readable message content.
      * @param references - structured source sessions in mention order.
@@ -90,6 +93,7 @@ export declare class SessionReferenceResolver extends TypertRemoteService {
      * @returns detached content and optional referenced-session context.
      */
     prepare(agent: Agent, content: ContentBlock[], references: SessionReferenceInput[], signal?: AbortSignal): Promise<PreparedReferencedMessage>;
+    private referenceBudget;
     private renderSources;
 }
 export default SessionReferenceResolver;

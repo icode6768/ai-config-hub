@@ -1,33 +1,20 @@
-/** Host registration for the browser theme preference and pre-plugin palette. */
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
-import { bootThemeInjection } from "./boot-theme.js";
-import { DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema, } from "./theme-settings.js";
+import z from '@deepseek-ai/schemastery';
+import { bootThemeInjections } from "./boot-theme.js";
+import { DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, FONT_SIZE_MIN, FONT_SIZE_MAX, THEME_PREFERENCES, } from "./theme-settings.js";
 export { DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, FONT_SIZE_FIELD, FONT_SIZE_MAX, FONT_SIZE_MIN, THEME_PREFERENCE_FIELD, THEME_PREFERENCES, THEME_SETTINGS_NAMESPACE, } from "./theme-settings.js";
-const THEME_NAMESPACE = settingsNamespace(THEME_SETTINGS_NAMESPACE);
-/** Read the registered theme section or the schema defaults without a settings provider. */
-function readSection(ctx) {
-    const fallback = { preference: DEFAULT_PREFERENCE, fontSize: DEFAULT_FONT_SIZE };
-    const settings = ctx.get('settings');
-    if (settings === undefined)
-        return fallback;
-    const section = settings.get(THEME_NAMESPACE);
-    if (section === undefined)
-        return fallback;
-    return section;
-}
-/**
- * Register the durable theme section when the optional settings service is
- * composed, and answer every index injection collection with the current
- * theme bootstrap row.
- * @param ctx - Host context that may acquire the settings service.
+/** Live theme and typography preferences. */
+export const Config = z.object({
+    preference: z.union([...THEME_PREFERENCES]).default(DEFAULT_PREFERENCE).volatile(),
+    fontSize: z.number().step(1).min(FONT_SIZE_MIN).max(FONT_SIZE_MAX).default(DEFAULT_FONT_SIZE).volatile(),
+});
+/** Supply the current palette before browser plugins start.
+ * @param ctx Host plugin context.
+ * @param config Validated live theme preferences.
  */
-export function apply(ctx) {
-    ctx.inject(['settings'], (settingsCtx) => {
-        settingsCtx.settings.register(THEME_NAMESPACE, ThemeSettingsSchema);
-    });
+export function apply(ctx, config) {
+    ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)); });
     ctx.on('webserver/index-inject', (table) => {
-        const section = readSection(ctx);
-        table.push(bootThemeInjection(section.preference, section.fontSize));
-    });
+        table.push(...bootThemeInjections(config.preference.get(), config.fontSize.get()));
+    }, { prepend: true });
 }
 //# sourceMappingURL=index.js.map

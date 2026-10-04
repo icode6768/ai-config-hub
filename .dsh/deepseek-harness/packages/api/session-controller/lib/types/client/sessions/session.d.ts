@@ -2,30 +2,28 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { AttachmentIdType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client';
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand';
-import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { PromptContentPart, QueueAction, SessionControlFrame, SessionQueuedItem, SessionRequestId } from '../../types.ts';
-import type { ClientResult } from '../contract/result.ts';
+import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types';
+import type { PromptContentPart, QueueAction, SessionRequestId } from '../../types.ts';
 import type { BeginSubmissionInput, SessionFace, SubmissionHandle } from '../contract/session.ts';
 import type { SessionSnapshot } from '../contract/snapshot.ts';
 import { MutableSessionEventSource } from '../contract/events.ts';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import type { SessionRemotes } from './remotes.ts';
 import { ProjectionValueStore } from './projection-store.ts';
-/** Messages requested per history page. */
+/** Minimum message count for ordinary history windows. */
 export declare const PAGE_MESSAGES = 50;
+/** Minimum messages per page while a turn jump loops backwards. */
+export declare const JUMP_PAGE_MESSAGES = 200;
 /** Manager-owned observers of a Session object's local state edges. */
 export interface SessionOptions {
     /** Catalog-discovered address selecting non-activating subagent transport. */
     address?: SubagentAddress;
-    /** Whether the exact direct parent Agent was live at the latest catalog read; absent before that read. */
+    /** Whether the exact direct parent Agent is available in Host summaries; absent until known. */
     parentAvailable?: boolean;
     /**
-     * First ACCEPTED prompt on a blank session (fires at most once, on the
-     * prompt RPC's success response): the manager mirrors the blank→false flip
-     * into its list row so the session surfaces without waiting for a host
-     * frame. Acceptance is the flip point because it proves the user message
-     * is in the host log; a rejected first prompt keeps the session blank
-     * (hidden, still reusable by connectWorkspace).
+     * Publish each accepted prompt to the Manager, including after this Session
+     * object is replaced. Acceptance converts display state, but does not
+     * establish that a turn started or reached durable history.
      */
     onEngaged?(session: Session): void;
     /**
@@ -54,8 +52,13 @@ export declare class Session implements SessionFace {
      *  passes drop all writes once the generation moves on. */
     private openGeneration;
     private loadingOlder;
-    /** Authoritative stream-only inbox snapshot; pending work never hits history. */
-    private readonly queueMirror;
+    /** Shared low-water target of the running jump loop; null when no jump is paging. */
+    private jumpTargetSeq;
+    /** The running jump loop's completion, shared by retargeting callers. */
+    private jumpPromise;
+    private pendingHistory;
+    private readonly stopObservingInbox;
+    private readonly assistantStream;
     private running;
     private address;
     private parentAvailable;
@@ -67,7 +70,7 @@ export declare class Session implements SessionFace {
     private promptAttempted;
     /** A first accepted prompt stays in the engaging phase until its turn is observable. */
     private firstPromptPendingTurn;
-    /** Empty-log mirror (see ConversationSnapshot.blank); unknown bare sessions begin conservatively blank. */
+    /** New Session display state; unknown bare sessions begin conservatively blank. */
     private blankBit;
     private removed;
     private promptError;
@@ -75,7 +78,7 @@ export declare class Session implements SessionFace {
     /** Local submission echoes, insertion-ordered (see SessionSnapshot.pendingSubmissions). */
     private pendingSubmissions;
     /** Per-echo settlement state; `retiring` latches the first observation so a
-     *  queue frame and its durable event cannot both retire one echo. */
+     *  Inbox projection and its durable event cannot both retire one echo. */
     private readonly submissionSettlements;
     /** Owns the addressed page/follow lifecycle while this Session is open. */
     private events;
@@ -83,8 +86,9 @@ export declare class Session implements SessionFace {
      * Per-session projection value store (push model; see the session-projection
      * subsystem page, docs/subsystems/session-projection.md): finished whole
      * values computed on the Host, seeded by the tail page's
-     * projections block and updated by Session Controller control frames under the
-     * one higher-seq-wins rule. Keys are read via `projections.faceOf(key)`
+     * projections block and updated by Session Controller control frames;
+     * Host-sequenced writes merge under higher-seq-wins and cached list blocks
+     * yield to them (projection-store.ts). Keys are read via `projections.faceOf(key)`
      * (the useProjection resolution face); the conversation snapshot never
      * carries projection values, and no client-side domain folding exists.
      * Manager-owned when constructed through SessionManager (frames route and
@@ -131,13 +135,13 @@ export declare class Session implements SessionFace {
     beginSubmission(input: BeginSubmissionInput): SubmissionHandle;
     /**
      * Send (queue/steer passed through 1:1); failures land in the snapshot's promptError.
-     * @param content - text plus browser-owned temporary image uploads.
+     * @param content - text, browser-owned temporary image uploads, and staged-file receipts.
      * @param mode - queue appends after the current turn; steer interrupts it.
      * @param signal - optional caller cancellation for the complete admission round-trip.
      * @param requestId - identity from {@link beginSubmission}; a failed identified prompt retires its echo.
      * @returns the prompt result (also mirrored into promptError on failure).
      */
-    prompt(content: PromptContentPart[], mode: 'queue' | 'steer', signal?: AbortSignal, requestId?: SessionRequestId): Promise<ClientResult<{
+    prompt(content: PromptContentPart[], mode: 'queue' | 'steer', signal?: AbortSignal, requestId?: SessionRequestId): Promise<RemoteResult<{
         accepted: true;
     }>>;
     /**
@@ -145,24 +149,22 @@ export declare class Session implements SessionFace {
      * @param attachmentId - opaque id found in the folded session log.
      * @returns the authenticated reference and decoded bytes.
      */
-    readAttachment(attachmentId: AttachmentIdType): Promise<ClientResult<{
+    readAttachment(attachmentId: AttachmentIdType): Promise<RemoteResult<{
         attachment: ImageAttachmentRef;
         data: Uint8Array;
     }>>;
     /** Apply one operation to a still-pending queue occurrence. */
-    updateQueue(itemId: MessageId, action: QueueAction): Promise<ClientResult<{
+    updateQueue(itemId: MessageId, action: QueueAction): Promise<RemoteResult<{
         accepted: true;
     }>>;
     /**
      * Stop the active turn while the Host preserves pending inbox work; failures
-     * land in promptError (same error-strip display slot). A continuable
-     * subagent address routes through `subagents.interruptByParent`, whose durable
-     * parent-address authority works without a live parent Agent; a one-shot
-     * address stays uncancellable (the UI offers no stop action, so this arm is
-     * defensive).
+     * land in promptError (same error-strip display slot). A subagent address
+     * routes through `subagents.interruptByParent`, whose durable parent-address
+     * authority works without a live parent Agent.
      * @returns the cancel result.
      */
-    cancel(): Promise<ClientResult<{
+    cancel(): Promise<RemoteResult<{
         accepted: true;
     }>>;
     /**
@@ -174,26 +176,28 @@ export declare class Session implements SessionFace {
      * @param title - raw title text (the host normalizes acceptance).
      * @returns the rename result (normalized accepted title + title event seq).
      */
-    rename(title: string): Promise<ClientResult<{
+    rename(title: string): Promise<RemoteResult<{
         title: string;
-        seq: number;
+        seq: SessionSeq;
     }>>;
     /**
      * Execute one slash-command line against this session's agent — pure
      * admission semantics (the host executor durably logs the lifecycle;
      * outcomes render as flow nodes, never as a response echo).
      * @param line - the full command line, leading slash included.
-     * @returns the admission result, or the error branch on transport failure.
+     * @returns the admission result.
      */
     command(line: string): Promise<RemoteResult<{
         matched: boolean;
     }>>;
     /** First open: pull the tail page (idempotent — in-flight/already-open returns the existing promise). */
     open(): Promise<void>;
-    /** Page up: pull one earlier page with the window's first seq as beforeSeq and prepend. */
+    /** Prepend one Turn-aligned page: at least 50 messages and two Turn starts, capped at 500 messages. */
     loadOlder(): Promise<void>;
+    /** Jump loader: page backwards until the window covers seq (see ISession.loadThrough). */
+    loadThrough(seq: SessionSeq): Promise<void>;
     /** Rebuild an opened history source after address replacement.
-     *  Invalidates any in-flight open first; queue state belongs to the independently
+     *  Invalidates any in-flight open first; projection state belongs to the independently
      *  reconnecting control stream and remains untouched. */
     resync(): Promise<void>;
     /**
@@ -207,18 +211,6 @@ export declare class Session implements SessionFace {
      * @returns the cached reference (stable until the next flush).
      */
     getSnapshot(): SessionSnapshot;
-    /**
-     * Replace every transient control value for this Session from one stream baseline.
-     * @param queue - complete pending queue for this Session.
-     */
-    replaceControl(queue: readonly SessionQueuedItem[]): void;
-    /**
-     * Apply one Session-addressed live control update.
-     * @param frame - queue replacement addressed to this Session.
-     */
-    handleControlFrame(frame: Extract<SessionControlFrame, {
-        type: 'queue';
-    }>): void;
     /**
      * Running-bit relay from the host stream (list entry and snapshot stay consistent).
      * @param running - the new running state.
@@ -237,11 +229,12 @@ export declare class Session implements SessionFace {
      */
     handleSubagentParentAvailable(available: boolean): void;
     /**
-     * Blank-bit relay from the authoritative summary source (`session.list` and
-     * `api-session/added`). Monotone: once any signal (local first send,
-     * running flip, an earlier summary) cleared it, a stale true never
-     * re-blanks.
-     * @param blank - the summary's derived empty-log bit.
+     * Apply the Manager's effective display blank, further reconciled with the
+     * current `sessionListMetadata` projection. Local send attempts and current
+     * running state prevent re-blanking; an earlier false summary alone does not.
+     * The Manager retains acceptance and earlier running observations across
+     * Session-object replacement.
+     * @param blank - New Session display state after Manager reconciliation.
      */
     handleBlank(blank: boolean): void;
     /** `api-session/removed` relay: flag the snapshot while retaining the resident instance. */
@@ -262,14 +255,19 @@ export declare class Session implements SessionFace {
     private acceptEventChange;
     /** Replace the complete contiguous window and apply page-owned projection metadata. */
     private installWindow;
+    private publishAssistantEntry;
     /** Prepend one stream-validated history page. */
     private prependWindow;
     /** Append one stream-validated live event. */
     private appendLive;
-    /** Retire the matching echo when a durable browser-prompt `user/message` becomes visible. */
+    /** Observe durable acceptance even when insertion and claim share one projection notification. */
     private observeSubmissionEvent;
-    /** Retire echoes whose prompts landed in the host inbox instead of the log (running-turn submissions). */
-    private observeSubmissionQueue;
+    private observeSubmissionInsertions;
+    private observeSubmissionMessage;
+    /** Retire admitted Chat identities only after stale Inbox rows can no longer reappear. */
+    private retireAdmittedSubmission;
+    /** Inbox acceptance retires queued echoes; its watermark completes admitted Chat handoffs. */
+    private observeSubmissionInbox;
     /**
      * Latch one observed settlement and remove the echo an animation frame
      * later. The delay keeps the echo in the snapshot until the frame in which

@@ -1,15 +1,24 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { ReferenceIcon } from "./ReferenceIcon.js";
+import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
+import clsx from 'clsx';
+import { ReferenceIconRegular } from "./ReferenceIcon.js";
 import css from './user-text.module.css';
+import markdownCss from './markdown/MarkdownText.module.css';
 /** The wire form a session chip serializes to; label is the display text. */
 const SESSION_WIRE_RE = /@\[([^\]\n]+)\]\(dsh-session:[^)\s]+\)/gu;
+/** Sentence punctuation a bare `@name` token may carry without being part of the reference. */
+const TRAILING_PUNCTUATION_RE = /[.,;:!?，。；：！？]+$/u;
 /**
  * Split one sent text into inline plain runs and reference chips.
  * @param text - the logged model text of the message or queue row.
  * @param sessionLabels - exact session mention labels associated by an adjacent recall.
+ * @param slashNames - names a `/name` token may decorate as: the skills the
+ * host loaded for this message, or the command a command bubble echoes
+ * (unsent queue rows pass none).
+ * @param slashKind - the chip kind those tokens render as.
+ * @param references - optional file and skill preview actions; session and command tokens stay labels.
  * @returns inline nodes covering the whole text.
  */
-export function projectUserText(text, sessionLabels) {
+export function projectUserText(text, sessionLabels, slashNames = [], slashKind = 'skill', references) {
     const ranges = [];
     SESSION_WIRE_RE.lastIndex = 0;
     let wire;
@@ -30,15 +39,19 @@ export function projectUserText(text, sessionLabels) {
             start = text.indexOf(label, start + label.length);
         }
     }
-    const re = /(^|\s)(\/[\w-]+|@"[^"\n]+"|@[^\s]+)/gu;
+    // A `/` token ends at whitespace or the text end like the host skill
+    // gesture; only `@` tokens shed sentence punctuation below.
+    const re = /(^|\s)(\/[\w-]+(?=\s|$)|@"[^"\n]+"|@[^\s]+)/gu;
     let m;
     while ((m = re.exec(text)) !== null) {
         const tokenStart = m.index + m[1].length; // (^|\s) captures '' at line start
         const rawLabel = m[2]; // non-optional alternation capture
         const label = rawLabel.startsWith('@"')
             ? rawLabel
-            : rawLabel.replace(/[.,;:!?，。；：！？]+$/gu, '');
+            : rawLabel.replace(TRAILING_PUNCTUATION_RE, '');
         if (label.length <= 1)
+            continue;
+        if (label.startsWith('/') && !slashNames.includes(label.slice(1)))
             continue;
         ranges.push({ start: tokenStart, end: tokenStart + label.length, label, kind: 'plain' });
     }
@@ -58,7 +71,7 @@ export function projectUserText(text, sessionLabels) {
         const referenceKind = kind === 'session'
             ? 'session'
             : label.startsWith('@')
-                ? label.endsWith('/') ? 'folder' : 'file'
+                ? label.replace(/^@"|"$/gu, '').endsWith('/') ? 'folder' : 'file'
                 : undefined;
         const displayLabel = range.display
             ?? (referenceKind === undefined
@@ -66,7 +79,21 @@ export function projectUserText(text, sessionLabels) {
                 : referenceKind === 'session'
                     ? label.slice(1)
                     : label.slice(1).replace(/^"|"$/gu, '').split(/[\\/]/u).filter(Boolean).at(-1) ?? label.slice(1));
-        parts.push(_jsxs("span", { className: css.refChip, "data-ref-chip": referenceKind ?? 'skill', title: label, children: [referenceKind !== undefined && (_jsx(ReferenceIcon, { kind: referenceKind, size: 16, className: css.refIcon })), displayLabel] }, tokenStart));
+        const contents = _jsxs(_Fragment, { children: [referenceKind !== undefined && (_jsx(ReferenceIconRegular, { kind: referenceKind, size: 16, className: css.refIcon })), displayLabel] });
+        const open = references === undefined ? undefined
+            : referenceKind === 'file'
+                ? () => { references.openFile(label.slice(1).replace(/^"|"$/gu, '')); }
+                : referenceKind === undefined && slashKind === 'skill'
+                    ? () => { references.openSkill(label.slice(1)); }
+                    : undefined;
+        const className = clsx(css.refChip, referenceKind === undefined && css.slashChip);
+        parts.push(open === undefined
+            ? _jsx("span", { className: className, "data-ref-chip": referenceKind ?? slashKind, title: label, children: contents }, tokenStart)
+            : _jsx("button", { type: "button", className: clsx(className, markdownCss.fileMention), "data-ref-chip": referenceKind ?? slashKind, title: label, onClick: (event) => {
+                    if (event.detail > 1 || (event.detail !== 0 && event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false))
+                        return;
+                    open();
+                }, children: contents }, tokenStart));
         cursor = end;
     }
     if (parts.length === 0)

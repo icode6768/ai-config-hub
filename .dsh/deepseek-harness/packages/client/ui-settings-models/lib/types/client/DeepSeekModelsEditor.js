@@ -6,7 +6,8 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * override; reset removes that override instead of copying defaults into it.
  */
 import { useState } from 'react';
-import { IconChevronDownOutline14, IconChevronRightOutline14, IconPlusOutline16, IconTrashOutline16, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconPlusOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { ModelRow } from "./ModelRow.js";
 import styles from './ModelsSection.module.css';
 /** Row index encoded in an editing-buffer key. */
 function rowOf(key) {
@@ -102,7 +103,7 @@ export function validateDeepSeekModels(value) {
 }
 /**
  * Render the direct DeepSeek adapter's model catalog: id and display name on
- * each row, capacities behind the row's own disclosure.
+ * each row, capacities and input types behind the row's own disclosure.
  * @param props - effective rows plus the array-level override actions.
  * @returns the catalog editor.
  */
@@ -193,28 +194,25 @@ export function DeepSeekModelsEditor(props) {
             return next;
         });
     };
-    /** One capacity field of one row, rendered inside the row's disclosure. */
-    const capacityField = (model, index, field, fallback) => (_jsxs("label", { className: styles['modelField'], children: [_jsx("span", { className: styles['modelFieldLabel'], children: props.t(field === 'contextWindow' ? 'contextWindow' : 'maxTokens') }), _jsx("input", { className: styles['input'], type: "text", inputMode: "numeric", value: capacityText(model, index, field), placeholder: fallback === undefined
-                    ? props.t(field === 'contextWindow' ? 'contextWindowPlaceholder' : 'maxTokensPlaceholder')
-                    : formatCapacity(fallback), "aria-label": `${props.t(field === 'contextWindow' ? 'contextWindow' : 'maxTokens')} ${String(index + 1)}`, disabled: props.disabled, onChange: (event) => {
-                    const text = event.target.value;
-                    setEditing(current => new Map(current).set(`${String(index)}:${field}`, text));
-                    update(index, field, parseCapacity(text));
-                }, onBlur: () => { settleCapacity(index, field); } })] }));
+    const capacityInput = (model, index, field, fallback) => ({
+        value: capacityText(model, index, field),
+        placeholder: fallback === undefined
+            ? props.t(field === 'contextWindow' ? 'contextWindowPlaceholder' : 'maxTokensPlaceholder')
+            : formatCapacity(fallback),
+        onChange: (text) => {
+            setEditing(current => new Map(current).set(`${String(index)}:${field}`, text));
+            update(index, field, parseCapacity(text));
+        },
+        onBlur: () => { settleCapacity(index, field); },
+    });
     return (_jsxs("section", { className: styles['modelCatalog'], "aria-label": props.t('models'), children: [_jsxs("div", { className: styles['modelListHead'], children: [_jsxs("div", { className: styles['modelCatalogHeading'], children: [_jsx("span", { className: styles['modelCatalogTitle'], children: props.t('models') }), _jsx("span", { className: styles['modelCatalogMeta'], children: props.overridden ? props.t('modelsCustomized') : props.t('modelsInherited') })] }), props.overridden
                         ? (_jsx("button", { type: "button", className: styles['linkButton'], disabled: props.disabled, onClick: reset, children: props.t('resetModels') }))
                         : null] }), props.models.length === 0
                 ? _jsx("p", { className: styles['modelEmpty'], children: props.t('modelsEmpty') })
-                : (_jsx("div", { className: styles['modelList'], children: props.models.map((model, index) => (_jsxs("div", { className: styles['modelEntry'], children: [_jsxs("div", { className: styles['modelRow'], children: [_jsx("input", { className: styles['input'], type: "text", value: typeof model['id'] === 'string' ? model['id'] : '', placeholder: props.t('modelId'), "aria-label": `${props.t('modelId')} ${String(index + 1)}`, disabled: props.disabled, onChange: (event) => { update(index, 'id', event.target.value); }, onBlur: (event) => {
-                                            // Settle a pasted id rather than trimming per keystroke,
-                                            // which would stop the user typing an interior space.
-                                            const trimmed = event.target.value.trim();
-                                            if (trimmed !== event.target.value)
-                                                update(index, 'id', trimmed);
-                                        } }), _jsx("input", { className: styles['input'], type: "text", value: typeof model['name'] === 'string' ? model['name'] : '', placeholder: props.t('modelName'), "aria-label": `${props.t('modelName')} ${String(index + 1)}`, disabled: props.disabled, onChange: (event) => {
-                                            update(index, 'name', event.target.value === '' ? undefined : event.target.value);
-                                        } }), _jsx("button", { type: "button", className: styles['iconButton'], "aria-label": `${props.t('modelAdvanced')} ${String(index + 1)}`, "aria-expanded": expanded.has(index), title: props.t('modelAdvanced'), onClick: () => { toggle(index); }, children: expanded.has(index) ? _jsx(IconChevronDownOutline14, {}) : _jsx(IconChevronRightOutline14, {}) }), _jsx("button", { type: "button", className: `${styles['iconButton']} ${styles['iconButtonDanger']}`, "aria-label": `${props.t('removeModel')} ${String(index + 1)}`, title: props.t('removeModel'), disabled: props.disabled, onClick: () => { remove(index); }, children: _jsx(IconTrashOutline16, { size: 14 }) })] }), expanded.has(index)
-                                ? (_jsxs("div", { className: styles['modelAdvanced'], children: [capacityField(model, index, 'contextWindow', props.defaultContextWindow), capacityField(model, index, 'maxTokens', props.defaultMaxTokens)] }))
-                                : null] }, index))) })), _jsxs("button", { type: "button", className: styles['addModelButton'], disabled: props.disabled, onClick: () => { props.onChange([...props.models.map(model => ({ ...model })), { id: '' }]); }, children: [_jsx(IconPlusOutline16, { size: 14 }), props.t('addModel')] })] }));
+                : (_jsx("div", { className: styles['modelList'], children: props.models.map((model, index) => (_jsx(ModelRow, { model: model, position: index + 1, inputField: "inputModalities", expanded: expanded.has(index), disabled: props.disabled, t: props.t, contextWindow: capacityInput(model, index, 'contextWindow', props.defaultContextWindow), maxTokens: capacityInput(model, index, 'maxTokens', props.defaultMaxTokens), onFieldChange: (field, value) => { update(index, field, value); }, onIdBlur: (value) => {
+                            const trimmed = value.trim();
+                            if (trimmed !== value)
+                                update(index, 'id', trimmed);
+                        }, onChange: (next) => { props.onChange(props.models.map((row, at) => at === index ? next : row)); }, onToggle: () => { toggle(index); }, onRemove: () => { remove(index); } }, index))) })), _jsxs("button", { type: "button", className: styles['addModelButton'], disabled: props.disabled, onClick: () => { props.onChange([...props.models.map(model => ({ ...model })), { id: '' }]); }, children: [_jsx(IconPlusOutlineRegular, { size: 14 }), props.t('addModel')] })] }));
 }
 //# sourceMappingURL=DeepSeekModelsEditor.js.map

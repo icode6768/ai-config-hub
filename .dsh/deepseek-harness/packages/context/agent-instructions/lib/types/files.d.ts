@@ -5,7 +5,7 @@
  */
 import type { FileSystem, FsTarget, FsVersion } from '@deepseek-ai/dsh-fs';
 import { type ResolvedConfig } from './config.ts';
-import { type RenderedWorkspaceContext } from './render.ts';
+import { type RenderedAgentInstructions } from './render.ts';
 /** An instruction candidate identified by absolute and model-facing paths. */
 export interface InstructionFile {
     absolutePath: string;
@@ -39,7 +39,7 @@ interface LoadOptions extends DiscoverOptions {
 }
 /** Rendered baseline plus the successfully read and byte-budget-retained files. */
 export interface RenderedInstructionSet {
-    rendered: RenderedWorkspaceContext;
+    rendered: RenderedAgentInstructions;
     /** Successfully read candidates before content deduplication and byte budgeting. */
     observed: LoadedInstructionFile[];
     /** Candidates retained by content deduplication and byte budgeting. */
@@ -61,6 +61,7 @@ export type ScopeInstructionProbe = {
  * @param fileSystem - optional provider used instead of host filesystem probes.
  * @param signal - cancellation for provider and host probes.
  * @returns the discovered project root, or `cwd` when no marker exists.
+ * @throws the original marker metadata error or cancellation reason when a probe is unavailable.
  */
 export declare function findProjectRoot(cwd: string, markers: readonly string[], fileSystem?: FileSystem, signal?: AbortSignal): Promise<string>;
 /**
@@ -90,6 +91,8 @@ export declare function relativeDisplay(root: string, path: string): string;
  * duplicates are collapsed later, once content is read.
  * @param options - cwd, home, root marker, and candidate configuration.
  * @returns path-deduplicated instruction candidates in model precedence order.
+ * @throws the original root-marker metadata error or cancellation reason when
+ * discovery cannot identify the project root.
  */
 export declare function discoverBaselineInstructionFiles(options: DiscoverOptions): Promise<InstructionFile[]>;
 /**
@@ -107,8 +110,10 @@ export declare function dedupInstructionFilesByDirectory(files: LoadedInstructio
  * @param options - discovery, source-size, byte-budget, and cancellation configuration.
  * @param fileSystem - optional provider used instead of host filesystem reads.
  * @returns rendered baseline context, or undefined when nothing can be loaded.
+ * @throws the original root-marker metadata error or cancellation reason when
+ * discovery cannot identify the project root.
  */
-export declare function loadBaselineInstructions(options: LoadOptions, fileSystem?: FileSystem): Promise<RenderedWorkspaceContext | undefined>;
+export declare function loadBaselineInstructions(options: LoadOptions, fileSystem?: FileSystem): Promise<RenderedAgentInstructions | undefined>;
 /**
  * Load a baseline together with the files retained after rendering.
  * @param options - discovery, source-size, byte-budget, and cancellation configuration.

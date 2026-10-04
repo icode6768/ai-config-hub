@@ -593,12 +593,9 @@ var LocalCredentialProvider = class extends CredentialProvider {
 		this.operations = task.then(() => void 0, () => void 0);
 		return task;
 	}
-	/** Queue a reload; only an invariant violation escaping the fan-out can reject it. */
+	/** Queue a reload; `refresh()` contains its own failures, so the queued task never rejects. */
 	queueRefresh() {
-		this.enqueue(() => this.refresh()).catch((error) => {
-			this.ctx.logger.error("credentials-local: reload commit failed at %s", this.spec.filename);
-			this.ctx.logger.error(error);
-		});
+		this.enqueue(() => this.refresh());
 	}
 	/** Queue one line edit; entry checks reject early, the queue re-judges them at run time. */
 	async write(ref, value) {
@@ -691,15 +688,13 @@ var LocalCredentialProvider = class extends CredentialProvider {
 	* Re-read the document after a watcher event. Unchanged content (including
 	* this provider's own writes) is a no-op; an unreadable document keeps the
 	* last good snapshot and warns — a live hot-reload must never take the
-	* process down. An invariant violation escaping the fan-out is not a reload
-	* failure and propagates to the queue's error surface.
+	* process down.
 	*/
 	async refresh() {
 		if (this.closed) return;
 		try {
 			await this.reconcileFromDisk();
 		} catch (error) {
-			if (error?.code === "INVARIANT") throw error;
 			this.ctx.logger.warn("credentials-local: reload failed at %s; keeping the last good document", this.spec.filename);
 			this.ctx.logger.warn(error);
 		}

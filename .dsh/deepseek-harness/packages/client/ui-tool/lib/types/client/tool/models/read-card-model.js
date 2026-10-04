@@ -1,5 +1,4 @@
-import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path';
-import { relativizeToCwd } from "./tool-call-model.js";
+import { abbreviateHomePath, relativizeToCwd } from '@deepseek-ai/dsh-util-workspace-path';
 import { parsedToolCall, singleResultText } from "./raw-tool-call.js";
 /**
  * Content lines the chat row's resident read body shows before collapsing the
@@ -12,6 +11,10 @@ import { parsedToolCall, singleResultText } from "./raw-tool-call.js";
  * terminal output.
  */
 export const CHAT_READ_MAX_LINES = 8;
+/** Whether a model-supplied argument is a 1-based line position or count: an integer of at least 1. */
+function positiveInteger(value) {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 1;
+}
 function validReadCall(block) {
     const call = parsedToolCall(block);
     if (call?.name !== 'read')
@@ -19,9 +22,9 @@ function validReadCall(block) {
     const { file_path: path, offset, limit } = call.args;
     if (typeof path !== 'string' || path.trim() === '')
         return false;
-    if (offset !== undefined && (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 1))
+    if (offset !== undefined && !positiveInteger(offset))
         return false;
-    if (limit !== undefined && (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1))
+    if (limit !== undefined && !positiveInteger(limit))
         return false;
     return true;
 }
@@ -55,6 +58,23 @@ function readMeta(meta) {
         totalLines,
         ...lang === undefined ? {} : { lang },
     };
+}
+/**
+ * The line one `read` call was about, from its arguments.
+ *
+ * `offset` is the read tool's own 1-based start line, so opening the path can
+ * land where the model looked. Available while the call is still running,
+ * unlike the persisted metadata, because the arguments carry it. The arguments
+ * are model-produced JSON: only an integer of at least 1 is a line, and a call
+ * whose `offset` is anything else names none.
+ * @param block - running or settled Tool block.
+ * @returns the 1-based line, or undefined when the call named none.
+ */
+export function readCallLine(block) {
+    if (!validReadCall(block))
+        return undefined;
+    const { offset } = parsedToolCall(block)?.args ?? {};
+    return positiveInteger(offset) ? offset : undefined;
 }
 /**
  * Derive a settled root read card after validating its persisted metadata and

@@ -1,10 +1,11 @@
 /** Local durable attachment backend rooted below `DSH_HOME`. @module @deepseek-ai/dsh-attachment-local */
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import z from '@deepseek-ai/schemastery';
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment';
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
-import { CompressionLimiter } from "./compression-limiter.js";
+import { dshCachePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths';
+import { CompressionLimiter, compressionFailure } from "./compression-limiter.js";
 import { commitPreparedImageFile, normalizedImagePath, prepareImageFile, readImageFile, validateImageFile } from "./store.js";
+import { readFileStreamVerbatim, saveFileStreamVerbatim, saveFileVerbatim, storedFilePath, } from "./file-store.js";
 import { readRequestImageFile, requestImageVariantId } from "./request-image.js";
 export { canPassThroughNormalization, normalizeImage } from "./normalization.js";
 export { commitPreparedImageFile, prepareImageFile, readImageFile, saveImageFile, validateImageFile } from "./store.js";
@@ -79,9 +80,7 @@ class SharedRequest {
             }, (error) => {
                 signal.removeEventListener('abort', abort);
                 release(false);
-                // CompressionLimiter normalizes task rejections before this handler.
-                // oxlint-disable-next-line typescript/prefer-promise-reject-errors
-                reject(error);
+                reject(compressionFailure(error));
             });
         });
     }
@@ -114,11 +113,14 @@ export class LocalAttachmentStore extends AttachmentStore {
     normalizationPolicy;
     /** Resolved instance-level compression limit. */
     imageCompressionConcurrency;
+    cacheRoot;
     compression;
     requestInflight = new Map();
     constructor(ctx, config) {
         super(ctx);
-        this.root = resolve(join(resolveDshHome(config.dshHome), 'attachments', 'v1'));
+        const dshHome = resolveDshHome(config.dshHome);
+        this.root = join(dshHome, 'attachments', 'v1');
+        this.cacheRoot = dshCachePath({ dshHome }, 'attachments');
         this.imageLimits = Object.freeze({
             maxImageBytes: config.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES,
             maxImagesPerMessage: config.maxImagesPerMessage ?? DEFAULT_MAX_IMAGES_PER_MESSAGE,
@@ -162,12 +164,24 @@ export class LocalAttachmentStore extends AttachmentStore {
     imageHostPath(ref) {
         return normalizedImagePath(this.root, ref);
     }
-    async readImageRequest(ref, policy, signal) {
-        return this.requestVersion(ref, policy, undefined, signal);
+    async saveFile(input) {
+        return saveFileVerbatim(this.root, input);
     }
-    requestVersion(ref, policy, stored, signal) {
+    async saveFileStream(input) {
+        return saveFileStreamVerbatim(this.root, input);
+    }
+    readFileStream(ref, signal) {
+        return readFileStreamVerbatim(this.root, ref, signal);
+    }
+    fileHostPath(ref) {
+        return storedFilePath(this.root, ref);
+    }
+    async readImageRequest(ref, target, signal) {
+        return this.requestVersion(ref, target, undefined, signal);
+    }
+    requestVersion(ref, target, stored, signal) {
         signal?.throwIfAborted();
-        const variantId = requestImageVariantId(ref, policy);
+        const variantId = requestImageVariantId(ref, target);
         const key = String(variantId);
         let operation = this.requestInflight.get(key);
         if (operation?.controller.signal.aborted) {
@@ -176,7 +190,7 @@ export class LocalAttachmentStore extends AttachmentStore {
         }
         if (operation === undefined) {
             const shared = new SharedRequest(sharedSignal => this.compression.run(async () => {
-                const request = await readRequestImageFile(this.root, stored ?? await this.readImage(ref, sharedSignal), policy, sharedSignal);
+                const request = await readRequestImageFile(this.cacheRoot, stored ?? await this.readImage(ref, sharedSignal), target, sharedSignal);
                 return request;
             }));
             operation = shared;

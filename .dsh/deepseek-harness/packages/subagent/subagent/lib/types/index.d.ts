@@ -13,13 +13,13 @@
  *
  * Public operations express caller intent: `start` returns one published owned
  * one-shot run, `startContinuable` establishes a durable continuable child, and
- * `followup` delivers later content without exposing whether the child is
- * resident. Continuable children never become a {@link SubagentRun}: the
+ * `sendMessage` steers between adjacent Agents without exposing whether a child
+ * is resident. Continuable children never become a {@link SubagentRun}: the
  * continuation manager holds their `AgentHandle` directly and orders every turn
  * through the child's own inbox, so providers contribute only the detached
- * creation spec and see no handle, turn, or teardown. Child and descendant
- * discovery read the live session store and optional session persistence
- * directly and do not require that continuation runtime.
+ * creation spec and see no handle, turn, or teardown. Direct-child
+ * discovery reads the parent catalog; descendant discovery recursively reads
+ * those child catalogs. Neither read requires the continuation runtime.
  *
  * Same-process providers are trusted typed collaborators. Requests, provider
  * descriptors, results, and lifecycle payloads are borrowed immutable values;
@@ -28,31 +28,33 @@
  *
  * @module @deepseek-ai/dsh-subagent
  */
+import type { Volatile } from '@deepseek-ai/cordis';
 import { Context } from '@deepseek-ai/cordis';
+import z from '@deepseek-ai/schemastery';
 import type { Scoped } from '@deepseek-ai/dsh-scope';
 import type { ContentBlock, MessageId } from '@deepseek-ai/dsh-llm';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { SessionId } from '@deepseek-ai/dsh-session';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { SubagentCatalog, SubagentInterruptReceipt, SubagentPromptReceipt, SubagentPromptRequest } from './control-types.ts';
-import type { SubagentProvider, SubagentRun, SubagentRunEndInfo, SubagentRunInfo, SubagentStartRequest } from './types.ts';
-import type { ContinuableStart, ContinuableStartSpec, SubagentFollowupOptions, SubagentInterruptAuthority, SubagentReportOptions } from './continuation.ts';
-import type { ContinuableSetupContribution } from './activation-setup-registry.ts';
-import type { SubagentDescendantListEntry, SubagentListEntry } from './list-children.ts';
+import type { SubagentInterruptReceipt, SubagentPromptReceipt, SubagentPromptRequest } from './control-types.ts';
+import type { ContinuableStart, ContinuableStartSpec, SubagentInterruptAuthority, SubagentProvider, SubagentRun, SubagentRunEndInfo, SubagentRunInfo, SubagentSendMessageOptions, SubagentStartRequest } from './types.ts';
+import type { SubagentDescendantListEntry } from './list-children.ts';
+import type { SubagentCatalogEntry } from './projection-types.ts';
+import { deliverSubagentPrompt } from './internal.ts';
+export type {} from './catalog.ts';
 export * from './out-of-process.ts';
 export { AssistantOutputFold, finalAssistantOutput } from './assistant-output.ts';
 export { SubagentRunId } from './types.ts';
-export type { ContinuableCreateRequest, ContinuableCreateSpec, ResolvedSubagentStartRequest, SubagentCapabilities, SubagentProvider, SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason, SubagentStopReasonMap, } from './types.ts';
+export type { ContinuableCreateRequest, ContinuableCreateSpec, ContinuableStart, ContinuableStartSpec, ResolvedSubagentStartRequest, SubagentCapabilities, SubagentInterruptAuthority, SubagentProvider, SubagentResult, SubagentRun, SubagentSendMessageOptions, SubagentStartRequest, SubagentStopReason, SubagentStopReasonMap, } from './types.ts';
 export { foldSubagentDescriptor, snapshotSubagentDescriptor, SUBAGENT_DESCRIPTOR_VERSION, } from './descriptor.ts';
 export type { ContinuableSubagentDescriptorData, ContinuableSubagentDescriptorInput, OneShotSubagentDescriptorData, OneShotSubagentDescriptorInput, SubagentDescriptorData, SubagentDescriptorInput, } from './descriptor.ts';
-export { seedDescriptorTurn } from './descriptor-seed.ts';
+export type { SubagentCatalogEntry } from './projection-types.ts';
 export { SubagentError } from './error.ts';
 export { settleRun } from './run-settlement.ts';
 export { assertSubagentMaxDepth, delegationDepthOf } from './depth.ts';
 export { appendDelegatedPolicyOverrides, applyChildComposition, captureDelegatedPolicyOverrides, childSessionMeta, parentAgentOptionsForDelegation, resolveChildAgentOptions, resolveChildDepth, SubagentDepthError, } from './child-agent.ts';
 export type { ChildComposition, DelegatedPolicyOverrides } from './child-agent.ts';
-export type { ContinuableStart, ContinuableStartSpec, CoordinatorMessageSource, SubagentFollowupOptions, SubagentInterruptAuthority, SubagentReportDelivery, SubagentReportMessageSource, SubagentReportOptions, SubagentSettledMessageSource, } from './continuation.ts';
-export type { ContinuableSetupContribution } from './activation-setup-registry.ts';
+export type { AgentMessageSource, SubagentSettledMessageSource } from './continuation-messages.ts';
 export type * from './control-types.ts';
 export type { SubagentDescendantListEntry } from './list-children.ts';
 export type { SubagentRunEndInfo, SubagentRunInfo } from './types.ts';
@@ -81,7 +83,6 @@ declare module '@deepseek-ai/cordis' {
          * parent-scoped listener observes only its own delegations. Paired with
          * `subagent/end`.
          * @param info - the provider and published child identity.
-         * @dshScopeScan unsupported
          * @mode emit
          */
         'subagent/start'(this: Scoped<SubagentRuntime>, info: SubagentRunInfo): void;
@@ -90,25 +91,43 @@ declare module '@deepseek-ai/cordis' {
          * parent carrier as `subagent/start`, so the lifecycle pair reaches the
          * same scoped audience.
          * @param info - the run identity and terminal outcome.
-         * @dshScopeScan unsupported
          * @mode emit
          */
         'subagent/end'(this: Scoped<SubagentRuntime>, info: SubagentRunEndInfo): void;
     }
 }
+/** Host configuration for continuable subagent capacity. */
+export interface Config {
+    /** Maximum live children sharing uninterrupted continuable parent links; defaults to 8. */
+    maxActiveSubagents: Volatile<number>;
+    /** Default delegation depth for tools without an explicit limit; defaults to 1. */
+    maxDepth: Volatile<number>;
+}
 /** Named provider registry with one-shot runs, durable discovery, and continuable-child operations. */
 export declare class SubagentRuntime extends TypertRemoteService {
+    private config;
+    static Config: z<Schemastery.ObjectS<NoInfer<{
+        maxDepth: z<number, number, "volatile-defined">;
+        maxActiveSubagents: z<number, number, "volatile-defined">;
+    }>>, Schemastery.ObjectT<NoInfer<{
+        maxDepth: z<number, number, "volatile-defined">;
+        maxActiveSubagents: z<number, number, "volatile-defined">;
+    }>>, "plain">;
     private providers;
     private continuations;
-    /** Deployment contributions composed into unpublished continuable children. */
-    private readonly setupRegistry;
     /**
      * The contained lifecycle-edge publisher. Built here because scoped dispatch
      * keys its carrier by this exact service instance, whose own context filter
      * composes into the carrier.
      */
     private readonly emitLifecycle;
-    constructor(ctx: Context);
+    constructor(ctx: Context, config: Config);
+    /**
+     * Resolve a delegation tool's depth policy against the current user setting.
+     * @param configured - Explicit tool limit, or provider-managed for external delegation.
+     * @returns The numeric limit, or undefined when the provider owns depth enforcement.
+     */
+    resolveMaxDepth(configured?: number | 'provider-managed'): number | undefined;
     /**
      * Establish one durable continuable child and deliver its initial prompt.
      * Resolves when the child's inbox accepts that prompt, without waiting for the
@@ -120,21 +139,33 @@ export declare class SubagentRuntime extends TypertRemoteService {
      */
     startContinuable(spec: ContinuableStartSpec): Promise<ContinuableStart>;
     /**
-     * Deliver one later message to a continuable child as its next FIFO turn. A
-     * resident child's Agent inbox accepts it directly (waking a `waiting`
-     * Activation), while an absent one is cold-resumed from its persisted
-     * Session. The Agent inbox is the only queue, so every accepted message has
-     * one observable order.
-     * @param parent - the exact live direct parent authorizing this delivery.
-     * @param childId - durable child session id.
-     * @param content - user-role content to deliver.
-     * @param options - the message source fields and caller cancellation, which stops the
-     *   operation only before inbox acceptance.
+     * Steer one model-authored message to the sender's direct parent or direct
+     * continuable child. A running target admits it at the nearest step boundary;
+     * an idle target starts a turn, and an absent direct child cold-resumes from
+     * persistence. The service derives durable sender attribution from the exact
+     * live sender. Caller cancellation stops only pre-acceptance work.
+     * @param sender - exact live Agent authorizing and originating the message.
+     * @param targetId - durable direct-parent or direct-child session id.
+     * @param content - model-authored content to deliver.
+     * @param options - caller cancellation before inbox acceptance.
      * @returns the accepted message's inbox id.
-     * @throws when continuation services are unavailable, parent authority is
-     *   rejected, or the message was not admitted.
+     * @throws when continuation services are unavailable, adjacency is rejected,
+     *   or the message was not admitted.
      */
-    followup(parent: Agent, childId: SessionId, content: ContentBlock[], options: SubagentFollowupOptions): Promise<MessageId>;
+    sendMessage(sender: Agent, targetId: SessionId, content: ContentBlock[], options: SubagentSendMessageOptions): Promise<MessageId>;
+    /**
+     * Deliver one host-protocol message to a direct continuable child.
+     * Symbol-keyed so host adapters can preserve their own source descriptors without
+     * widening the public Service Definition or impersonating an Agent sender.
+     * @param parent - exact live direct parent authorizing delivery.
+     * @param childId - durable direct-child session id.
+     * @param content - host-authored content to deliver.
+     * @param source - durable host-protocol source descriptor.
+     * @param signal - caller cancellation before inbox acceptance.
+     * @param delivery - Queue as a distinct turn or Steer at the nearest step.
+     * @returns the accepted message's inbox id.
+     */
+    private [deliverSubagentPrompt];
     /**
      * Interrupt one live continuable child's current turn under a human parent
      * address or an exact live ancestor Agent. Fire-and-return: the cancel
@@ -151,27 +182,6 @@ export declare class SubagentRuntime extends TypertRemoteService {
      *   live target.
      */
     interrupt(targetSessionId: SessionId, authority: SubagentInterruptAuthority): void;
-    /**
-     * Deliver selected content from one live continuable child to its durable
-     * direct parent. The child is the authority credential; callers cannot name a
-     * recipient. Reporting does not conclude the child's turn or Activation.
-     * @param child - exact live reporting child.
-     * @param content - selected model-facing content.
-     * @param options - parent scheduling and pre-acceptance cancellation.
-     * @returns the stable identity of the parent-accepted message.
-     * @throws when continuation services are unavailable, sender authorization
-     *   fails, or the direct parent is not live.
-     */
-    reportFrom(child: Agent, content: ContentBlock[], options: SubagentReportOptions): Promise<MessageId>;
-    /**
-     * Compose one deployment capability into every continuable child's
-     * unpublished creation context on fresh creation and cold resume. Grants wait
-     * for the next Activation; removing the contribution revokes every resident
-     * installation immediately.
-     * @param contribution - synchronous child-scope installer.
-     * @returns the exact Cordis effect disposer.
-     */
-    registerContinuableSetup(contribution: ContinuableSetupContribution): () => void;
     /**
      * Close continuable admission below exact live parent Agents, stop only their
      * visible descendant Activations synchronously, then await admitted scoped
@@ -195,66 +205,48 @@ export declare class SubagentRuntime extends TypertRemoteService {
      */
     drainContinuableChildren(parent: Agent, childIds: readonly SessionId[]): Promise<void>;
     /**
-     * Enumerate the parent's direct session-backed subagents without loading or
-     * resuming an Agent. The Session query service supplies one live-preferred
-     * corpus and shared point observations; the projection cache supplies
-     * immutable descriptor hits without opening cold logs. The registered
-     * `subagent` projection remains the sole mode/label classifier.
-     *
-     * Every query receives `signal`, and the listing rechecks cancellation
-     * around each await. Read rejections that settle
-     * after an abort become a stable `SubagentError` with code `CANCELLED`.
-     * @param parentSessionId - parent session whose direct children are listed.
-     * @param signal - caller-owned cancellation forwarded to Session queries
-     *   and observed around every read await.
-     * @returns children and per-child diagnostics ordered by `createdAt`, then id.
-     * @throws {@link SubagentError} when the projection registry or the session
-     *   store is not mounted, or the caller cancels the listing.
+     * Read the parent's durable direct-child catalog without loading or resuming an Agent.
+     * The service owns and releases the live-preferred Session observation.
+     * @param parentSessionId - parent whose direct children are requested.
+     * @param signal - cancellation forwarded to the Session query.
+     * @returns catalog children in parent event order.
+     * @throws {@link SubagentError} when query or catalog projection is unavailable.
+     * @throws SessionQueryError when the parent cannot be read or the query is cancelled.
      */
-    listChildren(parentSessionId: SessionId, signal?: AbortSignal): Promise<SubagentListEntry[]>;
+    listChildren(parentSessionId: SessionId, signal?: AbortSignal): Promise<SubagentCatalogEntry[]>;
     /**
-     * Enumerate the root's complete session-backed subagent tree in stable
-     * pre-order from one live-preferred corpus, without loading or resuming an
-     * Agent. Ordinary sessions and one-shot children remain traversal nodes so
-     * continuable descendants below them are discovered; each returned entry
-     * adds its durable `parentId` and root-relative `depth`. Identity resolution,
-     * diagnostics, optional persistence, and cancellation follow the same
-     * projection-backed contract as {@link listChildren}.
-     * @param rootSessionId - session whose complete descendant tree is listed.
-     * @param signal - caller-owned cancellation forwarded to persistence reads
-     *   and observed around every read await.
-     * @returns children and per-candidate diagnostics with tree position, in
-     *   stable pre-order.
-     * @throws {@link SubagentError} under the same conditions as {@link listChildren}.
+     * Recursively list reachable parent catalogs in stable pre-order, preserving
+     * each catalog's event order. Each row carries its catalog parent and depth;
+     * one-shot and unknown-mode children remain traversal nodes. Unknown modes
+     * produce unsupported diagnostics. Unreadable child catalogs produce corrupt
+     * or unavailable diagnostics and stop only that branch. Root read failures,
+     * missing services or projections, and cancellation reject the whole listing.
+     * Each catalog is observed once and released before the next read. No Agent
+     * is loaded or resumed; Sessions absent from reachable catalogs are omitted.
+     * @param rootSessionId - session whose catalog starts descendant discovery.
+     * @param signal - cancellation forwarded to and checked around each catalog read.
+     * @returns children and branch diagnostics in parent-catalog pre-order.
+     * @throws {@link SubagentError} when listing dependencies are unavailable or the caller cancels.
+     * @throws SessionQueryError when the root catalog cannot be read.
      */
     listDescendants(rootSessionId: SessionId, signal?: AbortSignal): Promise<SubagentDescendantListEntry[]>;
-    /**
-     * Remote face of {@link listChildren} for one browser: the durable listing
-     * plus live Agent activity and the delivery-time parent availability hint.
-     * Parent availability is a hint; {@link prompt} performs the authoritative
-     * check. Named apart from the provider-name {@link list}, which owns the
-     * member.
-     * @param parentSessionId - parent session whose direct children are listed.
-     * @param signal - carrier cancellation forwarded to Session queries.
-     * @returns the catalog view for that parent.
-     * @throws {TypertRemoteFailure} `bad-request` for an empty parent id,
-     *   `cancelled` for an aborted read, `subagent-projections-unavailable` when
-     *   the deployment has no projection registry, otherwise `internal`.
-     */
-    remoteExportList(parentSessionId: SessionId, signal: AbortSignal): Promise<SubagentCatalog>;
     /**
      * Deliver one browser-authored message to a continuable child through the
      * exact live direct parent, retaining the caller-minted request identity and
      * validated browser zone on the accepted message. Success identifies the
-     * message the child's FIFO inbox accepted; later execution is independent of
-     * this call.
-     * @param request - durable address, minted identity, content, and optional browser zone.
+     * message the child's inbox accepted; later execution is independent of this
+     * call. Queue delivery targets a later turn; steer delivery targets the
+     * nearest step and retains the Agent loop's best-effort fallback semantics.
+     * Image parts are admitted and persisted through the attachment store
+     * before delivery, and the child's model must accept image input.
+     * Cold resume at capacity rejects with `subagent/delivery-unavailable`.
+     * @param request - durable address, delivery, minted identity, content, and optional browser zone.
      * @param signal - carrier cancellation, owning the call until inbox acceptance.
      * @returns the accepted message's inbox identity.
-     * @throws {TypertRemoteFailure} `bad-request`, `invalid-time-zone`,
-     *   `subagent-parent-unavailable`, `subagent-not-resumable`,
-     *   `subagent-unauthorized`, `subagent-delivery-unavailable`, `cancelled`, or
-     *   `internal`.
+     * @throws {RemoteError} `gateway/bad-request`, `subagent/attachment-invalid`,
+     *   `subagent/invalid-time-zone`, `subagent/parent-unavailable`,
+     *   `subagent/not-resumable`, `subagent/unauthorized`,
+     *   `subagent/delivery-unavailable`, `gateway/cancelled`, or `gateway/internal`.
      */
     prompt(request: SubagentPromptRequest, signal: AbortSignal): Promise<SubagentPromptReceipt>;
     /**
@@ -267,9 +259,9 @@ export declare class SubagentRuntime extends TypertRemoteService {
      * @param parentSessionId - durable direct parent whose authority is claimed.
      * @param mode - required continuable-address discriminator.
      * @returns acknowledgement that the cancel signal was admitted, not that the target is quiescent.
-     * @throws {TypertRemoteFailure} `bad-request` for an empty id,
-     *   `subagent-unauthorized` when the address does not own the live target,
-     *   otherwise `internal`.
+     * @throws {RemoteError} `gateway/bad-request` for an empty id,
+     *   `subagent/unauthorized` when the address does not own the live target,
+     *   otherwise `gateway/internal`.
      */
     interruptByParent(childSessionId: SessionId, parentSessionId: SessionId, mode: 'continuable'): SubagentInterruptReceipt;
     /**
@@ -297,6 +289,8 @@ export declare class SubagentRuntime extends TypertRemoteService {
      * fulfills; a rejection therefore has no run for the caller to dispose and
      * emits no run lifecycle events. Post-publication turn and infrastructure
      * failures settle through the returned run.
+     * A catalog append failure disposes the run and handles its result rejection;
+     * the caller receives the catalog error even if disposal also fails.
      * @param name - the provider to use.
      * @param request - child label, prompt, parent, signal, and optional capabilities.
      * @returns the published holder-owned run.

@@ -1,62 +1,6 @@
-/**
- * Generic pi-ai-backed LLM adapter plugin. One plugin instance owns a dict of
- * provider routes; a route naming an installed pi-ai provider inherits that
- * provider's endpoint, protocol, and model catalog as defaults, and a route
- * pi-ai does not ship is declared outright. Profile facts resolve per request
- * over the optional `llm-pi-ai` user-settings section and the optional
- * credential seam, so a changed key, endpoint, model, or knob reaches the next
- * request without a restart; a changed *route set* (or a route's
- * registration-captured retry policy) re-registers the same adapter instance
- * in place.
- *
- * ```yaml
- * - id: llm
- *   name: '@deepseek-ai/dsh-llm-pi-ai'
- *   config:
- *     providers:
- *       # Catalog route: everything but the credential comes from pi-ai.
- *       openai:
- *         apiKeyEnv: OPENAI_API_KEY
- *         retryPolicy:
- *           mode: normal
- *           maxRetries: 2
- *       # Catalog route with the catalog narrowed and one capacity corrected.
- *       anthropic:
- *         apiKeyEnv: ANTHROPIC_API_KEY
- *         models:
- *           - id: claude-sonnet-4-5
- *             contextWindow: 200000
- *       # Hand-declared route: pi-ai ships nothing under this key.
- *       acme-gateway:
- *         displayName: Acme Gateway
- *         apiKeyEnv: ACME_GATEWAY_API_KEY
- *         api: openai-completions
- *         baseURL: https://gateway.acme.example/v1
- *         # Reasoning dialect for a URL pi-ai cannot recognize.
- *         compat:
- *           thinkingFormat: deepseek
- *         models:
- *           - id: acme-large
- *             name: Acme Large
- *             contextWindow: 65536
- *             maxTokens: 4096
- *           - id: acme-think
- *             name: Acme Think
- *             contextWindow: 262144
- *             maxTokens: 32768
- *             # key = selectable level, value = wire spelling; only off may
- *             # leave the value empty (supported, send nothing).
- *             reasoningEfforts:
- *               off:
- *               high: high
- *               max: ultra
- * ```
- *
- * @module @deepseek-ai/dsh-llm-pi-ai
- */
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
-import { deepEqualJson, installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values';
 import { PiAiAdapter } from "./adapter.js";
 import { authContextFrom, credentialStoreFrom } from "./auth.js";
 import { catalogProviderIds } from "./catalog.js";
@@ -69,7 +13,7 @@ export { recordKeyFor } from "./auth.js";
 export { supportedProtocols } from "./provider.js";
 export const name = 'llm-pi-ai';
 export const inject = ['llm'];
-const NS = settingsNamespace('llm-pi-ai');
+const NS = 'llm-pi-ai';
 /**
  * The registry captures these per route; a change here must re-register.
  * Sorted by provider so a settings document that merely reorders its keys is
@@ -95,30 +39,32 @@ function registrationFacts(profiles) {
  * @param profiles - the currently resolved provider profiles.
  * @returns the directory entries in catalog order, declared routes last.
  */
-function directoryEntries(profiles) {
+function directoryEntries(profiles, settingsNs) {
     const catalog = new Set(catalogProviderIds());
     const entries = new Map();
-    const declare = (provider, displayName) => {
+    const declare = (provider, displayName, error) => {
         entries.set(provider, {
             provider,
             displayName,
-            settingsNs: NS,
+            settingsNs,
             settingsPath: ['providers', provider],
             // Membership of the installed catalog, not of the settings document:
             // narrowing a shipped provider's models stores a profile too, and that
             // route is still one pi-ai knows.
             declared: !catalog.has(provider),
+            ...error === undefined ? {} : { error },
         });
     };
     for (const provider of catalog)
         declare(provider, provider);
     for (const [provider, profile] of profiles)
-        declare(provider, profile.displayName);
+        declare(provider, profile.displayName, profile.catalogError);
     return [...entries.values()];
 }
 /** Register one generic pi-ai adapter for all configured provider routes. */
 export function apply(ctx, config) {
-    let current = () => config;
+    ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)); });
+    const settingsNs = ctx.fiber.entry?.options.id ?? NS;
     let lastRaw;
     let memoized;
     /**
@@ -126,22 +72,28 @@ export function apply(ctx, config) {
      * snapshot's identity — which is also what makes the adapter's own snapshot
      * stable across operations that observe no change.
      *
-     * No fallback for an unserviceable snapshot lives here: the section schema
-     * resolves the whole profile set, so a write that could not be served is
-     * refused where it is written, and the settings seam keeps a namespace's
-     * last good value for a stored section that fails. Anything reaching this
-     * point has already resolved once.
+     * Catalog diagnostics stay in the snapshot beside serviceable models, so
+     * stored configuration remains visible after an installed catalog changes.
+     * Scalar configuration errors still reject resolution.
      */
     const profiles = () => {
-        const raw = current();
+        const raw = config.providers.get();
         if (raw === lastRaw && memoized !== undefined)
             return memoized;
-        const next = resolveProfiles(raw.providers);
+        const next = resolveProfiles(structuredClone(raw), 'deferred');
         lastRaw = raw;
         memoized = next;
         return next;
     };
     profiles();
+    ctx.on('internal/config', function (_raw, next) {
+        const raw = next();
+        if (this !== ctx.fiber)
+            return raw;
+        const candidate = Config(raw);
+        assertServiceable({ providers: structuredClone(candidate.providers.get()) }, { providers: structuredClone(config.providers.get()) });
+        return raw;
+    });
     const resolveApiKey = async (provider, profile) => {
         const ref = profile.apiKeyEnv;
         // Only a profile that names no credential at all defers to pi-ai's
@@ -190,7 +142,7 @@ export function apply(ctx, config) {
     let directory;
     let directoryFacts;
     const ensureDirectory = () => {
-        const entries = directoryEntries(profiles());
+        const entries = directoryEntries(profiles(), settingsNs);
         if (deepEqualJson(entries, directoryFacts))
             return;
         // Atomic replace, never dispose-then-register: a route another adapter
@@ -207,28 +159,25 @@ export function apply(ctx, config) {
         directoryFacts = entries;
     };
     ensureDirectory();
-    /**
-     * The credential a named route already resolves, for an interrogation whose
-     * draft carries none. A route being declared for the first time names no
-     * profile yet, and a profile that names no credential defers to pi-ai's own
-     * discovery, so both answer `undefined` and the endpoint is asked
-     * unauthenticated — the same posture a request to that route would take.
-     */
-    const storedApiKey = async (provider) => {
+    /** Host-owned request inputs for discovery of one configured route. */
+    const storedDiscoveryProfile = (provider) => {
         if (provider === undefined)
             return undefined;
         const profile = profiles().get(provider);
         if (profile === undefined)
             return undefined;
-        return resolveApiKey(provider, profile);
+        return {
+            headers: profile.headers,
+            resolveApiKey: () => resolveApiKey(provider, profile),
+        };
     };
     // Interrogating an endpoint is a configuration-time action over a draft, so
     // it is offered for the whole namespace rather than per route: the provider
     // a surface is adding does not exist yet. The draft is the whole request
-    // except the credential: a configuration surface edits a redacted descriptor
-    // and never holds a stored secret, so an already-configured route supplies
-    // its own here rather than being interrogated unauthenticated.
-    ctx.llm.registerModelDiscovery(NS, (request, signal) => discoverModels({ ...request, ...signal === undefined ? {} : { signal } }, () => storedApiKey(request.provider)));
+    // except the stored credential and deployment-owned headers: the curated UI
+    // accepts neither, so an already-configured route supplies both inside the
+    // Host rather than widening the discovery request.
+    ctx.llm.registerModelDiscovery(settingsNs, (request, signal) => discoverModels({ ...request, ...signal === undefined ? {} : { signal } }, () => storedDiscoveryProfile(request.provider)));
     // Route effects bind to this apply fiber via the stable `ctx` reference,
     // even when a swap runs inside the scoped settings callback below. A bare
     // mount (zero routes) is the dormant posture: nothing registers until a
@@ -261,41 +210,15 @@ export function apply(ctx, config) {
         registeredFacts = facts;
     };
     ensureRegistrationFacts();
-    installSettingsSection(ctx, NS, Config, config, {
-        // Refuse an unserviceable section where it is written: without this a
-        // schema-valid profile the adapter cannot serve would be stored and then
-        // silently disable every route in this namespace.
-        validate: assertServiceable,
-        setSource: (source) => {
-            current = source;
-        },
-        onChange: () => {
-            // Named here rather than left to the settings watcher: `assertServiceable`
-            // cannot see the llm registry, so a profile claiming a route another
-            // adapter family owns is stored successfully and only fails at this swap.
-            // Without its own diagnostic that refusal reaches the operator as a
-            // generic "settings: watcher failed", naming neither the route nor why it
-            // is not serving. The previous routes keep serving either way.
-            try {
-                ensureRegistrationFacts();
-            }
-            catch (error) {
-                ctx.logger.error('llm-pi-ai: keeping the previously registered routes after a refused update');
-                ctx.logger.error(error);
-            }
-            // The directory follows the profiles the registry accepted, so a route
-            // that failed to register is not advertised as configurable. A refused
-            // directory swap is contained here for the same reason the registry's
-            // is: the previous entries keep serving, and `directoryFacts` stays put
-            // so returning to a working configuration re-applies.
-            try {
-                ensureDirectory();
-            }
-            catch (error) {
-                ctx.logger.error('llm-pi-ai: keeping the previous configurable-provider directory after a refused update');
-                ctx.logger.error(error);
-            }
-        },
+    ctx.on('loader/volatile-update', () => {
+        try {
+            ensureRegistrationFacts();
+            ensureDirectory();
+        }
+        catch (error) {
+            ctx.logger.error('llm-pi-ai: configuration conflicts with an existing provider route');
+            ctx.logger.error(error);
+        }
     });
 }
 //# sourceMappingURL=index.js.map

@@ -6,7 +6,7 @@ export const evaluate = new Function('ctx', 'expr', `
     return eval(expr)
   }
 `);
-/** Recursively replace YAML `!js` expression nodes with evaluated values. */
+/** Recursively replace YAML `!!js` expression nodes with evaluated values. */
 export function interpolate(ctx, value) {
     if (isJsExpr(value)) {
         return evaluate(ctx, value.__jsExpr);

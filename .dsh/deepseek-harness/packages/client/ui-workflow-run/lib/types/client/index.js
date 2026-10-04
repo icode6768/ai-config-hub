@@ -3,7 +3,7 @@ import { WorkflowRunPanel } from "./WorkflowRunPanel.js";
 import { en, NS, zh } from "./locales.js";
 import { workflowRunDefinition } from "./workflow-definition.js";
 /** Required services for Definition, keyed renderer, navigation, and copy. */
-export const inject = ['uiConversation', 'slots', 'sessions', 'locale'];
+export const inject = ['uiConversation', 'uiWorkspace', 'slots', 'sessions', 'locale'];
 /** Register the workflow Definition, dictionary, and keyed Chat renderer. */
 export function apply(ctx) {
     ctx.uiConversation.events.register(workflowRunDefinition);
@@ -13,7 +13,7 @@ export function apply(ctx) {
         key: 'workflow-run',
         locale: NS,
         inject: () => ({
-            openSession: (id) => { ctx.sessions.open(id); },
+            openSession: (target) => { ctx.uiWorkspace.openSession(target); },
         }),
     }, WorkflowRunPanel));
 }

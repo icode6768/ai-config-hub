@@ -1,5 +1,5 @@
 /** Configuration resolution for deterministic tool-result pruning. */
-import { deepFreeze } from '@deepseek-ai/dsh-llm';
+import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 /** Fixed marker substituted for every removed middle span. */
 export const PRUNE_MARKER = '\n\n[... tool result middle pruned ...]\n\n';
 /** Low-friction defaults for coding-agent tool output. */

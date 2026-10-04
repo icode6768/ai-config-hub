@@ -43,7 +43,7 @@ export interface TeamMemberView {
     readonly id: SessionId;
     readonly name: string;
     readonly role: 'lead' | 'teammate';
-    readonly status: 'running' | 'idle' | 'inactive' | 'provisioning' | 'failed';
+    readonly status: 'running' | 'inactive' | 'provisioning' | 'failed';
     readonly description?: string;
     readonly provider?: string;
     readonly context?: 'fresh' | 'fork';
@@ -76,10 +76,30 @@ export interface TeamTaskView {
     readonly ready: boolean;
     readonly writeScopeWarnings: string[];
 }
-/** Point-in-time roster and task-board projection returned to browser clients. */
-export interface TeamView {
-    readonly members: TeamMemberView[];
+/** One durable roster row published through the `agentTeam` Session projection. */
+export interface TeamMemberProjection {
+    readonly id: SessionId;
+    readonly name: string;
+    readonly role: 'lead' | 'teammate';
+    /** Durable lifecycle; the Lead row is always `active`. Turn activity comes from Session status. */
+    readonly phase: TeamMemberPhase;
+    readonly error?: string;
+}
+/**
+ * Durable Team state published to browser clients through the Lead Session's
+ * `agentTeam` projection. `failure` names the first rejected persisted Team
+ * record; members and tasks then stay at the last valid state.
+ */
+export interface TeamProjection {
+    readonly members: TeamMemberProjection[];
     readonly tasks: TeamTaskView[];
+    readonly failure?: string;
+}
+declare module '@deepseek-ai/dsh-session-projection/types' {
+    interface SessionProjectionMap {
+        /** Durable roster and non-deleted task board of the Team rooted at the projected Session. */
+        agentTeam: TeamProjection;
+    }
 }
 /** One peer message retained until its target Session records it. */
 export interface TeamMessageSnapshot {
@@ -87,7 +107,6 @@ export interface TeamMessageSnapshot {
     readonly senderId: SessionId;
     readonly senderName: string;
     readonly targetId: SessionId;
-    readonly delivery: 'quiet' | 'wakeup';
     readonly content: ContentBlock[];
 }
 /** Source retained by the target Session for durable mailbox de-duplication. */
@@ -133,7 +152,6 @@ export interface SpawnTeammateResult {
 export interface SendTeamMessageRequest {
     readonly target: string;
     readonly content: ContentBlock[];
-    readonly delivery: 'quiet' | 'wakeup';
     readonly signal: AbortSignal;
 }
 /** Result after a peer message enters the durable mailbox. */
@@ -161,17 +179,6 @@ export interface UpdateTeamTaskRequest {
     readonly writeScopes?: readonly string[];
     readonly owner?: string;
 }
-/** Browser task mutation result with stale revisions kept distinct from other Team rejections. */
-export type TeamTaskMutationResult = {
-    readonly ok: true;
-    readonly value: TeamTaskView;
-} | {
-    readonly ok: false;
-    readonly error: {
-        readonly code: 'team-task-conflict' | 'team-rejected';
-        readonly message: string;
-    };
-};
 /** Result of waiting for Team activity. */
 export interface TeamWaitResult {
     readonly timedOut: boolean;
@@ -180,25 +187,25 @@ declare module '@deepseek-ai/dsh-session/types' {
     interface SessionEventMap {
         /** Whole teammate lifecycle value, stored only in the Team Lead Session. */
         'team/member': {
-            version: 1;
+            version: 2;
             teamId: TeamId;
             member: TeamMemberSnapshot;
         };
         /** Whole shared-task value, stored only in the Team Lead Session. */
         'team/task': {
-            version: 1;
+            version: 2;
             teamId: TeamId;
             task: TeamTaskSnapshot;
         };
         /** Durable mailbox enqueue, stored before delivery is attempted. */
         'team/message/queued': {
-            version: 1;
+            version: 2;
             teamId: TeamId;
             message: TeamMessageSnapshot;
         };
         /** Durable acknowledgement that the target Session recorded the message. */
         'team/message/delivered': {
-            version: 1;
+            version: 2;
             teamId: TeamId;
             messageId: TeamMessageId;
             targetId: SessionId;

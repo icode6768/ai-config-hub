@@ -29,11 +29,14 @@ if not exist "%LAUNCHER%" (
 )
 
 cd /d "%PROJECT_DIR%"
-if not exist "%PROJECT_DIR%\node_modules\@deepseek-ai\dsh-app-boot\package.json" (
+if not exist "%PROJECT_DIR%\apps\cli\node_modules\@deepseek-ai\dsh-app-boot\package.json" (
   echo [DeepSeek Harness] Dependencies missing; installing...
+  set "CI=true"
+  set "npm_config_confirm_modules_purge=false"
+  set "npm_config_node_linker=hoisted"
   where pnpm >nul 2>&1
   if not errorlevel 1 (
-    pnpm install
+    pnpm install --filter @deepseek-ai/dsh... --no-frozen-lockfile
   ) else (
     "%NODE_EXE%" "%~dp0..\runtime\windows\node\node_modules\npm\bin\npm-cli.js" install
   )

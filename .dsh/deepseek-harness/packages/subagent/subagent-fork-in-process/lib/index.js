@@ -21,7 +21,7 @@ const Config = z.object({ providerName: z.string().default("fork") });
 * @returns the seed events, contiguous from seq 0; empty when no turn has completed.
 */
 function completedTurnPrefix(parent) {
-	const events = parent.session.events;
+	const events = parent.session.snapshotEvents();
 	const lastEnd = events.findLast((e) => e.type === "turn/end");
 	if (lastEnd === void 0) return [];
 	return events.slice(0, lastEnd.seq + 1);

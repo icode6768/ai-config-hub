@@ -1,8 +1,8 @@
 /** Session Controller adapter for React selector hooks and Slot scope data. */
 import { Service, type Context } from '@deepseek-ai/cordis';
-import type { ISessions, SessionBinding, SessionListState, SessionSnapshot, UseProjection } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { ISessions, SessionBinding, SessionListState, SessionReference, SessionRetainInfo, SessionSnapshot, UseProjection } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { HostObservable, KeyedStandardSource, MaybeSnapshotSelectorHook, SlotScopeAdapter, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots';
+import type { HostObservable, KeyedStandardSource, MaybeSnapshotSelectorHook, SlotScopeAdapter, SnapshotSelectorHook, StandardSourceBinding } from '@deepseek-ai/dsh-client-ui-slots';
 /** Selector hook over the Session Controller list and current selection. */
 export type UseSessions = SnapshotSelectorHook<SessionListState>;
 /** Selector hook over one Session's lifecycle and control state. */
@@ -18,25 +18,61 @@ export interface SessionPendingInteractionBase {
     /** Session whose UI can answer this interaction. */
     readonly sessionId: SessionId;
 }
-/** Declaration-merged roster of domain-owned pending interaction values. */
+/** Declaration-merged map of domain keys to their pending-interaction values. */
 export interface SessionPendingInteractionMap {
 }
-/** Every pending interaction contributed by the assembled Client. */
+/** Union of every pending-interaction value contributed by the assembled Client. */
 export type SessionPendingInteraction = [
     keyof SessionPendingInteractionMap
 ] extends [never] ? SessionPendingInteractionBase : SessionPendingInteractionMap[keyof SessionPendingInteractionMap];
-/** Current effective pending interaction by Session. */
-export type SessionPendingInteractionSnapshot = ReadonlyMap<SessionId, SessionPendingInteraction>;
-/** Selector hook over Session-scoped pending interactions. */
-export type UseSessionPendingInteraction = SnapshotSelectorHook<SessionPendingInteractionSnapshot>;
+/** Independent UI status facts for one Session identity. */
+export interface SessionStatus {
+    /** Latest known running state; absent until a baseline or event establishes it. */
+    readonly running: boolean | undefined;
+    /** Highest-precedence domain request currently awaiting user interaction. */
+    readonly pendingInteraction: SessionPendingInteraction | undefined;
+    /** Whether an observed stop outside the main view still needs acknowledgement. */
+    readonly completionUnread: boolean;
+}
+/** Current UI status indexed by Session identity. */
+export type SessionStatusSnapshot = ReadonlyMap<SessionId, SessionStatus>;
+/** Selector hook over the unified Session UI status snapshot. */
+export type UseSessionStatus = SnapshotSelectorHook<SessionStatusSnapshot>;
+/** Selector hook for explicit or surrounding-Provider Session reference counts. */
+export interface UseSessionRetainInfo {
+    /**
+     * Read the complete retain information for an explicit Session identity.
+     * @param sessionId - Session identity to inspect without retaining it.
+     * @returns current local reference counts, or absence while the source is unavailable.
+     */
+    (sessionId: SessionId): SessionRetainInfo | undefined;
+    /**
+     * Select from the retain information for an explicit Session identity.
+     * @param sessionId - Session identity to inspect without retaining it.
+     * @param selector - projection over the current value.
+     * @param equal - optional selected-value equality.
+     * @returns selected value.
+     */
+    <Selected>(sessionId: SessionId, selector: (value: SessionRetainInfo | undefined) => Selected, equal?: (left: Selected, right: Selected) => boolean): Selected;
+    /**
+     * Select from the surrounding Provider's Session retain information.
+     * @param selector - projection receiving absence outside a Session binding.
+     * @param equal - optional selected-value equality.
+     * @returns selected value.
+     */
+    <Selected>(selector: (value: SessionRetainInfo | undefined) => Selected, equal?: (left: Selected, right: Selected) => boolean): Selected;
+}
 /** Publish one pending interaction and define how plugin teardown delegates it. */
 export type PendingInteractionPublisher<T extends SessionPendingInteractionBase> = (interaction: T, delegate: () => Promise<void>) => () => void;
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+    interface SlotScopeTargetMap {
+        session: SessionReference;
+    }
     interface GlobalStandardProps {
         /** Session list and current selection. */
         useSessions: UseSessions;
-        /** Pending user interaction presented by a Session-scoped UI consumer. */
-        useSessionPendingInteraction: UseSessionPendingInteraction;
+        useSessionStatus: UseSessionStatus;
+        useSessionRetainInfo: UseSessionRetainInfo;
     }
     interface SessionStandardProps {
         /** Current Session lifecycle and control state. */
@@ -53,6 +89,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         sessionId: SessionId | undefined;
         /** Host-computed projection values; every key is absent without a Session. */
         useProjection: UseProjection;
+    }
+}
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+    interface SessionReferenceSourceMap {
+        mainView: unknown;
     }
 }
 declare module '@deepseek-ai/cordis' {
@@ -85,15 +126,20 @@ export interface SessionSourceDescriptor<Hooks extends SessionSourceRoster = Ses
 export declare class UiSession extends Service {
     private readonly sessions;
     private readonly descriptors;
-    private bindings;
-    private absent;
-    private currentBinding;
-    private readonly currentListeners;
+    private readonly bindings;
+    private readonly absent;
+    private readonly current;
     private readonly pendingDomains;
     private pendingSnapshot;
-    private readonly pendingListeners;
-    /** Root source of pending UI interactions, independent from Controller snapshots. */
-    readonly pendingInteractions: HostObservable<SessionPendingInteractionSnapshot>;
+    private readonly running;
+    private readonly completionUnread;
+    private statusSnapshot;
+    private readonly statusListeners;
+    private mainRetainId;
+    private disposeMainRetain;
+    private active;
+    /** Root source combining running, pending-interaction, and completion-reminder facts. */
+    readonly sessionStatus: HostObservable<SessionStatusSnapshot>;
     /** Renderer-facing adapter for `session` and `session-maybe` scopes. */
     readonly adapter: SlotScopeAdapter;
     /**
@@ -101,6 +147,13 @@ export declare class UiSession extends Service {
      * @param sessions - Controller-owned Session object layer.
      */
     constructor(ctx: Context, sessions: ISessions);
+    /**
+     * Resolve a stable renderer source for an owned Session reference or explicit absence.
+     * @param reference - active reference supplied by the Provider owner, or absence.
+     * @returns the binding source, which falls back to the absent projection when its generation ends.
+     * @throws when the reference does not belong to the active Controller generation.
+     */
+    bindingSource(reference: SessionReference | undefined): HostObservable<StandardSourceBinding>;
     /**
      * Register one Session-scoped standard-source contribution.
      * @param descriptor - static member roster and per-binding resolver.
@@ -116,10 +169,14 @@ export declare class UiSession extends Service {
      */
     registerPendingInteraction<T extends SessionPendingInteractionBase>(precedence: (interaction: T) => number): PendingInteractionPublisher<T>;
     private rebuildBindings;
-    private resolve;
-    private resolveCurrent;
-    private publishCurrent;
+    private sourceFor;
+    private publishMain;
+    private watchMainRetention;
     private publishPendingInteractions;
+    private observeRunning;
+    private reconcileStatus;
+    private isMain;
+    private publishStatus;
     private createMaterializedBinding;
     private materialize;
     private materializeAbsent;

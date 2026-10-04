@@ -4,17 +4,15 @@ import type {
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SubagentCatalog, SubagentInterruptReceipt, SubagentPromptReceipt, SubagentPromptRequest } from '@deepseek-ai/dsh-subagent/client'
+import type { SubagentInterruptReceipt, SubagentPromptReceipt, SubagentPromptRequest } from '@deepseek-ai/dsh-subagent/client'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$7375626167656e7473 {
     interruptByParent: (childSessionId: SessionId, parentSessionId: SessionId, mode: 'continuable') => Promise<RemoteResult<SubagentInterruptReceipt>>
-    list: (parentSessionId: SessionId, signal?: AbortSignal) => Promise<RemoteResult<SubagentCatalog>>
     prompt: (request: SubagentPromptRequest, signal?: AbortSignal) => Promise<RemoteResult<SubagentPromptReceipt>>
   }
   interface TypertRemoteMap {
     'subagents/interruptByParent': (childSessionId: SessionId, parentSessionId: SessionId, mode: 'continuable') => Promise<RemoteResult<SubagentInterruptReceipt>>
-    'subagents/list': (parentSessionId: SessionId, signal?: AbortSignal) => Promise<RemoteResult<SubagentCatalog>>
     'subagents/prompt': (request: SubagentPromptRequest, signal?: AbortSignal) => Promise<RemoteResult<SubagentPromptReceipt>>
   }
   interface TypertRemoteNamespaceMap {

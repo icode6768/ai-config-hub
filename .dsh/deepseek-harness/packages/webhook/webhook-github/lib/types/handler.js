@@ -1,6 +1,6 @@
 /** GitHub HTTP authentication, parsing, and fire-and-forget dispatch. */
 import { Webhooks } from '@octokit/webhooks';
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session';
+import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values';
 import { WebhookDeliveryId, WebhookSourceId, } from '@deepseek-ai/dsh-webhook';
 import { readBoundedUtf8Body, WebhookHttpError } from "./body.js";
 /** Require one unambiguous non-empty request header. */

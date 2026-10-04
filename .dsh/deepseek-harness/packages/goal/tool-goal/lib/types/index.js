@@ -7,23 +7,19 @@ import z from '@deepseek-ai/schemastery';
 import { GoalId } from '@deepseek-ai/dsh-goal';
 import { boundContextSummary, createUserMessage, HarnessError } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt';
 import { completionAuthority, goalToolExecution, requireDirectHuman, } from "./authority.js";
 import { renderWrapupContext } from "./wrapup.js";
 export const name = 'tool-goal';
-export const inject = ['agents', 'goals', 'tools', 'systemPrompt'];
+export const inject = ['agents', 'goals', 'tools', 'systemPrompt', 'sessionProjections'];
 /** Schemastery config for the goal-tool policy. */
 export const Config = z.object({
     blockedAfterConsecutiveRounds: z.number().step(1).min(1).default(3),
 });
 const UPDATE_ACTIONS = ['edit', 'pause', 'resume', 'complete', 'blocked'];
-const CREATE_DESCRIPTION = 'Create one persisted same-session completion goal when the current direct human request '
-    + 'is a long-running objective that should continue across autonomous goal rounds. You may '
-    + 'infer that intent without requiring the user to say "create a goal". Do not use this for '
-    + 'trivial single-turn work. Execution rejects non-human and subagent authority.';
-const GET_DESCRIPTION = 'Read the current same-session goal, including its exact id/revision, objective, phase, completed '
-    + 'continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. '
-    + 'Call this before updating a goal.';
+const CREATE_DESCRIPTION = 'Create a persisted goal that keeps this session working across automatic continuation rounds. '
+    + 'Use it when the direct human request is a long-running objective, even if the user did not say "goal"; '
+    + 'not for single-turn work.';
+const GET_DESCRIPTION = 'Read the current session goal, including the id and revision that update_goal requires.';
 const GOAL_VALUE_SCHEMA = {
     oneOf: [
         {
@@ -65,10 +61,8 @@ const GOAL_VALUE_SCHEMA = {
 };
 /** Render policy guidance with its deployment-selected blocked threshold. */
 function guidance(blockedAfter) {
-    return 'Use goal tools for one long-running completion objective in the current session. '
-        + 'create_goal may infer goal intent from a direct human request in any language; do not '
-        + 'create a goal for routine single-turn work. Call get_goal before update_goal and copy its '
-        + 'exact goal_id and revision. After session resume or fork, an active goal is disarmed: when '
+    return 'create_goal may infer goal intent from a direct human request in any language. '
+        + 'After session resume or fork, an active goal is disarmed: when '
         + 'a human asks to continue or resume in any wording or language, use update_goal action '
         + 'resume to rearm it. Mark complete only when the objective is actually achieved. Mark '
         + `blocked only after the same blocking condition persists for at least ${blockedAfter} `
@@ -132,7 +126,7 @@ export function apply(ctx, config) {
     const resolved = resolveConfig(config);
     ctx.systemPrompt.section({
         name: 'tool:goal',
-        order: FIRST_PARTY_SECTION_ORDER.TOOL_GOAL,
+        order: ctx.systemPrompt.getSectionOrder('TOOL_GOAL'),
         text: guidance(resolved.blockedAfterConsecutiveRounds),
     });
     ctx.tools.register(defineTool({
@@ -174,10 +168,7 @@ export function apply(ctx, config) {
     }));
     ctx.tools.register(defineTool({
         name: 'update_goal',
-        description: 'Update the exact current goal revision. edit, pause, and resume require a direct '
-            + 'top-level human request. During an automatic continuation of the current goal, complete '
-            + 'and blocked are also allowed. blocked is rejected before the configured minimum round count; the model remains '
-            + 'responsible for judging that the same condition persisted across those rounds and must explain it in blocked_reason.',
+        description: 'Update the current goal.',
         parameters: {
             goal_id: { type: 'string', required: true, description: 'Exact id returned by get_goal.' },
             revision: { type: 'number', required: true, description: 'Exact positive revision returned by get_goal.' },
@@ -185,13 +176,14 @@ export function apply(ctx, config) {
                 type: 'string',
                 required: true,
                 enum: UPDATE_ACTIONS,
-                description: 'edit | pause | resume | complete | blocked',
+                description: 'edit, pause, and resume require a direct top-level human request. complete and blocked are also allowed '
+                    + 'during an automatic continuation of this goal; blocked is rejected before the configured minimum round count.',
             },
             objective: { type: 'string', description: 'Replacement objective; valid only with action edit.' },
             max_goal_rounds: { type: 'number', description: 'Replacement cap; valid only with action edit.' },
             blocked_reason: {
                 type: 'string',
-                description: 'Concrete blocking condition; required only with action blocked.',
+                description: 'Required only with action blocked: the concrete condition that persisted across rounds and blocks progress.',
             },
         },
         output: GOAL_OUTPUT,
@@ -214,6 +206,11 @@ export function apply(ctx, config) {
                 requireDirectHuman(ctx, execution);
                 if (hasText(args.objective) || hasRoundCap(args.max_goal_rounds) || hasText(args.blocked_reason)) {
                     throw new HarnessError('objective and max_goal_rounds are valid only with action edit; blocked_reason is valid only with action blocked', 'GOAL_TOOL_INVALID_UPDATE');
+                }
+                const current = ctx.goals.get(execution.agent);
+                if (args.action === 'resume' && current?.id === ref.id && current.revision === ref.revision
+                    && current.phase === 'paused') {
+                    throw new HarnessError('the model cannot resume a paused goal; the user must resume it', 'GOAL_TOOL_RESUME_PAUSED');
                 }
                 const goal = args.action === 'pause'
                     ? ctx.goals.pause(execution.agent, ref)
@@ -248,8 +245,7 @@ export function apply(ctx, config) {
                         ? renderWrapupContext(goal.objective)
                         : renderWrapupContext(goal.objective, args.blocked_reason),
                     source: {
-                        kind: 'plugin',
-                        plugin: 'tool-goal',
+                        kind: 'tool-goal',
                         form: 'notice',
                         summary: boundContextSummary(`${args.action}: ${goal.objective}`),
                     },

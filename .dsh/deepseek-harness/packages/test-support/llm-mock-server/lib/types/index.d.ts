@@ -1,6 +1,6 @@
 /**
- * Scriptable OpenAI-compatible HTTP/SSE server for transport, protocol, and
- * semantic-empty LLM recovery tests. Each accepted chat-completions request
+ * Scriptable Messages HTTP/SSE server for transport, protocol, and
+ * semantic-empty LLM recovery tests. Each accepted Messages request
  * consumes one behavior; the server never retries or interprets harness policy.
  *
  * @module @deepseek-ai/dsh-llm-mock-server
@@ -40,7 +40,7 @@ export type MockLlmServerEvent = {
 };
 /** Captured wire request and its final server-side outcome. */
 export interface MockLlmRequestRecord {
-    /** One-based accepted chat-completions request number. */
+    /** One-based accepted Messages request number. */
     readonly attempt: number;
     /** Script entry consumed for this request before random resolution. */
     readonly scriptBehavior: MockLlmBehavior | 'script_exhausted';
@@ -63,7 +63,7 @@ export interface MockLlmServerOptions {
     readonly host?: string;
     /** TCP port; zero requests an OS-assigned port. */
     readonly port?: number;
-    /** Optional exact bearer token; omission accepts any authorization header. */
+    /** Optional exact API key; omission accepts any x-api-key header. */
     readonly apiKey?: string;
     /** Ordered request behaviors; exhaustion fails loud unless `repeatLast` is true. */
     readonly sequence: readonly MockLlmBehavior[];
@@ -98,7 +98,7 @@ export interface MockLlmServerOptions {
 }
 /** Running mock server and captured request state. */
 export interface MockLlmServer {
-    /** Base URL without `/v1`; both root and `/v1` chat-completions paths are accepted. */
+    /** Base URL without `/v1`; the endpoint is `/v1/messages`. */
     readonly baseURL: string;
     /** Actual bound port, including an OS-assigned value. */
     readonly port: number;
@@ -110,9 +110,9 @@ export interface MockLlmServer {
     close(): Promise<void>;
 }
 /**
- * Start a local chat-completions server that consumes one configured behavior
- * per accepted request. Only a `POST` path ending in `/chat/completions` consumes the script;
- * invalid routes, methods, authorization, and JSON receive ordinary 4xx
+ * Start a local Messages server that consumes one configured behavior
+ * per accepted request. Only a `POST` path ending in `/v1/messages` consumes the script;
+ * invalid routes, methods, API keys, and JSON receive ordinary 4xx
  * responses. Closing the handle terminates stalled connections.
  *
  * @param options - listener, script, response content, timing, and telemetry options.

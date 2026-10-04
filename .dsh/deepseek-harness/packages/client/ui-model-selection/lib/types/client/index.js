@@ -1,6 +1,8 @@
+import { IconDataOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { ModelDirectoryResolver } from "./service.js";
 import { ModelSelect } from "./ModelSelect.js";
 import { en, zh } from "./locales.js";
+import { orderModelProviders } from "./provider-order.js";
 export { ModelDirectory } from "./directory.js";
 export { ModelDirectoryResolver } from "./service.js";
 /** One selectable row's id: an opaque row key (resolved by lookup, never parsed). */
@@ -10,12 +12,13 @@ function rowId(providerId, modelId) {
 /** Flatten the directory into popup rows; failure rows are listed for visibility but never selectable. */
 function optionsOf(directory, t) {
     const rows = [];
-    for (const group of directory.groups) {
+    for (const group of orderModelProviders(directory.groups)) {
+        const name = group.id === 'deepseek-account' ? t('provider.account') : group.name;
         for (const model of group.models) {
             rows.push({
                 id: rowId(group.id, model.id),
                 label: model.name,
-                detail: model.description !== undefined ? `${group.name} · ${model.description}` : group.name,
+                group: { name: group.id, label: name },
                 ...(directory.current !== null
                     && directory.current.provider === group.id
                     && directory.current.model === model.id
@@ -26,7 +29,7 @@ function optionsOf(directory, t) {
     for (const failure of directory.failures) {
         rows.push({
             id: `failure/${failure.id}`,
-            label: failure.name,
+            label: failure.id === 'deepseek-account' ? t('provider.account') : failure.name,
             detail: t('option.loadError', { message: failure.message }),
         });
     }
@@ -72,22 +75,26 @@ export function apply(ctx) {
     // Non-slot faces (the command description, the popup option builder) read
     // through the bound translate; the seat component reads the standard seat.
     const t = ctx.locale.bind(NS);
-    // The composer-block reason is this plugin's own copy, read at raise time so
-    // a locale change reaches the next publish.
-    ctx.plugin(ModelDirectoryResolver, { blockReason: () => t('blocked.composer') });
-    // Entry 1: the /model popupSelect over the shared directory. The command
-    // description is registry-held text: it reads t() once at registration and
-    // refreshes only on re-registration, not on locale change.
+    ctx.plugin(ModelDirectoryResolver);
+    // Entry 1: the /model popupSelect over the shared directory.
     ctx.inject(['commandUi', 'modelDirectories'], (scope) => {
         const command = scope.get('commandUi');
         const models = scope.modelDirectories;
         const sessions = scope.sessions;
         scope.effect(() => command.register({
             name: 'model',
-            description: t('command.description'),
+            label: () => t('command.label'),
+            description: () => t('command.description'),
+            icon: IconDataOutlineRegular,
             available: session => sessions.subagentAddress(session.sessionId) === undefined,
             ui: {
                 kind: 'popupSelect',
+                searchMode: 'fuzzy-label',
+                searchLabels: () => ({
+                    placeholder: t('search.placeholder'),
+                    empty: t('empty.models'),
+                    noResults: t('search.empty'),
+                }),
                 options: async (session) => {
                     if (sessions.subagentAddress(session.sessionId) !== undefined) {
                         throw new Error('model selection is unavailable for addressed subagent sessions');
@@ -103,7 +110,12 @@ export function apply(ctx) {
                     if (selection === undefined) {
                         throw new Error('this provider\'s catalog failed to load — pick a model from a loaded group');
                     }
-                    await directory.select(selection);
+                    const result = await directory.select(selection);
+                    if (!result.ok) {
+                        if (result.error.code === 'session/writer-held')
+                            throw new Error(t('error.sessionInUse'));
+                        throw result.error;
+                    }
                 },
             },
         }), 'ui-model-selection: /model contribution');
@@ -126,8 +138,8 @@ export function apply(ctx) {
                             directory.load().catch(() => { });
                     },
                     select: (selection) => available
-                        ? directory.select(selection).then(() => true, () => false)
-                        : Promise.resolve(false),
+                        ? directory.select(selection)
+                        : Promise.resolve(undefined),
                 };
             },
         }, ModelSelect));

@@ -15,12 +15,10 @@
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { lowerModuleSource, MemoryVfs, packTar, WorkerModuleLoader, DEFAULT_ROOT, IMAGE_CONFIG_PATH, IMAGE_EMPTY_DIRECTORIES, IMAGE_MANIFEST_PATH, IMAGE_OVERLAY_DIRECTORIES, } from '@deepseek-ai/dsh-experimental-webworker-runtime';
+import { lowerModuleSource, MemoryVfs, packTar, WorkerModuleLoader, DEFAULT_ROOT, IMAGE_CONFIG_PATH, IMAGE_EMPTY_DIRECTORIES, IMAGE_MANIFEST_PATH, IMAGE_OVERLAY_DIRECTORIES, MODULE_PROXIES, MODULE_PROXY_PREFIXES, REPLACED_EXTERNAL_PACKAGES, } from '@deepseek-ai/dsh-experimental-webworker-runtime';
 import picomatch from 'picomatch';
 import yaml from 'js-yaml';
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include';
-import { REPLACED_EXTERNAL_PACKAGES } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/node/external_packages/replaced-externals.ts';
-import { MODULE_PROXIES, MODULE_PROXY_PREFIXES } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/module-proxies.ts';
 import { WRAPPER_CONTRACT } from "./transform-image.js";
 import { EXCLUDE, EXCLUDE_WORKSPACE, IMAGE_ENTRY_SEEDS, PAGE_ASSETS } from "./rules.js";
 export { DEFAULT_ROOT } from '@deepseek-ai/dsh-experimental-webworker-runtime';
@@ -237,6 +235,15 @@ function debuggerNamer(workspaces, resolveFrom) {
         return directory === undefined ? key : `${directory}${rest.slice(packageName.length)}`;
     };
 }
+/** Declaration-only condition trees add no runtime roots; explicit imports still resolve normally. */
+function isDeclarationOnlyExport(value) {
+    if (typeof value !== 'object' || value === null)
+        return false;
+    if (Array.isArray(value))
+        return value.length > 0 && value.every(isDeclarationOnlyExport);
+    const conditions = Object.entries(value);
+    return conditions.length > 0 && conditions.every(([condition, target]) => condition === 'types' || condition.startsWith('types@') || isDeclarationOnlyExport(target));
+}
 function sweepImage(files, options, rootPackages, root) {
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
@@ -269,11 +276,13 @@ function sweepImage(files, options, rootPackages, root) {
         catch {
             continue;
         }
-        // Every non-wildcard face is a root; a face resolving onto a page asset is
-        // kept untransformed below rather than excluded here.
+        // Every non-wildcard runtime face is a root; a face resolving onto a page
+        // asset is kept untransformed below rather than excluded here.
         const subpaths = manifest.exports === undefined
             ? ['.']
-            : Object.keys(manifest.exports).filter(key => key.startsWith('.') && !key.includes('*'));
+            : Object.entries(manifest.exports)
+                .filter(([key, target]) => key.startsWith('.') && !key.includes('*') && !isDeclarationOnlyExport(target))
+                .map(([key]) => key);
         for (const subpath of subpaths) {
             queue.push({ specifier: subpath === '.' ? name : `${name}/${subpath.slice(2)}`, from: root, importer: `workspace face ${name}` });
         }

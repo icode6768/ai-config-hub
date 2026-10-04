@@ -47,16 +47,7 @@ export declare class TeamTaskBoard {
     private writeScopes;
     /** Map shared task-graph validation onto stable command error codes. */
     private assertTaskGraph;
-    /** Whether all current blockers completed. */
-    private taskReady;
     /** Remove an optional owner field under exactOptionalPropertyTypes. */
     private withoutOwner;
-    /**
-     * Build one task view with owner name, readiness, and advisory write overlaps.
-     * A committing caller may pass its pre-append fold because `task` supplies the
-     * new value explicitly; owner names, blocker readiness, and other task scopes
-     * do not change when that snapshot is appended.
-     */
-    private taskView;
 }
 //# sourceMappingURL=task-board.d.ts.map

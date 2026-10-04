@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 /** Frame-wide dynamic Plugin inventory, approvals, versions, and lifecycle actions. */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { IconCheckOutline16, IconCloseOutline16, IconCordisPluginOutline14, IconPlayOutline16, IconStopFill16, IconTrashOutline16, Tooltip, useDismissOnOutsidePointer, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconCheckOutlineRegular, IconCloseOutlineRegular, IconCordisPluginOutlineRegular, IconPlayOutlineRegular, IconStopFillRegular, IconTrashOutlineRegular, StateDot, Tooltip, useDismissOnOutsidePointer, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { cordisVisibleStatus, packageOf } from "./status.js";
 import css from './CordisPanel.module.css';
 const STATUS_LABELS = {
@@ -37,6 +37,17 @@ function visiblePanelStatus(view, selectedPackageId, loaded) {
         return 'idle';
     return cordisVisibleStatus(listed, listed.activeRun.packageId, loaded);
 }
+function panelDotState(status, busy) {
+    if (busy)
+        return 'ongoing';
+    switch (status) {
+        case 'idle': return 'idle';
+        case 'client-pending': return 'ongoing';
+        case 'running': return 'done';
+        case 'awaiting-approval': return 'warning';
+        case 'failed': return 'error';
+    }
+}
 function blockingFirst(rows) {
     return [
         ...rows.filter(row => row.activity?.phase === 'awaiting-approval'),
@@ -47,7 +58,7 @@ function RowAction({ label, children, ...props }) {
     return (_jsx(Tooltip, { label: label, side: "bottom", delayMs: 500, children: _jsx("button", { type: "button", className: css.actionButton, "aria-label": label, ...props, children: children }) }));
 }
 function DoubleCheckIcon() {
-    return (_jsxs("span", { className: css.doubleCheck, "aria-hidden": true, children: [_jsx(IconCheckOutline16, { size: 12 }), _jsx(IconCheckOutline16, { size: 12 })] }));
+    return (_jsxs("span", { className: css.doubleCheck, "aria-hidden": true, children: [_jsx(IconCheckOutlineRegular, { size: 12 }), _jsx(IconCheckOutlineRegular, { size: 12 })] }));
 }
 /** Render the inventory panel and its unified footer action. */
 export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, useRunErrors, useLoaded, useRenderFailures, onApprove, onDecline, onRun, onStop, onRemove, onRefresh, t, }) {
@@ -56,7 +67,8 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
     const errors = useRunErrors(snapshot => snapshot);
     const loaded = useLoaded(snapshot => snapshot);
     const renderFailures = useRenderFailures(snapshot => snapshot);
-    const current = useSessions(state => state.current);
+    const current = useSessions(state => Object.values(state.byId)
+        .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id);
     const [open, setOpen] = useState(false);
     const [selected, setSelected] = useState({});
     const [pending, setPending] = useState(new Set());
@@ -171,7 +183,7 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
         const currentPackageId = listed?.currentPackageId;
         const runMode = listed?.currentPackageId !== undefined
             && selectedPackageId !== listed.currentPackageId ? 'update' : 'run';
-        return (_jsxs("li", { className: css.row, "data-cordis-row": pluginId, "data-cordis-status": status, "data-cordis-awaiting": awaiting !== undefined || undefined, children: [_jsxs("div", { className: css.rowHead, children: [_jsx("span", { className: css.rowId, children: pluginId }), _jsx("span", { className: css.rowName, children: name }), _jsx("span", { className: css.rowStatus, children: t(STATUS_LABELS[status]) })] }), listed !== undefined && listed.packages.length > 1 && selectedPackageId !== undefined && (_jsxs("label", { className: css.versionPicker, children: [_jsx("span", { children: t('panel.version') }), _jsx("select", { value: selectedPackageId, disabled: busy, onChange: (event) => {
+        return (_jsxs("li", { className: css.row, "data-cordis-row": pluginId, "data-cordis-status": status, "data-cordis-awaiting": awaiting !== undefined || undefined, children: [_jsxs("div", { className: css.rowHead, children: [_jsx("span", { className: css.rowId, children: pluginId }), _jsx("span", { className: css.rowName, children: name }), _jsxs("span", { className: css.rowStatus, children: [_jsx(StateDot, { state: panelDotState(status, busy) }), _jsx("span", { children: t(STATUS_LABELS[status]) })] })] }), listed !== undefined && listed.packages.length > 1 && selectedPackageId !== undefined && (_jsxs("label", { className: css.versionPicker, children: [_jsx("span", { children: t('panel.version') }), _jsx("select", { value: selectedPackageId, disabled: busy, onChange: (event) => {
                                 setSelected(currentSelected => ({
                                     ...currentSelected,
                                     [pluginId]: event.target.value,
@@ -181,7 +193,7 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
                                                     await onApprove(awaiting, false);
                                                     setOpen(false);
                                                 });
-                                            }, children: _jsx(IconCheckOutline16, { size: 14 }) }), _jsx(RowAction, { label: t('action.approvePlugin'), "data-cordis-approve-plugin": awaiting, disabled: busy, onClick: () => {
+                                            }, children: _jsx(IconCheckOutlineRegular, { size: 14 }) }), _jsx(RowAction, { label: t('action.approvePlugin'), "data-cordis-approve-plugin": awaiting, disabled: busy, onClick: () => {
                                                 void runAction(pluginId, async () => {
                                                     await onApprove(awaiting, true);
                                                     setOpen(false);
@@ -191,7 +203,7 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
                                                     await onDecline(awaiting);
                                                     setOpen(false);
                                                 });
-                                            }, children: _jsx(IconCloseOutline16, { size: 14 }) })] })), awaiting === undefined && listed !== undefined
+                                            }, children: _jsx(IconCloseOutlineRegular, { size: 14 }) })] })), awaiting === undefined && listed !== undefined
                                     && selectedPackageId !== undefined && listed.activeRun === undefined && (_jsx(RowAction, { label: t('action.run'), "data-cordis-switch": "run", disabled: busy, onClick: () => {
                                         void runAction(pluginId, () => onRun({
                                             agentId: listed.agentId,
@@ -200,7 +212,7 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
                                             mode: runMode,
                                             hasClientHalf: selectedPackage?.hasClientHalf === true,
                                         }));
-                                    }, children: _jsx(IconPlayOutline16, { size: 14 }) })), awaiting === undefined && listed !== undefined && listed.activeRun !== undefined
+                                    }, children: _jsx(IconPlayOutlineRegular, { size: 14 }) })), awaiting === undefined && listed !== undefined && listed.activeRun !== undefined
                                     && selectedPackageId !== listed.activeRun.packageId && selectedPackage !== undefined && (_jsx(RowAction, { label: t('action.run'), "data-cordis-switch": "run", disabled: busy, onClick: () => {
                                         void runAction(pluginId, () => onRun({
                                             agentId: listed.agentId,
@@ -209,7 +221,7 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
                                             mode: runMode,
                                             hasClientHalf: selectedPackage.hasClientHalf,
                                         }));
-                                    }, children: _jsx(IconPlayOutline16, { size: 14 }) })), awaiting === undefined && listed !== undefined && listed.activeRun !== undefined && status === 'client-pending'
+                                    }, children: _jsx(IconPlayOutlineRegular, { size: 14 }) })), awaiting === undefined && listed !== undefined && listed.activeRun !== undefined && status === 'client-pending'
                                     && activePackage !== undefined && selectedPackageId === listed.activeRun.packageId && (_jsx(RowAction, { label: t('action.run'), "data-cordis-switch": "run", disabled: busy, onClick: () => {
                                         void runAction(pluginId, () => onRun({
                                             agentId: listed.agentId,
@@ -218,7 +230,7 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
                                             mode: 'run',
                                             hasClientHalf: true,
                                         }));
-                                    }, children: _jsx(IconPlayOutline16, { size: 14 }) })), awaiting === undefined && listed !== undefined && listed.activeRun !== undefined && (_jsx(RowAction, { label: t('action.stop'), "data-cordis-switch": "stop", disabled: busy, onClick: () => { void runAction(pluginId, () => onStop(listed.agentId, pluginId)); }, children: _jsx(IconStopFill16, { size: 14 }) })), awaiting === undefined && listed !== undefined && (_jsx(RowAction, { label: t('action.remove'), "data-cordis-remove": pluginId, disabled: busy, onClick: () => { void runAction(pluginId, () => onRemove(listed.agentId, pluginId)); }, children: _jsx(IconTrashOutline16, { size: 14 }) }))] })] }), awaiting === undefined && nextPackageId !== undefined && listed !== undefined && (_jsxs("div", { className: css.transition, children: [_jsx("span", { children: currentPackageId === undefined ? '' : t('panel.current', { packageId: currentPackageId }) }), _jsx("span", { children: t('panel.next', { packageId: nextPackageId }) }), _jsxs("div", { className: css.transitionActions, children: [_jsx("button", { type: "button", disabled: busy, onClick: () => {
+                                    }, children: _jsx(IconPlayOutlineRegular, { size: 14 }) })), awaiting === undefined && listed !== undefined && listed.activeRun !== undefined && (_jsx(RowAction, { label: t('action.stop'), "data-cordis-switch": "stop", disabled: busy, onClick: () => { void runAction(pluginId, () => onStop(listed.agentId, pluginId)); }, children: _jsx(IconStopFillRegular, { size: 14 }) })), awaiting === undefined && listed !== undefined && (_jsx(RowAction, { label: t('action.remove'), "data-cordis-remove": pluginId, disabled: busy, onClick: () => { void runAction(pluginId, () => onRemove(listed.agentId, pluginId)); }, children: _jsx(IconTrashOutlineRegular, { size: 14 }) }))] })] }), awaiting === undefined && nextPackageId !== undefined && listed !== undefined && (_jsxs("div", { className: css.transition, children: [_jsx("span", { children: currentPackageId === undefined ? '' : t('panel.current', { packageId: currentPackageId }) }), _jsx("span", { children: t('panel.next', { packageId: nextPackageId }) }), _jsxs("div", { className: css.transitionActions, children: [_jsx("button", { type: "button", disabled: busy, onClick: () => {
                                         void runAction(pluginId, () => onRun({
                                             agentId: listed.agentId,
                                             pluginId,
@@ -238,6 +250,6 @@ export function CordisPanel({ wide, useSessions, useInventory, useActiveRuns, us
                         slot: renderFailure.slot,
                     })} ${renderFailure.message}` })), activePackage !== undefined && activePackage.packageId !== selectedPackageId && (_jsx("span", { className: css.activeVersion, children: `${t('status.running')}: ${activePackage.name} · ${activePackage.packageId}` }))] }, pluginId));
     };
-    return (_jsxs("div", { ref: rootRef, className: wide ? css.layer : `${css.layer} ${css.rail}`, children: [open && anchor !== undefined && (_jsxs("section", { className: css.panel, style: anchor, "data-cordis-panel": true, "aria-label": t('panel.title'), children: [_jsx("header", { className: css.header, children: _jsx("span", { className: css.title, children: t('panel.title') }) }), _jsxs("div", { className: css.body, children: [inventory.error !== undefined && (_jsx("p", { className: css.readError, role: "alert", children: t('panel.readFailed', { message: inventory.error }) })), !inventory.read && inventory.error === undefined && _jsx("p", { className: css.note, children: t('panel.loading') }), inventory.read && all.length === 0 && _jsx("p", { className: css.note, children: t('panel.empty') }), mine.length > 0 && (_jsxs("section", { children: [_jsx("h3", { className: css.group, children: t('panel.group.current') }), _jsx("ul", { className: css.rows, children: mine.map(renderRow) })] })), theirs.length > 0 && (_jsxs("section", { children: [_jsx("h3", { className: css.group, children: t('panel.group.others') }), _jsx("ul", { className: css.rows, children: theirs.map(renderRow) })] }))] })] })), _jsx("div", { className: css.footerButtons, children: _jsxs("button", { type: "button", className: css.badge, "data-cordis-badge": all.length, "data-cordis-approval-badge": approvals, "data-active": approvals > 0 || undefined, "aria-label": t('panel.plugins.aria'), "aria-expanded": open, onClick: () => { setOpen(value => !value); }, children: [_jsx(IconCordisPluginOutline14, { size: wide ? 16 : 18 }), wide && (_jsxs(_Fragment, { children: [_jsx("span", { className: css.badgeLabel, children: t('panel.trigger') }), _jsx("span", { className: css.badgeCount, children: t('panel.runningCount', { count: running }) })] }))] }) })] }));
+    return (_jsxs("div", { ref: rootRef, className: wide ? css.layer : `${css.layer} ${css.rail}`, children: [open && anchor !== undefined && (_jsxs("section", { className: css.panel, style: anchor, "data-cordis-panel": true, "aria-label": t('panel.title'), children: [_jsx("header", { className: css.header, children: _jsx("span", { className: css.title, children: t('panel.title') }) }), _jsxs("div", { className: css.body, children: [inventory.error !== undefined && (_jsx("p", { className: css.readError, role: "alert", children: t('panel.readFailed', { message: inventory.error }) })), !inventory.read && inventory.error === undefined && _jsx("p", { className: css.note, children: t('panel.loading') }), inventory.read && all.length === 0 && _jsx("p", { className: css.note, children: t('panel.empty') }), mine.length > 0 && (_jsxs("section", { children: [_jsx("h3", { className: css.group, children: t('panel.group.current') }), _jsx("ul", { className: css.rows, children: mine.map(renderRow) })] })), theirs.length > 0 && (_jsxs("section", { children: [_jsx("h3", { className: css.group, children: t('panel.group.others') }), _jsx("ul", { className: css.rows, children: theirs.map(renderRow) })] }))] })] })), _jsx("div", { className: css.footerButtons, children: _jsxs("button", { type: "button", className: css.badge, "data-cordis-badge": all.length, "data-cordis-approval-badge": approvals, "data-active": approvals > 0 || undefined, "aria-label": t('panel.plugins.aria'), "aria-expanded": open, onClick: () => { setOpen(value => !value); }, children: [_jsx(IconCordisPluginOutlineRegular, { size: wide ? 16 : 18 }), wide && (_jsxs(_Fragment, { children: [_jsx("span", { className: css.badgeLabel, children: t('panel.trigger') }), _jsx("span", { className: css.badgeCount, children: t('panel.runningCount', { count: running }) })] }))] }) })] }));
 }
 //# sourceMappingURL=CordisPanel.js.map

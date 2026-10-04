@@ -1,7 +1,8 @@
 /** Host BFF entry and Loader shell for the Remote contribution assembly. */
 import { homedir } from 'node:os';
+import { Deque } from '@deepseek-ai/dsh-deque';
 import { carrierKeyOf } from '@deepseek-ai/dsh-scope';
-import { isJsonValue } from '@deepseek-ai/dsh-session';
+import { isJsonValue } from '@deepseek-ai/dsh-util-values';
 import { API_REMOTE_FORWARDED_EVENTS } from "./remote-events.js";
 export { API_REMOTE_FORWARDED_EVENTS } from "./remote-events.js";
 /** Required Host service: the Gateway owns the physical Remote stream mux. */
@@ -21,14 +22,14 @@ function remoteEventSource(ctx) {
                 }));
             }
             return ctx.on(event, (function (request, next) {
-                const subject = carrierKeyOf(this);
-                if (subject === undefined)
+                const carrierAgent = carrierKeyOf(this);
+                if (carrierAgent === undefined)
                     return next();
-                const value = Reflect.get(subject, 'ctx');
-                if (typeof value !== 'object' || value === null) {
-                    throw new TypeError(`forwarded scoped event ${JSON.stringify(event)} has no live Context`);
+                const agent = request.agent;
+                if (agent === undefined || agent !== carrierAgent) {
+                    throw new TypeError(`forwarded scoped event ${JSON.stringify(event)} must carry its Agent directly`);
                 }
-                return forwardWaterfall(queue, event, request, { value: value, subject }, next);
+                return forwardWaterfall(queue, event, request, { value: agent.ctx, subject: agent, agentId: agent.id }, next);
             }));
         });
         return queue.iterate(signal, () => {
@@ -39,13 +40,13 @@ function remoteEventSource(ctx) {
 }
 /** One pull-driven queue bridging synchronous Cordis listeners to an AsyncIterable. */
 class RemoteEventQueue {
-    buffer = [];
+    buffer = new Deque();
     waiter;
     done = false;
     push(frame) {
         if (this.done)
             return false;
-        this.buffer.push(frame);
+        this.buffer.pushBack(frame);
         this.waiter?.();
         return true;
     }
@@ -53,8 +54,8 @@ class RemoteEventQueue {
         if (this.done)
             return;
         this.done = true;
-        const buffered = this.buffer.splice(0);
-        for (const dispatch of buffered) {
+        while (this.buffer.size > 0) {
+            const dispatch = this.buffer.popFront();
             if ('context' in dispatch)
                 dispatch.reject(reason);
         }
@@ -67,8 +68,8 @@ class RemoteEventQueue {
             while (true) {
                 if (this.done || signal.aborted)
                     return;
-                while (this.buffer.length > 0)
-                    yield this.buffer.shift();
+                while (this.buffer.size > 0)
+                    yield this.buffer.popFront();
                 await new Promise((resolve) => { this.waiter = resolve; });
                 this.waiter = undefined;
             }

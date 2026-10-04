@@ -2,12 +2,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import sharp from 'sharp';
-import { AttachmentError, ImageVariantId, requestImageDimensions } from '@deepseek-ai/dsh-attachment';
+import { AttachmentError, ImageVariantId } from '@deepseek-ai/dsh-attachment';
 import { IMAGE_ENCODING_QUALITIES, WEBP_ENCODING_EFFORT, encodeFirstWithinLimit, encodingLadder, isExhaustedEncoding, } from "./encoding.js";
 import { detectImage, encodedAlphaIsCompatible, probeImage } from "./image.js";
+import { requireSharp } from "./sharp.js";
 /** Transform version included in every cache and upload-index identity. */
-export const REQUEST_IMAGE_TRANSFORM_VERSION = 'request-image-v5';
+export const REQUEST_IMAGE_TRANSFORM_VERSION = 'request-image-v6';
 function digest(value) {
     return createHash('sha256').update(value).digest('hex');
 }
@@ -17,16 +17,18 @@ function checkedInteger(value, name) {
     }
     return value;
 }
-function validatePolicy(policy) {
-    checkedInteger(policy.maxPixels, 'Image request maxPixels');
-    checkedInteger(policy.maxBytes, 'Image request maxBytes');
+function validateTarget(target) {
+    checkedInteger(target.width, 'Image request width');
+    checkedInteger(target.height, 'Image request height');
+    checkedInteger(target.maxBytes, 'Image request maxBytes');
 }
-function descriptor(attachment, policy) {
+function descriptor(attachment, target) {
     return JSON.stringify({
         transformVersion: REQUEST_IMAGE_TRANSFORM_VERSION,
         attachmentId: attachment.attachmentId,
-        routePixelBudget: policy.maxPixels,
-        encodedByteBudget: policy.maxBytes,
+        targetWidth: target.width,
+        targetHeight: target.height,
+        encodedByteBudget: target.maxBytes,
         encoding: {
             webpQualities: IMAGE_ENCODING_QUALITIES,
             webpEffort: WEBP_ENCODING_EFFORT,
@@ -37,26 +39,28 @@ function descriptor(attachment, policy) {
     });
 }
 /**
- * Complete deterministic identity for one attachment and route-owned request policy.
+ * Complete deterministic identity for one attachment and route-chosen request target.
  * @param attachment - provider-independent durable normalized attachment reference.
- * @param policy - route-owned pixel and byte policy.
+ * @param target - route-chosen dimensions and byte target.
  * @returns branded digest over every request transform input.
  */
-export function requestImageVariantId(attachment, policy) {
-    return ImageVariantId(`sha256:${digest(descriptor(attachment, policy))}`);
+export function requestImageVariantId(attachment, target) {
+    return ImageVariantId(`sha256:${digest(descriptor(attachment, target))}`);
 }
-function pipeline(attachment, width, height) {
+/** Resize by the source long edge only, so the encoder derives the short edge as the route predicts. */
+function pipeline(attachment, target) {
+    const byWidth = attachment.ref.width >= attachment.ref.height;
     return sourcePipeline(attachment)
-        .resize({ width, height, fit: 'inside', withoutEnlargement: true });
+        .resize({ ...byWidth ? { width: target.width } : { height: target.height }, withoutEnlargement: true });
 }
 function sourcePipeline(attachment) {
+    const sharp = requireSharp();
     return sharp(attachment.data, { failOn: 'error', limitInputPixels: false }).toColourspace('srgb');
 }
-async function createRequestImage(attachment, policy, hasAlpha) {
-    const dimensions = requestImageDimensions(attachment.ref.width, attachment.ref.height, policy.maxPixels);
-    if (dimensions.width === attachment.ref.width
-        && dimensions.height === attachment.ref.height
-        && attachment.data.byteLength <= policy.maxBytes) {
+async function createRequestImage(attachment, target, hasAlpha) {
+    if (target.width >= attachment.ref.width
+        && target.height >= attachment.ref.height
+        && attachment.data.byteLength <= target.maxBytes) {
         return {
             data: attachment.data,
             mediaType: attachment.ref.mediaType,
@@ -64,19 +68,18 @@ async function createRequestImage(attachment, policy, hasAlpha) {
             height: attachment.ref.height,
         };
     }
-    const encodedVersion = await encodeFirstWithinLimit(encodingLadder(pipeline(attachment, dimensions.width, dimensions.height), hasAlpha), policy.maxBytes);
+    const encodedVersion = await encodeFirstWithinLimit(encodingLadder(pipeline(attachment, target), hasAlpha), target.maxBytes);
     return isExhaustedEncoding(encodedVersion) ? encodedVersion.smallest : encodedVersion;
 }
 function cachePath(root, hash) {
     return join(root, 'request-images', hash.slice(0, 2), hash);
 }
-async function readCached(path, attachment, policy, expectedAlpha, signal) {
+async function readCached(path, target, expectedAlpha, signal) {
     try {
         const data = new Uint8Array(await readFile(path, { signal }));
         const detected = await probeImage(data);
-        const maximum = requestImageDimensions(attachment.ref.width, attachment.ref.height, policy.maxPixels);
         if (detected.depth !== 'uchar' || detected.space !== 'srgb'
-            || detected.width > maximum.width || detected.height > maximum.height
+            || detected.width > target.width || detected.height > target.height
             || !encodedAlphaIsCompatible(expectedAlpha, detected))
             return undefined;
         return { data, mediaType: detected.mediaType, width: detected.width, height: detected.height, hasAlpha: detected.hasAlpha };
@@ -109,22 +112,22 @@ async function writeCached(path, data) {
     }
 }
 /**
- * Generate or reuse one request image below the local attachment root.
- * @param root - absolute versioned attachment storage root.
+ * Generate or reuse one request image below the local attachment cache root.
+ * @param root - absolute attachment cache root; variants use its `request-images` child.
  * @param attachment - verified normalized attachment bytes and reference.
- * @param policy - exact route request-image policy.
+ * @param target - exact route-chosen dimensions and byte target; a target above the source keeps the source size.
  * @param signal - optional cancellation for cache I/O and image transformation.
  * @returns verified request bytes and deterministic variant identity.
  */
-export async function readRequestImageFile(root, attachment, policy, signal) {
+export async function readRequestImageFile(root, attachment, target, signal) {
     signal?.throwIfAborted();
-    validatePolicy(policy);
+    validateTarget(target);
     const source = await probeImage(attachment.data);
-    const variantId = requestImageVariantId(attachment.ref, policy);
+    const variantId = requestImageVariantId(attachment.ref, target);
     const hash = String(variantId).slice('sha256:'.length);
     const path = cachePath(root, hash);
-    const cached = await readCached(path, attachment, policy, source.hasAlpha, signal);
-    const created = cached ?? await createRequestImage(attachment, policy, source.hasAlpha);
+    const cached = await readCached(path, target, source.hasAlpha, signal);
+    const created = cached ?? await createRequestImage(attachment, target, source.hasAlpha);
     const version = cached ?? (created.data === attachment.data
         ? { ...created, hasAlpha: source.hasAlpha }
         : await verifyRequestImage(created, source.hasAlpha));

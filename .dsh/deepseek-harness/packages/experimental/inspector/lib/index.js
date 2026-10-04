@@ -1,4 +1,8 @@
 import z from "@deepseek-ai/schemastery";
+import { fileURLToPath } from "node:url";
+import { connect } from "node:net";
+import serveStatic from "serve-static";
+import open, { apps } from "open";
 import { randomBytes, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { MessageChannel, Worker } from "node:worker_threads";
@@ -2112,7 +2116,7 @@ function registries() {
 //#region lib/types/shared/cordis/collector.js
 /** Shared Host/Client projection from live Cordis objects to a bounded semantic tree. */
 const SHADOW = Symbol.for("cordis.shadow");
-/** Realm-local collector with a current live-object table. */
+/** Realm-local collector retaining Contexts without Cordis service-call shadow wrappers. */
 var CordisTreeCollector = class {
 	root;
 	limits;
@@ -2144,7 +2148,7 @@ var CordisTreeCollector = class {
 				objectHandle: objects.retain(info.value).handle,
 				children: []
 			};
-			for (const child of info.children) if (child.fiber !== void 0 && child.fiber.ctx === child.value) {
+			for (const child of info.children) if (child.fiber !== void 0 && unwrapContext(child.fiber.ctx) === child.value) {
 				const projected = fiberNode(child.fiber, child);
 				if (projected !== void 0) node.children.push(projected);
 			} else {
@@ -2312,14 +2316,57 @@ function publishCordisTree(ctx, publisher, limits) {
 	}, limits);
 }
 //#endregion
+//#region lib/types/shared/web.js
+/** Authenticated browser bootstrap route; the debugging URL stays on the Host. */
+/** Read the current browser-source connection parameters. */
+const INSPECTOR_BOOTSTRAP_PATH = "/api/experimental-inspector/bootstrap";
+INSPECTOR_BOOTSTRAP_PATH.slice(1);
+/** Query parameter selecting the Client visible beside Host in one DevTools connection. */
+const INSPECTOR_CLIENT_QUERY = "clientSourceId";
+/**
+* Read an optional Client selection from a DevTools WebSocket URL.
+* @param url - Untrusted upgrade URL.
+* @returns The selected logical Client id, or undefined for all Clients.
+* @throws If the selection is repeated or is not a valid source id.
+*/
+function readInspectorClientSelection(url) {
+	const values = url.searchParams.getAll(INSPECTOR_CLIENT_QUERY);
+	const selected = values[0];
+	if (selected === void 0) return void 0;
+	if (values.length !== 1) throw new Error("Inspector Client selection must occur once");
+	return inspectorId(selected, INSPECTOR_CLIENT_QUERY);
+}
+//#endregion
+//#region lib/types/shared/dispose.js
+/** Ordered release of Inspector registrations before their source transport closes. */
+/**
+* Join every registration disposer in reverse order, then close the source even after failures.
+* @param disposers - Registrations in acquisition order.
+* @param close - Final transport teardown.
+* @param message - Aggregate failure diagnostic owned by the Host or Client caller.
+* @returns Completion after all cleanup actions have settled.
+* @throws AggregateError containing every failed cleanup action in release order.
+*/
+async function disposeInspectorResources(disposers, close, message) {
+	const failures = [];
+	for (const dispose of [...disposers].reverse().concat(close)) try {
+		await dispose();
+	} catch (error) {
+		failures.push(error);
+	}
+	if (failures.length > 0) throw new AggregateError(failures, message);
+}
+//#endregion
 //#region lib/types/host/plugin.js
 /** Host Cordis plugin for the cross-realm Inspector Worker and full fetch capture. */
+const DEVTOOLS_PATH = "/inspector/devtools";
 /** Start the Worker, expose `ctx.inspector`, and inject the matching Client bootstrap. */
 async function apply$1(ctx, config) {
 	await ctx.effect(async () => {
 		const spec = resolveInspectorOptions(config);
 		const handle = await startInspector(spec);
 		const disposers = [];
+		const dispose = () => disposeInspectorResources(disposers, () => handle.close(), "experimental-inspector: disposal failed");
 		try {
 			disposers.push(publishCordisTree(ctx, handle.source, {
 				maxNodes: spec.maxCordisNodes,
@@ -2333,39 +2380,123 @@ async function apply$1(ctx, config) {
 					value: handle.endpoint.client
 				});
 			}));
+			disposers.push(ctx.connection.fetch.register({
+				path: INSPECTOR_BOOTSTRAP_PATH,
+				methods: ["GET"],
+				requestBody: "buffered",
+				fetch: () => Promise.resolve(Response.json(handle.endpoint.client, { headers: { "cache-control": "no-store" } }))
+			}));
+			const assets = serveStatic(fileURLToPath(new URL("./lib/devtools/", import.meta.resolve("@deepseek-ai/dsh-experimental-inspector/package.json"))), {
+				index: false,
+				redirect: false,
+				fallthrough: true,
+				setHeaders: (res) => {
+					res.setHeader("X-Content-Type-Options", "nosniff");
+				}
+			});
+			disposers.push(ctx.webServer.register({
+				kind: "prefix",
+				path: DEVTOOLS_PATH,
+				handler: (req, res) => {
+					if (req.method !== "GET" && req.method !== "HEAD") {
+						res.writeHead(405, { allow: "GET, HEAD" }).end();
+						return;
+					}
+					if (!ctx.connection.authorizeIndex(req, res)) return;
+					const url = new URL(req.url ?? "/", "http://inspector.invalid");
+					if (url.pathname === DEVTOOLS_PATH || url.pathname === `${DEVTOOLS_PATH}/`) {
+						const location = `${url.pathname === DEVTOOLS_PATH ? "devtools/" : ""}devtools_app.html${url.search}`;
+						res.writeHead(302, { location }).end();
+						return;
+					}
+					req.url = `${url.pathname.slice(19)}${url.search}`;
+					assets(req, res, (error) => {
+						if (error !== void 0) {
+							ctx.logger.warn("experimental-inspector: frontend asset request failed", error);
+							if (res.headersSent) res.destroy();
+							else res.writeHead(500).end();
+						} else res.writeHead(404).end();
+					});
+				}
+			}));
+			const sockets = /* @__PURE__ */ new Set();
+			const track = (socket) => {
+				sockets.add(socket);
+				socket.once("close", () => {
+					sockets.delete(socket);
+				});
+			};
+			disposers.push(async () => {
+				await Promise.all([...sockets].map((socket) => new Promise((resolve) => {
+					socket.once("close", resolve);
+					socket.destroy();
+				})));
+			});
+			const target = new URL(handle.endpoint.webSocketDebuggerUrl);
+			disposers.push(ctx.webServer.registerUpgrade({
+				path: `${DEVTOOLS_PATH}/cdp`,
+				handler: (req, socket, head) => {
+					const rejection = ctx.connection.requestRejection(req);
+					if (rejection !== void 0) {
+						const reason = rejection === 401 ? "Unauthorized" : "Forbidden";
+						socket.end(`HTTP/1.1 ${rejection} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+						return;
+					}
+					const endpoint = new URL(target);
+					try {
+						const selected = readInspectorClientSelection(new URL(req.url ?? "/", "http://inspector.invalid"));
+						if (selected !== void 0) endpoint.searchParams.set(INSPECTOR_CLIENT_QUERY, selected);
+					} catch (error) {
+						socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+						return;
+					}
+					const upstream = connect(Number(target.port), target.hostname);
+					track(socket);
+					track(upstream);
+					upstream.once("connect", () => {
+						upstream.write(`GET ${endpoint.pathname}${endpoint.search} HTTP/1.1\r\nHost: ${target.host}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n`);
+						for (const [key, value] of Object.entries(req.headers)) if (key.startsWith("sec-websocket-") && value !== void 0) upstream.write(`${key}: ${Array.isArray(value) ? value.join(", ") : value}\r\n`);
+						upstream.write("\r\n");
+						if (head.length > 0) upstream.write(head);
+						socket.pipe(upstream).pipe(socket);
+					});
+					upstream.once("error", () => {
+						socket.destroy();
+					});
+					socket.once("error", () => {
+						upstream.destroy();
+					});
+					upstream.once("close", () => {
+						socket.destroy();
+					});
+					socket.once("close", () => {
+						upstream.destroy();
+					});
+				}
+			}));
 			console.log(`dsh inspector: ${handle.endpoint.devtoolsFrontendUrl}`);
+			if (ctx.get("cmdlineArgs")?.get().includes("--inspect")) await open(handle.endpoint.devtoolsFrontendUrl, {
+				app: { name: apps.chrome },
+				wait: false
+			}).catch((error) => {
+				ctx.logger.error("experimental-inspector: Chrome could not open DevTools", error);
+			});
 		} catch (error) {
-			await disposeInspector(handle, disposers).catch((cleanupError) => {
+			await dispose().catch((cleanupError) => {
 				ctx.logger.error("experimental-inspector: initialization rollback failed", cleanupError);
 			});
 			throw error;
 		}
-		return async () => {
-			await disposeInspector(handle, disposers);
-		};
+		return dispose;
 	}, "experimental-inspector: Host Worker");
-}
-async function disposeInspector(handle, disposers) {
-	const failures = [];
-	for (const dispose of [...disposers].reverse()) try {
-		await dispose();
-	} catch (error) {
-		failures.push(error);
-	}
-	try {
-		await handle.close();
-	} catch (error) {
-		failures.push(error);
-	}
-	if (failures.length > 0) throw new AggregateError(failures, "experimental-inspector: disposal failed");
 }
 //#endregion
 //#region lib/types/index.js
 /** Repository-facing Host package entry over the mirrored implementation tree. */
 /** Cordis plugin name shared with the Client face. */
 const name = "experimental-inspector";
-/** Host service required to inject the Client connection bootstrap into index.html. */
-const inject = ["webServer"];
+/** Web Host and authenticated browser bootstrap transport. */
+const inject = ["webServer", "connection"];
 const libraryDefaults = resolveInspectorOptions();
 /** Runtime validation for {@link Config}. */
 const Config = z.object({
@@ -2395,7 +2526,7 @@ const Config = z.object({
 	maxDisconnectedCordisTrees: z.natural().default(libraryDefaults.maxDisconnectedCordisTrees)
 });
 /**
-* Apply the Host implementation from the repository-standard package entry.
+* Start inspection when enabled; the hidden --inspect flag also opens the Host debugging window.
 * @param ctx - Host Cordis plugin context.
 * @param config - Validated Inspector configuration.
 */

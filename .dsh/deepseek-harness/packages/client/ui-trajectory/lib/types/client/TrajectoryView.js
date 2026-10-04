@@ -12,6 +12,14 @@ import css from './views.module.css';
 const EMPTY_TURN_IDS = new Set();
 const EMPTY_RECORD_IDS = new Set();
 const SEARCH_INDEX_THROTTLE_MS = 3_000;
+const HISTORY_PAGE_NODES = 50;
+function containsCall(calls, callId) {
+    for (const call of calls) {
+        if (call.callId === callId || containsCall(call.subCalls, callId))
+            return true;
+    }
+    return false;
+}
 function lastCellIndex(turns) {
     let last = 0;
     for (const turn of turns) {
@@ -76,7 +84,7 @@ function addUsage(total, usage) {
             : { reasoning: (total?.reasoning ?? 0) + (usage.reasoning ?? 0) }),
     };
 }
-export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration, viewRequest, completeViewRequest, renderSlot, t, }) {
+export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration, viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping, }) {
     const [collapsedTurns, setCollapsedTurns] = useState(EMPTY_TURN_IDS);
     const renderImages = useCallback(owner => renderSlot('conversation.trajectory.images', { ...owner, loadImage }), [loadImage, renderSlot]);
     const [collapsedAssistants, setCollapsedAssistants] = useState(EMPTY_RECORD_IDS);
@@ -91,10 +99,40 @@ export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOld
     const [selectedTimelineIndex, setSelectedTimelineIndex] = useState(null);
     const [timelineRecordSelection, setTimelineRecordSelection] = useState(null);
     const [timelineRecordFocus, setTimelineRecordFocus] = useState(null);
-    const inspection = useTrajectory(snapshot => snapshot);
+    const completeInspection = useTrajectory(snapshot => snapshot);
+    const latestNodeSeq = completeInspection.eventNodes.at(-1)?.seq;
+    const [historyTailSeq, setHistoryTailSeq] = useState(latestNodeSeq);
+    const [historyNodeLimit, setHistoryNodeLimit] = useState(HISTORY_PAGE_NODES);
+    const fixedTailSeq = historyTailSeq ?? latestNodeSeq;
+    const historyTailIndex = fixedTailSeq === undefined
+        ? -1
+        : completeInspection.eventNodes.findLastIndex(node => node.seq <= fixedTailSeq);
+    const historyEndIndex = historyTailIndex < 0 && latestNodeSeq !== undefined
+        ? completeInspection.eventNodes.length
+        : historyTailIndex + 1;
+    const historyStartIndex = Math.max(0, historyEndIndex - historyNodeLimit);
+    useEffect(() => {
+        if (latestNodeSeq !== undefined && (historyTailSeq === undefined || historyTailIndex < 0)) {
+            setHistoryTailSeq(latestNodeSeq);
+        }
+    }, [historyTailIndex, historyTailSeq, latestNodeSeq]);
+    const inspection = useMemo(() => {
+        if (historyStartIndex === 0)
+            return completeInspection;
+        const eventNodes = completeInspection.eventNodes.slice(historyStartIndex);
+        const firstSeq = eventNodes[0]?.seq ?? 0;
+        return {
+            ...completeInspection,
+            eventNodes,
+            requests: completeInspection.requests.filter(request => request.startSeq >= firstSeq || (request.resultSeq ?? -1) >= firstSeq),
+        };
+    }, [completeInspection, historyStartIndex]);
     const historyLoading = useSession(snapshot => snapshot.openState === 'loading');
     const olderHistoryLoading = useSession(snapshot => snapshot.loadingOlder);
-    const hasOlderHistory = useSession(snapshot => snapshot.hasMore);
+    const sessionHasOlderHistory = useSession(snapshot => snapshot.hasMore);
+    const hasResidentOlderHistory = historyStartIndex > 0;
+    const hasOlderHistory = hasResidentOlderHistory
+        || sessionHasOlderHistory;
     const nodes = inspection.eventNodes;
     const eventLocations = inspection.eventLocations;
     const historyBaseSeq = nodes[0]?.seq ?? 0;
@@ -103,21 +141,31 @@ export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOld
     const requests = inspection.requests;
     const callSchemas = inspection.callSchemas;
     const inspectCallId = viewRequest?.view === 'trajectory' ? viewRequest.focus : null;
+    const inspectNodeIndex = useMemo(() => inspectCallId === null
+        ? -1
+        : completeInspection.eventNodes.findIndex(node => node.kind === 'assistant'
+            ? node.blocks.some(block => block.kind === 'tool-call' && block.callId === inspectCallId)
+            : node.kind === 'tool-result' && containsCall([node], inspectCallId)), [completeInspection.eventNodes, inspectCallId]);
+    useEffect(() => {
+        if (inspectNodeIndex < 0 || inspectNodeIndex >= historyStartIndex)
+            return;
+        setHistoryNodeLimit(limit => limit + historyStartIndex - inspectNodeIndex);
+    }, [historyStartIndex, inspectNodeIndex]);
     const requestNumbers = useMemo(() => {
         const assistantsByStep = new Map();
-        for (const node of nodes) {
+        for (const node of completeInspection.eventNodes) {
             if (node.kind !== 'assistant' || node.step <= 0)
                 continue;
             assistantsByStep.set(`${node.turn}\u0000${node.step}`, node);
         }
-        const requestsByStep = new Map(requests
+        const requestsByStep = new Map(completeInspection.requests
             .filter(request => request.purpose === 'assistant')
             .map(request => [
             `${request.turn}\u0000${request.step}`,
             request,
         ]));
         const orderedRequests = [
-            ...requests.map(request => ({
+            ...completeInspection.requests.map(request => ({
                 seq: request.startSeq,
                 request,
                 node: request.purpose === 'assistant'
@@ -144,8 +192,8 @@ export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOld
                 const step = request?.step ?? node?.step;
                 if (turn === undefined || step === undefined)
                     continue;
-                const provider = request?.provenance?.provider ?? node?.provenance?.provider;
-                const model = request?.provenance?.model ?? node?.provenance?.model;
+                const provider = request?.providerMetadata?.provider ?? node?.providerMetadata?.provider;
+                const model = request?.providerMetadata?.model ?? node?.providerMetadata?.model;
                 const requestConfig = request?.requestConfig ?? node?.requestConfig;
                 numbered.push({
                     seq: entry.seq,
@@ -186,12 +234,12 @@ export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOld
                 ...(request.error === undefined ? {} : { error: request.error }),
                 ...(request.errorCode === undefined ? {} : { errorCode: request.errorCode }),
                 resultSeq: request.startSeq,
-                ...(request.provenance?.provider === undefined
+                ...(request.providerMetadata?.provider === undefined
                     ? {}
-                    : { provider: request.provenance.provider }),
-                ...(request.provenance?.model === undefined
+                    : { provider: request.providerMetadata.provider }),
+                ...(request.providerMetadata?.model === undefined
                     ? {}
-                    : { model: request.provenance.model }),
+                    : { model: request.providerMetadata.model }),
                 ...(request.requestConfig === undefined ? {} : { requestConfig: request.requestConfig }),
                 ...(usage === undefined ? {} : { usage }),
                 ...(cumulativeUsage === undefined ? {} : { cumulativeUsage }),
@@ -199,7 +247,7 @@ export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOld
         }
         return numbered;
     }, [
-        nodes, requests, t,
+        completeInspection.eventNodes, completeInspection.requests, t,
     ]);
     const partialTurn = partial?.turn ?? null;
     const partialStep = partial?.step ?? null;
@@ -212,12 +260,13 @@ export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOld
                 : { turn: partialTurn, step: partialStep, blocks: [] },
             runningCalls,
             requests,
+            systemPrompts: inspection.systemPrompts,
             callSchemas,
         }, t);
         return { turns, lastIndex: lastCellIndex(turns) };
     }, [
         nodes, eventLocations, partialTurn, partialStep,
-        runningCalls, requests, callSchemas, t,
+        runningCalls, requests, inspection.systemPrompts, callSchemas, t,
     ]);
     const timelinePartialSignature = partialStructureSignature(partial);
     const timelinePartial = useMemo(() => partial === null
@@ -368,15 +417,21 @@ export function TrajectoryView({ useSession, useTrajectory, useDuration, loadOld
             return collapsed;
         });
     };
-    const loadEarlierHistory = useCallback(() => {
-        return loadOlder();
-    }, [loadOlder]);
+    const loadEarlierHistory = useCallback(async () => {
+        if (!hasResidentOlderHistory && !await loadOlder())
+            return false;
+        setHistoryNodeLimit(limit => limit + HISTORY_PAGE_NODES);
+        return true;
+    }, [hasResidentOlderHistory, loadOlder]);
     return (_jsxs("div", { className: css.root, "data-conversation-composer-overlay": "", children: [_jsx(TrajectoryToolbar, { actualDuration: actualDuration, onActualDurationChange: (nextActualDuration) => {
                     setActualDuration(nextActualDuration);
                     setTimelineSelection(null);
                 }, actualTime: actualTime, onActualTimeChange: (nextActualTime) => {
                     setActualTime(nextActualTime);
                     setTimelineSelection(null);
-                }, allTurnsCollapsed: allTurnsCollapsed, onToggleAllTurns: toggleAllTurns, allAssistantsCollapsed: allAssistantsCollapsed, onToggleAllAssistants: toggleAllAssistants, searchQuery: searchQuery, onSearchQueryChange: setSearchQuery, t: t }), _jsx(TrajectoryTimeline, { t: t, turns: timelineTurns, mode: timelineMode, range: timelineRange, hasEarlierRecords: hasOlderHistory, onLoadEarlier: loadEarlierHistory, selectedIndex: selectedTimelineIndex, searchMatchIndexes: searchMatchIndexes, onRangeChange: handleTimelineRangeChange, onRecordSelect: handleTimelineRecordSelect, onRecordFocus: handleTimelineRecordFocus }), _jsx("div", { className: css.ledger, children: _jsx(TrajectoryTable, { t: t, renderImages: renderImages, requestNumbers: requestNumbers, turns: timelineTurns, streamingCells: streamingCells, timelineFocusIndexes: timelineFocusIndexes, searchMatchIndexes: searchMatchIndexes, onSelectedIndexChange: setSelectedTimelineIndex, onRecordSelect: handleRecordSelect, recordSelection: timelineRecordSelection, recordFocus: timelineRecordFocus, historyLoading: historyLoading, olderHistoryLoading: olderHistoryLoading, historyStartSeq: historyBaseSeq, hasOlderRecords: hasOlderHistory, onLoadOlder: loadEarlierHistory, onClearSelection: () => { setTimelineSelection(null); }, collapsedTurns: collapsedTurns, onToggleTurn: toggleTurn, collapsedAssistants: collapsedAssistants, onToggleAssistant: toggleAssistant, inspectCallId: inspectCallId, onInspectApplied: completeViewRequest }) })] }));
+                }, allTurnsCollapsed: allTurnsCollapsed, onToggleAllTurns: toggleAllTurns, allAssistantsCollapsed: allAssistantsCollapsed, onToggleAllAssistants: toggleAllAssistants, searchQuery: searchQuery, onSearchQueryChange: setSearchQuery, t: t }), _jsx(TrajectoryTimeline, { t: t, turns: timelineTurns, mode: timelineMode, range: timelineRange, hasEarlierRecords: hasOlderHistory, onLoadEarlier: loadEarlierHistory, selectedIndex: selectedTimelineIndex, searchMatchIndexes: searchMatchIndexes, onRangeChange: handleTimelineRangeChange, onRecordSelect: handleTimelineRecordSelect, onRecordFocus: handleTimelineRecordFocus }), _jsx("div", { className: css.ledger, children: _jsx(TrajectoryTable, { t: t, stringWrapping: jsonStringWrapping === undefined ? undefined : {
+                        ...jsonStringWrapping,
+                        label: t('record.wrapLines'),
+                    }, renderImages: renderImages, requestNumbers: requestNumbers, turns: timelineTurns, streamingCells: streamingCells, timelineFocusIndexes: timelineFocusIndexes, searchMatchIndexes: searchMatchIndexes, onSelectedIndexChange: setSelectedTimelineIndex, onRecordSelect: handleRecordSelect, recordSelection: timelineRecordSelection, recordFocus: timelineRecordFocus, historyLoading: historyLoading, olderHistoryLoading: olderHistoryLoading, historyStartSeq: historyBaseSeq, hasOlderRecords: hasOlderHistory, onLoadOlder: loadEarlierHistory, onClearSelection: () => { setTimelineSelection(null); }, collapsedTurns: collapsedTurns, onToggleTurn: toggleTurn, collapsedAssistants: collapsedAssistants, onToggleAssistant: toggleAssistant, inspectCallId: inspectCallId, onInspectApplied: completeViewRequest }) })] }));
 }
 //# sourceMappingURL=TrajectoryView.js.map

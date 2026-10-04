@@ -1,3 +1,4 @@
+import { launchEnvironmentOf, launchedThroughSsh } from "@deepseek-ai/dsh-launch-environment";
 import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
 //#region lib/types/probe.js
@@ -62,7 +63,7 @@ const present = (value) => value !== void 0 && value !== "";
 */
 function resolveDirectoryPickerBackend(facts) {
 	if (facts.bindHost !== "127.0.0.1") return "browse";
-	if (present(facts.env.SSH_CONNECTION) || present(facts.env.SSH_TTY)) return "browse";
+	if (facts.ssh) return "browse";
 	if (facts.platform === "darwin" || facts.platform === "win32") return "native";
 	if (facts.platform !== "linux" || !facts.linuxChooser) return "browse";
 	return present(facts.env.DISPLAY) || present(facts.env.WAYLAND_DISPLAY) ? "native" : "browse";
@@ -99,9 +100,8 @@ const BACKEND_PACKAGES = {
 * Client surface package per resolved kind, mounted with its backend so one
 * resolved interaction still composes both faces. Declared as dependencies by
 * every composing app for the same reason as {@link BACKEND_PACKAGES}. Only the
-* specifier is referenced here — the packages belong to the Client program, so
-* no import of them exists on this side and knip needs them ignored for this
-* workspace.
+* specifier is referenced here because the packages belong to the Client
+* program, so no import of them exists on this side.
 */
 const SURFACE_PACKAGES = {
 	native: "@deepseek-ai/dsh-client-ui-directory-picker-native",
@@ -118,6 +118,7 @@ async function apply(ctx) {
 	const backend = resolveDirectoryPickerBackend({
 		bindHost: ctx.webServer.host,
 		platform: process.platform,
+		ssh: launchedThroughSsh(launchEnvironmentOf(ctx)),
 		env: process.env,
 		linuxChooser: hasLinuxChooserBinary(process.env.PATH, canExecute)
 	});
@@ -125,12 +126,21 @@ async function apply(ctx) {
 		const ids = [];
 		const unmount = async () => {
 			for (const id of [...ids].reverse()) {
-				if (ctx.loader.store[id] === void 0) continue;
-				await ctx.loader.remove(id);
+				const entry = ctx.loader.store[id];
+				if (entry === void 0) continue;
+				const disposal = entry.fiber?.dispose();
+				ctx.loader.remove(id);
+				await disposal;
 			}
 		};
 		try {
-			for (const name of [BACKEND_PACKAGES[backend], SURFACE_PACKAGES[backend]]) ids.push(await ctx.loader.create({ name }));
+			for (const name of [BACKEND_PACKAGES[backend], SURFACE_PACKAGES[backend]]) {
+				const id = await ctx.loader.create({ name });
+				ids.push(id);
+				const entry = ctx.loader.resolve(id);
+				if (entry.fiber === void 0) throw new Error(`directory-picker-auto: failed to load ${name}`);
+				await entry.fiber.await();
+			}
 		} catch (cause) {
 			await unmount();
 			throw cause;

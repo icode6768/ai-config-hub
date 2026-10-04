@@ -16,7 +16,7 @@ const PROBE_ROUTE = '\u0000probe';
  * Join declared configurable providers with the currently registered routes.
  * @param registered - live provider routes in registration order.
  * @param directory - declared configurable providers in declaration order.
- * @returns declared rows followed by live routes with no declaration.
+ * @returns account and official routes first, then other routes in their original order.
  */
 export function joinProviderDirectory(registered, directory) {
     const active = new Set(registered.map(provider => provider.id));
@@ -28,6 +28,7 @@ export function joinProviderDirectory(registered, directory) {
         settingsPath: [...entry.settingsPath],
         active: active.has(entry.provider),
         ...entry.declared === undefined ? {} : { declared: entry.declared },
+        ...entry.error === undefined ? {} : { error: entry.error },
     }));
     for (const provider of registered) {
         if (declared.has(provider.id))
@@ -40,17 +41,8 @@ export function joinProviderDirectory(registered, directory) {
             active: true,
         });
     }
-    return rows;
-}
-/**
- * Human text for a rejected wire call. A transport failure rejects with an
- * Error; a host or a runtime can reject with anything, and the page still has
- * to say something.
- * @param error - the rejection value.
- * @returns the message to show.
- */
-export function messageOf(error) {
-    return error instanceof Error ? error.message : String(error);
+    return rows.toSorted((left, right) => (left.provider === 'deepseek-account' ? 0 : left.provider === 'deepseek-official' ? 1 : 2)
+        - (right.provider === 'deepseek-account' ? 0 : right.provider === 'deepseek-official' ? 1 : 2));
 }
 /**
  * Derive the conventional credential reference for a provider route: the v1
@@ -92,7 +84,7 @@ function apiKeyEnvOf(namespace, path, schema) {
 }
 /** The models settings page controller (one per settings surface). */
 export class ModelsSettingsStore {
-    api;
+    ctx;
     schema;
     describeFace;
     /** The snapshot the section renders from (uSES-safe store). */
@@ -102,11 +94,13 @@ export class ModelsSettingsStore {
     /** Latest load wins; an older response never overwrites a newer one. */
     generation = 0;
     /**
-     * @param api - the page's credentials Remote and LLM wire faces.
+     * @param ctx - the page plugin's context, whose `remote.llm` and
+     * `remote.credentials` namespaces carry the directory and credential reads.
+     * @param schema - settings-owned schema and immutable path operations.
      * @param describeFace - the shared mirror's describe face (namespace views and writability).
      */
-    constructor(api, schema, describeFace) {
-        this.api = api;
+    constructor(ctx, schema, describeFace) {
+        this.ctx = ctx;
         this.schema = schema;
         this.describeFace = describeFace;
     }
@@ -121,36 +115,27 @@ export class ModelsSettingsStore {
     async load() {
         const generation = ++this.generation;
         this.store.update((s) => { s.status = 'loading'; s.error = null; });
-        let providers;
-        let writable;
-        let views;
-        try {
-            const [registered, declared] = await Promise.all([
-                this.api.llm.listProviders(),
-                this.api.llm.listConfigurableProviders(),
-                this.describeFace.ensure(),
-            ]);
-            if (!registered.ok)
-                throw new Error(registered.error.message);
-            if (!declared.ok)
-                throw new Error(declared.error.message);
-            const mirrored = this.describeFace.getSnapshot();
-            if (mirrored.view === undefined) {
-                throw new Error(mirrored.error ?? 'settings are unavailable in this browser');
-            }
-            providers = joinProviderDirectory(registered.value, declared.value);
-            writable = mirrored.view.writable;
-            views = mirrored.view.namespaces;
-        }
-        catch (error) {
-            if (generation !== this.generation)
-                return;
-            this.store.update((s) => {
-                s.status = 'error';
-                s.error = error instanceof Error ? error.message : String(error);
-            });
+        const [registered, declared] = await Promise.all([
+            this.ctx.remote.llm.listProviders(),
+            this.ctx.remote.llm.listConfigurableProviders(),
+            this.describeFace.ensure(),
+        ]);
+        if (!registered.ok) {
+            this.failLoad(generation, registered.error.message);
             return;
         }
+        if (!declared.ok) {
+            this.failLoad(generation, declared.error.message);
+            return;
+        }
+        const mirrored = this.describeFace.getSnapshot();
+        if (mirrored.view === undefined) {
+            this.failLoad(generation, mirrored.error ?? 'settings are unavailable in this browser');
+            return;
+        }
+        const providers = joinProviderDirectory(registered.value, declared.value);
+        const writable = mirrored.view.writable;
+        const views = mirrored.view.namespaces;
         const namespaces = new Map(views.map(view => [view.ns, view]));
         const rows = providers.map((entry) => {
             const namespace = namespaces.get(entry.settingsNs);
@@ -164,27 +149,30 @@ export class ModelsSettingsStore {
                 entry,
                 configured,
                 removable,
-                apiKeyEnv: apiKeyEnvOf(namespace, entry.settingsPath, this.schema),
+                apiKeyEnv: entry.provider === 'deepseek-account' ? undefined : apiKeyEnvOf(namespace, entry.settingsPath, this.schema),
                 credential: undefined,
             };
         });
-        const refs = [...new Set(rows.map(row => row.apiKeyEnv ?? deriveKeyRef(row.entry.provider)))];
+        if (rows.some(row => row.entry.provider === 'deepseek-account')) {
+            const catalog = await this.ctx.remote.session.modelCatalog();
+            for (const row of rows) {
+                if (row.entry.provider === 'deepseek-account')
+                    row.accountAvailable = catalog.ok
+                        && catalog.value.groups.some(group => group.id === 'deepseek-account' && group.models.length > 0);
+            }
+        }
+        const refs = [...new Set(rows.filter(row => row.entry.provider !== 'deepseek-account').map(row => row.apiKeyEnv ?? deriveKeyRef(row.entry.provider)))];
         let credentials = {};
         let credentialError = null;
         if (refs.length > 0) {
-            try {
-                const response = await this.api.credentials.describe(refs);
-                // Credential state is an enrichment for the Models page: neither a
-                // business rejection nor a transport failure fails the load. The
-                // onboarding projection below retains the failure distinction.
-                if (response.ok)
-                    credentials = response.value;
-                else
-                    credentialError = response.error.message;
-            }
-            catch (error) {
-                credentialError = messageOf(error);
-            }
+            const response = await this.ctx.remote.credentials.describe(refs);
+            // Credential state is an enrichment for the Models page: a failure
+            // degrades the badge instead of failing the load. The onboarding
+            // projection below retains the failure distinction.
+            if (response.ok)
+                credentials = response.value;
+            else
+                credentialError = response.error.message;
         }
         if (generation !== this.generation)
             return;
@@ -193,7 +181,9 @@ export class ModelsSettingsStore {
             s.error = null;
             s.credentialError = credentialError;
             s.writable = writable;
-            s.rows = rows.map((row) => {
+            s.rows = rows.filter(row => row.entry.provider !== 'deepseek-account' || row.accountAvailable === true).map((row) => {
+                if (row.entry.provider === 'deepseek-account')
+                    return row;
                 const named = row.apiKeyEnv === undefined ? undefined : credentials[row.apiKeyEnv];
                 const derived = row.apiKeyEnv !== undefined ? undefined : credentials[deriveKeyRef(row.entry.provider)];
                 return {
@@ -203,6 +193,15 @@ export class ModelsSettingsStore {
                 };
             });
             s.namespaces = namespaces;
+        });
+    }
+    /** Publish one load's failure text, unless a newer load already took over. */
+    failLoad(generation, message) {
+        if (generation !== this.generation)
+            return;
+        this.store.update((s) => {
+            s.status = 'error';
+            s.error = message;
         });
     }
 }
@@ -219,6 +218,8 @@ export class ModelsSettingsStore {
 export function providerUsable(row) {
     if (!row.entry.active)
         return false;
+    if (row.entry.provider === 'deepseek-account')
+        return row.accountAvailable === true;
     if (row.apiKeyEnv === undefined)
         return true;
     return row.credential?.configured === true;

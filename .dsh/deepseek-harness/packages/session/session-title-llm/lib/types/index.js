@@ -56,8 +56,9 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
 import z from '@deepseek-ai/schemastery';
-import { createUserMessage, BlockAssembler, deepFreeze } from '@deepseek-ai/dsh-llm';
+import { createUserMessage, BlockAssembler } from '@deepseek-ai/dsh-llm';
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout';
+import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { normalizeSessionTitle, SessionTitleProviderId, } from '@deepseek-ai/dsh-session-title';
 /** Capability-owned timeout reason code for auxiliary title requests. */
 export const SESSION_TITLE_TIMEOUT_CODE = 'SESSION_TITLE_TIMEOUT';
@@ -209,7 +210,7 @@ export async function generateSessionTitleWithLlm(ctx, config, request, selected
         const route = resolveRoute(config, request);
         const messages = [createUserMessage({
                 content: [{ type: 'text', text: framedInput }],
-                source: { kind: 'plugin', plugin: 'dsh-session-title-llm' },
+                source: { kind: 'dsh-session-title-llm' },
             })];
         const system = systemPrompt(config);
         const callDeadline = __addDisposableResource(env_1, deadline(request.signal, config.timeoutMs, SESSION_TITLE_TIMEOUT_CODE), false);

@@ -1,12 +1,4 @@
-/**
- * Browser half of the native directory-picker backend: fills ui-workspace's
- * two directory-flow holes with a renderless occupant that answers each
- * `open` by driving `directoryPicker/pick` (the node half's OS chooser) and
- * reporting the one outcome — picked path, cancellation, or failure — back
- * through the owner conversation. Mounting this package therefore composes
- * both sides of the native interaction with one cordis.yml row; no client
- * code branches on a capability kind.
- */
+/** Native directory flow using the local desktop bridge or the Host's OS chooser. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
 /** Required services (cordis fiber inject): the slot registry and workspace UI service. */
 export declare const inject: string[];

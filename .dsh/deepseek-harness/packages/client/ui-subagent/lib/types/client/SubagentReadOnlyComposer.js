@@ -7,6 +7,6 @@ import css from './SubagentReadOnlyComposer.module.css';
  */
 export function SubagentReadOnlyComposer({ matched, t, }) {
     const oneShot = matched.reason === 'one-shot';
-    return (_jsxs("div", { className: css.frame, role: "status", children: [_jsx("strong", { children: t(oneShot ? 'readonly.oneShot.title' : 'readonly.title') }), _jsx("span", { children: t(oneShot ? 'readonly.oneShot.body' : 'readonly.body') })] }));
+    return (_jsxs("div", { className: css.frame, role: "status", children: [_jsx("strong", { children: t(oneShot ? 'readonly.oneShot.title' : 'readonly.title') }), _jsx("span", { children: t(matched.reason === 'unknown' ? 'readonly.unknown.body' : oneShot ? 'readonly.oneShot.body' : 'readonly.body') })] }));
 }
 //# sourceMappingURL=SubagentReadOnlyComposer.js.map

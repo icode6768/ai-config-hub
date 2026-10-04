@@ -1,6 +1,7 @@
 /** Session Controller adapter for React selector hooks and Slot scope data. */
 import { Service } from '@deepseek-ai/cordis';
 import { notifySubscribers } from '@deepseek-ai/dsh-client-store';
+import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values';
 import { standardHookPropName } from '@deepseek-ai/dsh-client-ui-slots';
 import { renderSessionArea } from "./session-provider.js";
 class PendingInteractionDomain {
@@ -53,19 +54,24 @@ export class UiSession extends Service {
     descriptors = [
         BUILTIN_SOURCE,
     ];
-    bindings = new Map();
+    bindings = new WeakMapWithValues();
     absent;
-    currentBinding;
-    currentListeners = new Set();
+    current;
     pendingDomains = [];
     pendingSnapshot = new Map();
-    pendingListeners = new Set();
-    /** Root source of pending UI interactions, independent from Controller snapshots. */
-    pendingInteractions = {
-        getSnapshot: () => this.pendingSnapshot,
+    running = new Map();
+    completionUnread = new Set();
+    statusSnapshot = new Map();
+    statusListeners = new Set();
+    mainRetainId;
+    disposeMainRetain = () => { };
+    active = true;
+    /** Root source combining running, pending-interaction, and completion-reminder facts. */
+    sessionStatus = {
+        getSnapshot: () => this.statusSnapshot,
         subscribe: (listener) => {
-            this.pendingListeners.add(listener);
-            return () => { this.pendingListeners.delete(listener); };
+            this.statusListeners.add(listener);
+            return () => { this.statusListeners.delete(listener); };
         },
     };
     /** Renderer-facing adapter for `session` and `session-maybe` scopes. */
@@ -77,29 +83,50 @@ export class UiSession extends Service {
     constructor(ctx, sessions) {
         super(ctx, 'uiSession');
         this.sessions = sessions;
-        this.absent = this.materializeAbsent();
-        this.currentBinding = this.resolveCurrent();
+        this.absent = createBindingSource(this.materializeAbsent());
+        this.current = createBindingSource(this.absent.value);
         this.adapter = {
-            current: {
-                getSnapshot: () => this.currentBinding,
-                subscribe: (listener) => {
-                    this.currentListeners.add(listener);
-                    return () => { this.currentListeners.delete(listener); };
-                },
-            },
-            resolve: key => this.resolve(key),
+            current: this.current,
+            bindingSource: target => this.bindingSource(target),
             renderArea: renderSessionArea,
         };
         ctx.effect(() => {
-            const disposeList = sessions.list.subscribe(() => { this.publishCurrent(); });
+            const disposeList = sessions.list.subscribe(() => { this.publishMain(); });
+            const disposeStatus = sessions.list.subscribe(() => { this.reconcileStatus(); });
+            const disposeRemoteStatus = ctx.remote.$on('api-session/status', (sessionId, running) => {
+                this.observeRunning(sessionId, running);
+            });
+            this.publishMain();
+            this.reconcileStatus();
             return () => {
+                this.active = false;
                 disposeList();
-                const records = [...this.bindings.values()];
+                disposeStatus();
+                disposeRemoteStatus();
+                this.disposeMainRetain();
+                const records = [...this.bindings.values];
                 this.bindings.clear();
                 for (const record of records)
                     record.release();
             };
         }, 'ui-session: Session binding projection');
+    }
+    /**
+     * Resolve a stable renderer source for an owned Session reference or explicit absence.
+     * @param reference - active reference supplied by the Provider owner, or absence.
+     * @returns the binding source, which falls back to the absent projection when its generation ends.
+     * @throws when the reference does not belong to the active Controller generation.
+     */
+    bindingSource(reference) {
+        if (!this.active)
+            return this.absent;
+        if (reference === undefined)
+            return this.absent;
+        const owner = reference.binding;
+        if (this.sessions.binding(reference.sessionId) !== owner) {
+            throw new Error('ui-session: Session reference is not active in this Controller');
+        }
+        return this.sourceFor(owner);
     }
     /**
      * Register one Session-scoped standard-source contribution.
@@ -152,46 +179,53 @@ export class UiSession extends Service {
     }
     rebuildBindings() {
         const absent = this.materializeAbsent();
-        const bindings = new Map();
-        try {
-            for (const [sessionId, cached] of this.bindings) {
-                bindings.set(sessionId, this.createMaterializedBinding(cached.owner));
-            }
+        const updates = [...this.bindings.values].map(record => ({
+            source: record.source,
+            value: this.materialize(record.owner),
+        }));
+        this.absent.value = absent;
+        for (const { source, value } of updates)
+            source.value = value;
+        notifySubscribers(this.absent.listeners, '[ui-session] absent binding');
+        for (const { source } of updates) {
+            notifySubscribers(source.listeners, '[ui-session] Session binding');
         }
-        catch (error) {
-            for (const record of bindings.values())
-                record.release();
-            throw error;
-        }
-        const previous = this.bindings;
-        this.absent = absent;
-        this.bindings = bindings;
-        for (const record of previous.values())
-            record.release();
-        this.publishCurrent();
+        this.publishMain();
     }
-    resolve(key) {
-        const owner = this.sessions.binding(key);
-        if (owner === undefined)
-            return undefined;
-        const cached = this.bindings.get(key);
-        if (cached?.owner === owner)
-            return cached.value;
+    sourceFor(owner) {
+        const cached = this.bindings.get(owner);
+        if (cached !== undefined)
+            return cached.source;
         const record = this.createMaterializedBinding(owner);
-        this.bindings.set(key, record);
-        cached?.release();
-        return record.value;
+        this.bindings.set(owner, record);
+        return record.source;
     }
-    resolveCurrent() {
-        const current = this.sessions.list.getSnapshot().current;
-        return current === undefined ? this.absent : this.resolve(current) ?? this.absent;
-    }
-    publishCurrent() {
-        const next = this.resolveCurrent();
-        if (next === this.currentBinding)
+    publishMain() {
+        if (!this.active)
             return;
-        this.currentBinding = next;
-        notifySubscribers(this.currentListeners, '[ui-session] current binding');
+        const byId = this.sessions.list.getSnapshot().byId;
+        const currentId = this.current.value.key;
+        const currentIsMain = currentId !== undefined
+            && (this.sessions.retainInfo(currentId).getSnapshot().retainedBy.mainView ?? 0) > 0;
+        const nextId = currentIsMain
+            ? currentId
+            : Object.values(byId).find(candidate => (candidate.retainedBy.mainView ?? 0) > 0)?.id;
+        this.watchMainRetention(nextId);
+        const owner = nextId === undefined ? undefined : this.sessions.binding(nextId);
+        const value = owner === undefined ? this.absent.value : this.sourceFor(owner).value;
+        if (this.current.value === value)
+            return;
+        this.current.value = value;
+        notifySubscribers(this.current.listeners, '[ui-session] main binding');
+    }
+    watchMainRetention(sessionId) {
+        if (sessionId === this.mainRetainId)
+            return;
+        this.disposeMainRetain();
+        this.mainRetainId = sessionId;
+        this.disposeMainRetain = sessionId === undefined
+            ? () => { }
+            : this.sessions.retainInfo(sessionId).subscribe(() => { this.publishMain(); });
     }
     publishPendingInteractions() {
         const next = new Map();
@@ -208,22 +242,82 @@ export class UiSession extends Service {
         if (samePendingInteractions(this.pendingSnapshot, projected))
             return;
         this.pendingSnapshot = projected;
-        notifySubscribers(this.pendingListeners, '[ui-session] pending interactions');
+        this.publishStatus();
+    }
+    observeRunning(sessionId, running) {
+        const previous = this.running.get(sessionId);
+        const beforeBaseline = this.sessions.list.getSnapshot().phase === 'pending';
+        this.running.set(sessionId, running);
+        if (running)
+            this.completionUnread.delete(sessionId);
+        else if ((previous === true || (previous === undefined && beforeBaseline))
+            && !this.isMain(sessionId))
+            this.completionUnread.add(sessionId);
+        this.publishStatus();
+    }
+    reconcileStatus() {
+        const list = this.sessions.list.getSnapshot();
+        const present = new Set(Object.keys(list.byId));
+        // Subagent catalog rows and retained subagent fallback rows do not establish Host running state.
+        for (const id of list.ids) {
+            const row = list.byId[id];
+            const previous = this.running.get(id);
+            if (previous === undefined)
+                this.running.set(id, row.running);
+            else if (previous !== row.running)
+                this.observeRunning(id, row.running);
+        }
+        for (const id of present) {
+            if (this.isMain(id))
+                this.completionUnread.delete(id);
+        }
+        if (list.phase === 'ready') {
+            for (const id of this.running.keys()) {
+                if (present.has(id))
+                    continue;
+                this.running.delete(id);
+                this.completionUnread.delete(id);
+            }
+        }
+        this.publishStatus();
+    }
+    isMain(sessionId) {
+        return (this.sessions.list.getSnapshot().byId[sessionId]?.retainedBy.mainView ?? 0) > 0;
+    }
+    publishStatus() {
+        const ids = new Set([
+            ...Object.keys(this.sessions.list.getSnapshot().byId),
+            ...this.running.keys(),
+            ...this.pendingSnapshot.keys(),
+            ...this.completionUnread,
+        ]);
+        const next = new Map();
+        for (const id of ids) {
+            next.set(id, {
+                running: this.running.get(id),
+                pendingInteraction: this.pendingSnapshot.get(id),
+                completionUnread: this.completionUnread.has(id),
+            });
+        }
+        if (sameSessionStatus(this.statusSnapshot, next))
+            return;
+        this.statusSnapshot = next;
+        notifySubscribers(this.statusListeners, '[ui-session] Session status');
     }
     createMaterializedBinding(owner) {
         const value = this.materialize(owner);
+        this.ctx.slots.bindStoreScope(value);
+        const source = createBindingSource(value);
         const releaseEffect = owner.ctx.effect(() => () => {
-            if (this.bindings.get(owner.sessionId) !== record)
-                return;
-            this.bindings.delete(owner.sessionId);
-            if (this.currentBinding !== value)
-                return;
-            this.currentBinding = this.absent;
-            notifySubscribers(this.currentListeners, '[ui-session] current binding');
+            if (this.bindings.get(owner) === record)
+                this.bindings.delete(owner);
+            source.value = this.absent.value;
+            notifySubscribers(source.listeners, '[ui-session] Session binding');
+            this.publishMain();
         }, `ui-session: binding ${owner.sessionId}`);
         const record = {
             owner,
-            value,
+            source,
             release: () => { void releaseEffect(); },
         };
         return record;
@@ -247,7 +341,6 @@ export class UiSession extends Service {
             keyedHooks,
             props,
         };
-        this.ctx.slots.bindStoreScope(value);
         return value;
     }
     materializeAbsent() {
@@ -262,6 +355,18 @@ export class UiSession extends Service {
         }
         return { key: undefined, hooks, keyedHooks, props };
     }
+}
+function createBindingSource(value) {
+    const source = {
+        value,
+        listeners: new Set(),
+        getSnapshot: () => source.value,
+        subscribe: (listener) => {
+            source.listeners.add(listener);
+            return () => { source.listeners.delete(listener); };
+        },
+    };
+    return source;
 }
 function validateContribution(descriptor, contribution) {
     rejectUndeclared('hook', descriptor.hooks, contribution.hooks);
@@ -298,7 +403,7 @@ function claimStandardProp(kind, name, finalProps) {
     finalProps.add(propName);
 }
 /** Required Controller and renderer services. */
-export const inject = ['sessions', 'slots'];
+export const inject = ['sessions', 'slots', 'remote'];
 /**
  * Install the Session root source and scoped adapter.
  * @param ctx - Client Cordis context.
@@ -308,10 +413,26 @@ export function apply(ctx) {
     ctx.slots.provideRoot({
         hooks: {
             sessions: ctx.sessions.list,
-            sessionPendingInteraction: service.pendingInteractions,
+            sessionStatus: service.sessionStatus,
+        },
+        keyedHooks: {
+            sessionRetainInfo: key => ctx.sessions.retainInfo(key),
         },
     });
     ctx.slots.installScope('session', service.adapter);
+}
+function sameSessionStatus(left, right) {
+    if (left.size !== right.size)
+        return false;
+    for (const [id, status] of left) {
+        const candidate = right.get(id);
+        if (candidate === undefined
+            || candidate.running !== status.running
+            || candidate.pendingInteraction !== status.pendingInteraction
+            || candidate.completionUnread !== status.completionUnread)
+            return false;
+    }
+    return true;
 }
 function samePendingInteractions(left, right) {
     if (left.size !== right.size)

@@ -5,8 +5,10 @@
  * its own settings surface.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
+import type { LocalizedText } from '@deepseek-ai/dsh-package-manifest';
 import { type LocaleDictOf, type LocaleNamespaceMap, type Translate, type TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client';
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client';
+import { type LocaleBootstrap } from './bootstrap.ts';
 import { type BuiltInLocaleId, type LocaleId, type LocaleSettings } from '../locale-settings.ts';
 import { type CommonKey } from '../locales/index.ts';
 import { type SettingsLocaleKey } from '../locales/settings.ts';
@@ -93,6 +95,7 @@ export declare const SETTINGS_NS = "settings.locale";
  * `ctx.slots.installLocale`.
  */
 export declare class LocaleRuntime {
+    private readonly bootstrap?;
     private dicts;
     private bound;
     private catalog;
@@ -110,13 +113,21 @@ export declare class LocaleRuntime {
      * listener is released through ctx.effect on dispose).
      * @param host - durable preference scope owned by the providing plugin;
      * absent compositions (standalone dictionary registries) stay process-local.
+     * @param bootstrap - native initialization; absent in ordinary browsers.
      */
-    constructor(ctx: ClientContext, host?: SettingsScope<LocaleSettings>);
+    constructor(ctx: ClientContext, host?: ConfigForm<LocaleSettings>, bootstrap?: LocaleBootstrap | undefined);
     /**
      * Read the current immutable locale snapshot.
      * @returns the current snapshot (stable reference until the next change).
      */
     getLocale(): LocaleSnapshot;
+    /**
+     * Resolve package text through the active language's declared fallback chain.
+     * Plain strings stay verbatim; maps do not consult registered dictionaries.
+     * @param text - package text whose locale keys are lowercase and include English.
+     * @returns the first available translation, including an empty string.
+     */
+    resolveText(text: LocalizedText): string;
     /**
      * LocaleFace getSnapshot: the current snapshot (carries `revision`; stable
      * reference between changes, uSES-safe).
@@ -231,6 +242,7 @@ export declare const inject: string[];
  * register the feature-owned Language preference row into the General
  * section's item slot (a feature owns its settings surface).
  * @param ctx - client cordis context.
+ * @returns resolves after native language initialization and plugin registration.
  */
-export declare function apply(ctx: ClientContext): void;
+export declare function apply(ctx: ClientContext): Promise<void>;
 //# sourceMappingURL=index.d.ts.map

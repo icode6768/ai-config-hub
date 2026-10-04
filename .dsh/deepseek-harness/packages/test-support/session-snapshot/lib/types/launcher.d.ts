@@ -75,10 +75,11 @@ export declare function launchAcpTestAgent(options: AcpTestLaunchOptions): Launc
 /**
  * Copy one authored patch into the launch cwd with relative plugin names made absolute.
  * @param source - authored profile patch path.
- * @param cwd - isolated process cwd whose profile fallback receives package links.
+ * @param cwd - isolated process cwd whose profile receives package links.
+ * @param profile - profile whose local package lookup receives the test links.
  * @param targetDir - existing directory that owns the materialized patch.
  * @param index - stable patch ordinal used in the output filename.
  * @returns absolute materialized patch path.
  */
-export declare function materializeProfilePatch(source: string, cwd: string, targetDir: string, index: number): string;
+export declare function materializeProfilePatch(source: string, cwd: string, profile: string, targetDir: string, index: number): string;
 //# sourceMappingURL=launcher.d.ts.map

@@ -1,8 +1,8 @@
 /**
  * Capture coordinator for the telemetry capability. Live capture subscribes to
  * the session firehose plus the one live-bus relay (`agent/error`). Both
- * capture paths apply the fixed chunk projection, build logical records, and
- * run each through the
+ * capture paths build one logical record per canonical Session event and run
+ * each through the
  * `session-telemetry/record` waterfall (deployment-mounted redaction rules;
  * pass-through when none), then hands the result to the backend. Live capture
  * follows the session firehose; on-demand capture replays the canonical log
@@ -13,6 +13,7 @@
  *
  * @module @deepseek-ai/dsh-session-telemetry/coordinator
  */
+import { SessionSeq, SessionLogOffset, } from '@deepseek-ai/dsh-session';
 /**
  * The handoff cursor: per session, the highest `seq` handed to a backend.
  * Deliberately MODULE-scope ambient state — a narrow, documented exception
@@ -28,10 +29,10 @@ const handoffCursor = new WeakMap();
 /**
  * Install the telemetry capture side onto a context for one backend.
  *
- * Live capture registers the persistence-coordinator listener set plus the
- * `agent/error` relay, all through `ctx.effect()`/`ctx.on()` on the composing
- * fiber, and sweeps already-live sessions (a hot reload does not replay
- * `session/created`). A `session/disposed` captures the session's `shutdown`
+ * Live capture registers its own `session/created` / `session/event` /
+ * `session/disposed` listener set plus the `agent/error` relay, all through
+ * `ctx.effect()`/`ctx.on()` on the composing fiber, and sweeps already-live
+ * sessions (a hot reload does not replay `session/created`). A `session/disposed` captures the session's `shutdown`
  * operational record at its own termination edge and retires it from the
  * adopted set. On-demand capture registers none of those continuous listeners;
  * {@link captureSession} reads the canonical log explicitly and never creates
@@ -43,23 +44,23 @@ const handoffCursor = new WeakMap();
 export class SessionTelemetryCoordinator {
     ctx;
     backend;
+    options;
     /**
      * Sessions adopted by THIS fiber and still live, for double-adoption
      * protection and the teardown sweep of unmarked sessions;
      * `session/disposed` marks and retires entries.
      */
     adopted = new Set();
-    /** Per session, the `turn:step` keys whose first chunk already shipped; rebuilt from the log on re-adoption. */
-    chunkSeen = new WeakMap();
     /**
      * @param ctx - the composing backend's context; listeners bind to its fiber.
      * @param backend - the backend receiving records; owned elsewhere, never disposed here beyond `shutdown()` forwarding.
-     * @param capture - follow live events, or wait for explicit canonical-log capture.
+     * @param options - capture mode and history policy.
      */
-    constructor(ctx, backend, capture = 'live') {
+    constructor(ctx, backend, options = {}) {
         this.ctx = ctx;
         this.backend = backend;
-        if (capture === 'live') {
+        this.options = options;
+        if ((options.capture ?? 'live') === 'live') {
             ctx.on('session/created', (session) => {
                 this.adopt(session);
             });
@@ -110,7 +111,7 @@ export class SessionTelemetryCoordinator {
         }, 'telemetry capture');
     }
     /**
-     * Project and hand over the canonical session-log suffix after the handoff
+     * Copy, redact, and hand over the canonical session-log suffix after the handoff
      * cursor, optionally stopping at an inclusive sequence boundary. Redaction
      * runs during this call, so an on-demand caller retains no copied records
      * before requesting capture and uses the policy mounted at that time.
@@ -120,33 +121,25 @@ export class SessionTelemetryCoordinator {
      * @param throughSeq - optional last sequence included in this capture.
      */
     captureSession(session, throughSeq) {
-        const cursor = handoffCursor.get(session) ?? session.firstLiveSeq - 1;
+        const start = session.firstLifecycleSeq;
+        const cursor = handoffCursor.get(session)
+            ?? (this.options.includeHistory === true || start === 0 ? -1 : SessionSeq(start - 1));
         // Containment is PER EVENT: one rejected record is withheld fail-closed
         // while the rest of the historical replay proceeds.
-        for (const event of session.events) {
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+        for (const event of session.snapshotEvents(SessionLogOffset(cursor + 1))) {
             if (throughSeq !== undefined && event.seq > throughSeq)
                 break;
             this.contain(() => {
-                if (event.seq <= cursor)
-                    this.track(session, event);
-                else
-                    this.captureEvent(session, event);
+                this.captureEvent(session, event);
             });
         }
     }
     /**
-     * Adopt a session: replay its log THROUGH the projection from the handoff
-     * cursor, then rely on the firehose for everything after. When no cursor
-     * survived, replay starts at the session's construction boundary
-     * (`firstLiveSeq`), not seq 0: constructor seeds never publish on the
-     * firehose, and their content already left the process under another
-     * identity — the same id in a previous process (resume) or the parent's
-     * stream (fork, stitched by receivers via `session.seed_length`). Events
-     * at or below the start still feed the projection state (first-chunk
-     * tracking) without being re-handed, so a resumed fiber drops mid-step
-     * chunk continuations exactly like the fiber that saw the step begin. The
-     * cost, accepted with the capture contract's at-most-once stance: a resume
-     * does not backfill records a previous process failed to deliver.
+     * Adopt a session and replay after its handoff cursor, then follow live events.
+     * New fork objects include child-owned seed markers and closers. Restored
+     * objects start after the stored prefix, including restored forks. includeHistory starts either object at seq 0;
+     * re-adopting the same object resumes after its cursor.
      * @param session - the live session to adopt; a second adoption is a no-op.
      */
     adopt(session) {
@@ -155,34 +148,19 @@ export class SessionTelemetryCoordinator {
         this.adopted.add(session);
         this.captureSession(session);
     }
-    /** Feed the chunk projection without handing off — the ≤cursor half of re-adoption. */
-    track(session, event) {
-        if (event.type === 'assistant/chunk') {
-            this.seen(session).add(`${event.data.turn}:${event.data.step}`);
-        }
-    }
-    /** Project, redact, and hand one event to the backend. */
+    /** Copy, redact, and hand one canonical event to the backend. */
     captureEvent(session, event) {
-        if (event.type === 'assistant/chunk') {
-            const key = `${event.data.turn}:${event.data.step}`;
-            const seen = this.seen(session);
-            // Fixed chunk projection: only the first chunk of each (turn, step)
-            // ships — the stream-started signal; content is byte-complete in the
-            // step's assembled assistant/message. Dropped chunks do not advance
-            // the cursor, so re-adoption re-drops them deterministically.
-            if (seen.has(key))
-                return;
-            seen.add(key);
-        }
+        const { data, ...envelope } = event;
         this.deliver(session, {
             record: this.redact({
+                sourceEvent: { sessionId: session.id, envelope: structuredClone(envelope) },
                 channel: 'ledger',
                 time: event.time,
                 severity: severityOf(event),
                 attributes: identityOf(session, event),
                 // The canonical event object is mutable and the backend serializes
                 // later; append-time validation guarantees this clone cannot throw.
-                body: structuredClone(event.data),
+                body: structuredClone(data),
             }),
             seq: event.seq,
         });
@@ -229,13 +207,6 @@ export class SessionTelemetryCoordinator {
             }),
         });
     }
-    /** Lazily create the per-session first-chunk tracking set. */
-    seen(session) {
-        let set = this.chunkSeen.get(session);
-        if (!set)
-            this.chunkSeen.set(session, set = new Set());
-        return set;
-    }
     /**
      * Run one capture-side step with its exception contained: cordis `emit`
      * is stop-on-throw, so a throwing listener would starve every subscriber
@@ -267,7 +238,7 @@ function shutdownRecord(session) {
 function severityOf(event) {
     switch (event.type) {
         case 'tool/result':
-            return event.data.message.content[0].isError === true ? 'error' : 'info';
+            return event.data.message.isError === true ? 'error' : 'info';
         case 'turn/end':
             return event.data.reason.kind === 'error' ? 'error' : 'info';
         default:
@@ -286,18 +257,19 @@ function errorDetail(error) {
 function identityOf(session, event) {
     const attributes = {
         'session.id': String(session.id),
+        'session.format_version': session.header.version,
         'event.type': event.type,
         'event.seq': event.seq,
     };
-    const { cwd, parentSession, seedLength } = session.header;
+    const { cwd, parentSession, isSeeded } = session.header;
     if (cwd !== undefined)
         attributes['session.cwd'] = cwd;
     if (parentSession !== undefined)
         attributes['session.parent_id'] = String(parentSession);
-    // The durable fork boundary: a forked stream starts here, and its prefix
-    // lives in the parent's stream — receivers stitch on (parent_id, seed_length).
-    if (seedLength !== undefined)
-        attributes['session.seed_length'] = seedLength;
+    // The durable fork boundary and lineage: the child ledger is complete;
+    // parent_id and seed_length identify which leading events were inherited.
+    if (isSeeded)
+        attributes['session.seed_length'] = session.inheritedEventCount;
     return attributes;
 }
 //# sourceMappingURL=coordinator.js.map

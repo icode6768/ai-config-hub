@@ -30,7 +30,7 @@ export declare function inspect(value: unknown): string;
  */
 export declare function format(template: unknown, ...args: unknown[]): string;
 /**
- * Structural deep equality, as `isDeepStrictEqual` defines it for plain data.
+ * Structural deep equality over own enumerable properties, as `isDeepStrictEqual` defines it for plain data.
  * @param left - first value.
  * @param right - second value.
  * @returns true when both sides are structurally identical.

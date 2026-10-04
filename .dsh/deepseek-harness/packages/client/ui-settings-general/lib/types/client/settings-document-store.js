@@ -1,11 +1,8 @@
 /** State owner for the optional local settings-document action. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
-function messageOf(error) {
-    return error instanceof Error ? error.message : String(error);
-}
 /** Derives local-document availability from the shared mirror and invokes the pathless Host-owned open operation. */
 export class SettingsDocumentStore {
-    remote;
+    ctx;
     describeFace;
     /** uSES-safe state source shared by the registered header action. */
     store = createSnapshotStore({
@@ -13,11 +10,12 @@ export class SettingsDocumentStore {
     });
     following;
     /**
-     * @param api - loopback settings wire face that opens the provider document.
+     * @param ctx - the plugin's context, whose loopback `remote.settings`
+     * namespace opens the provider document.
      * @param describeFace - the shared mirror's describe face (`hasDocument` source).
      */
-    constructor(remote, describeFace) {
-        this.remote = remote;
+    constructor(ctx, describeFace) {
+        this.ctx = ctx;
         this.describeFace = describeFace;
     }
     /**
@@ -47,12 +45,11 @@ export class SettingsDocumentStore {
             state.error = null;
         });
         try {
-            const result = await this.remote.settings.openSettingsDocument();
-            if (!result.ok)
-                throw new Error(result.error.message);
-        }
-        catch (error) {
-            this.store.update((state) => { state.error = messageOf(error); });
+            const result = await this.ctx.remote.settings.openSettingsDocument();
+            if (!result.ok) {
+                const { message } = result.error;
+                this.store.update((state) => { state.error = message; });
+            }
         }
         finally {
             this.store.update((state) => { state.opening = false; });

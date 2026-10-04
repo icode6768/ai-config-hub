@@ -7,13 +7,13 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * active theme.
  */
 import clsx from 'clsx';
-import { IconDarkOutline16, IconFollowsystemOutline16, IconLightOutline16, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconDarkOutlineMedium, IconFollowsystemOutlineMedium, IconLightOutlineMedium, } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './AppearanceRow.module.css';
 /** Cube order and icons (figma 501:30015-30017: Light, Dark, System). */
 const CUBES = [
-    { id: 'light', labelKey: 'appearance.light', Icon: IconLightOutline16 },
-    { id: 'dark', labelKey: 'appearance.dark', Icon: IconDarkOutline16 },
-    { id: 'system', labelKey: 'appearance.system', Icon: IconFollowsystemOutline16 },
+    { id: 'light', labelKey: 'appearance.light', Icon: IconLightOutlineMedium },
+    { id: 'dark', labelKey: 'appearance.dark', Icon: IconDarkOutlineMedium },
+    { id: 'system', labelKey: 'appearance.system', Icon: IconFollowsystemOutlineMedium },
 ];
 /**
  * Render the Appearance row.

@@ -54,7 +54,10 @@ export function parse(text, descriptor) {
     if (version !== descriptor.version) {
         throw new StorageError('version-mismatch', `unit '${descriptor.name}': stored version ${version} != expected ${descriptor.version}`);
     }
-    if (typeof tables !== 'object' || tables === null) {
+    // `typeof` alone admits an array: reading one as a table map reports every
+    // declared table as absent, and the next publish replaces the file with that
+    // empty view, discarding records this reader could not see.
+    if (typeof tables !== 'object' || tables === null || Array.isArray(tables)) {
         throw new StorageError('malformed-medium', `unit '${descriptor.name}': tables is not an object`);
     }
     const state = { version, global: globalValue ?? null, tables: new Map() };
@@ -83,16 +86,18 @@ export function serializeRecord(version, value) {
 }
 /**
  * Parse one per-record document, validating its version stamp. A document
- * that is malformed or stamped with a different version is FOREIGN and reads
- * as absent — the per-record contract: one bad or stale record file must not
- * brick the whole unit, and a version bump discards stale records instead of
- * migrating them (the whole-unit format rejects instead, because there is
- * exactly one document).
+ * that is malformed or stamped with an unaccepted version is FOREIGN and
+ * reads as absent — the per-record contract: one bad or stale record file
+ * must not brick the whole unit, and an unaccepted version stamp discards the
+ * record instead of migrating it (the whole-unit format rejects instead,
+ * because there is exactly one document).
  * @param text - Raw per-record document content.
- * @param version - Expected unit version; a mismatch discards the document.
+ * @param versions - Accepted unit versions (the current one plus the
+ * descriptor's compatibleVersions); any other stamp discards the
+ * document.
  * @returns the record value, or `undefined` for a foreign document.
  */
-export function parseRecord(text, version) {
+export function parseRecord(text, versions) {
     let document;
     try {
         document = JSON.parse(text);
@@ -103,7 +108,7 @@ export function parseRecord(text, version) {
     if (typeof document !== 'object' || document === null)
         return undefined;
     const { version: stamped, record } = document;
-    if (stamped !== version)
+    if (typeof stamped !== 'number' || !versions.includes(stamped))
         return undefined;
     return record;
 }

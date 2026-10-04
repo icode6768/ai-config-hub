@@ -6,35 +6,28 @@
 import { Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { AnonymousEntries, NamedEntries, ScopedLayers, scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope';
-import { assertNever, deepFreeze, HarnessError } from '@deepseek-ai/dsh-llm';
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session';
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt';
+import { HarnessError } from '@deepseek-ai/dsh-llm';
+import { assertNever, deepFreeze, snapshotJsonValue } from '@deepseek-ai/dsh-util-values';
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from "./json-schema.js";
-import { createRunCodeTool, RUN_CODE_NAME, SDK_SECTION_ORDER } from "./ptc.js";
+import { createRunCodeTool, RUN_CODE_NAME } from "./ptc.js";
 import { renderToolsSdk } from "./ts-types.js";
 import { renderToolsSdkPy } from "./py-types.js";
 /**
  * Language → SDK-section renderer. The registry looks up the loaded
- * `ctx.codeRuntime.language` in this table when assembling the `tools:sdk`
+ * `ctx.ptcRuntime.language` in this table when assembling the `tools:sdk`
  * section under a non-native mode; a runtime whose language is not a key
  * fails the assembly loudly (same idiom as `toolOrder` violations). Adding a
- * new backend language is three parallel edits — a {@link CodeSdkLanguage}
+ * new backend language is three parallel edits — a {@link PtcSdkLanguage}
  * member, an entry here, and a `RUN_CODE_FLAVORS` entry in `ptc.ts` for
  * its `run_code` schema strings — plus the renderer function this table points
  * at. The `satisfies` clause pins this table's key set to that union, which
  * the flavor table is checked against too, so any of the three left out is a
  * typecheck failure. What no check reaches is the prose that names the values
- * instead of deriving them: the seam's `dsh-code-runtime` README pair, its
- * `CodeRuntime.language` JSDoc, and `docs/subsystems/code-runtime.md`
+ * instead of deriving them: the seam's `dsh-ptc-runtime` README pair, its
+ * `PtcRuntime.language` JSDoc, and `docs/subsystems/ptc-runtime.md`
  * with its zh pair, plus this package's own README pair and the
  * {@link Config.mode} JSDoc.
  */
-/**
- * Prompt order of the `ptc` collapse statement: after the persona and before
- * per-tool guidance, so the model reads which tools it may call before it
- * reads what each one is for.
- */
-const COLLAPSE_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.PTC_ONLY;
 /**
  * The model-facing statement of the `ptc` collapse. Names the consequence
  * (the call fails) and the route (inside the program), because a rule the
@@ -243,6 +236,8 @@ export class ToolRuntime extends Service {
     cancellationStates = new WeakMap();
     /** Definition-owned final content transform snapshotted before policy begins. */
     contentFinalizers = new WeakMap();
+    /** Execution-prepared content installed before post-execute policy. */
+    contentProjectors = new WeakMap();
     layers = new ScopedLayers(scope => new ToolLayer(scope), () => { this.ctx.emit('tools/change'); });
     /** Presentation for scopes that declare none; {@link presentAs} shadows it per scope. */
     defaultMode;
@@ -275,8 +270,8 @@ export class ToolRuntime extends Service {
      * Without this the model reads a catalog of tools it is told to use and no
      * statement that only `run_code` may be called, so it emits a native call,
      * receives `UNKNOWN_TOOL` for a tool the prompt just declared, and concludes
-     * the deployment is inconsistent. {@link COLLAPSE_SECTION_ORDER} places the rule
-     * before that guidance rather than after it.
+     * the deployment is inconsistent. Its order places the rule before that
+     * guidance rather than after it.
      *
      * `both` renders empty: native calls do execute there, so the rule is false.
      * @returns the section registration.
@@ -284,7 +279,7 @@ export class ToolRuntime extends Service {
     collapseSection() {
         return {
             name: 'tools:ptc-only',
-            order: COLLAPSE_SECTION_ORDER,
+            order: this.ctx.systemPrompt.getSectionOrder('PTC_ONLY'),
             // The SAME predicate the executor denies by, so the prompt cannot state
             // a rule the registry does not enforce (see `collapses`).
             text: context => this.modeFor(context.scope) === 'ptc' ? PTC_ONLY_INSTRUCTION : '',
@@ -303,17 +298,18 @@ export class ToolRuntime extends Service {
     sdkSection() {
         return {
             name: 'tools:sdk',
-            order: SDK_SECTION_ORDER,
+            order: this.ctx.systemPrompt.getSectionOrder('TOOLS_SDK'),
+            interpolate: false,
             // Regenerate from the calling scope's visible tools in stable order.
             text: (context) => {
                 const mode = this.modeFor(context.scope);
                 if (mode === 'native')
                     return '';
-                const runtime = this.requireCodeRuntime(mode);
+                const runtime = this.requirePtcRuntime(mode);
                 // Own-property read: a language like `toString`/`constructor` would
                 // otherwise resolve an inherited Object.prototype member as a renderer.
                 const render = SDK_RENDERERS[runtime.language];
-                /* v8 ignore next -- requireCodeRuntime rejects an unknown language before this runs. */
+                /* v8 ignore next -- requirePtcRuntime rejects an unknown language before this runs. */
                 if (render === undefined)
                     throw new Error(`dsh-tools: no SDK renderer for ${runtime.language}`);
                 return render(this.sdkSchemas(context.scope));
@@ -348,13 +344,20 @@ export class ToolRuntime extends Service {
      * and only for scopes whose mode actually presents it.
      * @returns the shared transport definition.
      */
-    requireCodeTransport() {
+    requirePtcTransport() {
         this.ptcTransport ??= createRunCodeTool(this, {
-            requireRuntime: () => this.requireCodeRuntime(this.defaultMode),
+            requireRuntime: () => this.requirePtcRuntime(this.defaultMode),
+            peekApprover: () => this.ctx.get('approval'),
+            resolveSandboxPolicy: (exec) => {
+                const policy = this.ctx.get('sandboxPolicy');
+                if (policy === undefined)
+                    throw new Error('dsh-tools: confined PTC runtime requires sandboxPolicy');
+                return policy.resolve(exec.agent === undefined ? {} : { session: exec.agent.session });
+            },
             // The language-aware description/parameters getters read the runtime
             // without demanding one, so a native-default process can still project
             // the transport for an agent that chose code.
-            peekRuntime: () => this.ctx.get('codeRuntime'),
+            peekRuntime: () => this.ctx.get('ptcRuntime'),
             maxParallel: this.maxParallelSubCalls,
             shapeDispatchLog: dispatch => this.shapeDispatchLog(dispatch),
         });
@@ -412,7 +415,7 @@ export class ToolRuntime extends Service {
         // flavor-table guard would otherwise surface first. This keeps the
         // renderer-table rejection the canonical assembly-time error for a
         // language with no SDK renderer.
-        this.requireCodeRuntime(mode);
+        this.requirePtcRuntime(mode);
         const schemas = [...view.visible.values()].map(definition => this.schemaOf(definition, false));
         if (mode === 'ptc') {
             return {
@@ -423,10 +426,10 @@ export class ToolRuntime extends Service {
         return { schemas, knownNames: [...view.knownNames, RUN_CODE_NAME] };
     }
     /**
-     * Resolve the code runtime or throw the actionable misconfiguration error.
+     * Resolve the PTC runtime or throw the actionable misconfiguration error.
      * Read at use time (assembly / run_code execution), NOT via static
      * `inject`: an inject entry would hold `ctx.tools` — and every tool plugin
-     * behind it — hostage to a code runtime existing even under `mode:
+     * behind it — hostage to a PTC runtime existing even under `mode:
      * 'native'`.
      *
      * Assembly and `run_code` execution read separately, so the language is not
@@ -434,13 +437,12 @@ export class ToolRuntime extends Service {
      * reads return the same flavor — but a reload that swapped in a second
      * language between them would hand a program written against one SDK to the
      * other. Binding it is deferred until a second backend ships (the first
-     * point it is testable); rationale in the
-     * [language-dispatch note](../../../../.agents/notes/implemented/feature/2026-07-31-ptc-language-dispatch.md).
+     * point it is testable).
      */
-    requireCodeRuntime(mode) {
-        const runtime = this.ctx.get('codeRuntime');
+    requirePtcRuntime(mode) {
+        const runtime = this.ctx.get('ptcRuntime');
         if (!runtime) {
-            throw new Error(`dsh-tools: mode "${mode}" requires a code runtime — load a ctx.codeRuntime implementation (e.g. @deepseek-ai/dsh-code-runtime-worker-thread) or set tools mode to "native"`);
+            throw new Error(`dsh-tools: mode "${mode}" requires a PTC runtime — load a ctx.ptcRuntime implementation (e.g. @deepseek-ai/dsh-ptc-runtime-node) or set tools mode to "native"`);
         }
         if (!Object.hasOwn(SDK_RENDERERS, runtime.language)) {
             const known = Object.keys(SDK_RENDERERS).map(name => JSON.stringify(name)).join(', ');
@@ -544,9 +546,9 @@ export class ToolRuntime extends Service {
      * A restriction filters what a scope inherits — the global layer and every
      * ancestor layer on its chain — and never what its OWN layer registers.
      * That exemption is what a per-child capability filter has to keep intact:
-     * the delegation runtime registers a child's reporting and structured-output
-     * tools into the child's own layer, and a filter naming the capabilities the
-     * child may use must not strip the machinery it answers through.
+     * the delegation runtime registers a child's structured-output tool into the
+     * child's own layer, and a filter naming the capabilities the child may use
+     * must not strip the machinery it answers through.
      *
      * Reading the exempt set as "the global layer" instead of "not mine" held
      * only while every model-facing tool sat in the host composition. Once
@@ -597,7 +599,7 @@ export class ToolRuntime extends Service {
         // changes. Per scope: a native agent must not find `run_code` in its
         // dispatch table because some other agent in the process presents it.
         if (this.modeFor(scope) !== 'native') {
-            visible.set(RUN_CODE_NAME, this.requireCodeTransport());
+            visible.set(RUN_CODE_NAME, this.requirePtcTransport());
         }
         return { visible, knownNames, restrictableNames };
     }
@@ -661,7 +663,7 @@ export class ToolRuntime extends Service {
     }
     /** Project one definition onto the model-facing schema fields. */
     schemaOf(definition, detachParameters) {
-        const { name, description, parameters } = definition;
+        const { name, description, parameters, deferLoading } = definition;
         const detached = detachParameters ? snapshotJsonValue(parameters) : parameters;
         if (detached === undefined) {
             throw new Error(`tool "${name}" parameters must be lossless JSON before schema projection`);
@@ -670,6 +672,7 @@ export class ToolRuntime extends Service {
             name,
             description,
             parameters: detached,
+            ...deferLoading === true ? { deferLoading } : {},
         };
     }
     /**
@@ -693,7 +696,7 @@ export class ToolRuntime extends Service {
     }
     /**
      * Run the `tools/ptc-dispatch-log` waterfall over one settled sub-dispatch
-     * and return the content the bridge should log on `tool/code-dispatch`.
+     * and return the content the bridge should log on `tool/ptc-dispatch`.
      * Contained: when a listener throws, the method logs the original settled
      * content; that failure must not fail the dispatch or omit the settle event. Private:
      * the ONE consumer is the `run_code` bridge this registry constructs, which
@@ -789,6 +792,7 @@ export class ToolRuntime extends Service {
             signal,
             ...agent !== undefined ? { agent } : {},
             ...parent !== undefined ? { parent } : {},
+            ...exec.schema !== undefined ? { schema: exec.schema } : {},
             deferContext(context) {
                 deferredContexts.push(context);
             },
@@ -807,6 +811,7 @@ export class ToolRuntime extends Service {
         // invalid-args failure of a NON-ABORTED collapsed call drop it (the call
         // could never execute).
         const capturedFinalizer = visible?.finalizeContent?.bind(visible);
+        const capturedProjector = visible?.projectContent?.bind(visible);
         const finalizerFor = () => collapsed && !signal.aborted ? undefined : capturedFinalizer;
         try {
             const detached = snapshotJsonValue(exec.arguments);
@@ -816,6 +821,8 @@ export class ToolRuntime extends Service {
             const execution = { ...base, arguments: deepFreeze(detached) };
             this.deferredContexts.set(execution, deferredContexts);
             this.contentFinalizers.set(execution, finalizerFor());
+            if (!collapsed)
+                this.contentProjectors.set(execution, capturedProjector);
             this.cancellationStates.set(execution, {
                 callerSignal: signal,
                 bodyInvoked: false,
@@ -874,9 +881,11 @@ export class ToolRuntime extends Service {
             if (this.callerCancelled(exec) && askResolution.approvalCancelled) {
                 return await next({ kind: 'post-result', exec, result: toolAbortedBeforeDispatchResult() });
             }
-            const denialReason = decision.kind === 'allow'
-                ? this.guardReason(exec)
-                : decision.reason;
+            if (decision.kind === 'cancel') {
+                return await next({ kind: 'post-result', exec, result: toolAbortedBeforeDispatchResult() });
+            }
+            const denialReason = decision.kind === 'allow' ? this.guardReason(exec) : decision.reason;
+            const denialInfo = decision.kind === 'deny' ? decision.info : undefined;
             if (denialReason !== undefined) {
                 return await next({
                     kind: 'post-result',
@@ -884,7 +893,7 @@ export class ToolRuntime extends Service {
                     result: this.materializeFinalResult({
                         content: [{ type: 'text', text: `Error: ${denialReason}` }],
                         isError: true,
-                        error: { message: denialReason },
+                        error: { message: denialReason, ...denialInfo === undefined ? {} : { info: denialInfo } },
                     }),
                 });
             }
@@ -999,7 +1008,13 @@ export class ToolRuntime extends Service {
      */
     async finalizeScheduledExecution(exec, result) {
         try {
-            const postResult = await this.postExecute(exec, result);
+            const project = this.contentProjectors.get(exec);
+            this.contentProjectors.delete(exec);
+            const content = project?.(exec, result);
+            const projected = content === undefined
+                ? result
+                : this.markCanonical(exec, this.materializeFinalResult({ ...result, content }));
+            const postResult = await this.postExecute(exec, projected);
             return this.finishScheduledExecution(exec, this.callerCancelled(exec) && !postResult.isError
                 ? this.cancellationResult(exec, postResult)
                 : postResult);
@@ -1094,6 +1109,7 @@ export class ToolRuntime extends Service {
             toolName: exec.name,
             callId: exec.callId,
             ...ask.reason !== undefined ? { reason: ask.reason } : {},
+            ...ask.displayReason !== undefined ? { displayReason: ask.displayReason } : {},
             signal: exec.signal,
         });
         switch (outcome) {

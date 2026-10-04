@@ -1,5 +1,6 @@
 /** One Host-generation model catalog shared by every Session selector. */
-import type { ClientRemote, ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
+import type { ModelCatalog, ModelSelection, ModelProviderGroup } from '@deepseek-ai/dsh-api-remotes/client';
 import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
 /** Observable lifecycle of the shared model catalog. */
 export interface ModelCatalogState {
@@ -9,13 +10,23 @@ export interface ModelCatalogState {
 }
 /** Loads at most one model catalog for the current Host generation. */
 export declare class ModelCatalogDirectory {
-    private readonly session;
+    private readonly ctx;
     /** Current shared catalog value and load lifecycle. */
     readonly store: SnapshotStore<ModelCatalogState>;
+    private readonly reasoning;
+    /**
+     * Read the last advertised reasoning metadata, including unavailable models.
+     * @param selection - provider and model whose effort is displayed.
+     * @returns reasoning metadata observed during this Host generation.
+     */
+    reasoningFor(selection: ModelSelection): ModelProviderGroup['models'][number]['reasoning'];
     private generation;
     private inflight;
-    /** @param session - Session Remote namespace carrying the Host-generation catalog. */
-    constructor(session: Pick<ClientRemote['session'], 'modelCatalog'>);
+    /**
+     * @param ctx - the providing plugin's context, whose `remote.session`
+     * namespace carries the Host-generation catalog.
+     */
+    constructor(ctx: ClientContext);
     /**
      * Return the current generation's catalog, sharing its one in-flight load.
      * @returns the loaded global catalog.

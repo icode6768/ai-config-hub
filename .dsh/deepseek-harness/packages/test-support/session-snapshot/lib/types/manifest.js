@@ -1,10 +1,30 @@
 /** Parse and validate one recorded-session snapshot manifest. */
 import { isAbsolute } from 'node:path';
 import * as yaml from 'js-yaml';
+/**
+ * Whether one run writes current-writer Session fixtures for this scenario.
+ * Explicit historical generations remain immutable replay inputs; record and
+ * refresh may still update their non-Session expected outputs.
+ *
+ * @param manifest - Parsed scenario ownership and retained-generation metadata.
+ * @param mode - Snapshot execution mode.
+ * @returns True only when a write-capable mode tracks the current writer.
+ */
+export function writesCurrentSessionFixtures(manifest, mode) {
+    return mode !== 'replay' && manifest.session === undefined && manifest.sessionFormat === undefined;
+}
 const PROFILES = new Set(['headless', 'sdk', 'acp', 'web']);
 const RECORDINGS = new Set(['live', 'authored']);
 const PLATFORMS = new Set(['posix', 'pwsh']);
 const PERMISSIONS = new Set(['read-only', 'workspace-write', 'danger-full-access']);
+const SESSION_FORMAT_COVERAGE = new Set([
+    'multi-hop',
+    'packed-row',
+    'retry-failure',
+    'shipped-profile',
+    'adjacent-migration',
+    'retired-tools',
+]);
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 function record(value, label) {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -67,6 +87,7 @@ export function parseSnapshotManifest(source, path = 'snapshot.yml') {
             'workspace',
             'input',
             'session',
+            'sessionFormat',
         ], 'manifest');
         if (root.version !== 1)
             throw new Error('manifest.version must equal 1');
@@ -95,12 +116,15 @@ export function parseSnapshotManifest(source, path = 'snapshot.yml') {
                 'childSystemPrompts',
                 'childToolSchemas',
                 'changes',
+                'promptChanges',
             ], 'manifest.header');
             if (value.pin !== undefined && value.pin !== true) {
                 throw new Error('manifest.header.pin must equal true when present');
             }
-            if (value.changes !== undefined && (!Number.isInteger(value.changes) || Number(value.changes) < 0)) {
-                throw new Error('manifest.header.changes must be a non-negative integer');
+            for (const field of ['changes', 'promptChanges']) {
+                if (value[field] !== undefined && (!Number.isInteger(value[field]) || Number(value[field]) < 0)) {
+                    throw new Error(`manifest.header.${field} must be a non-negative integer`);
+                }
             }
             header = {
                 class: name(value.class, 'manifest.header.class'),
@@ -118,6 +142,7 @@ export function parseSnapshotManifest(source, path = 'snapshot.yml') {
                     ? {}
                     : { childToolSchemas: positiveIndexes(value.childToolSchemas, 'manifest.header.childToolSchemas') }),
                 ...(value.changes === undefined ? {} : { changes: Number(value.changes) }),
+                ...(value.promptChanges === undefined ? {} : { promptChanges: Number(value.promptChanges) }),
             };
         }
         let replay;
@@ -157,13 +182,13 @@ export function parseSnapshotManifest(source, path = 'snapshot.yml') {
             if (value.final !== undefined && value.final !== true) {
                 throw new Error('manifest.workspace.final must equal true when present');
             }
-            if (value.parent !== undefined && value.parent !== 'home') {
-                throw new Error('manifest.workspace.parent must equal home');
+            if (value.parent !== undefined && value.parent !== 'outside-temp') {
+                throw new Error('manifest.workspace.parent must equal outside-temp');
             }
             workspace = {
                 ...(value.setup === undefined ? {} : { setup: name(value.setup, 'manifest.workspace.setup') }),
                 ...(value.final === true ? { final: true } : {}),
-                ...(value.parent === 'home' ? { parent: 'home' } : {}),
+                ...(value.parent === 'outside-temp' ? { parent: 'outside-temp' } : {}),
             };
             if (Object.keys(workspace).length === 0)
                 throw new Error('manifest.workspace must not be empty');
@@ -218,6 +243,27 @@ export function parseSnapshotManifest(source, path = 'snapshot.yml') {
             }
             session = { source: value.source };
         }
+        let sessionFormat;
+        if (root.sessionFormat !== undefined) {
+            const value = record(root.sessionFormat, 'manifest.sessionFormat');
+            exactKeys(value, ['version', 'coverage'], 'manifest.sessionFormat');
+            if (!Number.isSafeInteger(value.version) || Number(value.version) < 0 || Object.is(value.version, -0)) {
+                throw new Error('manifest.sessionFormat.version must be a non-negative safe integer');
+            }
+            if (!Array.isArray(value.coverage) || value.coverage.length === 0
+                || value.coverage.some(item => typeof item !== 'string'
+                    || !SESSION_FORMAT_COVERAGE.has(item))
+                || new Set(value.coverage).size !== value.coverage.length) {
+                throw new Error('manifest.sessionFormat.coverage must be a non-empty array of unique supported coverage names');
+            }
+            if (session !== undefined) {
+                throw new Error('manifest.sessionFormat is only valid when the scenario owns its Session fixtures');
+            }
+            sessionFormat = {
+                version: Number(value.version),
+                coverage: [...value.coverage],
+            };
+        }
         return {
             version: 1,
             ...(scenario === undefined ? {} : { scenario }),
@@ -232,6 +278,7 @@ export function parseSnapshotManifest(source, path = 'snapshot.yml') {
             ...(workspace === undefined ? {} : { workspace }),
             ...(input === undefined ? {} : { input }),
             ...(session === undefined ? {} : { session }),
+            ...(sessionFormat === undefined ? {} : { sessionFormat }),
         };
     }
     catch (error) {

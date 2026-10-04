@@ -1,3 +1,4 @@
+import { PartialArguments } from '@deepseek-ai/dsh-util-values';
 import { trajectoryNode } from "./trajectory-definition-common.js";
 /* jscpd:ignore-start -- Target-owned Definitions intentionally keep their event
  * state machines independent; see ../../../../../.agents/notes/implemented/
@@ -8,9 +9,11 @@ function rootCall(match) {
         throw new Error('trajectory-tool-call start requires tool/call');
     }
     return {
+        phase: 'start',
         callId: String(match.event.data.callId),
         name: match.event.data.name,
         argsRaw: match.event.data.arguments,
+        args: PartialArguments.fromText(match.event.data.arguments),
         turn: match.event.data.turn,
         step: match.event.data.step,
         time: match.event.time,
@@ -20,16 +23,18 @@ function rootCall(match) {
 function rootResult(match, previous) {
     if (match.event.type !== 'tool/result')
         return undefined;
-    const result = match.event.data.message.content[0];
+    const message = match.event.data.message;
     return {
         kind: 'tool-result',
         seq: match.event.seq,
         time: match.event.time,
-        callId: String(match.event.data.message.source.callId),
+        callId: String(message.source.callId),
+        name: previous?.name ?? '',
+        args: previous?.args ?? PartialArguments.EMPTY,
         call: previous === undefined ? null : { name: previous.name, argsRaw: previous.argsRaw },
         callTime: previous?.time ?? null,
-        content: result.content,
-        isError: result.isError === true,
+        content: message.content,
+        isError: message.isError === true,
         ...(match.event.data.error === undefined ? {} : { error: match.event.data.error }),
         meta: match.event.data.meta,
         subCalls: [],
@@ -45,10 +50,12 @@ function locationStep(match) {
 }
 function childCall(match, data) {
     return {
+        phase: 'start',
         callId: data.subCallId,
         parentCallId: data.parentCallId,
         name: data.name,
         argsRaw: JSON.stringify(data.arguments),
+        args: PartialArguments.fromObject(data.arguments),
         turn: locationTurn(match),
         step: locationStep(match),
         time: match.event.time,
@@ -62,10 +69,13 @@ function childResult(match, data, previous) {
         time: match.event.time,
         callId: data.subCallId,
         parentCallId: data.parentCallId,
+        name: data.name,
+        args: previous?.args ?? PartialArguments.fromObject(data.arguments),
         call: { name: data.name, argsRaw: JSON.stringify(data.arguments) },
         callTime: previous === undefined || 'kind' in previous ? null : previous.time,
         content: data.content ?? [],
         isError: data.isError === true,
+        ...(data.error === undefined ? {} : { error: data.error }),
         subCalls: [],
     };
 }
@@ -98,7 +108,7 @@ function acceptsEdge(state, parent, child) {
 }
 function updateDispatch(state, match) {
     const event = match.event;
-    if (event.type !== 'tool/code-dispatch-start' && event.type !== 'tool/code-dispatch')
+    if (event.type !== 'tool/ptc-dispatch-start' && event.type !== 'tool/ptc-dispatch')
         return state;
     const data = event.data;
     const parentId = String(data.parentCallId);
@@ -107,10 +117,10 @@ function updateDispatch(state, match) {
     const index = siblings.indexOf(childId);
     if (index < 0 && !acceptsEdge(state, parentId, childId))
         return state;
-    if (event.type === 'tool/code-dispatch-start' && index >= 0)
+    if (event.type === 'tool/ptc-dispatch-start' && index >= 0)
         return state;
     const calls = new Map(state.calls);
-    calls.set(childId, event.type === 'tool/code-dispatch-start'
+    calls.set(childId, event.type === 'tool/ptc-dispatch-start'
         ? childCall(match, data)
         : childResult(match, data, calls.get(childId)));
     if (index >= 0)
@@ -151,6 +161,8 @@ function projectCall(state, callId, interruptedAt, visited = new Set(), depth = 
         time: interruptedAt.time,
         callId: block.callId,
         ...block.parentCallId === undefined ? {} : { parentCallId: block.parentCallId },
+        name: block.name,
+        args: block.args,
         call: { name: block.name, argsRaw: block.argsRaw },
         callTime: block.time,
         content: [],
@@ -174,7 +186,7 @@ function fallbackState(context) {
         state = updateDispatch(state, match);
     return state;
 }
-/** Trajectory-owned root Tool lifecycle with nested Code Dispatch calls. */
+/** Trajectory-owned root Tool lifecycle with nested PTC dispatch calls. */
 const trajectoryToolDefinition = {
     kind: 'trajectory-tool-call',
     target: 'trajectory',
@@ -184,7 +196,7 @@ const trajectoryToolDefinition = {
         if (event.type === 'tool/result') {
             return { id: String(event.data.message.source.callId), role: 'update' };
         }
-        if (event.type === 'tool/code-dispatch-start' || event.type === 'tool/code-dispatch') {
+        if (event.type === 'tool/ptc-dispatch-start' || event.type === 'tool/ptc-dispatch') {
             const rootCallId = event.data.rootCallId;
             return typeof rootCallId === 'string' && rootCallId !== ''
                 ? { id: rootCallId, role: 'update' }
@@ -227,7 +239,7 @@ const trajectoryToolDefinition = {
 };
 /* jscpd:ignore-end */
 /**
- * Register the Trajectory Tool lifecycle.
+ * Register the Trajectory Tool lifecycle with raw native and PTC error details.
  *
  * @param ctx - Plugin context receiving the Definition.
  */

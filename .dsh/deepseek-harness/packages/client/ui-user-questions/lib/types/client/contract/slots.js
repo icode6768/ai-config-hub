@@ -14,16 +14,10 @@ function settlePendingComposer(settle, failureMessage) {
  * Narrow a request to a renderable plan review, or return undefined to leave it
  * to the generic question flow.
  *
- * The card is one decision over one plan, and it claims a request only when it
- * can send every answer that request allows — an intent changes the layout,
- * never which answers are reachable. So the batch must be a single question
- * that declares the intent, carries the plan as its detail, offers the approve
- * label the intent names, and is a binary single choice: at most one option
- * besides approve, and not multi-select. A third option or a multi-select batch
- * has answers two buttons cannot express, so the generic flow keeps it — as it
- * keeps any request whose intent the asker's own service would have rejected,
- * because the client sits downstream of a wire boundary and every request must
- * stay answerable.
+ * The card offers approval and a return to the composer for change requests.
+ * It accepts one question carrying the plan as detail and the named approve
+ * option, with at most one alternative and no multi-select. Larger choices
+ * remain in the generic question flow.
  *
  * @param questions - the request's whole question batch.
  * @returns The narrowed review, or undefined when the generic flow owns it.
@@ -49,111 +43,380 @@ export function planReviewOf(questions) {
         id: question.id,
         question: question.question,
         plan: question.detail,
+        ...(intent.callId === undefined ? {} : { callId: intent.callId }),
         approve,
         ...(decline === undefined ? {} : { decline }),
     };
 }
+/** Reload-unique prefix so an unnamed legacy card cannot reuse a persisted draft. */
+const unnamedQuestionPrefix = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 let nextQuestionKey = 0;
+const rejectionMessages = {
+    ASK_ABORTED: 'ask_user_question was aborted before the user answered',
+    ASK_CANCELLED: 'the user cancelled ask_user_question',
+    ASK_TIMED_OUT: 'ask_user_question timed out before the user answered',
+};
 /** Create a wire-preserved user-question rejection. */
-function questionError(message, code) {
-    const error = new Error(message);
+function questionError(code) {
+    const error = new Error(rejectionMessages[code]);
     error.name = 'UserQuestionError';
     error.code = code;
     return error;
 }
-/** One answerable Client presentation of a pending Host waterfall. */
-export class PendingQuestion {
-    sessionId;
-    /** Presentation discriminator used by Session pending-interaction consumers. */
-    kind;
-    /** Opaque render identity and request key for the Session-scoped draft store. */
-    key;
-    /** The request's question list. */
-    questions;
-    /** Result returned by the Remote Event listener to the Host waterfall. */
-    result;
-    #resolve;
-    #reject;
-    #signal;
-    #onAbort;
-    #delegated = Symbol('pending question delegated');
-    #settled = false;
-    /**
-     * @param sessionId - Agent/Session identity owning the scoped request.
-     * @param questions - complete question batch.
-     * @param signal - Host request and delivery lifetime.
-     */
-    constructor(sessionId, questions, signal) {
-        this.sessionId = sessionId;
-        nextQuestionKey += 1;
-        this.key = `question:${String(nextQuestionKey)}`;
-        this.questions = questions;
-        this.kind = planReviewOf(questions) === undefined ? 'question' : 'plan-review';
-        const completion = Promise.withResolvers();
-        this.result = completion.promise;
-        this.#resolve = completion.resolve;
-        this.#reject = completion.reject;
-        this.#signal = signal;
-        if (signal === undefined) {
-            this.#onAbort = undefined;
+/**
+ * Create the deferred one Remote Event listener settles through a card.
+ * The request signal ends the channel with `ASK_ABORTED`; the Host ignores that
+ * outcome for an event it already finished, so a cancel frame loses nothing.
+ * @param deadline - Client-clock deadline in epoch milliseconds derived from the business claim's remaining duration.
+ * @param signal - Delivery lifetime of the forwarded request.
+ * @param onSettle - Called once with the channel when it settles or aborts.
+ * @returns The channel to attach and the promise the listener awaits.
+ */
+export function createWaterfallRequest(deadline, signal, onSettle) {
+    const completion = Promise.withResolvers();
+    const delegated = Symbol('pending question delegated');
+    let settled = false;
+    const finish = (settle) => {
+        if (settled)
             return;
-        }
-        const onAbort = () => {
-            this.abort(questionError('ask_user_question was aborted before the user answered', 'ASK_ABORTED'));
-        };
-        this.#onAbort = onAbort;
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
+        settle();
+        onSettle(channel);
+    };
+    const onAbort = () => {
+        finish(() => { completion.reject(questionError('ASK_ABORTED')); });
+    };
+    const channel = {
+        deadline,
+        resolve: (answer) => { finish(() => { completion.resolve(answer); }); },
+        reject: (code) => { finish(() => { completion.reject(questionError(code)); }); },
+        delegate: () => { finish(() => { completion.reject(delegated); }); },
+    };
+    if (signal !== undefined) {
         signal.addEventListener('abort', onAbort, { once: true });
         if (signal.aborted)
             onAbort();
     }
+    return { channel, result: completion.promise, isDelegation: reason => reason === delegated };
+}
+/**
+ * One answerable Client card. A card keyed by tool call is created by whichever
+ * source arrives first, the forwarded waterfall or the Session projection, and
+ * removed only when the projection no longer lists the call.
+ */
+export class PendingQuestion {
+    /** Presentation discriminator used by Session pending-interaction consumers. */
+    kind;
+    /** Render identity and request key for the Session-scoped draft store. */
+    key;
+    /** Agent/Session identity owning the request. */
+    sessionId;
+    /** The request's question list. */
+    questions;
+    /** Tool call identity; absent for a blocking request that carried no `wait`. */
+    callId;
     /**
-     * Resolve the Host waterfall with the whole answer batch.
+     * Recorded answers of a call that already settled. Present only on a
+     * read-only review card, which the tool call row builds from its own
+     * transcript so a finished question can be read back in the panel that
+     * asked it. Such a card has no answer channel and no countdown.
+     */
+    review;
+    /**
+     * What closing the panel does. A card keyed by tool call stays reachable
+     * from its tool call row, so closing only withdraws the panel (`hide`) and
+     * persists nothing. A card the Host never named has no way back, so closing
+     * it ends the request (`cancel`).
+     */
+    dismissal;
+    #state = 'open';
+    #waterfall;
+    #rpc;
+    #seat;
+    #timedWait = false;
+    #timer;
+    #deadline;
+    #remainingMs;
+    #focused = false;
+    #engaged = false;
+    #held = false;
+    #closed = false;
+    #siblings;
+    #listeners = new Set();
+    #snapshot;
+    /**
+     * @param sessionId - Agent/Session identity owning the request.
+     * @param questions - complete question batch.
+     * @param callId - tool call identity when the Host named one.
+     * @param siblings - keys of every card currently registered for the Session, for draft pruning.
+     * @param review - recorded answers of a settled call, making this a read-only card.
+     */
+    constructor(sessionId, questions, callId, siblings, review) {
+        this.sessionId = sessionId;
+        this.questions = questions;
+        this.kind = planReviewOf(questions) === undefined ? 'question' : 'plan-review';
+        this.callId = callId;
+        this.review = review;
+        this.dismissal = callId === undefined ? 'cancel' : 'hide';
+        this.#siblings = siblings;
+        if (callId === undefined)
+            nextQuestionKey += 1;
+        this.key = callId === undefined
+            ? `question:${unnamedQuestionPrefix}:${String(nextQuestionKey)}`
+            : PendingQuestion.keyOf(sessionId, callId);
+        this.#snapshot = this.createSnapshot();
+    }
+    /**
+     * Card key of a tool call, shared by every source that names one. The Host
+     * request and the Session projection carry the branded `ToolCallId`; a
+     * transcript row carries the same wire value as a plain string.
+     * @param sessionId - owning Session.
+     * @param callId - tool call identity, branded or as a transcript spells it.
+     * @returns the render identity and draft key.
+     */
+    static keyOf(sessionId, callId) {
+        return `question:${String(sessionId)}:${callId}`;
+    }
+    /**
+     * Draft keys that are still live in this Session, this card included.
+     * @returns keys the draft store must keep; everything else is stale.
+     */
+    liveKeys() {
+        return this.#siblings?.() ?? [this.key];
+    }
+    /** Subscribe to card state changes. */
+    subscribe = (listener) => {
+        this.#listeners.add(listener);
+        return () => { this.#listeners.delete(listener); };
+    };
+    /** Read the stable current card state. */
+    snapshot = () => this.#snapshot;
+    /** Observable snapshot read by the renderer's keyed Hook. */
+    getSnapshot = this.snapshot;
+    createSnapshot() {
+        const channel = this.#waterfall !== undefined
+            ? 'waterfall'
+            : this.#state === 'continued' && this.#rpc !== undefined ? 'rpc' : 'none';
+        const waitState = this.#state === 'continued'
+            ? 'continued'
+            : this.#held ? 'waiting'
+                : this.#engaged ? 'editing'
+                    : this.#focused ? 'focused' : 'counting';
+        return {
+            state: this.#state,
+            waitState,
+            countdown: this.#timedWait
+                ? {
+                    remainingMs: this.#deadline === undefined
+                        ? this.#remainingMs ?? 0
+                        : Math.max(0, this.#deadline - Date.now()),
+                    running: this.#deadline !== undefined,
+                }
+                : undefined,
+            channel,
+            closed: this.#closed,
+        };
+    }
+    publish() {
+        this.#snapshot = this.createSnapshot();
+        this.#reschedule();
+        for (const listener of this.#listeners)
+            listener();
+    }
+    /**
+     * Own the countdown here rather than in a mounted component: the panel can be
+     * hidden and remounted while the request stands, and a timer that died with
+     * the component would leave the tool call waiting past its deadline.
+     */
+    #reschedule() {
+        const wanted = this.#deadline !== undefined && !this.#closed;
+        if (wanted === (this.#timer !== undefined))
+            return;
+        if (!wanted) {
+            clearInterval(this.#timer);
+            this.#timer = undefined;
+            return;
+        }
+        this.#timer = setInterval(() => { this.#tick(); }, 1000);
+    }
+    #tick() {
+        const deadline = this.#deadline;
+        /* v8 ignore next -- #reschedule clears the interval in the same publish that drops the deadline. */
+        if (deadline === undefined)
+            return;
+        if (Date.now() >= deadline) {
+            this.timeout();
+            return;
+        }
+        this.publish();
+    }
+    /**
+     * Attach the live waterfall of a forwarded request.
+     * @param channel - request channel created by {@link createWaterfallRequest}.
+     */
+    attachWaterfall(channel) {
+        this.#waterfall = channel;
+        this.#timedWait = channel.deadline !== undefined;
+        if (!this.#held && !this.#engaged) {
+            this.#deadline = channel.deadline;
+            if (this.#focused && channel.deadline !== undefined) {
+                this.#remainingMs = Math.max(0, channel.deadline - Date.now());
+                this.#deadline = undefined;
+            }
+        }
+        this.publish();
+    }
+    /**
+     * Drop a waterfall channel that settled or was cancelled; the card stays.
+     * @param channel - the channel that ended.
+     */
+    detachWaterfall(channel) {
+        if (this.#waterfall !== channel)
+            return;
+        this.#waterfall = undefined;
+        this.#timedWait = false;
+        this.#deadline = undefined;
+        this.publish();
+    }
+    /**
+     * Whether a live waterfall is attached.
+     * @returns whether the pending Host request still accepts settlement.
+     */
+    hasWaterfall() {
+        return this.#waterfall !== undefined;
+    }
+    /**
+     * Attach the Remote answer path used once the question is continued.
+     * @param channel - Remote calls bound to this Session and call.
+     */
+    attachRpc(channel) {
+        this.#rpc = channel;
+        this.publish();
+    }
+    /**
+     * Attach the composer seat this card is published into.
+     * @param seat - withdrawal of the published panel, owned by the card registry.
+     */
+    attachSeat(seat) {
+        this.#seat = seat;
+    }
+    /**
+     * Copy the projection row state.
+     * @param state - `open` or `continued`.
+     */
+    setState(state) {
+        if (this.#state === state)
+            return;
+        this.#state = state;
+        this.publish();
+    }
+    /** Stop this Client's countdown indefinitely; the waterfall then waits like a blocking question. */
+    takeTime() {
+        if (this.#held)
+            return;
+        this.#held = true;
+        this.#focused = false;
+        this.#remainingMs = undefined;
+        this.#deadline = undefined;
+        this.publish();
+    }
+    /**
+     * Record focus even before the request arrives, freezing a pristine countdown once attached.
+     * @param now - current Client epoch time.
+     */
+    holdFocus(now = Date.now()) {
+        if (this.#held || this.#engaged || this.#focused)
+            return;
+        this.#remainingMs = this.#deadline === undefined ? undefined : Math.max(0, this.#deadline - now);
+        this.#deadline = undefined;
+        this.#focused = true;
+        this.publish();
+    }
+    /**
+     * Resume a pristine countdown after the answer surface loses focus.
+     * @param now - current Client epoch time.
+     */
+    releaseFocus(now = Date.now()) {
+        if (!this.#focused)
+            return;
+        this.#focused = false;
+        this.#deadline = this.#timedWait && this.#remainingMs !== undefined ? now + this.#remainingMs : undefined;
+        this.#remainingMs = undefined;
+        this.publish();
+    }
+    /**
+     * Keep the first edited draft answerable without a foreground deadline.
+     * @param now - current Client epoch time used to preserve the remaining duration.
+     */
+    engage(now = Date.now()) {
+        if (this.#held || this.#engaged)
+            return;
+        if (this.#remainingMs === undefined && this.#deadline !== undefined) {
+            this.#remainingMs = Math.max(0, this.#deadline - now);
+        }
+        this.#engaged = true;
+        this.#focused = false;
+        this.#deadline = undefined;
+        this.publish();
+    }
+    /** Local countdown reached zero: settle the waterfall with `ASK_TIMED_OUT`, keep the card. */
+    timeout() {
+        if (this.#held || this.#engaged || this.#focused)
+            return;
+        const channel = this.#waterfall;
+        if (channel === undefined)
+            return;
+        this.#waterfall = undefined;
+        this.#timedWait = false;
+        this.#deadline = undefined;
+        channel.reject('ASK_TIMED_OUT');
+        this.publish();
+    }
+    /** Hand a live waterfall to the next listener when this presentation domain unloads. */
+    delegate() {
+        this.#waterfall?.delegate();
+    }
+    /** Mark the card removed from the registry; the mounted composer clears its draft. */
+    close() {
+        if (this.#closed)
+            return;
+        this.#closed = true;
+        this.publish();
+    }
+    /**
+     * Submit the whole answer batch through the live waterfall, or through the
+     * Remote path once the question is continued.
      * @param answer - complete structured answer batch.
      */
     answer(answer) {
-        return settlePendingComposer(() => {
-            this.finish(() => { this.#resolve(answer); });
-        }, 'pending question settlement failed');
-    }
-    /** Delegate an unanswered request to the next waterfall listener. */
-    delegate() {
-        if (this.#settled)
-            return;
-        this.finish(() => { this.#reject(this.#delegated); });
-    }
-    /**
-     * Test whether a rejection requests waterfall delegation.
-     * @param reason - rejection received from {@link PendingQuestion.result}.
-     * @returns whether {@link PendingQuestion.delegate} produced it.
-     */
-    isDelegation(reason) {
-        return reason === this.#delegated;
-    }
-    /** Reject the Host waterfall because the user closed the question. */
-    cancel() {
-        return settlePendingComposer(() => {
-            this.finish(() => {
-                this.#reject(questionError('the user cancelled ask_user_question', 'ASK_CANCELLED'));
-            });
-        }, 'pending question cancellation failed');
-    }
-    /**
-     * End an unanswered presentation when its transport, scope, or plugin lifetime ends.
-     * @param reason - rejection exposed to the waiting Remote Event listener.
-     */
-    abort(reason) {
-        if (this.#settled)
-            return;
-        this.finish(() => { this.#reject(reason); });
-    }
-    finish(settle) {
-        if (this.#settled)
-            throw new Error(`pending question ${this.key} is already settled`);
-        this.#settled = true;
-        if (this.#signal !== undefined && this.#onAbort !== undefined) {
-            this.#signal.removeEventListener('abort', this.#onAbort);
+        const waterfall = this.#waterfall;
+        if (waterfall !== undefined) {
+            return settlePendingComposer(() => { waterfall.resolve(answer); }, 'pending question settlement failed');
         }
-        settle();
+        const rpc = this.#rpc;
+        if (this.#state === 'continued' && rpc !== undefined) {
+            return rpc.answer(answer).then((accepted) => {
+                if (!accepted)
+                    throw new Error('this question is no longer answerable');
+            });
+        }
+        return Promise.reject(new Error('no channel accepts an answer yet'));
+    }
+    /**
+     * Close the panel. A tool-call-keyed card only leaves the composer seat: the
+     * request stands, the countdown keeps running here, and the tool call row
+     * reopens it. A card the Host never named ends its request instead, because
+     * nothing could bring it back.
+     */
+    dismiss() {
+        if (this.dismissal === 'hide') {
+            return settlePendingComposer(() => { this.#seat?.hide(); }, 'pending question hide failed');
+        }
+        const waterfall = this.#waterfall;
+        if (waterfall === undefined)
+            return Promise.reject(new Error('no channel accepts a cancellation yet'));
+        return settlePendingComposer(() => { waterfall.reject('ASK_CANCELLED'); }, 'pending question cancellation failed');
     }
 }
 //# sourceMappingURL=slots.js.map

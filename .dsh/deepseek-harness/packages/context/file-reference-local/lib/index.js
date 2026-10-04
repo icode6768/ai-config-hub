@@ -1,6 +1,5 @@
 import z from "@deepseek-ai/schemastery";
 import FileReferenceService, { FILE_REFERENCE_PROMPT, FILE_REFERENCE_PROMPT as FILE_REFERENCE_PROMPT$1 } from "@deepseek-ai/dsh-file-reference";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { lstat, readdir } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { activeAtToken, formatFileMention } from "@deepseek-ai/dsh-file-reference/grammar";
@@ -237,6 +236,7 @@ async function readDirectory(absolute, signal) {
 		signal.throwIfAborted();
 		return entries.sort((left, right) => compareText(left.name, right.name));
 	} catch (_error) {
+		/* v8 ignore start -- Windows chmod cannot make the unreadable-directory fixture fail readdir; POSIX behavior covers this fallback. */
 		signal.throwIfAborted();
 		return [];
 	}
@@ -337,15 +337,17 @@ var LocalFileReferenceService = class extends FileReferenceService {
 		};
 		validateConfig(this.config);
 		const installPrompt = (agent) => {
-			if (this.promptFibers.has(agent)) return;
+			const existing = this.promptFibers.get(agent);
+			if (existing !== void 0) return existing;
 			const fiber = agent.ctx.inject(["systemPrompt", "tools"], (scope) => {
 				scope.systemPrompt.section({
 					name: "context:file-reference",
-					order: FIRST_PARTY_SECTION_ORDER.FILE_REFERENCE,
+					order: scope.systemPrompt.getSectionOrder("FILE_REFERENCE"),
 					text: () => agent.ctx.tools.get("read", agent) === void 0 ? "" : FILE_REFERENCE_PROMPT$1
 				});
 			});
 			this.promptFibers.set(agent, fiber);
+			return fiber;
 		};
 		const disposePrompt = (agent) => {
 			const fiber = this.promptFibers.get(agent);
@@ -360,8 +362,8 @@ var LocalFileReferenceService = class extends FileReferenceService {
 			});
 		};
 		for (const agent of ctx.agents.list()) installPrompt(agent);
-		ctx.on("agent/created", ({ agent }) => {
-			installPrompt(agent);
+		ctx.on("agent/created", async ({ agent }) => {
+			await installPrompt(agent);
 		});
 		ctx.on("agent/disposed", ({ agent }) => {
 			this.searches.get(agent)?.dispose();

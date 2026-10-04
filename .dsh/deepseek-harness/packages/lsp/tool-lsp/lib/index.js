@@ -1,9 +1,8 @@
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { assertNever } from "@deepseek-ai/dsh-llm";
 import { LspError } from "@deepseek-ai/dsh-lsp";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
+import { assertNever } from "@deepseek-ai/dsh-util-values";
 import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 //#region lib/types/render.js
@@ -245,7 +244,7 @@ function apply(ctx, config) {
 	assertTimer("timeoutMs", resolved.timeoutMs);
 	ctx.systemPrompt.section({
 		name: "tool:lsp",
-		order: FIRST_PARTY_SECTION_ORDER.TOOL_LSP,
+		order: ctx.systemPrompt.getSectionOrder("TOOL_LSP"),
 		text: LSP_PROMPT_TEXT
 	});
 	ctx.tools.register(defineTool({

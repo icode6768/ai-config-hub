@@ -245,7 +245,7 @@ function profileArgs(profile, basePatch, selectedPatch, snapshotMode, cwd) {
     const materializedRoot = join(cwd, '.dsh-profile-patches');
     mkdirSync(materializedRoot, { recursive: true });
     const materializedDir = mkdtempSync(join(materializedRoot, 'launch-'));
-    const materialized = patches.map((file, index) => materializeProfilePatch(file, cwd, materializedDir, index));
+    const materialized = patches.map((file, index) => materializeProfilePatch(file, cwd, profile, materializedDir, index));
     return ['--profile', profile, ...materialized.flatMap(file => ['--patch', file])];
 }
 /** Derive the replay-only sibling patch selected by the former app-bin swap. */
@@ -271,15 +271,15 @@ function packageDirFromPatch(source, packageName) {
 }
 /**
  * Install an authored patch's resolvable bare package into the temporary
- * profile fallback. This mirrors `dsh plugin` while retaining the bare entry
- * name and package provenance used by request metadata.
+ * profile. This mirrors `dsh plugin` while retaining the bare entry
+ * name and package identity used by request metadata.
  */
-function linkProfilePackage(source, cwd, packageName) {
+function linkProfilePackage(source, cwd, profile, packageName) {
     const packageDir = packageDirFromPatch(source, packageName);
     // The package may instead belong to the dsh installation; profile boot heals those links.
     if (packageDir === undefined)
         return;
-    const link = join(cwd, '.dsh', 'profiles', 'node_modules', packageName);
+    const link = join(cwd, '.dsh', 'profiles', profile, 'node_modules', packageName);
     mkdirSync(dirname(link), { recursive: true });
     if (existsSync(link)) {
         if (realpathSync(link) !== packageDir) {
@@ -293,12 +293,13 @@ function linkProfilePackage(source, cwd, packageName) {
 /**
  * Copy one authored patch into the launch cwd with relative plugin names made absolute.
  * @param source - authored profile patch path.
- * @param cwd - isolated process cwd whose profile fallback receives package links.
+ * @param cwd - isolated process cwd whose profile receives package links.
+ * @param profile - profile whose local package lookup receives the test links.
  * @param targetDir - existing directory that owns the materialized patch.
  * @param index - stable patch ordinal used in the output filename.
  * @returns absolute materialized patch path.
  */
-export function materializeProfilePatch(source, cwd, targetDir, index) {
+export function materializeProfilePatch(source, cwd, profile, targetDir, index) {
     const parsed = yaml.load(readFileSync(source, 'utf8'), { schema: entryListSchema });
     if (!Array.isArray(parsed))
         throw new Error(`snapshot profile patch must be a top-level array: ${source}`);
@@ -307,7 +308,7 @@ export function materializeProfilePatch(source, cwd, targetDir, index) {
     const resolveName = (value) => {
         const packageName = barePackageName(value);
         if (packageName !== undefined)
-            linkProfilePackage(source, cwd, packageName);
+            linkProfilePackage(source, cwd, profile, packageName);
         return value.startsWith('./') || value.startsWith('../')
             ? pathToFileURL(resolve(baseDir, value)).href
             : value;

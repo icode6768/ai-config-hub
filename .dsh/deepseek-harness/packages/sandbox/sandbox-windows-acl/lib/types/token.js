@@ -138,6 +138,26 @@ export function setTokenDefaultDaclGrant(api, token, sidPtr) {
     }
     api.localFree(newDacl);
 }
+/**
+ * Lower the restricted token's integrity level to Low (S-1-16-4096), the level
+ * the mandatory labels `grantWrite` applies are matched against; a token left
+ * at Medium would ignore them. Requires TOKEN_ADJUST_DEFAULT on the token;
+ * fails closed before any child is spawned.
+ * @param api - the binding table.
+ * @param token - the restricted token to lower.
+ * @param lowLabelSidPtr - the Low integrity SID (S-1-16-4096).
+ */
+export function restrictTokenIntegrity(api, token, lowLabelSidPtr) {
+    const sidLength = api.getLengthSid(lowLabelSidPtr);
+    if (sidLength === 0)
+        throwLastError(api, 'GetLengthSid', 'Low integrity label SID');
+    const info = Buffer.alloc(abi.TOKEN_MANDATORY_LABEL_SIZE + sidLength);
+    info.writeBigUInt64LE(ptrAddress(lowLabelSidPtr), 0); // Label.Sid
+    info.writeUInt32LE(abi.SE_GROUP_INTEGRITY, 8); // Label.Attributes
+    if (api.setTokenInformation(token, abi.TokenIntegrityLevel, info, info.length) === 0) {
+        throwLastError(api, 'SetTokenInformation', 'TokenIntegrityLevel (Low)');
+    }
+}
 /** Pack `SID_AND_ATTRIBUTES[count]` (16-byte stride; Attributes stay 0). */
 function buildRestrictingSids(sids) {
     const buffer = Buffer.alloc(abi.SID_AND_ATTRIBUTES_SIZE * sids.length);

@@ -1,6 +1,5 @@
 import z from "@deepseek-ai/schemastery";
 import { TerminalSessionId } from "@deepseek-ai/dsh-terminal";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { TextRetainer } from "@deepseek-ai/dsh-output-retention";
 //#region lib/types/render.js
@@ -104,6 +103,40 @@ function renderList(sessions, maxBytes) {
 	}).join("\n"), "", false, maxBytes);
 }
 //#endregion
+//#region lib/types/background.js
+/**
+* Generic-job adaptation for background terminal sends: the registry pull
+* source over the backend's consuming send reader.
+*
+* @module @deepseek-ai/dsh-tool-terminal/background
+*/
+/**
+* Adapt the backend's consuming send reader to a registry pull source. The
+* reader has no offsets of its own — each call hands over what arrived since
+* the previous one — so the source counts the bytes it delivered to keep the
+* registry's cursor monotonic. It binds lazily because the send starts inside
+* the job starter, after the registry admitted the job; a read before that
+* point delivers nothing.
+* @param operation - the live send, once the starter has begun it.
+* @returns one unlabeled source over the send's bounded delta.
+*/
+function sendSource(operation) {
+	return { read: (fromByte) => {
+		const live = operation();
+		if (live === void 0) return {
+			text: "",
+			nextOffset: fromByte,
+			lossy: false
+		};
+		const text = renderSendRead(live.readOutput());
+		return {
+			text,
+			nextOffset: fromByte + Buffer.byteLength(text),
+			lossy: false
+		};
+	} };
+}
+//#endregion
 //#region lib/types/index.js
 /**
 * Six model-facing persistent terminal tools. Owner identity comes from the exact
@@ -175,7 +208,7 @@ const SESSION_SNAPSHOT_SCHEMA = {
 	additionalProperties: false,
 	properties: SESSION_SNAPSHOT_PROPERTIES
 };
-const BACKGROUND_TASK_OUTPUT_SCHEMA = {
+const BACKGROUND_JOB_OUTPUT_SCHEMA = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
@@ -223,7 +256,7 @@ function apply(ctx, config = {}) {
 	};
 	ctx.systemPrompt.section({
 		name: "tool:pty",
-		order: FIRST_PARTY_SECTION_ORDER.TOOL_PTY,
+		order: ctx.systemPrompt.getSectionOrder("TOOL_PTY"),
 		text: "Use a terminal session only when work needs persistent terminal state or interactive stdin; prefer shell/read/write/edit for bounded one-shot operations. Track every terminal session id and close sessions that no longer matter. An inferred_idle or timeout result does not prove the foreground command exited."
 	});
 	ctx.tools.register(defineTool({
@@ -304,7 +337,7 @@ function apply(ctx, config = {}) {
 		},
 		finalizeContent,
 		output: {
-			schema: { oneOf: [BACKGROUND_TASK_OUTPUT_SCHEMA, {
+			schema: { oneOf: [BACKGROUND_JOB_OUTPUT_SCHEMA, {
 				type: "object",
 				additionalProperties: false,
 				properties: {
@@ -360,28 +393,30 @@ function apply(ctx, config = {}) {
 				const jobs = ctx.get("jobs");
 				if (jobs === void 0) throw new Error("background terminal sends require @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs");
 				let cancelRequested = false;
+				let operation;
 				return {
 					kind: "background",
 					jobId: jobs.start({
 						kind: "pty-send",
 						label: `${id}: ${args.text || "(input)"}`,
-						owner,
+						owner: owner.id,
 						outputLimitBytes: maxResultBytes,
+						output: [sendSource(() => operation)],
 						run: () => {
-							const operation = ctx.terminals.startSend(owner, id, request);
+							const started = ctx.terminals.startSend(owner, id, request);
+							operation = started;
 							return {
 								cancel: () => {
 									cancelRequested = true;
-									operation.cancel();
+									started.cancel();
 								},
-								done: operation.done.then((result) => ({
+								done: started.done.then((result) => ({
 									status: cancelRequested ? "killed" : "completed",
 									detail: sendDetail(result)
 								}), (error) => ({
 									status: "failed",
 									detail: String(error)
-								})),
-								readOutput: () => renderSendRead(operation.readOutput())
+								}))
 							};
 						}
 					})

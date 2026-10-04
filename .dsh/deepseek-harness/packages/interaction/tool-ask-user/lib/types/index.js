@@ -6,12 +6,21 @@
  * @module @deepseek-ai/dsh-tool-ask-user
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import z from '@deepseek-ai/schemastery';
+import { registerTimedAskUser } from "./timed.js";
 import '@deepseek-ai/dsh-user-questions';
+export const Config = z.object({
+    mode: z.union(['legacy', 'timed']).default('legacy'),
+    timeout: z.union([-1, z.number().step(1).min(1).max(2_147_483)]).default(120),
+});
 export const name = 'tool-ask-user';
 export const inject = ['tools', 'userQuestions'];
-const description = 'Ask the user a concise question when you need confirmation, a choice, or missing information before proceeding. '
-    + 'Send one or more questions, each with a stable id that will be echoed in the answer.';
-export function apply(ctx) {
+const description = 'Ask the user a concise question when you need confirmation, a choice, or missing information before proceeding.';
+export function apply(ctx, config = {}) {
+    if (config.mode === 'timed') {
+        registerTimedAskUser(ctx, config.timeout);
+        return;
+    }
     ctx.tools.register(defineTool({
         name: 'ask_user_question',
         description,

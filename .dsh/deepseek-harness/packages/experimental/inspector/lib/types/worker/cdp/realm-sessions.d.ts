@@ -1,5 +1,6 @@
 /** Per-DevTools-connection sessions opened from the shared realm registry. */
 import type { InspectorSourceDescriptor } from '../../shared/bridge/messages/observation.ts';
+import type { InspectorSourceId } from '../../shared/bridge/ids.ts';
 import type { InspectorRealmRegistry } from '../inspection/realm-store.ts';
 import type { InspectorRealmSession } from '../inspection/realm.ts';
 import type { InspectorConnectionId } from './ids.ts';
@@ -11,19 +12,20 @@ export type InspectorRealmSessionEvent = {
     readonly type: 'closed';
     readonly session: InspectorRealmSession;
 };
-/** Owns exactly one backend session per active realm for one DevTools connection. */
+/** Owns one backend session per visible realm for one DevTools connection. */
 export declare class InspectorRealmSessionSet {
     private readonly realms;
+    private readonly clientSourceId?;
     /** Opaque identity shared by every domain and object table on this DevTools connection. */
     readonly connectionId: InspectorConnectionId;
     private readonly sessions;
     private readonly listeners;
     private readonly unsubscribeRealms;
     private closed;
-    constructor(realms: InspectorRealmRegistry);
+    constructor(realms: InspectorRealmRegistry, clientSourceId?: InspectorSourceId | undefined);
     /**
      * Return active sessions in the registry's deterministic order.
-     * @returns Host followed by connected Clients.
+     * @returns Host followed by connected Clients included in this connection.
      */
     all(): InspectorRealmSession[];
     /**
@@ -58,6 +60,7 @@ export declare class InspectorRealmSessionSet {
     /** Close all realm sessions and stop tracking the registry. */
     close(): void;
     private receiveRealm;
+    private includes;
     private open;
     private emit;
 }

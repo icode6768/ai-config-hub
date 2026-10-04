@@ -1,8 +1,9 @@
 /**
  * The web app's command-line provider: it parses the `dsh --profile web` flag
- * family (`--host`, `--port`, `--trusted-host`, `--no-open`) and its `--help`
- * text, then provides the immutable values as {@link WEB_STARTUP_SERVICE}.
- * Ordinary rows inject that service before reading it from lazy config.
+ * family (`--host`, `--port`, `--public-url`, `--trusted-host`, `--no-open`)
+ * and its `--help` text, then provides the immutable values as
+ * {@link WEB_STARTUP_SERVICE}. Ordinary rows inject that service before
+ * reading it from lazy config.
  * @module @deepseek-ai/dsh-web-app/startup
  */
 import type { Context } from '@deepseek-ai/cordis';
@@ -20,14 +21,19 @@ export interface WebStartupValues {
     host?: string;
     /** `--port`, absent when the invocation did not name one. */
     port?: number;
+    /**
+     * `--public-url`, absent when not specified: the advertised HTTP(S) root.
+     * See [public deployments](../README.md#public-deployments).
+     */
+    publicUrl?: string;
     /** Explicit `--trusted-host` authorities, in argument order. */
     trustedHosts: string[];
 }
 /**
  * Parse and provide the Web invocation as an ordinary Cordis service. The
- * command's action publishes the flags this invocation named; `--host 0.0.0.0`
- * or a non-numeric `--port` is a usage error, so on rejection (and on `--help`)
- * nothing is provided.
+ * command's action publishes the flags this invocation named; `--host 0.0.0.0`,
+ * a non-numeric `--port`, or a malformed `--public-url` is a usage error, so on
+ * rejection (and on `--help`) nothing is provided.
  * @param ctx - plugin context carrying the command line.
  */
 export declare function apply(ctx: Context): void;

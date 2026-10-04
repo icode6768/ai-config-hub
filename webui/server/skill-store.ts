@@ -7,11 +7,12 @@ import YAML from 'yaml'
 import { rootPath } from '../src/shared/paths'
 import { dongchuangPlatformUrl } from '../src/shared/dongchuangai'
 import type { LauncherConfig } from '../src/shared/types'
+import { workBuddySkillsCandidates } from './workbuddy'
 
 const execFile = promisify(execFileCallback)
 const statePath = () => join(rootPath(), '.codex', 'skill-state.yaml')
 
-export type SkillTarget = 'claude' | 'codex' | 'deepseekHarness' | 'hermes' | 'openclaw'
+export type SkillTarget = 'claude' | 'codex' | 'deepseekHarness' | 'hermes' | 'openclaw' | 'workbuddy'
 export type SkillTargets = Record<SkillTarget, boolean>
 
 export function appSkillDirectories(): Record<SkillTarget, string> {
@@ -22,6 +23,7 @@ export function appSkillDirectories(): Record<SkillTarget, string> {
     deepseekHarness: join(root, '.dsh', 'deepseek-harness', '.agents', 'skills'),
     hermes: join(root, '.hermes', 'skills'),
     openclaw: join(root, '.openclaw', 'skills'),
+    workbuddy: workBuddySkillsCandidates()[0] ?? join(root, '.workbuddy', 'skills'),
   }
 }
 
@@ -89,7 +91,7 @@ async function skillFiles(directory: string): Promise<string[]> {
 }
 
 function emptyTargets(): SkillTargets {
-  return { claude: false, codex: false, deepseekHarness: false, hermes: false, openclaw: false }
+  return { claude: false, codex: false, deepseekHarness: false, hermes: false, openclaw: false, workbuddy: false }
 }
 
 function marketplaceRecord(raw: Record<string, unknown>, installed: boolean, enabled: boolean, targets = emptyTargets()): SkillRecord {

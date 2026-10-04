@@ -1,5 +1,6 @@
 /** Client observation and Runtime endpoint over the Inspector Worker's ingest WebSocket. */
 import type { InspectorClientBootstrap } from '../../shared/bridge/messages/control.ts';
+import type { InspectorSourceId } from '../../shared/bridge/ids.ts';
 import { InspectorSourceConnection } from '../../shared/bridge/publisher.ts';
 import { ClientSourceCatalog } from '../cdp/sources.ts';
 import { ClientRealmSource } from '../inspection/realm.ts';
@@ -15,14 +16,20 @@ export declare class ClientInspectorSource extends InspectorSourceConnection {
     private generation;
     private accepted;
     private closed;
+    private suspended;
     private readonly runtime;
     private readonly runtimeRequests;
     private readonly console;
     protected readonly queries: ClientBridgeRpc;
     private readonly lifecycle;
+    /** Claimed page identity, unchanged across transport reconnects. */
+    get sourceId(): InspectorSourceId;
+    private readonly onPageHide;
+    private readonly onPageShow;
     constructor(bootstrap: InspectorClientBootstrap, label?: string, sourceCatalog?: ClientSourceCatalog | undefined, realmSource?: ClientRealmSource);
     /** Permanently stop reconnecting and close the active source generation. */
     close(): void;
+    private disconnect;
     private connect;
     private executeRuntime;
     private acknowledgeRuntime;

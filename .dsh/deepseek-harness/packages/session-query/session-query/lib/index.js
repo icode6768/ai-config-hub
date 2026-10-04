@@ -1,19 +1,57 @@
+import { currentSessionMessageProjections } from "@deepseek-ai/dsh-session-format-catalog/message-projections";
 import { Service } from "@deepseek-ai/cordis";
-import { Session, foldSurface, isSurfaceEvent, snapshotSessionEvent } from "@deepseek-ai/dsh-session";
+import { Session, SessionLogOffset, SessionSeq, foldSurface, interruptedTurnClosers, isSurfaceEvent, snapshotSessionEvent } from "@deepseek-ai/dsh-session";
 import { foldSessionTitle } from "@deepseek-ai/dsh-session-title";
 import { HarnessError } from "@deepseek-ai/dsh-llm";
 //#region lib/types/config.js
 /** Public configuration and typed failures for the combined session-query service. */
 /** Default maximum `before`/`after` raw-event window. */
 const SESSION_QUERY_READ_WINDOW_MAX = 50;
-/** Default maximum number of concurrent persisted-log inspections in one batch read. */
+/** Default maximum number of concurrent persisted-log reads in one batch read. */
 const SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY = 4;
+/** Default maximum number of cold prepared-Session observations retained for reuse. */
+const SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE = 5;
 /** Typed session-query failure whose `code` is one closed taxonomy member. */
 var SessionQueryError = class extends HarnessError {
 	constructor(message, code, options) {
 		super(message, code, options);
 	}
 };
+//#endregion
+//#region lib/types/cold-read.js
+/** One-shot cold session read through the handle-based persistence seam. */
+/**
+* Read one complete stored session log without taking ownership or mutating
+* storage: open a read handle, read the validated contiguous log, close the
+* handle, and append `interruptedTurnClosers` so a log whose writer crashed
+* mid-turn folds as a balanced transcript. Backend failures propagate
+* unmapped — each caller owns its error taxonomy.
+* @param persistence - the mounted persistence service.
+* @param sessionId - the stored session to read.
+* @param signal - optional cancellation for the open and read work.
+* @returns an adoptable seed in a caller-owned outer array, ready for in-place Session restoration.
+*/
+async function readColdSessionLog(persistence, sessionId, signal) {
+	const options = signal === void 0 ? void 0 : { signal };
+	const handle = await persistence.open(sessionId, "read", options);
+	let read;
+	try {
+		read = await handle.read(0, void 0, options);
+	} catch (error) {
+		try {
+			await handle.close();
+		} catch {}
+		throw error;
+	}
+	await handle.close();
+	const { events } = read;
+	return {
+		eventState: read.eventState,
+		header: handle.header,
+		inheritedEventCount: handle.inheritedEventCount,
+		events: [...events, ...interruptedTurnClosers(events)]
+	};
+}
 //#endregion
 //#region lib/types/sources.js
 /** Shared immutable-header checks for logical session source observers. */
@@ -23,7 +61,7 @@ var SessionQueryError = class extends HarnessError {
 * @param b - second header observation expected to identify the same source.
 */
 function assertSessionHeadersCompatible(a, b) {
-	if (a.version !== b.version || a.id !== b.id || a.createdAt !== b.createdAt || a.cwd !== b.cwd || a.parentSession !== b.parentSession || a.seedLength !== b.seedLength || (a.delegationDepth ?? 0) !== (b.delegationDepth ?? 0)) throw new SessionQueryError(`session source headers conflict for session "${a.id}"`, "SESSION_QUERY_SOURCE_CONFLICT");
+	if (a.id !== b.id || a.createdAt !== b.createdAt || a.cwd !== b.cwd || a.parentSession !== b.parentSession || a.isSeeded !== b.isSeeded || (a.delegationDepth ?? 0) !== (b.delegationDepth ?? 0)) throw new SessionQueryError(`session source headers conflict for session "${a.id}"`, "SESSION_QUERY_SOURCE_CONFLICT");
 }
 //#endregion
 //#region lib/types/corpus.js
@@ -31,12 +69,12 @@ function assertSessionHeadersCompatible(a, b) {
 /** Resolves a live-preferred corpus against the persistence service mounted now. */
 var SessionCorpus = class {
 	_ctx;
-	_persistedInspectConcurrency;
+	_persistedReadConcurrency;
 	_persistence;
 	_optionalPersistenceFiber;
-	constructor(_ctx, _persistedInspectConcurrency) {
+	constructor(_ctx, _persistedReadConcurrency) {
 		this._ctx = _ctx;
-		this._persistedInspectConcurrency = _persistedInspectConcurrency;
+		this._persistedReadConcurrency = _persistedReadConcurrency;
 		this._optionalPersistenceFiber = _ctx.inject(["sessionPersistence"], (childCtx) => {
 			const service = childCtx.sessionPersistence;
 			this._persistence = service;
@@ -106,9 +144,10 @@ var SessionCorpus = class {
 			signal?.throwIfAborted();
 			return snapshot;
 		}
-		assertSessionHeadersCompatible(loaded.meta, listed);
+		assertSessionHeadersCompatible(loaded.header, listed);
 		const snapshot = {
-			header: structuredClone(loaded.meta),
+			header: structuredClone(loaded.header),
+			inheritedEventCount: loaded.inheritedEventCount,
 			events: loaded.events.map((event) => structuredClone(event))
 		};
 		signal?.throwIfAborted();
@@ -178,9 +217,9 @@ var SessionCorpus = class {
 					resolved.set(sessionId, projectSource(sessionId, sourceLive(attached), project, signal));
 					return;
 				}
-				assertSessionHeadersCompatible(loaded.meta, listed);
+				assertSessionHeadersCompatible(loaded.header, listed);
 				resolved.set(sessionId, projectSource(sessionId, {
-					header: loaded.meta,
+					header: loaded.header,
 					events: loaded.events
 				}, project, signal));
 			} catch (error) {
@@ -202,7 +241,7 @@ var SessionCorpus = class {
 				await resolvePersisted(unresolved[index]);
 			}
 		};
-		const workerCount = Math.min(this._persistedInspectConcurrency, unresolved.length);
+		const workerCount = Math.min(this._persistedReadConcurrency, unresolved.length);
 		const settlements = await Promise.allSettled(Array.from({ length: workerCount }, () => worker()));
 		if (signal?.aborted) signal.throwIfAborted();
 		/* v8 ignore start -- per-id failures settle inside resolvePersisted; workers reject only on abort above */
@@ -235,7 +274,7 @@ function projectSource(sessionId, source, project, signal) {
 function sourceLive(session) {
 	return {
 		header: session.header,
-		events: session.events
+		events: session.snapshotEvents()
 	};
 }
 function orderedResults(ids, resolved) {
@@ -243,7 +282,7 @@ function orderedResults(ids, resolved) {
 }
 async function listPersisted(persistence, signal) {
 	try {
-		return await persistence.list(signal);
+		return (await persistence.list(signal === void 0 ? void 0 : { signal })).map((snapshot) => snapshot.header);
 	} catch (error) {
 		if (signal?.aborted) signal.throwIfAborted();
 		throw new SessionQueryError(`session persistence listing failed: ${errorMessage$1(error)}`, "SESSION_QUERY_PERSISTENCE_FAILED", { cause: error });
@@ -251,17 +290,18 @@ async function listPersisted(persistence, signal) {
 }
 async function inspectPersisted(persistence, sessionId, signal) {
 	try {
-		return await persistence.inspect(sessionId, signal);
+		return await readColdSessionLog(persistence, sessionId, signal);
 	} catch (error) {
 		if (signal?.aborted) signal.throwIfAborted();
 		if (error instanceof Error && error.name === "SessionPersistenceCorruptionError") throw new SessionQueryError(`stored session "${sessionId}" is corrupt: ${errorMessage$1(error)}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
-		throw new SessionQueryError(`failed to inspect session "${sessionId}": ${errorMessage$1(error)}`, "SESSION_QUERY_PERSISTENCE_FAILED", { cause: error });
+		throw new SessionQueryError(`failed to read stored session "${sessionId}": ${errorMessage$1(error)}`, "SESSION_QUERY_PERSISTENCE_FAILED", { cause: error });
 	}
 }
 function snapshotLive(session) {
 	return {
 		header: structuredClone(session.header),
-		events: session.events.map((event) => structuredClone(event))
+		inheritedEventCount: session.inheritedEventCount,
+		events: session.snapshotEvents().map((event) => structuredClone(event))
 	};
 }
 function compareSessions(a, b) {
@@ -276,18 +316,34 @@ function errorMessage$1(error) {
 //#endregion
 //#region lib/types/observation.js
 /** Shared live/prepared observations for Session page and lifecycle consumers. */
-/** Builds point observations without a corpus listing preflight. */
+/**
+* Builds point observations without a corpus listing preflight.
+*
+* Cold reads are cached per session id, keyed by the persistence instance and
+* the `stat` revision observed before the log read: an unchanged revision
+* reuses the restored Session without re-reading the log. The cache is bounded
+* (least-recently-used unpinned entries are evicted past the capacity), and
+* entries pinned by active leases survive eviction and replacement — a lease's
+* cut stays valid for the lease lifetime even after a newer revision lands.
+*/
 var SessionObservationReader = class {
 	ctx;
-	/** @param ctx - context carrying Session and optional persistence/projection services. */
-	constructor(ctx) {
+	cacheCapacity;
+	cache = /* @__PURE__ */ new Map();
+	/**
+	* @param ctx - context carrying Session and optional persistence/projection services.
+	* @param cacheCapacity - maximum unpinned cold observations retained for reuse.
+	*/
+	constructor(ctx, cacheCapacity = 5) {
 		this.ctx = ctx;
+		this.cacheCapacity = cacheCapacity;
 	}
 	/**
 	* Observe one live-preferred Session and retain a cold preparation until disposal.
 	* @param sessionId - logical Session identity.
 	* @param options - cancellation and all-or-none projection computation for this read.
 	* @returns one exact immutable observation.
+	* @throws {@link SessionQueryError} with code `SESSION_QUERY_CORRUPT_SESSION` when live or prepared projection computation fails.
 	*/
 	async read(sessionId, options = {}) {
 		const { signal, projectionMode = "all" } = options;
@@ -297,76 +353,145 @@ var SessionObservationReader = class {
 			if (live !== void 0) return this.live(live, projectionMode);
 			const persistence = this.ctx.get("sessionPersistence");
 			if (persistence === void 0) throw notFound(sessionId);
-			let borrowed;
-			try {
-				borrowed = await persistence.borrowSession(sessionId, signal);
-			} catch (error) {
+			const snapshot = await this.statSource(persistence, sessionId, signal);
+			const attachedDuringStat = this.ctx.sessions.get(sessionId);
+			if (attachedDuringStat !== void 0) return this.live(attachedDuringStat, projectionMode);
+			let entry = this.cachedEntry(persistence.identity, sessionId, snapshot.revision);
+			if (entry === void 0) {
+				const loaded = await this.loadSource(persistence, sessionId, signal);
 				throwIfObservationAborted(signal);
-				if (hasErrorName(error, "SessionPersistenceNotFoundError")) throw notFound(sessionId, error);
-				if (hasErrorName(error, "SessionPersistenceCorruptionError")) throw new SessionQueryError(`stored session "${sessionId}" is corrupt: ${error.message}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
-				throw new SessionQueryError(`failed to observe session "${sessionId}": ${errorMessage(error)}`, "SESSION_QUERY_PERSISTENCE_FAILED", { cause: error });
-			}
-			try {
-				throwIfObservationAborted(signal);
-				if (borrowed.inspection.meta.id !== sessionId) throw new SessionQueryError(`session persistence returned "${borrowed.inspection.meta.id}" for "${sessionId}"`, "SESSION_QUERY_SOURCE_CONFLICT");
 				const attached = this.ctx.sessions.get(sessionId);
-				if (attached !== void 0) {
-					const liveObservation = this.live(attached, projectionMode);
-					borrowed[Symbol.dispose]();
-					return liveObservation;
-				}
-				if (borrowed.source === "live") {
-					borrowed[Symbol.dispose]();
-					continue;
-				}
-				const prepared = borrowed;
-				const events = prepared.inspection.events;
-				let projections;
+				if (attached !== void 0) return this.live(attached, projectionMode);
+				const seed = loaded.events;
+				let session;
 				try {
-					projections = projectionMode === "none" ? void 0 : this.preparedProjections(prepared, events);
+					session = this.ctx.sessions.prepare(sessionId, {
+						seed,
+						meta: structuredClone(loaded.header),
+						inheritedEventCount: loaded.inheritedEventCount,
+						eventState: loaded.eventState
+					});
 				} catch (error) {
-					throw new SessionQueryError(`failed to project session "${sessionId}": ${errorMessage(error)}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
+					if (this.ctx.sessions.get(sessionId) !== void 0) continue;
+					throw new SessionQueryError(`stored session "${sessionId}" is corrupt: ${errorMessage(error)}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
 				}
-				let references = 1;
-				const lease = () => {
-					let disposed = false;
-					return {
-						source: "prepared",
-						header: prepared.inspection.meta,
-						events,
-						cursor: events.at(-1)?.seq ?? -1,
-						revision: prepared.revision,
-						...projections === void 0 ? {} : { projections },
-						retain: () => {
-							if (disposed || references === 0) throw new Error(`session observation "${sessionId}" is disposed`);
-							references += 1;
-							return lease();
-						},
-						[Symbol.dispose]: () => {
-							if (disposed) return;
-							disposed = true;
-							references -= 1;
-							if (references === 0) prepared[Symbol.dispose]();
-						}
-					};
+				entry = {
+					persistenceIdentity: persistence.identity,
+					revision: snapshot.revision,
+					session,
+					events: Object.freeze(seed),
+					refs: 0
 				};
-				return lease();
-			} catch (error) {
-				borrowed[Symbol.dispose]();
-				throw error;
+				this.store(sessionId, entry);
 			}
+			let projections;
+			try {
+				projections = projectionMode === "none" ? void 0 : this.preparedProjections(entry);
+			} catch (error) {
+				throw new SessionQueryError(`failed to project session "${sessionId}": ${errorMessage(error)}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
+			}
+			return this.preparedLease(sessionId, entry, projections);
 		}
 	}
+	/** Observe the stored snapshot, mapping absence and backend failures to the query taxonomy. */
+	async statSource(persistence, sessionId, signal) {
+		let snapshot;
+		try {
+			snapshot = await persistence.stat(sessionId, signal === void 0 ? void 0 : { signal });
+		} catch (error) {
+			throwIfObservationAborted(signal);
+			throw mapPersistenceFailure(sessionId, error);
+		}
+		throwIfObservationAborted(signal);
+		if (snapshot === void 0) throw notFound(sessionId);
+		if (snapshot.header.id !== sessionId) throw new SessionQueryError(`session persistence returned "${snapshot.header.id}" for "${sessionId}"`, "SESSION_QUERY_SOURCE_CONFLICT");
+		return snapshot;
+	}
+	/** Read the complete balanced cold log, mapping backend failures to the query taxonomy. */
+	async loadSource(persistence, sessionId, signal) {
+		try {
+			return await readColdSessionLog(persistence, sessionId, signal);
+		} catch (error) {
+			throwIfObservationAborted(signal);
+			throw mapPersistenceFailure(sessionId, error);
+		}
+	}
+	/** Return a still-valid cached entry and mark it most recently used. */
+	cachedEntry(persistenceIdentity, sessionId, revision) {
+		const cached = this.cache.get(sessionId);
+		if (cached === void 0 || cached.persistenceIdentity !== persistenceIdentity || cached.revision !== revision) return;
+		this.cache.delete(sessionId);
+		this.cache.set(sessionId, cached);
+		return cached;
+	}
+	/** Insert or replace the entry for one id, then evict past the capacity. */
+	store(sessionId, entry) {
+		this.cache.delete(sessionId);
+		this.cache.set(sessionId, entry);
+		this.evictPastCapacity(entry);
+	}
+	/**
+	* Evict oldest unpinned entries until the cache fits its capacity again.
+	* Runs on store and whenever a lease release unpins an entry, so leases
+	* that pinned every candidate cannot leave the cache over budget for good.
+	* @param keep - the entry being stored, about to be leased; never evicted.
+	*/
+	evictPastCapacity(keep) {
+		if (this.cache.size <= this.cacheCapacity) return;
+		for (const [id, candidate] of this.cache) {
+			if (candidate === keep || candidate.refs > 0) continue;
+			this.cache.delete(id);
+			if (this.cache.size <= this.cacheCapacity) return;
+		}
+	}
+	/** Build one disposable lease over a cached entry, pinning it until every lease releases. */
+	preparedLease(sessionId, entry, projections) {
+		entry.refs += 1;
+		const lease = () => {
+			let disposed = false;
+			return {
+				source: "prepared",
+				header: entry.session.header,
+				inheritedEventCount: entry.session.inheritedEventCount,
+				events: entry.events,
+				cursor: entry.events.at(-1)?.seq ?? -1,
+				revision: entry.revision,
+				...projections === void 0 ? {} : { projections },
+				retain: () => {
+					if (disposed) throw new Error(`session observation "${sessionId}" is disposed`);
+					entry.refs += 1;
+					return lease();
+				},
+				[Symbol.dispose]: () => {
+					if (disposed) return;
+					disposed = true;
+					entry.refs -= 1;
+					if (entry.refs === 0) this.evictPastCapacity();
+				}
+			};
+		};
+		return lease();
+	}
 	live(session, projectionMode) {
-		const events = Object.freeze([...session.events]);
-		const projections = projectionMode === "none" ? void 0 : this.ctx.get("sessionProjections")?.snapshot(session);
+		const seq = session.seq;
+		let materialized;
+		let projections;
+		try {
+			projections = projectionMode === "none" ? void 0 : this.ctx.get("sessionProjections")?.snapshot(session);
+		} catch (error) {
+			throw new SessionQueryError(`failed to project session "${session.id}": ${errorMessage(error)}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
+		}
 		const lease = () => {
 			let disposed = false;
 			return {
 				source: "live",
 				header: session.header,
-				events,
-				cursor: events.at(-1)?.seq ?? -1,
+				inheritedEventCount: session.inheritedEventCount,
+				get events() {
+					materialized ??= session.snapshotEvents(SessionLogOffset(0), seq);
+					return materialized;
+				},
+				cursor: seq === 0 ? -1 : SessionSeq(seq - 1),
 				...projections === void 0 ? {} : { projections },
 				retain: () => {
 					if (disposed) throw new Error(`session observation "${session.id}" is disposed`);
@@ -379,17 +504,21 @@ var SessionObservationReader = class {
 		};
 		return lease();
 	}
-	preparedProjections(observation, events) {
+	preparedProjections(entry) {
 		const registry = this.ctx.get("sessionProjections");
 		if (registry === void 0) return void 0;
-		const prepared = observation.preparedSession;
 		const cache = this.ctx.get("sessionProjectionCache");
-		return cache === void 0 ? registry.hydrate(prepared, {}, events, 0) : cache.hydratePrepared(prepared, observation.inspection.meta, events);
+		return cache === void 0 ? registry.hydrate(entry.session, {}, entry.events, SessionLogOffset(0)) : cache.hydratePrepared(entry.session, entry.events);
 	}
 };
 function throwIfObservationAborted(signal) {
 	if (signal?.aborted !== true) return;
 	throw new SessionQueryError("session observation was aborted", "SESSION_QUERY_ABORTED", { cause: signal.reason });
+}
+function mapPersistenceFailure(sessionId, error) {
+	if (hasErrorName(error, "SessionPersistenceNotFoundError")) return notFound(sessionId, error);
+	if (hasErrorName(error, "SessionPersistenceCorruptionError")) return new SessionQueryError(`stored session "${sessionId}" is corrupt: ${error.message}`, "SESSION_QUERY_CORRUPT_SESSION", { cause: error });
+	return new SessionQueryError(`failed to observe session "${sessionId}": ${errorMessage(error)}`, "SESSION_QUERY_PERSISTENCE_FAILED", { cause: error });
 }
 function notFound(sessionId, cause) {
 	return new SessionQueryError(`session "${sessionId}" not found`, "SESSION_QUERY_SESSION_NOT_FOUND", cause === void 0 ? void 0 : { cause });
@@ -406,7 +535,7 @@ function hasErrorName(error, name) {
 /**
 * Extract searchable semantic text from one first-party session event.
 *
-* Structural boundaries, raw stream chunks, request envelopes, and unknown
+* Structural boundaries, embedded raw streams, request envelopes, and unknown
 * declaration-merged events contribute no text.
 * @param event - event to inspect.
 * @returns newline-joined semantic text, or an empty string when non-searchable.
@@ -426,7 +555,7 @@ function extractSessionEventText(event) {
 		case "turn/start":
 		case "step/start":
 		case "step/end":
-		case "assistant/chunk":
+		case "assistant/attempt":
 		case "request/header": return "";
 		default: return "";
 	}
@@ -449,7 +578,6 @@ function blockText(block) {
 		case "text": return [block.text];
 		case "reasoning": return [];
 		case "tool-call": return [block.name, block.arguments];
-		case "tool-result": return block.content.flatMap(blockText);
 		default: return [];
 	}
 }
@@ -501,7 +629,7 @@ function buildSessionEventSearchDocuments(sessionId, events) {
 function classifySurface(events) {
 	let folded;
 	try {
-		folded = foldSurface(events);
+		folded = foldSurface(events, currentSessionMessageProjections);
 	} catch (error) {
 		throw new SessionQueryError(
 			/* v8 ignore next -- foldSurface throws Error instances */
@@ -818,7 +946,7 @@ function traceSession(records, sessionId) {
 function analyzeEventLog(sessionId, events) {
 	let folded;
 	try {
-		folded = foldSurface(events);
+		folded = foldSurface(events, currentSessionMessageProjections);
 	} catch (error) {
 		throw new SessionQueryError(
 			/* v8 ignore next -- foldSurface throws Error instances */
@@ -918,10 +1046,12 @@ var SessionQueryEngine = class extends Service {
 		super(ctx, "sessionQuery");
 		this._readWindowMax = config.readWindowMax ?? 50;
 		if (!Number.isInteger(this._readWindowMax) || this._readWindowMax < 0) throw new SessionQueryError("session-query: readWindowMax must be a non-negative integer", "SESSION_QUERY_INVALID_CONFIG");
-		const persistedInspectConcurrency = config.persistedInspectConcurrency ?? 4;
-		if (!Number.isSafeInteger(persistedInspectConcurrency) || persistedInspectConcurrency < 1) throw new SessionQueryError("session-query: persistedInspectConcurrency must be a positive safe integer", "SESSION_QUERY_INVALID_CONFIG");
-		this._corpus = new SessionCorpus(ctx, persistedInspectConcurrency);
-		this._observations = new SessionObservationReader(ctx);
+		const persistedReadConcurrency = config.persistedReadConcurrency ?? 4;
+		if (!Number.isSafeInteger(persistedReadConcurrency) || persistedReadConcurrency < 1) throw new SessionQueryError("session-query: persistedReadConcurrency must be a positive safe integer", "SESSION_QUERY_INVALID_CONFIG");
+		const preparedSessionCacheSize = config.preparedSessionCacheSize ?? 5;
+		if (!Number.isSafeInteger(preparedSessionCacheSize) || preparedSessionCacheSize < 1) throw new SessionQueryError("session-query: preparedSessionCacheSize must be a positive safe integer", "SESSION_QUERY_INVALID_CONFIG");
+		this._corpus = new SessionCorpus(ctx, persistedReadConcurrency);
+		this._observations = new SessionObservationReader(ctx, preparedSessionCacheSize);
 	}
 	/**
 	* Observe one exact live or prepared Session without a persistence listing preflight.
@@ -948,9 +1078,10 @@ var SessionQueryEngine = class extends Service {
 	*/
 	async readSession(sessionId) {
 		const loaded = await this._corpus.load(sessionId);
-		Session.create(sessionId, loaded.events, loaded.header);
+		Session.create(sessionId, loaded.events, loaded.header, loaded.inheritedEventCount, currentSessionMessageProjections);
 		return {
 			session: structuredClone(loaded.header),
+			inheritedEventCount: loaded.inheritedEventCount,
 			events: loaded.events.map(snapshotSessionEvent)
 		};
 	}
@@ -1036,6 +1167,7 @@ var SessionQueryEngine = class extends Service {
 		const loaded = await this._corpus.load(sessionId);
 		return {
 			session: structuredClone(loaded.header),
+			inheritedEventCount: loaded.inheritedEventCount,
 			capturedThroughSeq: loaded.events.at(-1)?.seq ?? null,
 			events: currentSurfaceEvents(sessionId, loaded.events)
 		};
@@ -1085,12 +1217,13 @@ var SessionQueryEngine = class extends Service {
 		signal?.throwIfAborted();
 		const target = loaded.events[seq];
 		if (target === void 0 || target.seq !== seq) throw new SessionQueryError(`session "${sessionId}" has no event at seq ${seq}`, "SESSION_QUERY_EVENT_NOT_FOUND");
-		const startSeq = Math.max(0, seq - before);
-		const endSeq = Math.min(loaded.events.length - 1, seq + after);
+		const startSeq = SessionSeq(Math.max(0, seq - before));
+		const endSeq = SessionSeq(Math.min(loaded.events.length - 1, seq + after));
 		const targetSnapshot = snapshotSessionEvent(target);
 		const events = loaded.events.slice(startSeq, endSeq + 1).map((event) => event === target ? targetSnapshot : snapshotSessionEvent(event));
 		return {
 			session: structuredClone(loaded.header),
+			inheritedEventCount: loaded.inheritedEventCount,
 			target: targetSnapshot,
 			events,
 			startSeq,
@@ -1104,4 +1237,4 @@ var SessionQueryEngine = class extends Service {
 	}
 };
 //#endregion
-export { SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY, SESSION_QUERY_READ_WINDOW_MAX, SessionQueryEngine, SessionQueryEngine as default, SessionQueryError, SessionSearchCursor, assertSessionHeadersCompatible, buildSessionEventRecords, buildSessionEventSearchDocuments, compileSessionTextFilter, extractSessionEventText, filterSessionEventDocuments, filterSessionResults, materializeSessionEventResultFilters, materializeSessionResultFilters };
+export { SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY, SESSION_QUERY_DEFAULT_PREPARED_SESSION_CACHE_SIZE, SESSION_QUERY_READ_WINDOW_MAX, SessionQueryEngine, SessionQueryEngine as default, SessionQueryError, SessionSearchCursor, assertSessionHeadersCompatible, buildSessionEventRecords, buildSessionEventSearchDocuments, compileSessionTextFilter, extractSessionEventText, filterSessionEventDocuments, filterSessionResults, materializeSessionEventResultFilters, materializeSessionResultFilters, readColdSessionLog };

@@ -1,11 +1,12 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 /** `cordis_run` card and the host seat for Package-owned interactive UI. */
 import { useEffect } from 'react';
-import { IconCodeOutline16, IconInspectOutline12, StateDot, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconCodeOutlineRegular, IconInspectOutlineRegular, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { cordisRunCard } from "./card-model.js";
 import { cordisToolViewKey } from "./run-card-index.js";
 import { cordisVisibleStatus } from "./status.js";
 import css from './CordisRunRow.module.css';
+import { CordisPreparingRow } from "./CordisPreparingRow.js";
 const READING_LABELS = {
     idle: 'status.idle',
     'awaiting-approval': 'status.awaitingApproval',
@@ -16,7 +17,12 @@ const READING_LABELS = {
     superseded: 'status.superseded',
 };
 /** Render one activation result and, when eligible, its Package-owned view. */
-export function CordisRunRow({ callId, block, inspect, renderSlot, useInventory, useLoaded, useRunCards, useActiveRuns, onObserveRunCard, t, }) {
+export function CordisRunRow(props) {
+    if (props.phase === 'preparing')
+        return _jsx(CordisPreparingRow, { ...props, icon: _jsx(IconCodeOutlineRegular, { size: 14 }), title: props.t('row.runTitle'), className: css.card, rowClassName: css.row, titleClassName: css.title });
+    return _jsx(StartedCordisRunRow, { ...props });
+}
+function StartedCordisRunRow({ callId, block, inspect, renderSlot, useInventory, useLoaded, useRunCards, useActiveRuns, onObserveRunCard, t, }) {
     const card = cordisRunCard(block);
     const inventory = useInventory(snapshot => snapshot);
     const loaded = useLoaded(snapshot => snapshot);
@@ -62,11 +68,7 @@ export function CordisRunRow({ callId, block, inspect, renderSlot, useInventory,
     const summary = card.errorSummary
         ?? (card.pluginId === null ? callId : `${card.pluginId}${card.packageId === null ? '' : ` · ${card.packageId}`}`);
     const showBusiness = reading === 'running' && key !== null;
-    return (_jsxs("div", { className: css.card, "data-tool": "cordis_run", "data-state": card.state, "data-cordis-plugin-id": card.pluginId ?? undefined, "data-cordis-package-id": card.packageId ?? undefined, "data-cordis-run-id": card.pluginRunId ?? undefined, "data-cordis-status": reading, children: [_jsxs("div", { className: css.row, children: [_jsx("span", { className: css.icon, children: card.state === 'error'
-                            ? _jsx(StateDot, { state: "error" })
-                            : card.state === 'stopped'
-                                ? _jsx(StateDot, { state: "warning" })
-                                : _jsx(IconCodeOutline16, { size: 14 }) }), _jsx("span", { className: css.title, children: t(card.mode === 'update' ? 'row.updateTitle' : 'row.runTitle') }), _jsx("span", { className: css.separator, "aria-hidden": true }), _jsx("span", { className: card.errorSummary === null ? css.summary : css.error, children: summary }), _jsx("span", { className: css.status, children: status }), inspect !== undefined && (_jsx("button", { type: "button", className: css.inspect, "aria-label": t('action.inspect'), onClick: inspect, children: _jsx(IconInspectOutline12, {}) }))] }), reading === 'removed' && _jsx("div", { className: css.message, children: t('run.removed') }), reading === 'superseded' && _jsx("div", { className: css.message, children: t('run.superseded') }), reading === 'failed' && attempt?.error !== undefined && (_jsx("div", { className: css.message, children: attempt.error.message })), showBusiness && card.pluginId !== null && card.packageId !== null && card.pluginRunId !== null && (_jsx("div", { className: css.business, "data-cordis-business-view": key, children: renderSlot('tool.view.cordis', {
+    return (_jsxs("div", { className: css.card, "data-tool": "cordis_run", "data-state": card.state, "data-cordis-plugin-id": card.pluginId ?? undefined, "data-cordis-package-id": card.packageId ?? undefined, "data-cordis-run-id": card.pluginRunId ?? undefined, "data-cordis-status": reading, children: [_jsxs("div", { className: css.row, children: [_jsx("span", { className: css.icon, children: _jsx(IconCodeOutlineRegular, { size: 14 }) }), _jsx("span", { className: css.title, children: t(card.mode === 'update' ? 'row.updateTitle' : 'row.runTitle') }), _jsx("span", { className: css.separator, "aria-hidden": true }), _jsx("span", { className: card.errorSummary === null ? css.summary : css.error, children: summary }), _jsx("span", { className: css.status, children: status }), inspect !== undefined && (_jsx("button", { type: "button", className: css.inspect, "aria-label": t('action.inspect'), onClick: inspect, children: _jsx(IconInspectOutlineRegular, {}) }))] }), reading === 'removed' && _jsx("div", { className: css.message, children: t('run.removed') }), reading === 'superseded' && _jsx("div", { className: css.message, children: t('run.superseded') }), reading === 'failed' && attempt?.error !== undefined && (_jsx("div", { className: css.message, children: attempt.error.message })), showBusiness && card.pluginId !== null && card.packageId !== null && card.pluginRunId !== null && (_jsx("div", { className: css.business, "data-cordis-business-view": key, children: renderSlot('tool.view.cordis', {
                     pluginId: card.pluginId,
                     packageId: card.packageId,
                     pluginRunId: card.pluginRunId,

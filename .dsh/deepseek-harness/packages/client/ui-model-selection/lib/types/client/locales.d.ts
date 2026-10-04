@@ -9,6 +9,8 @@
  */
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export declare const zh: {
+    'provider.account': string;
+    'command.label': string;
     'command.description': string;
     'option.loadError': string;
     'trigger.fallback': string;
@@ -22,16 +24,21 @@ export declare const zh: {
     'effort.providerDefault': string;
     'status.loading': string;
     'error.action': string;
+    'error.sessionInUse': string;
     'action.reload': string;
     'warning.groupLoad': string;
+    'search.placeholder': string;
+    'search.clear': string;
+    'search.empty': string;
     'empty.models': string;
-    'blocked.composer': string;
     'empty.efforts': string;
 };
 /** The model namespace key union. */
 export type ModelKey = keyof typeof zh;
 /** English dictionary, checked complete against the zh key set. */
 export declare const en: {
+    'provider.account': string;
+    'command.label': string;
     'command.description': string;
     'option.loadError': string;
     'trigger.fallback': string;
@@ -45,10 +52,13 @@ export declare const en: {
     'effort.providerDefault': string;
     'status.loading': string;
     'error.action': string;
+    'error.sessionInUse': string;
     'action.reload': string;
     'warning.groupLoad': string;
+    'search.placeholder': string;
+    'search.clear': string;
+    'search.empty': string;
     'empty.models': string;
-    'blocked.composer': string;
     'empty.efforts': string;
 };
 //# sourceMappingURL=locales.d.ts.map

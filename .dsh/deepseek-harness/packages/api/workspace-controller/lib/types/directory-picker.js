@@ -38,7 +38,7 @@ var __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, 
 };
 import { z } from 'zod';
 import { DirectoryPickerError } from '@deepseek-ai/dsh-host-directory-picker';
-import { Remote, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 const createDirectoryRequestSchema = z.object({
     path: z.string(),
     name: z.string(),
@@ -113,7 +113,7 @@ let DirectoryPickerController = (() => {
         async createDirectory(path, name) {
             const request = createDirectoryRequestSchema.safeParse({ path, name });
             if (!request.success) {
-                throw pickerFailureOf('bad-request', 'invalid payload for host.createDirectory', { issues: request.error.issues });
+                throw new RemoteError('gateway/bad-request', 'invalid payload for host.createDirectory', { issues: request.error.issues });
             }
             const capability = this.requireCapability('browse', 'createDirectory');
             try {
@@ -127,7 +127,7 @@ let DirectoryPickerController = (() => {
         requireCapability(kind, method) {
             const capability = this.ctx.directoryPicker.capability();
             if (capability.kind !== kind) {
-                throw pickerFailureOf('directory-picker-unavailable', `directoryPicker.${method} needs the ${kind} capability; the composed picker serves "${capability.kind}"`, { capability: capability.kind });
+                throw new RemoteError('directory-picker/unavailable', `directoryPicker.${method} needs the ${kind} capability; the composed picker serves "${capability.kind}"`, { capability: capability.kind });
             }
             return capability;
         }
@@ -135,15 +135,15 @@ let DirectoryPickerController = (() => {
 })();
 export { DirectoryPickerController };
 /**
- * Raise one entry of the picking wire failure vocabulary.
- * @param code - the failure code a caller discriminates on.
- * @param message - operator-facing description.
- * @param details - the payload this code carries.
- * @returns the failure to throw across the Remote boundary.
+ * Wire code answered for each seam browse failure. The seam's closed codes are
+ * its own local vocabulary, so this controller owns the projection onto the
+ * `directory-picker/*` codes a Remote caller discriminates on.
  */
-function pickerFailureOf(code, message, details) {
-    return new TypertRemoteFailure({ code, message, details });
-}
+const BROWSE_FAILURE_CODES = {
+    'directory-unreadable': 'directory-picker/unreadable',
+    'directory-exists': 'directory-picker/exists',
+    'directory-create-failed': 'directory-picker/create-failed',
+};
 /**
  * Classify a browse-primitive rejection: the seam's own closed codes carry the
  * path they are about, and anything else stays an infrastructure failure.
@@ -152,13 +152,13 @@ function pickerFailureOf(code, message, details) {
  */
 function browseFailure(error) {
     if (error instanceof DirectoryPickerError) {
-        return pickerFailureOf(error.code, error.message, { path: error.path });
+        return new RemoteError(BROWSE_FAILURE_CODES[error.code], error.message, { path: error.path }, { cause: error });
     }
-    return pickerFailureOf('internal', errorMessage(error), {});
+    return new RemoteError('gateway/internal', errorMessage(error), {}, { cause: error });
 }
 /**
  * Classify a cancellable primitive's rejection. An abort is the caller's own
- * timeout or disconnect, not a backend failure, so it answers `cancelled`
+ * timeout or disconnect, not a backend failure, so it answers `gateway/cancelled`
  * before the business classification runs.
  * @param error - the primitive's rejection.
  * @param signal - the caller lifetime the primitive ran under.
@@ -168,10 +168,10 @@ function browseFailure(error) {
  */
 function cancellableFailure(error, signal, cancelled, failed) {
     if (signal.aborted)
-        return pickerFailureOf('cancelled', cancelled, {});
+        return new RemoteError('gateway/cancelled', cancelled, {}, { cause: error });
     if (failed === undefined)
         return browseFailure(error);
-    return pickerFailureOf('internal', `${failed}: ${errorMessage(error)}`, {});
+    return new RemoteError('gateway/internal', `${failed}: ${errorMessage(error)}`, {}, { cause: error });
 }
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);

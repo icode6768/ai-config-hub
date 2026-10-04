@@ -5,8 +5,8 @@ import { BrandWordmark, FishLogo } from '@deepseek-ai/dsh-client-ui-primitives';
  * @param props - Host-supplied mark presentation.
  * @returns the official whale mark.
  */
-export function OfficialBrandMark({ size, className }) {
-    return _jsx(FishLogo, { size: size, className: className });
+export function OfficialBrandMark({ size }) {
+    return _jsx(FishLogo, { size: size });
 }
 /**
  * Render the official name artwork without its independently slotted mark.

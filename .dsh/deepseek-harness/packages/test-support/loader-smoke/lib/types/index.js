@@ -10,6 +10,7 @@
  *
  * @module @deepseek-ai/dsh-loader-smoke
  */
+import { clearedProxyEnv } from '@deepseek-ai/dsh-http-proxy';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,7 +67,11 @@ function toLibBin(srcBin) {
 export function resolveExampleLaunch(options) {
     const mode = options.mode ?? resolveExampleMode();
     const configArgs = options.configArgs ?? [];
-    const env = { ...options.env };
+    // A smoke launches a real `dsh` against local fixtures, so it must not inherit the machine's
+    // network policy: the harness honors the proxy environment, and a runner that exports one would
+    // send a fixture-server request to a proxy that cannot resolve the fixture host. `undefined`
+    // removes the name from the child rather than setting it empty.
+    const env = { ...clearedProxyEnv(), ...options.env };
     if (mode === 'src') {
         if (options.tsconfigPath === undefined) {
             throw new Error("resolveExampleLaunch: 'src' mode needs tsconfigPath for the workspace paths map.");
@@ -79,15 +84,24 @@ export function resolveExampleLaunch(options) {
     }
     return { command: process.execPath, args: [options.libBin ?? toLibBin(options.srcBin), ...configArgs], env };
 }
+/** Whether the options supply the cwd instead of a prefix the harness expands. */
+function hasProvidedCwd(options) {
+    return options.cwd !== undefined;
+}
 /**
  * Boot one real Loader tree from an isolated cwd, close stdin immediately, and
- * await a clean exit. The helper owns process kill and temp-directory cleanup on
- * every outcome, and picks src/lib via {@link resolveExampleLaunch}.
+ * await a clean exit. The helper owns process kill on every outcome and removes
+ * the temporary directory it created; a caller-provided cwd is left in place so
+ * consecutive smokes can share one world. It picks src/lib via
+ * {@link resolveExampleLaunch}.
  * @param options - example paths, mode, environment, and diagnostic identity.
  * @returns captured stdout and stderr after a zero exit.
  */
 export async function runLoaderSmoke(options) {
-    const cwd = await mkdtemp(join(options.tempDirParent ?? tmpdir(), options.tempDirPrefix));
+    const providedCwd = hasProvidedCwd(options);
+    const cwd = providedCwd
+        ? options.cwd
+        : await mkdtemp(join(options.tempDirParent ?? tmpdir(), options.tempDirPrefix));
     const processTimeoutMs = options.processTimeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
     try {
         await options.prepare?.(cwd);
@@ -96,8 +110,13 @@ export async function runLoaderSmoke(options) {
             libBin: options.libBinScript,
             configArgs: options.binArgs ?? [options.configPath],
             ...options.mode !== undefined ? { mode: options.mode } : {},
+            ...options.sourceImport !== undefined ? { sourceImport: options.sourceImport } : {},
             tsconfigPath: options.tsconfigPath,
-            env: { DSH_HOME: join(cwd, '.dsh'), DSH_AGENTS_HOME: join(cwd, '.agents'), ...options.env },
+            env: {
+                DSH_HOME: join(cwd, '.dsh'),
+                DSH_AGENTS_HOME: join(cwd, '.agents'),
+                ...options.env,
+            },
         });
         // `input: ''` writes nothing and closes stdin — the fixture-visible
         // stdin-close contract. `reject: false` folds spawn errors, the SIGKILL
@@ -123,7 +142,8 @@ export async function runLoaderSmoke(options) {
         return { stdout: result.stdout, stderr: result.stderr };
     }
     finally {
-        await rm(cwd, { recursive: true, force: true });
+        if (!providedCwd)
+            await rm(cwd, { recursive: true, force: true });
     }
 }
 //# sourceMappingURL=index.js.map

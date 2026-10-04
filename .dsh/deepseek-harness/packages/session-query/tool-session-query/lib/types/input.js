@@ -3,7 +3,7 @@
  *
  * @module @deepseek-ai/dsh-tool-session-query/input
  */
-import { SessionId, } from '@deepseek-ai/dsh-session';
+import { brandString } from '@deepseek-ai/dsh-brand';
 import { SessionQueryError, } from '@deepseek-ai/dsh-session-query';
 const sessionSearchParameters = {
     query: { type: 'string', required: true, description: 'Literal full-text query over prior session history.' },
@@ -49,7 +49,7 @@ function buildSessionFilters(args) {
     const filters = [];
     if (args.session_ids !== undefined) {
         assertNonEmptyArray('session_ids', args.session_ids);
-        filters.push({ kind: 'id', values: args.session_ids.map(SessionId) });
+        filters.push({ kind: 'id', values: args.session_ids.map(value => brandString(value)) });
     }
     const created = timestampRange('created_at', args.created_at_from, args.created_at_to);
     if (created !== undefined)
@@ -64,7 +64,7 @@ function materializeParentSessionIds(values) {
     if (values === undefined)
         return undefined;
     assertNonEmptyArray('parent_session_ids', values);
-    return [...new Set(values.map(SessionId))];
+    return [...new Set(values.map(value => brandString(value)))];
 }
 function buildEventFilters(input) {
     const filters = [];

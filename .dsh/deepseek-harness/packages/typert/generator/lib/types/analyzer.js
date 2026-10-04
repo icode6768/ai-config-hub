@@ -7,6 +7,9 @@
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
+const PUBLIC_REMOTE_TYPE_ROOTS = new Set([
+    '@deepseek-ai/dsh-util-values',
+]);
 /** Analysis failure with a source-oriented diagnostic. */
 export class TypertAnalysisError extends Error {
     name = 'TypertAnalysisError';
@@ -161,15 +164,13 @@ export class WorkspaceAnalyzer {
                     incremental: false,
                     noEmit: true,
                 };
-                const program = ts.createProgram({
-                    rootNames,
-                    options,
-                    host: this.caches.programHost(face, options),
-                });
+                const host = this.caches.programHost(face, options);
+                const program = ts.createProgram({ rootNames, options, host });
                 faces.push(new FaceAnalyzer({
                     root: this.options.root,
                     face,
                     program,
+                    host,
                     registrations,
                     allRegistrations: this.registrations,
                     mode: this.options.mode,
@@ -253,7 +254,7 @@ export class WorkspaceAnalyzer {
     indexSourceDeclarations() {
         const selected = this.options.packages === undefined ? undefined : new Set(this.options.packages);
         const declarations = [];
-        for (const registration of this.loadRegistrations()) {
+        for (const registration of this.loadRegistrations(true)) {
             if (!this.options.faces.includes(registration.face)
                 || (selected !== undefined && !selected.has(registration.name)))
                 continue;
@@ -296,8 +297,8 @@ export class WorkspaceAnalyzer {
             || left.location.file.localeCompare(right.location.file)
             || left.location.line - right.location.line);
     }
-    loadRegistrations() {
-        const inventoryKey = `${this.options.root}\0${this.options.hostConfig}\0${this.options.clientConfig}`;
+    loadRegistrations(includeVendor = false) {
+        const inventoryKey = `${this.options.root}\0${this.options.hostConfig}\0${this.options.clientConfig}\0${String(includeVendor)}`;
         const cached = this.caches.registrations.get(inventoryKey);
         if (cached !== undefined)
             return cached;
@@ -310,7 +311,8 @@ export class WorkspaceAnalyzer {
             for (const reference of aggregate.parsed.projectReferences ?? []) {
                 const configPath = projectConfigPath(reference.path);
                 const packageRoot = dirname(configPath);
-                if (!isWithin(realPath(packageRoot), join(this.options.root, 'packages')))
+                if (!isWithin(realPath(packageRoot), join(this.options.root, 'packages'))
+                    && !(includeVendor && isWithin(realPath(packageRoot), join(this.options.root, 'vendor'))))
                     continue;
                 const manifestPath = join(packageRoot, 'package.json');
                 if (!existsSync(manifestPath))
@@ -422,6 +424,7 @@ class FaceAnalyzer {
     root;
     face;
     program;
+    host;
     checker;
     registrations;
     allRegistrations;
@@ -440,6 +443,7 @@ class FaceAnalyzer {
         this.root = options.root;
         this.face = options.face;
         this.program = options.program;
+        this.host = options.host;
         this.checker = options.program.getTypeChecker();
         this.registrations = options.registrations;
         this.allRegistrations = options.allRegistrations;
@@ -552,8 +556,8 @@ class FaceAnalyzer {
         for (const [subpath, target] of targets) {
             if (target.includes('*') || subpath === './package.json'
                 || subpath === './typert' || subpath === './client/typert' || subpath === './remote'
-                // Data exports (bundle patch lists, JSON manifests) carry no TypeScript API.
-                || target.endsWith('.json') || target.endsWith('.yml') || target.endsWith('.yaml'))
+                // Data exports carry no TypeScript API; their owning readers validate the resources.
+                || /\.(?:json|ya?ml|svg|png|jpe?g|webp)$/iu.test(target))
                 continue;
             const sourcePath = sourcePathForExport(registration.root, target);
             const sourceFile = this.sourceFiles.get(realPath(sourcePath));
@@ -648,16 +652,81 @@ class FaceAnalyzer {
                     || statement.moduleSpecifier === undefined
                     || !ts.isStringLiteral(statement.moduleSpecifier))
                     continue;
-                const resolved = ts.resolveModuleName(statement.moduleSpecifier.text, sourceFile.fileName, this.program.getCompilerOptions(), ts.sys).resolvedModule;
-                if (resolved === undefined)
-                    continue;
-                const resolvedPath = realPath(resolved.resolvedFileName);
-                if (!isWithin(resolvedPath, registration.root))
+                const resolvedPath = this.resolveImport(statement.moduleSpecifier.text, sourceFile.fileName);
+                if (resolvedPath === undefined || !isWithin(resolvedPath, registration.root))
                     continue;
                 queue.push(this.sourceFiles.get(resolvedPath));
             }
         }
         return [...reachable.values()].sort((left, right) => left.fileName.localeCompare(right.fileName));
+    }
+    resolveImport(specifier, fromFile) {
+        const resolved = ts.resolveModuleName(specifier, fromFile, this.program.getCompilerOptions(), this.host, this.host.getModuleResolutionCache?.()).resolvedModule;
+        return resolved === undefined ? undefined : realPath(resolved.resolvedFileName);
+    }
+    /**
+     * Follow the import that names `symbol` at `site` through modules of the
+     * referencing package until a package specifier appears. Each forwarding
+     * module and requested export name pair is entered once; its explicit export
+     * edges are tried before its star edges. A relative specifier that resolves
+     * outside `from`, a namespace hop, or a module with no edge leading to a
+     * package specifier yields undefined.
+     */
+    packageImportOf(site, moduleSpecifier, symbol, from) {
+        const visited = new Map();
+        const walk = (sourceFile, specifier, name) => {
+            const module = moduleIdentity(specifier);
+            if (module !== undefined)
+                return { module, name };
+            const resolvedPath = this.resolveImport(specifier, sourceFile.fileName);
+            if (resolvedPath === undefined || !isWithin(resolvedPath, from.root))
+                return undefined;
+            const names = visited.get(resolvedPath);
+            if (names?.has(name))
+                return undefined;
+            if (names === undefined)
+                visited.set(resolvedPath, new Set([name]));
+            else
+                names.add(name);
+            const forward = this.sourceFiles.get(resolvedPath);
+            for (const edge of this.forwardedExports(forward, name, symbol)) {
+                const found = walk(forward, edge.specifier, edge.name);
+                if (found !== undefined)
+                    return found;
+            }
+            return undefined;
+        };
+        return walk(site.getSourceFile(), moduleSpecifier, authoredExportName(site, moduleSpecifier));
+    }
+    /** Export edges of `sourceFile` that carry `name`: explicit edges in source order, then star edges exporting `symbol`. */
+    forwardedExports(sourceFile, name, symbol) {
+        const explicit = [];
+        const stars = [];
+        for (const statement of sourceFile.statements) {
+            if (!ts.isExportDeclaration(statement)
+                || (statement.exportClause === undefined && statement.moduleSpecifier === undefined)
+                || (statement.exportClause !== undefined && ts.isNamespaceExport(statement.exportClause)))
+                continue;
+            if (statement.exportClause === undefined) {
+                const specifier = statement.moduleSpecifier.text;
+                const exported = this.moduleExports(statement.moduleSpecifier)
+                    .find(candidate => candidate.name === name && this.resolveSymbol(candidate) === symbol);
+                if (exported !== undefined)
+                    stars.push({ specifier, name });
+                continue;
+            }
+            const element = statement.exportClause.elements.find(candidate => candidate.name.text === name);
+            if (element === undefined)
+                continue;
+            if (statement.moduleSpecifier !== undefined) {
+                explicit.push({ specifier: statement.moduleSpecifier.text, name: element.propertyName?.text ?? name });
+                continue;
+            }
+            const binding = importBindingOf(sourceFile, element.propertyName?.text ?? name);
+            if (binding?.name !== undefined)
+                explicit.push({ specifier: binding.specifier, name: binding.name });
+        }
+        return [...explicit, ...stars];
     }
     collectServices(context, records) {
         const bySymbol = new Map();
@@ -896,7 +965,12 @@ class FaceAnalyzer {
             }
         }
         const mode = invocation.kind === 'direct' ? invocation.mode : undefined;
-        const resultType = this.remoteResultType(method, mode);
+        const { result: resultType, uplink: uplinkType } = this.remoteResultType(method, mode);
+        const uplink = uplinkType === undefined
+            ? undefined
+            : {
+                boundary: this.remoteBoundary(uplinkType, `${registration.name}#${binding.namespace}/${exportedMethod}:uplink`, false, 'undefined'),
+            };
         return {
             id: `${registration.name}#${binding.namespace}/${exportedMethod}`,
             service: binding.service,
@@ -907,8 +981,9 @@ class FaceAnalyzer {
             invocation: receiver,
             ...(scope === undefined ? {} : { scope }),
             parameters,
+            ...(uplink === undefined ? {} : { uplink }),
             ...(cancellation === undefined ? {} : { cancellation }),
-            result: this.remoteBoundary(resultType, `${registration.name}#${binding.namespace}/${exportedMethod}:result`, false, 'undefined-or-void'),
+            result: this.remoteBoundary(resultType, `${registration.name}#${binding.namespace}/${exportedMethod}:result`, false, 'undefined-or-void', false, mode === undefined),
             location: this.location(method.name),
         };
     }
@@ -1029,12 +1104,12 @@ class FaceAnalyzer {
                     const [property] = argument.properties;
                     if (property === undefined)
                         this.fail(argument, 'Remote() options must contain exactly mode: "stream"');
-                    if (!ts.isPropertyAssignment(property)
-                        || memberName(property.name) !== 'mode'
-                        || stringLiteralValue(property.initializer) !== 'stream') {
+                    const mode = ts.isPropertyAssignment(property) && memberName(property.name) === 'mode'
+                        ? stringLiteralValue(property.initializer)
+                        : undefined;
+                    if (mode !== 'stream')
                         this.fail(property, 'Remote() options must contain exactly mode: "stream"');
-                    }
-                    marker = { kind: 'direct', mode: 'stream' };
+                    marker = { kind: 'direct', mode };
                 }
             }
             else if (ts.isCallExpression(expression)
@@ -1062,27 +1137,40 @@ class FaceAnalyzer {
         }
         return found;
     }
+    /**
+     * The item types a Remote method's authored return type declares. Unary
+     * methods unwrap `Promise<T>`; stream methods unwrap `Iterable<Out>`,
+     * `AsyncIterable<Out>`, or the protocol's `RemoteStream<Out, In>`, whose
+     * second type argument is the uplink item type unless it is `never`.
+     */
     remoteResultType(method, mode) {
         const authored = this.requiredType(method, method.type, 'return');
         if (ts.isTypeReferenceNode(authored)) {
             const symbol = this.checker.getSymbolAtLocation(authored.typeName);
             const resolved = symbol === undefined ? undefined : this.resolveSymbol(symbol);
-            const resultType = authored.typeArguments?.[0];
-            const wrappers = mode === 'stream' ? ['Iterable', 'AsyncIterable'] : ['Promise'];
             const declaration = resolved === undefined ? undefined : preferredDeclaration(resolved);
-            if (resolved !== undefined
-                && wrappers.includes(resolved.name)
-                && resultType !== undefined
-                && authored.typeArguments?.length === 1
-                && declaration !== undefined
-                && isStandardLibraryFile(declaration.getSourceFile().fileName)) {
-                return resultType;
+            const [result, uplink] = authored.typeArguments ?? [];
+            const arity = authored.typeArguments?.length ?? 0;
+            if (resolved !== undefined && declaration !== undefined && result !== undefined) {
+                const standard = isStandardLibraryFile(declaration.getSourceFile().fileName);
+                const wrappers = mode === undefined ? ['Promise'] : ['Iterable', 'AsyncIterable'];
+                if (standard && wrappers.includes(resolved.name) && arity === 1)
+                    return { result };
+                if (mode !== undefined
+                    && resolved.name === 'RemoteStream'
+                    && this.isTypeMetaSymbol(authored.typeName, 'RemoteStream')
+                    && arity <= 2) {
+                    return uplink === undefined || this.isNeverType(uplink) ? { result } : { result, uplink };
+                }
             }
         }
-        if (mode === 'stream') {
-            this.fail(method, 'stream Remote methods must return Iterable<T> or AsyncIterable<T>');
+        if (mode !== undefined) {
+            this.fail(method, 'stream Remote methods must return Iterable<Out>, AsyncIterable<Out>, or RemoteStream<Out, In>');
         }
-        return authored;
+        return { result: authored };
+    }
+    isNeverType(type) {
+        return (this.checker.getTypeFromTypeNode(type).flags & ts.TypeFlags.Never) !== 0;
     }
     isGlobalAbortSignal(type) {
         const symbol = this.symbolAtType(type);
@@ -1179,7 +1267,7 @@ class FaceAnalyzer {
         }
         return result;
     }
-    remoteBoundary(authoredType, fallbackTypeSymbol, requireNamed, topLevelAbsence = 'reject', optional = false) {
+    remoteBoundary(authoredType, fallbackTypeSymbol, requireNamed, topLevelAbsence = 'reject', optional = false, allowBytes = false) {
         const type = this.convertType(authoredType);
         const declaredType = this.checker.getTypeFromTypeNode(authoredType);
         // An optional parameter's authored node carries no `undefined`; the codec
@@ -1187,7 +1275,7 @@ class FaceAnalyzer {
         const resolvedType = optional
             ? this.checker.getNullableType(declaredType, ts.TypeFlags.Undefined)
             : declaredType;
-        const codecType = this.resolvedRemoteCodecType(authoredType, resolvedType, topLevelAbsence);
+        const codecType = this.resolvedRemoteCodecType(authoredType, resolvedType, topLevelAbsence, allowBytes);
         const acceptsUndefined = topLevelAbsence !== 'reject' && this.includesRemoteAbsence(resolvedType);
         const rootSymbol = this.namedWorkspaceType(authoredType);
         const imports = new Map();
@@ -1237,8 +1325,8 @@ class FaceAnalyzer {
      * validated without teaching the compiler-independent emitter TypeScript's
      * type evaluator.
      */
-    resolvedRemoteCodecType(authoredType, resolvedType, topLevelAbsence) {
-        this.assertRemoteJsonType(resolvedType, authoredType, new Set(), topLevelAbsence !== 'reject', topLevelAbsence === 'undefined-or-void');
+    resolvedRemoteCodecType(authoredType, resolvedType, topLevelAbsence, allowBytes) {
+        this.assertRemoteJsonType(resolvedType, authoredType, new Set(), topLevelAbsence !== 'reject', topLevelAbsence === 'undefined-or-void', allowBytes);
         const completed = new Map();
         const active = new Map();
         const recursiveDeclarations = new Map();
@@ -1269,6 +1357,9 @@ class FaceAnalyzer {
                     return id;
                 };
                 const flags = type.flags;
+                if (this.isRemoteByteArray(type)) {
+                    return add({ kind: 'reference', name: 'Uint8Array', target: { kind: 'standard', name: 'Uint8Array' }, arguments: [] });
+                }
                 if ((flags & ts.TypeFlags.Any) !== 0)
                     return add({ kind: 'keyword', name: 'any' });
                 if ((flags & ts.TypeFlags.Unknown) !== 0)
@@ -1317,7 +1408,7 @@ class FaceAnalyzer {
                 if ((flags & ts.TypeFlags.TypeParameter) !== 0) {
                     this.fail(authoredType, 'Remote codec contains an unresolved type parameter');
                 }
-                if ((flags & ts.TypeFlags.Object) === 0) {
+                if ((flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection)) === 0) {
                     this.fail(authoredType, `Remote codec type ${this.checker.typeToString(type, authoredType, ts.TypeFormatFlags.NoTruncation)} has no concrete Zod projection`);
                 }
                 if (this.checker.isTupleType(type)) {
@@ -1329,7 +1420,9 @@ class FaceAnalyzer {
                         elements: arguments_.map((argument, index) => {
                             const elementFlags = target.elementFlags[index] ?? ts.ElementFlags.Required;
                             return {
-                                type: convert(argument),
+                                type: (elementFlags & ts.ElementFlags.Rest) !== 0
+                                    ? this.addNode(authoredType, { kind: 'array', element: convert(argument) })
+                                    : convert(argument),
                                 optional: (elementFlags & ts.ElementFlags.Optional) !== 0,
                                 rest: (elementFlags & (ts.ElementFlags.Rest | ts.ElementFlags.Variadic)) !== 0,
                             };
@@ -1403,7 +1496,7 @@ class FaceAnalyzer {
         };
         return convert(resolvedType);
     }
-    assertRemoteJsonType(type, site, active, allowUndefined, allowVoid) {
+    assertRemoteJsonType(type, site, active, allowUndefined, allowVoid, allowBytes = false) {
         const flags = type.flags;
         if ((flags & ts.TypeFlags.Undefined) !== 0 && allowUndefined)
             return;
@@ -1421,9 +1514,14 @@ class FaceAnalyzer {
             | ts.TypeFlags.Null
             | ts.TypeFlags.Never)) !== 0)
             return;
+        if (this.isRemoteByteArray(type)) {
+            if (allowBytes)
+                return;
+            this.fail(site, 'Remote Uint8Array is only supported in unary results');
+        }
         if (type.isUnion()) {
             for (const member of type.types) {
-                this.assertRemoteJsonType(member, site, active, allowUndefined, allowVoid);
+                this.assertRemoteJsonType(member, site, active, allowUndefined, allowVoid, allowBytes);
             }
             return;
         }
@@ -1432,13 +1530,13 @@ class FaceAnalyzer {
             if (material.length === 0)
                 this.fail(site, 'Remote boundary contains a symbol-only object');
             for (const member of material)
-                this.assertRemoteJsonType(member, site, active, false, false);
+                this.assertRemoteJsonType(member, site, active, false, false, allowBytes);
             return;
         }
         if ((flags & ts.TypeFlags.TypeParameter) !== 0) {
             this.fail(site, 'Remote boundary contains an unresolved type parameter');
         }
-        if ((flags & ts.TypeFlags.Object) === 0) {
+        if ((flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection)) === 0) {
             this.fail(site, `Remote boundary contains non-JSON type ${this.checker.typeToString(type)}`);
         }
         const symbol = type.getSymbol();
@@ -1459,7 +1557,7 @@ class FaceAnalyzer {
                 const arguments_ = this.checker.getTypeArguments(reference);
                 arguments_.forEach((argument, index) => {
                     const elementFlags = target.elementFlags[index] ?? ts.ElementFlags.Required;
-                    this.assertRemoteJsonType(argument, site, active, (elementFlags & ts.ElementFlags.Optional) !== 0, false);
+                    this.assertRemoteJsonType(argument, site, active, (elementFlags & ts.ElementFlags.Optional) !== 0, false, allowBytes);
                 });
                 return;
             }
@@ -1467,7 +1565,7 @@ class FaceAnalyzer {
                 const element = this.checker.getIndexTypeOfType(type, ts.IndexKind.Number);
                 if (element === undefined)
                     this.fail(site, 'Remote boundary array has no element type');
-                this.assertRemoteJsonType(element, site, active, false, false);
+                this.assertRemoteJsonType(element, site, active, false, false, allowBytes);
                 return;
             }
             const properties = this.checker.getPropertiesOfType(type);
@@ -1477,18 +1575,23 @@ class FaceAnalyzer {
             for (const property of properties) {
                 const propertyDeclaration = property.valueDeclaration ?? property.declarations?.[0];
                 const propertyType = this.checker.getTypeOfSymbolAtLocation(property, propertyDeclaration ?? site);
-                this.assertRemoteJsonType(propertyType, site, active, (property.flags & ts.SymbolFlags.Optional) !== 0, false);
+                this.assertRemoteJsonType(propertyType, site, active, (property.flags & ts.SymbolFlags.Optional) !== 0, false, allowBytes);
             }
             for (const info of this.checker.getIndexInfosOfType(type)) {
                 if ((info.keyType.flags & ts.TypeFlags.ESSymbolLike) !== 0) {
                     this.fail(site, 'Remote boundary contains a symbol index signature');
                 }
-                this.assertRemoteJsonType(info.type, site, active, false, false);
+                this.assertRemoteJsonType(info.type, site, active, false, false, allowBytes);
             }
         }
         finally {
             active.delete(type);
         }
+    }
+    isRemoteByteArray(type) {
+        const symbol = type.getSymbol();
+        return symbol?.name === 'Uint8Array'
+            && symbol.declarations?.some(declaration => isStandardLibraryFile(declaration.getSourceFile().fileName)) === true;
     }
     includesRemoteAbsence(type) {
         if ((type.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0)
@@ -1571,7 +1674,8 @@ class FaceAnalyzer {
             this.fail(site, `type ${symbol.name} is not owned by a workspace package`);
         const candidates = [];
         for (const [subpath, target] of packageExportTargets(registration.manifest)) {
-            if (subpath === '.' || subpath === './package.json' || subpath === './typert'
+            if ((subpath === '.' && !PUBLIC_REMOTE_TYPE_ROOTS.has(registration.name))
+                || subpath === './package.json' || subpath === './typert'
                 || subpath === './client/typert' || subpath === './remote' || target.includes('*'))
                 continue;
             const sourceFile = this.sourceFiles.get(realPath(sourcePathForExport(registration.root, target)));
@@ -2121,17 +2225,18 @@ class FaceAnalyzer {
             return { kind: 'standard', name: symbol.name };
         }
         const moduleSpecifier = moduleSpecifierOf(site);
-        const module = moduleSpecifier === undefined ? undefined : moduleIdentity(moduleSpecifier);
         const from = this.registrationForFile(site.getSourceFile().fileName);
         const owner = this.registrationForFile(declaration.getSourceFile().fileName);
         if (owner !== undefined) {
             if (owner.name !== from.name) {
-                if (module === undefined) {
+                const imported = moduleSpecifier === undefined
+                    ? undefined
+                    : this.packageImportOf(site, moduleSpecifier, symbol, from);
+                if (imported === undefined) {
                     this.fail(site, `reference to ${symbol.name} crosses a package without an explicit package import`);
                 }
-                const exportName = authoredExportName(site, moduleSpecifier);
-                if (this.packageExportName(module, symbol, owner.face, exportName) === undefined) {
-                    this.fail(site, `package reference ${exportName} is not exported by ${module.package} at ${module.subpath}`);
+                if (this.packageExportName(imported.module, symbol, owner.face, imported.name) === undefined) {
+                    this.fail(site, `package reference ${imported.name} is not exported by ${imported.module.package} at ${imported.module.subpath}`);
                 }
             }
             const typeDeclaration = declaration;
@@ -2139,15 +2244,18 @@ class FaceAnalyzer {
                 this.ensureDeclaration(symbol, typeDeclaration);
             return { kind: 'declaration', symbol: this.symbolId(symbol) };
         }
-        const packageFaces = module === undefined
+        const imported = moduleSpecifier === undefined
+            ? undefined
+            : this.packageImportOf(site, moduleSpecifier, symbol, from);
+        const packageFaces = imported === undefined
             ? []
-            : [...new Set(this.allRegistrations.filter(candidate => candidate.name === module.package).map(candidate => candidate.face))];
+            : [...new Set(this.allRegistrations.filter(candidate => candidate.name === imported.module.package).map(candidate => candidate.face))];
         const otherFace = packageFaces.find(face => face !== this.face);
-        if (otherFace !== undefined && module !== undefined) {
-            const requestedName = authoredExportName(site, moduleSpecifier);
-            const exportName = this.packageExportName(module, symbol, otherFace, requestedName);
+        if (otherFace !== undefined && imported !== undefined) {
+            const { module } = imported;
+            const exportName = this.packageExportName(module, symbol, otherFace, imported.name);
             if (exportName === undefined) {
-                this.fail(site, `cross-face reference ${requestedName} is not exported by ${module.package} at ${module.subpath}`);
+                this.fail(site, `cross-face reference ${imported.name} is not exported by ${module.package} at ${module.subpath}`);
             }
             this.recordCrossFaceLink(from.name, otherFace, module, exportName);
             return {
@@ -2158,11 +2266,11 @@ class FaceAnalyzer {
                 name: exportName,
             };
         }
-        if (module !== undefined) {
+        if (imported !== undefined) {
             return {
                 kind: 'external',
-                module: module.package,
-                subpath: module.subpath,
+                module: imported.module.package,
+                subpath: imported.module.subpath,
                 name: symbol.name,
             };
         }
@@ -2198,6 +2306,8 @@ class FaceAnalyzer {
     }
     packageExportName(module, symbol, face, requestedName) {
         const registration = this.allRegistrations.find(candidate => candidate.face === face && candidate.name === module.package);
+        if (registration === undefined)
+            return undefined;
         const target = packageExportTargets(registration.manifest)
             .find(([subpath]) => subpath === module.subpath)?.[1];
         if (target === undefined)
@@ -2674,21 +2784,7 @@ function moduleSpecifierOf(node) {
         : node.expression;
     const sourceFile = node.getSourceFile();
     const first = ts.isIdentifier(symbol) ? symbol.text : symbol.getFirstToken(sourceFile)?.getText(sourceFile);
-    for (const statement of sourceFile.statements) {
-        if (!ts.isImportDeclaration(statement) || statement.importClause === undefined
-            || !ts.isStringLiteral(statement.moduleSpecifier))
-            continue;
-        if (statement.importClause.name?.text === first)
-            return statement.moduleSpecifier.text;
-        const bindings = statement.importClause.namedBindings;
-        if (bindings !== undefined && ts.isNamespaceImport(bindings) && bindings.name.text === first) {
-            return statement.moduleSpecifier.text;
-        }
-        if (bindings !== undefined && ts.isNamedImports(bindings)
-            && bindings.elements.some(element => element.name.text === first))
-            return statement.moduleSpecifier.text;
-    }
-    return undefined;
+    return first === undefined ? undefined : importBindingOf(sourceFile, first)?.specifier;
 }
 function authoredExportName(node, moduleSpecifier) {
     if (ts.isImportTypeNode(node))
@@ -2697,26 +2793,33 @@ function authoredExportName(node, moduleSpecifier) {
         ? node.typeName.getText().split('.')
         : node.expression.getText().split('.');
     const localName = referenced[0];
-    for (const statement of node.getSourceFile().statements) {
-        if (!ts.isImportDeclaration(statement)
-            || statement.importClause === undefined
-            || !ts.isStringLiteral(statement.moduleSpecifier)
-            || statement.moduleSpecifier.text !== moduleSpecifier)
+    const binding = importBindingOf(node.getSourceFile(), localName);
+    /* v8 ignore next -- moduleSpecifierOf returns only the import inspected by importBindingOf. */
+    if (binding === undefined)
+        throw new TypertAnalysisError(`typert: cannot recover export name for ${localName} from ${moduleSpecifier}`);
+    return binding.name ?? referenced[1];
+}
+function importBindingOf(sourceFile, localName) {
+    for (const statement of sourceFile.statements) {
+        if (!ts.isImportDeclaration(statement) || statement.importClause === undefined
+            || !ts.isStringLiteral(statement.moduleSpecifier))
             continue;
+        const specifier = statement.moduleSpecifier.text;
         if (statement.importClause.name?.text === localName)
-            return 'default';
+            return { specifier, name: 'default' };
         const bindings = statement.importClause.namedBindings;
-        if (bindings !== undefined && ts.isNamedImports(bindings)) {
-            const imported = bindings.elements.find(element => element.name.text === localName);
-            if (imported !== undefined)
-                return imported.propertyName?.text ?? imported.name.text;
+        if (bindings === undefined)
+            continue;
+        if (ts.isNamespaceImport(bindings)) {
+            if (bindings.name.text === localName)
+                return { specifier };
+            continue;
         }
-        if (bindings !== undefined && ts.isNamespaceImport(bindings) && bindings.name.text === localName) {
-            return referenced[1];
-        }
+        const element = bindings.elements.find(candidate => candidate.name.text === localName);
+        if (element !== undefined)
+            return { specifier, name: element.propertyName?.text ?? element.name.text };
     }
-    /* v8 ignore next -- moduleSpecifierOf returns only the matching import inspected by this loop. */
-    throw new TypertAnalysisError(`typert: cannot recover export name for ${localName} from ${moduleSpecifier}`);
+    return undefined;
 }
 function importTypeAttributesText(node) {
     const sourceFile = node.getSourceFile();

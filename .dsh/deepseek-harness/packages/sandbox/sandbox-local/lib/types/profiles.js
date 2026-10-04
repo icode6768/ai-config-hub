@@ -3,7 +3,7 @@
  *
  * @module @deepseek-ai/dsh-sandbox-local/profiles
  */
-import { grantArgs as landlockGrantArgs } from '@deepseek-ai/node-addon-landlock-run';
+import { grantArgs as landlockGrantArgs } from '@deepseek-ai/node-addon-system/landlock-run';
 import { writableRoots } from '@deepseek-ai/dsh-sandbox';
 /**
  * Build the bwrap profile arguments for one file-effect policy.

@@ -8,6 +8,7 @@
  * @module @deepseek-ai/dsh-fs
  */
 import { Service } from '@deepseek-ai/cordis';
+import { FsError } from "./types.js";
 export { FsError, FsTargetKey, FsVersion, } from "./types.js";
 /**
  * Abstract filesystem provider. Targets must preserve identity across aliases;
@@ -18,6 +19,20 @@ export { FsError, FsTargetKey, FsVersion, } from "./types.js";
 export class FileSystem extends Service {
     constructor(ctx) {
         super(ctx, 'fs');
+    }
+    /**
+     * Observe one file or a directory's direct entries in this provider's execution world.
+     * @param target - resolved file or directory, including an absent path to observe for creation.
+     * @param changed - invalidation callback; errors can be reported during or after initialization.
+     * @param signal - cancels watcher initialization; the caller closes an initialized watcher.
+     * @returns a promise resolving once observation is active, with an asynchronous close function.
+     * @throws when the provider does not support watching or cannot initialize the watcher.
+     */
+    watch(target, changed, signal) {
+        void target;
+        void changed;
+        signal.throwIfAborted();
+        return Promise.reject(new FsError('Filesystem watching is not supported by this provider.', 'FS_IO_ERROR'));
     }
     /**
      * The sandbox mode this backend enforces on mutations BY DEFAULT, or

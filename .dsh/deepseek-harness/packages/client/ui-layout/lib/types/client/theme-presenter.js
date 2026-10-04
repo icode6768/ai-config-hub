@@ -1,5 +1,15 @@
 /** Body attribute selecting the dark base palette in the token stylesheets. */
 export const DARK_ATTRIBUTE = 'data-ds-dark-theme';
+/**
+ * Root attribute publishing the theme source (`light`, `dark`, or `system`)
+ * for host shells that mirror it into the native theme (the Electron preload
+ * forwards it to `nativeTheme.themeSource`, so native chrome, renderer
+ * `prefers-color-scheme` queries, and Platform login links follow the app
+ * palette on every platform). `system` only when the preference is `system`;
+ * a fixed preference (including registered theme ids) publishes its resolved
+ * scheme.
+ */
+export const THEME_SOURCE_ATTRIBUTE = 'data-ds-theme-source';
 /** Body variable carrying the user's content font size in px. */
 export const CONTENT_FONT_SIZE_VARIABLE = '--dsh-content-font-size';
 /** Applies theme snapshots to the document; one instance per plugin fiber. */
@@ -25,6 +35,7 @@ export class ThemePresenter {
     apply(snapshot) {
         const scheme = snapshot.active.colorScheme;
         document.documentElement.style.colorScheme = scheme;
+        document.documentElement.setAttribute(THEME_SOURCE_ATTRIBUTE, snapshot.preference === 'system' ? 'system' : scheme);
         const body = document.body;
         if (scheme === 'dark')
             body.setAttribute(DARK_ATTRIBUTE, '');
@@ -42,9 +53,13 @@ export class ThemePresenter {
         if (!this.themeColorMeta.isConnected)
             document.head.append(this.themeColorMeta);
     }
-    /** Retract root color-scheme, the palette attribute, token variables, the font-size axis, and the owned metadata node. */
+    /**
+     * Retract root color-scheme, the theme-source attribute, the palette
+     * attribute, token variables, the font-size axis, and the owned metadata node.
+     */
     dispose() {
         document.documentElement.style.removeProperty('color-scheme');
+        document.documentElement.removeAttribute(THEME_SOURCE_ATTRIBUTE);
         const body = document.body;
         body.removeAttribute(DARK_ATTRIBUTE);
         body.style.removeProperty(CONTENT_FONT_SIZE_VARIABLE);

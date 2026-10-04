@@ -1,8 +1,8 @@
 /**
  * Pure ACP transcript and session-log normalizers. They scrub session ids, run cwd, RPC ids,
  * timestamps, goal lifecycle clocks, and hook duration while preserving semantic payload values.
- * Request-header scrubbers stay composable so one scenario per header class can pin prompt and
- * tool-schema sidecars.
+ * The prompt-text and tool-schema scrubbers stay composable so one scenario per header class can
+ * pin prompt and tool-schema sidecars.
  * @module @deepseek-ai/dsh-session-snapshot/normalize
  */
 /**
@@ -30,6 +30,11 @@ export interface NormalizeOptions {
     /** Keep already-redacted typed ids and arbitrary UUID-like prose unchanged. */
     identityMode?: 'legacy' | 'preserve';
 }
+/** Comparison controls for complete primary and child Session logs. */
+export interface SessionSnapshotComparisonOptions extends Omit<NormalizeOptions, 'identityMode'> {
+    /** Inputs are captured native writer output, rather than source-versus-migrated-artifact comparisons. */
+    nativeWriterOutput?: true;
+}
 /**
  * Store one generated workspace as `{{cwd}}` while retaining every other
  * session value. The caller opts in only for workspaces created under a
@@ -55,9 +60,10 @@ export declare function tokenizeSessionFixtureCwd(rawLog: string): string;
 export declare function normalizeStdout(rawStdout: string, ctx: NormalizeContext, options?: NormalizeOptions): string;
 /**
  * Normalize a session JSONL log into a stable expected output: the header line's
- * volatile fields (`createdAt`, `id`, `cwd`) are zeroed/scrubbed, ordinary
- * event `time`, packed-row `time0`, and goal-change lifecycle clock values are
- * zeroed, and all volatile strings are scrubbed. Projected inputs remain
+ * volatile fields (`createdAt`, `id`, `cwd`) are zeroed/scrubbed; event,
+ * historical packed-row, embedded Assistant-stream, goal lifecycle, and
+ * catalog child-creation clocks are zeroed; and all volatile strings are
+ * scrubbed. Projected inputs remain
  * projected. Packed `data.dt` gaps are normalized even when the projected row
  * omits its `time0` anchor.
  * Output is JSONL in the same shape as the input — one compact record per
@@ -72,8 +78,9 @@ export declare function normalizeSessionLog(rawLog: string, ctx: NormalizeContex
 /**
  * Normalize and project persisted session JSONL for a committed fixture.
  * This composes ordinary log normalization with request-header scrubbing and
- * persistence-envelope projection, then packs the logical event stream into a
- * canonical layout independent of persistence flush boundaries.
+ * persistence-envelope projection, then writes the v3 logical event stream as
+ * one record per event, independent of persistence flush boundaries. Event order
+ * and source-event references are preserved.
  *
  * @param rawLog - persisted or already-projected session JSONL.
  * @param ctx - the run's volatile values to scrub.
@@ -83,55 +90,66 @@ export declare function normalizeSessionLog(rawLog: string, ctx: NormalizeContex
 export declare function normalizeSessionSnapshot(rawLog: string, ctx: NormalizeContext, options?: NormalizeOptions): string;
 /**
  * Normalize one scenario's primary and child logs with shared typed identity redaction.
+ * Native-writer comparison strictly restores each input before tokenizing its own delivery generation.
  * @param rawLogs - primary-first persisted or projected session JSONL.
  * @param ctx - generated cwd spellings and other volatile run facts.
- * @param options - separator controls; relationship-preserving identity mode is mandatory.
- * @returns normalized session fixtures in input order.
+ * @param options - separator and native-writer comparison controls; identity relationships are preserved.
+ * @returns comparison-only Session records in input order; not persistence or fixture write-back input.
  */
-export declare function normalizeSessionSnapshots(rawLogs: readonly string[], ctx: NormalizeContext, options?: Omit<NormalizeOptions, 'identityMode'>): string[];
+export declare function normalizeSessionSnapshots(rawLogs: readonly string[], ctx: NormalizeContext, options?: SessionSnapshotComparisonOptions): string[];
 /**
- * Replace system-prompt content in request headers with `{{system}}` tokens
- * while retaining field presence.
- * Other header content stays verbatim, so a header-pinning fixture can keep
- * its complete tool schemas while every JSONL fixture omits the prompt text.
- * Lines without a system payload pass through byte-for-byte; the transform is
- * idempotent.
+ * Omit the artifact header generation after official migration for comparison.
+ * An explicit source version tokenizes only delivery markers for that original input generation.
+ * Other delivery generations and every captured-source generation retain their recorded values.
+ * @param rawLog - Session records or events as compact JSON lines.
+ * @param sourceVersion - original generation of strictly validated native writer output; otherwise omit.
+ * @returns comparison-only records with the Session header version omitted and native delivery qualifiers tokenized.
+ */
+export declare function normalizeSessionFormatMetadata(rawLog: string, sourceVersion?: number): string;
+/**
+ * Replace the rendered prompt text of every `system/message` event with the
+ * `{{system}}` token. The text block keeps its position and type, so the
+ * fixture still shows one system node per prompt version; an empty `content`
+ * (no system prompt) stays empty. Request headers and every other line pass
+ * through byte-for-byte; the transform is idempotent.
  *
  * @param rawLog The raw session `.jsonl` content.
- * @returns The JSONL with system-prompt content tokenized.
+ * @returns The JSONL with system-prompt text tokenized.
  */
 export declare function scrubSystemPrompts(rawLog: string): string;
 /**
  * Replace tool schemas in full request-header snapshots with `{{tools}}`
- * tokens while retaining field presence. System prompts and session-prefix
- * messages stay verbatim so pinning fixtures can move only schema bulk into
- * their dedicated JSON sidecar. Lines without a tool payload pass through
- * byte-for-byte; the transform is idempotent.
+ * tokens while retaining field presence. Logs containing developer messages
+ * retain tool names so historical addition references remain verifiable.
+ * System-prompt text stays verbatim so
+ * pinning fixtures can move only schema bulk into their dedicated JSON
+ * sidecar. Lines without a tool payload pass through byte-for-byte; the
+ * transform is idempotent.
  *
  * @param rawLog The raw session `.jsonl` content.
  * @returns The JSONL with tool-schema content tokenized.
  */
 export declare function scrubToolSchemas(rawLog: string): string;
 /**
- * Replace all bulky request-header content in a session JSONL with stable
- * tokens. This includes the system-prompt fields handled by
- * {@link scrubSystemPrompts}, tool schemas, and session-prefix messages. It
- * keeps prefix message counts, field presence, config, and reason. Lines
- * without content to scrub pass through byte-for-byte, and the transform is
- * idempotent.
+ * Replace all bulky model-request content in a session JSONL with stable
+ * tokens: the `system/message` prompt text handled by
+ * {@link scrubSystemPrompts} and the request-header tool schemas handled by
+ * {@link scrubToolSchemas}. Field presence, config, and reason are kept.
+ * Lines without content to scrub pass through byte-for-byte, and the
+ * transform is idempotent.
  *
  * @param rawLog The raw session `.jsonl` content.
- * @returns The JSONL with all header bulk tokenized, other lines byte-identical.
+ * @returns The JSONL with prompt text and schema bulk tokenized, other lines byte-identical.
  */
-export declare function scrubRequestHeaders(rawLog: string): string;
+export declare function scrubModelRequestBulk(rawLog: string): string;
 /**
- * Project a persisted session log while tokenizing all request-header bulk.
- * Each non-empty line is parsed at most once; the session header stays
- * byte-identical. Body records omit their persistence-only envelopes, and
- * request-header payloads are tokenized.
+ * Project a persisted session log while tokenizing prompt text and schema
+ * bulk. Each non-empty line is parsed at most once; the session header stays
+ * byte-identical. Body records omit their persistence-only envelopes and expand
+ * source-event ranges without changing reference order.
  *
  * @param rawLog - persisted or already-projected session JSONL.
- * @returns committed snapshot JSONL with request headers tokenized.
+ * @returns committed snapshot JSONL with prompt text and tool schemas tokenized.
  */
 export declare function scrubSessionSnapshot(rawLog: string): string;
 //# sourceMappingURL=normalize.d.ts.map

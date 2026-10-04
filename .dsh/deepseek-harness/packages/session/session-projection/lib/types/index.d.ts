@@ -18,7 +18,8 @@
  */
 import { Context, Service } from '@deepseek-ai/cordis';
 import type { ZodType } from 'zod';
-import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session';
+import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session';
+import type { Session, SessionEvent, SessionHeader, SessionSeqCursor } from '@deepseek-ai/dsh-session';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         sessionProjections: SessionProjectionRegistry;
@@ -42,9 +43,10 @@ export interface ProjectionDefinition<K extends keyof SessionProjectionStateMap,
     /**
      * State for the empty log and its immutable Session metadata.
      * @param header - immutable metadata for the Session being projected.
+     * @param inheritedEventCount - exact fork-inherited prefix length.
      * @returns the initial state.
      */
-    init(header: SessionHeader): NoInfer<S>;
+    init(header: SessionHeader, inheritedEventCount: SessionLogOffset): NoInfer<S>;
     /**
      * Pure transition: previous state + one committed event → next state. A
      * unit uninterested in an event MUST return the same state reference — an
@@ -59,7 +61,10 @@ export interface ProjectionDefinition<K extends keyof SessionProjectionStateMap,
         /** Validates the wire payload before it leaves the host. */
         viewSchema: ZodType<SessionProjectionMap[K]>;
         /**
-         * State → wire payload (the read-side projection).
+         * State → wire payload (the read-side projection). The live drive keeps
+         * the two latest raw results and compares them with `Object.is`; an
+         * object-valued view must reuse its reference to suppress publication
+         * across internal-only state changes.
          * @param state - the current state.
          * @returns the whole current value for this unit's key.
          */
@@ -74,11 +79,11 @@ export interface ProjectionDefinition<K extends keyof SessionProjectionStateMap,
     stateVersion: number;
 }
 /**
- * Change-feed listener: one unit's value changed for one session. `value` is
- * the schema-validated `view` output; `seq` is the unit's watermark at
- * emission (the seq of the event that caused the change).
+ * Change-feed listener: one unit's raw `view` result changed by `Object.is`
+ * for one session. `value` is the schema-validated output; `seq` is the
+ * unit's watermark at emission (the seq of the event that caused the change).
  */
-export type ProjectionChangeListener = (session: Session, key: Extract<keyof SessionProjectionMap, string>, value: unknown, seq: number) => void;
+export type ProjectionChangeListener = (session: Session, key: Extract<keyof SessionProjectionMap, string>, value: unknown, seq: SessionSeq) => void;
 /**
  * One consistent read cut over every registered client-visible unit for one session.
  * `asOfSeq` is the shared watermark — the seq of the last event every value
@@ -86,7 +91,7 @@ export type ProjectionChangeListener = (session: Session, key: Extract<keyof Ses
  */
 export interface ProjectionSnapshot {
     /** Seq of the last event the values reflect; -1 for an empty log. */
-    asOfSeq: number;
+    asOfSeq: SessionSeqCursor;
     /** Whole current client value per registered key. */
     values: Partial<SessionProjectionMap>;
 }
@@ -102,7 +107,7 @@ export interface ProjectionCheckpointRow {
     /** The registering unit's `stateVersion` at fold time. */
     ver: number;
     /** Seq of the last event folded into `val`; -1 for the empty log. */
-    seq: number;
+    seq: SessionSeqCursor;
     /** The unit's internal state — plain JSON per the unit contract. */
     val: unknown;
 }
@@ -111,16 +116,17 @@ export type ProjectionCheckpoint = Record<string, ProjectionCheckpointRow>;
 /**
  * `ctx.sessionProjections`: the projection unit table and its drive. The
  * service subscribes to `session/event` once; every committed event passes
- * every registered unit's `apply` (eager drive), and a changed state
- * reference in a client-visible unit notifies the change feed with the
- * schema-validated view.
+ * every registered unit's `apply` (eager drive). A changed state reference
+ * computes the next client view; the change feed is notified only when its
+ * raw result changes by `Object.is`.
  * Cells build lazily — a unit registered after events flowed, or a session
  * older than the registry, folds `init` over the in-memory log on first
  * touch (event or read). Registration is an effect (disposer rides the
  * calling fiber): an unloaded domain plugin's key disappears from snapshots
- * and clients read it as capability absence. Domain
- * plugins register under `ctx.inject(['sessionProjections'], …)` so headless
- * assemblies without the registry stay unaffected. Registrants sharing a key
+ * and clients read it as capability absence. A host reader either declares
+ * `sessionProjections` in its plugin `inject` or fails explicitly when the
+ * registry or required key is absent. Contributors may preserve optional
+ * registration through `ctx.inject(['sessionProjections'], ...)`. Registrants sharing a key
  * share one unit and are counted: the same tool package mounted in N agent
  * presets registers N times, and the key survives until the last one
  * unloads.
@@ -154,7 +160,7 @@ export declare class SessionProjectionRegistry extends Service {
     /**
      * Subscribe to the change feed. The registration is an effect on the
      * calling context's fiber.
-     * @param listener - called once per client-visible unit whose state reference changed, per committed event.
+     * @param listener - called once per client-visible unit whose raw view changed by `Object.is`, per committed event.
      * @returns the exact disposer that unsubscribes.
      */
     onChanged(listener: ProjectionChangeListener): () => void;
@@ -213,11 +219,11 @@ export declare class SessionProjectionRegistry extends Service {
      * yields an end below every watermark and the restore rejects for a full
      * re-read.
      * @param checkpoint - persisted rows for one session (possibly stale or empty).
-     * @returns the seq to hand the persistence `readFrom`, or `undefined`
-     *   when no unit is registered (no read needed — {@link restore} would
-     *   serve empty values regardless).
+     * @returns the offset for the stored-log suffix read (`SessionHandle.read`),
+     *   or `undefined` when no unit is registered (no read needed —
+     *   {@link restore} would serve empty values regardless).
      */
-    restoreFloor(checkpoint: ProjectionCheckpoint): number | undefined;
+    restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined;
     /**
      * View a checkpoint's rows without any log read: for every registered
      * client-visible unit whose row's `ver` matches, serve the schema-validated
@@ -234,8 +240,8 @@ export declare class SessionProjectionRegistry extends Service {
      * Cold read: fold every persisted unit over a stored log suffix, seeding
      * each from its checkpoint row when usable — the one read recipe (cached
      * state + forward tail replay + `view`) applied without a live `Session`.
-     * Call with the events returned by a persistence
-     * `readFrom(id, restoreFloor(checkpoint))` and that same floor as
+     * Call with the stored events at or past `restoreFloor(checkpoint)` (a
+     * `SessionHandle.read` slice) and that same floor as
      * `baseSeq`; the floor's one-below anchor makes the supplied end honest,
      * so a shrunk log is detected here. A row is usable iff its
      * `ver` matches the live unit's `stateVersion`, it does not predate `baseSeq`
@@ -249,11 +255,12 @@ export declare class SessionProjectionRegistry extends Service {
      * @param events - the stored events with `seq >= baseSeq`, in seq order.
      * @param baseSeq - the seq `events` starts at (its first event's seq when non-empty).
      * @param header - immutable metadata for the Session being restored.
+     * @param inheritedEventCount - exact fork-inherited prefix length supplied to unit initialization.
      * @returns the snapshot cut at the supplied log end (`asOfSeq` is the last
      *   supplied event's seq, `baseSeq - 1` for an empty tail) plus the
      *   refreshed checkpoint rows at that cut, ready for a durable write-back.
      */
-    restore(checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: number, header: SessionHeader): {
+    restore(checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: SessionLogOffset, header: SessionHeader, inheritedEventCount: SessionLogOffset): {
         snapshot: ProjectionSnapshot;
         checkpoint: ProjectionCheckpoint;
     };
@@ -267,7 +274,7 @@ export declare class SessionProjectionRegistry extends Service {
      * @param baseSeq - first supplied event sequence.
      * @returns all projection values at the supplied cut.
      */
-    hydrate(session: Session, checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: number): ProjectionSnapshot;
+    hydrate(session: Session, checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: SessionLogOffset): ProjectionSnapshot;
     /** Materialize every registered unit cell at the Session's current cursor. */
     private materializeCells;
     /** Fold one unit from init over `events`, producing a cell watermarked at the last folded event. */
@@ -276,7 +283,7 @@ export declare class SessionProjectionRegistry extends Service {
     private cellFor;
     /** Advance one existing cell through a contiguous Session prefix. */
     private advanceCell;
-    /** Eager drive: pass one committed event through every registered unit; notify on changed references. */
+    /** Eager drive: pass one committed event through every unit; notify on changed raw view references. */
     private drive;
     /** Return one schema-validated wire value. */
     private viewCell;

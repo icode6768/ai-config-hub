@@ -4,8 +4,8 @@
  * server→client requests: it answers `workspace/configuration` from static
  * config, and rejects `workspace/applyEdit` (this host never applies edits or
  * runs commands). It caps stderr, surfaces framing/decoder failures as a
- * fatal close, and exposes tree-scoped termination through the handle so the
- * instance owns teardown; group/tree mechanics live in the subprocess
+ * fatal close, and exposes managed-range termination through the handle so the
+ * instance owns teardown; platform mechanics live in the subprocess
  * Service Provider.
  * @module @deepseek-ai/dsh-lsp-stdio/connection
  */
@@ -62,8 +62,6 @@ export declare class LspConnection {
      * @param writer - message writer; tests inject callback failures without relying on OS pipe races.
      */
     constructor(spec: ConnectionSpec, spawner: ConnectionSpawner, onServerRequest: (method: string, params: unknown) => Promise<unknown>, writer?: ConnectionWriter);
-    /** The child's pid, or `-1` when the spawn produced no pid (so signalling is a no-op). */
-    get pid(): number;
     /** The retained stderr tail, for diagnostics on a failed server. */
     get stderrTail(): string;
     /** Whether the transport has failed even if the child close event has not arrived yet. */
@@ -98,14 +96,14 @@ export declare class LspConnection {
      * @returns the numeric id the next request will be assigned.
      */
     peekNextId(): number;
-    /** Terminate the server's process tree (the seam's SIGTERM→grace→SIGKILL escalation; idempotent). */
+    /** Terminate the server's provider-managed range (idempotent). */
     terminate(): void;
     /**
-     * Wait until the owned process tree has exited.
+     * Wait until the owned managed range is empty.
      * @param signal - optional bound for the wait.
-     * @returns `true` when the tree exited, or `false` when the signal aborted first.
+     * @returns `true` when the range is empty, or `false` when the signal aborted first.
      */
-    waitForProcessTreeExit(signal?: AbortSignal): Promise<boolean>;
+    waitForManagedRangeExit(signal?: AbortSignal): Promise<boolean>;
     private onStdout;
     private dispatch;
     private handleServerRequest;

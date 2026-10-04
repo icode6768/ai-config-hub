@@ -12,7 +12,8 @@ export interface ClientSourceAsset {
     readonly scriptKey: RuntimeScriptKey;
     readonly url: string;
     readonly hash: string;
-    readonly sourceMapUrl?: string;
+    /** Map URL, available after loadSource when derived from the script's emitted trailer. */
+    readonly sourceMapUrl?: string | undefined;
     readonly isModule?: boolean;
     loadSource(): Promise<string>;
     loadSourceMap?(): Promise<string | undefined>;
@@ -45,7 +46,7 @@ export declare class ClientSourceCatalog {
     private sourceMapBytes;
 }
 /**
- * Discover this package's bundle URL from the Host-injected web boot graph.
+ * Discover this package's bundle URL from the Host-injected web boot graph and its map from the loaded script trailer.
  * @returns A lazy catalog, or `undefined` outside the assembled web application.
  */
 export declare function discoverInspectorClientSourceCatalog(): ClientSourceCatalog | undefined;

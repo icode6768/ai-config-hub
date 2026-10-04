@@ -10,7 +10,7 @@
  * `dsh --profile tui --resume abc` boots the tui profile with `--resume abc`,
  * and `dsh --profile web -h` prints the web app's help, not this one's.
  *
- * `web` is a hardcoded alias for `--profile web`; `plugin` manages a profile's
+ * `dsh <name>` abbreviates `dsh --profile <name>`; `plugin` manages a profile's
  * plugin dependencies by forwarding to pnpm.
  * @module @deepseek-ai/dsh/args
  */
@@ -18,6 +18,8 @@
 interface ProfileInvocation {
     mode: 'profile';
     profile: string;
+    /** Shipped template used once to initialize a missing profile. */
+    fromDefaultProfile?: string | undefined;
     /** Extra patch-list overlays applied after the profile's own layer, in argv order. */
     patches: string[];
     /** Everything after the launcher's own flags, verbatim, for injected app plugins. */
@@ -27,8 +29,18 @@ interface ProfileInvocation {
 interface DumpConfigInvocation {
     mode: 'dump-config';
     profile: string;
+    /** Shipped template used once to initialize a missing profile. */
+    fromDefaultProfile?: string | undefined;
     /** Omit the profile's user layer and --patch overlays; print bundle layers only. */
     defaultOnly: boolean;
+    patches: string[];
+}
+/** Print declared plugin schemas without mounting the profile. */
+interface DumpConfigSchemaInvocation {
+    mode: 'dump-config-schema';
+    profile: string;
+    /** Shipped template used once to initialize a missing profile. */
+    fromDefaultProfile?: string | undefined;
     patches: string[];
 }
 /** Manage a profile's plugins: forward `args` to pnpm inside the profile directory. */
@@ -39,14 +51,15 @@ interface PluginInvocation {
     args: string[];
 }
 /** The resolved `dsh` invocation. Help, version, and errors exit inside {@link parseDshArgs}. */
-export type DshInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation;
+export type DshInvocation = ProfileInvocation | DumpConfigInvocation | DumpConfigSchemaInvocation | PluginInvocation;
 /**
  * Resolve argv into one invocation, or print and exit for help, version, or an
  * error.
  * @param argv - arguments after the Node binary and script.
  * @param version - version string printed by `--version`.
+ * @param manageDesktopProfile - permit Desktop's installed carrier to manage its reserved profile's plugins.
  * @returns the resolved invocation.
  */
-export declare function parseDshArgs(argv: readonly string[], version: string): DshInvocation;
+export declare function parseDshArgs(argv: readonly string[], version: string, manageDesktopProfile?: boolean): DshInvocation;
 export {};
 //# sourceMappingURL=args.d.ts.map

@@ -15,6 +15,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { foldConsumedWork } from '@deepseek-ai/dsh-agent';
+import { SessionLogOffset } from '@deepseek-ai/dsh-session';
 import { finalAssistantOutput } from "./assistant-output.js";
 import { SubagentRunId } from "./types.js";
 /**
@@ -90,7 +91,7 @@ export function createActivationObserver(emit, provider, childId, parent) {
     // A cold resume replays earlier turns, so this epoch's telemetry must come
     // from the suffix it actually produced — never the whole session, which
     // would report a previous epoch's answer when this one opened no turn.
-    let boundary = 0;
+    let boundary = SessionLogOffset(0);
     // Assigned by `capture()`, which the disposal path always runs before
     // `settle()`; a resident epoch therefore always has its facts by then.
     let captured = { stopReason: 'completed' };
@@ -101,11 +102,12 @@ export function createActivationObserver(emit, provider, childId, parent) {
         : { stopReason: 'error' };
     return {
         start: (child) => {
-            boundary = child.session.events.length;
+            boundary = child.session.seq;
             emit('subagent/start', identity, parent);
         },
         capture: (child) => {
-            const own = child.session.events.slice(boundary);
+            // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+            const own = child.session.snapshotEvents(boundary);
             const output = finalAssistantOutput(own);
             captured = {
                 stopReason: epochStopReason(own),
@@ -158,9 +160,10 @@ function epochStopReason(events) {
         case undefined:
         case 'completed':
             return droppedUnrun ? 'aborted' : 'completed';
-        /* v8 ignore next 3 -- `TurnEndReason` is merge-extensible, so this arm needs a
-         * backend that adds a variant; treating an unnameable reason as success would
-         * report failed work as completed. */
+        /* v8 ignore next 4 -- `forked` appears only in constructor seed history, while
+         * this function reads an epoch-owned suffix. `TurnEndReason` is merge-extensible,
+         * so a backend-added variant cannot be listed; treating an unnameable reason as
+         * success would report failed work as completed. */
         default:
             return 'error';
     }

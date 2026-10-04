@@ -20,7 +20,7 @@
  *
  * @module @deepseek-ai/dsh-subagent/descriptor
  */
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session';
+import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values';
 /**
  * The current descriptor format version, stamped into every appended
  * `subagent/descriptor` event and required verbatim by {@link foldSubagentDescriptor}.

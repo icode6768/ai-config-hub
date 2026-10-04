@@ -10,6 +10,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import type { AgentOptions } from '@deepseek-ai/dsh-agent';
+import type { Session } from '@deepseek-ai/dsh-session';
 export declare const name = "tool-subagent";
 export declare const inject: string[];
 /** Config: which registered provider this tool delegates to, plus child defaults. */
@@ -22,8 +23,8 @@ export interface Config {
      */
     toolName?: string;
     /**
-     * Sample the Host `subagent-model-selection` user setting for each new
-     * top-level session and inherit that decision in its child sessions.
+     * Sample the Host `subagent-model-selection` setting for each new top-level
+     * Session and inherit that decision in its child Sessions.
      */
     modelSelectionSettings?: boolean;
     /**
@@ -43,7 +44,7 @@ export interface Config {
      */
     agentOptions?: AgentOptions;
     /**
-     * Per-child persona that shadows `deployment:persona`. Requires the
+     * Per-child persona that shadows `deployment:persona-prefix`. Requires the
      * provider's `persona` capability; omission preserves the deployment persona.
      */
     persona?: string;
@@ -59,16 +60,23 @@ export interface Config {
         deny?: string[];
     };
     /**
-     * Maximum child depth: a non-negative safe integer (default `3`; `0` forbids
-     * delegation entirely), or `'provider-managed'` to send no cap. A numeric cap
+     * Maximum child depth: a non-negative safe integer (`0` forbids delegation),
+     * or `'provider-managed'` to send no cap. A numeric cap
      * requires the provider's `depthLimit` capability (mount fails loud
      * otherwise). The provider checks the calling agent's current depth at every
      * start; the tool remains model-visible so runtime policy owns rejection.
      * `'provider-managed'` is for an out-of-process provider whose recursion
-     * budget belongs to the child runtime or its own deployment.
+     * budget belongs to the child runtime or its own deployment. Omission reads
+     * the current Host subagent depth setting (default `1`) at each delegation.
      */
     maxDepth?: number | 'provider-managed';
 }
 export declare const Config: z<Config>;
-export declare function apply(ctx: Context, config: Config): void;
+/**
+ * Install one delegation-tool composition.
+ * @param ctx - Context that owns the registrations.
+ * @param config - delegation-tool configuration.
+ * @param session - unpublished Session supplied by a direct Agent setup; omit for a standing composition.
+ */
+export declare function apply(ctx: Context, config: Config, session?: Session): void;
 //# sourceMappingURL=index.d.ts.map

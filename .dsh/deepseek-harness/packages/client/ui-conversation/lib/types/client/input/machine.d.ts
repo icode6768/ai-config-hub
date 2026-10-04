@@ -20,7 +20,7 @@ export declare class SubmitMachine {
      * @returns effects for the SessionInput shell, in execution order.
      */
     dispatch(ev: InputEvent): readonly InputEffect[];
-    /** Claimed integrity watch: a draft that breaks the token prefix releases the claim. */
+    /** The complete command name retains its claim with or without the argument separator. */
     private onDraftChanged;
     /** The editor applied a claim-token replacement; busy phases refuse another claim. */
     private onClaim;
@@ -39,7 +39,7 @@ export declare class SubmitMachine {
     private onSubmitSettled;
     /** Settle one ordinary send independently of current phase and other detached sends. */
     private onSinkSettled;
-    /** Clear after an accepted image-only send; it has no text suffix to retain. */
+    /** Clear after an accepted attachment-only send; it has no text suffix to retain. */
     private onSendCommitted;
     private onRelease;
 }

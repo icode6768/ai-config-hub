@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment';
-import type { ImageAttachmentLimits, ImageAttachmentRef, ImageRequestPolicy, RequestImageAttachment, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment';
+import type { FileAttachmentRef, ImageAttachmentLimits, ImageAttachmentRef, ImageRequestTarget, RequestImageAttachment, SaveFileAttachment, SaveFileStreamAttachment, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment';
 import type { NormalizationPolicy } from './normalization.ts';
 export { canPassThroughNormalization, normalizeImage } from './normalization.ts';
 export type { NormalizedImage, NormalizationPolicy } from './normalization.ts';
@@ -71,6 +71,7 @@ export declare class LocalAttachmentStore extends AttachmentStore {
     readonly normalizationPolicy: Readonly<NormalizationPolicy>;
     /** Resolved instance-level compression limit. */
     readonly imageCompressionConcurrency: number;
+    private readonly cacheRoot;
     private readonly compression;
     private readonly requestInflight;
     constructor(ctx: Context, config: Config);
@@ -79,7 +80,11 @@ export declare class LocalAttachmentStore extends AttachmentStore {
     saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef>;
     readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment>;
     imageHostPath(ref: ImageAttachmentRef): string;
-    readImageRequest(ref: ImageAttachmentRef, policy: ImageRequestPolicy, signal?: AbortSignal): Promise<RequestImageAttachment>;
+    saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef>;
+    saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef>;
+    readFileStream(ref: FileAttachmentRef, signal?: AbortSignal): AsyncIterable<Uint8Array>;
+    fileHostPath(ref: FileAttachmentRef): string;
+    readImageRequest(ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal): Promise<RequestImageAttachment>;
     private requestVersion;
 }
 export default LocalAttachmentStore;

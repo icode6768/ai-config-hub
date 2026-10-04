@@ -19,11 +19,14 @@ export const Config = z.object({
 });
 const DSH_SHELL_KEY = `${DSH_ENV_PREFIX}SHELL`;
 const DSH_SESSION_ID_KEY = `${DSH_ENV_PREFIX}SESSION_ID`;
-const DSH_SESSION_JSONL_KEY = `${DSH_ENV_PREFIX}SESSION_JSONL`;
+const DSH_PROFILE_KEY = `${DSH_ENV_PREFIX}PROFILE`;
+const DSH_PROFILE_DIR_KEY = `${DSH_ENV_PREFIX}PROFILE_DIR`;
 const RESERVED_BASH_ENV_KEYS = new Set([
     DSH_HOME_ENV,
     DSH_SHELL_KEY,
     DSH_SESSION_ID_KEY,
+    DSH_PROFILE_KEY,
+    DSH_PROFILE_DIR_KEY,
 ]);
 const BASH_ENV_KEY_SUFFIX = /^[A-Z][A-Z0-9_]*$/;
 /**
@@ -102,6 +105,11 @@ export class ShellEnvRegistry extends Service {
         if (execution.agent !== undefined) {
             values[DSH_SESSION_ID_KEY] = execution.agent.session.header.id;
         }
+        const profile = this.ctx.get('profileContext');
+        if (profile !== undefined) {
+            values[DSH_PROFILE_KEY] = profile.name;
+            values[DSH_PROFILE_DIR_KEY] = profile.dir;
+        }
         for (const contributor of [...this.contributors.values()].sort((left, right) => left.name.localeCompare(right.name))) {
             const resolved = contributor.resolve(execution);
             for (const [rawKey, value] of Object.entries(resolved)) {
@@ -134,27 +142,11 @@ export class ShellEnvRegistry extends Service {
     }
 }
 /**
- * Load the shell-env plugin: register the `ctx.shellEnv` service and the
- * shell-agnostic persistence contributor (`DSH_SESSION_JSONL`).
+ * Load the shell-env plugin: register the `ctx.shellEnv` registry service.
  * @param ctx - Cordis context that owns the service and registrations.
  * @param config - home-directory configuration for the built-in variables.
  */
 export function apply(ctx, config = {}) {
-    const registry = new ShellEnvRegistry(ctx, config);
-    registry.register({
-        name: 'session-persistence',
-        variables: {
-            [DSH_SESSION_JSONL_KEY]: {
-                description: 'Absolute target path of the current session JSONL when the active persistence backend provides one.',
-            },
-        },
-        resolve(execution) {
-            const agent = execution.agent;
-            if (agent === undefined)
-                return {};
-            const location = ctx.get('sessionPersistence')?.locate(agent.session.header);
-            return location?.kind === 'jsonl' ? { [DSH_SESSION_JSONL_KEY]: location.path } : {};
-        },
-    });
+    new ShellEnvRegistry(ctx, config);
 }
 //# sourceMappingURL=index.js.map

@@ -5,8 +5,8 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * control.
  */
 import { useEffect, useState } from 'react';
-import { IconChevronDownOutline14, Menu, RiskConfirmation, } from '@deepseek-ai/dsh-client-ui-primitives';
-import { FULL_ACCESS_PRESET } from "./presentation.js";
+import { IconChevronDownOutlineRegular, Menu, RiskConfirmation, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { displayPermissionPreset, FULL_ACCESS_PRESET } from "./presentation.js";
 import css from './PermissionRow.module.css';
 /**
  * Render the new-session Permission default selector.
@@ -32,10 +32,10 @@ export function PermissionRow({ load, select, usePermission, t }) {
         return null;
     const selected = state.options.find(option => option.id === state.currentValue);
     const busy = state.status === 'loading' || state.status === 'saving' || confirmingFullAccess;
-    const label = selected?.label
-        ?? (busy ? t('loading') : t('unavailable'));
+    const optionLabel = (option) => displayPermissionPreset(option.id, option.label, t);
+    const label = selected !== undefined ? optionLabel(selected) : (busy ? t('loading') : t('unavailable'));
     const description = state.error ?? t('description');
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: css.row, children: [_jsxs("div", { className: css.rowText, children: [_jsx("div", { className: css.title, children: t('title') }), _jsx("div", { className: css.desc, role: state.error === null ? undefined : 'alert', children: description })] }), _jsx(Menu, { open: open, onClose: () => { setOpen(false); }, items: state.options.map(option => ({ id: option.id, label: option.label })), selectedId: state.currentValue, onSelect: (id) => {
+    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: css.row, children: [_jsxs("div", { className: css.rowText, children: [_jsx("div", { className: css.title, children: t('title') }), _jsx("div", { className: css.desc, role: state.error === null ? undefined : 'alert', children: description })] }), _jsx(Menu, { open: open, onClose: () => { setOpen(false); }, items: state.options.map(option => ({ id: option.id, label: optionLabel(option) })), selectedId: state.currentValue, onSelect: (id) => {
                             setOpen(false);
                             if (id === state.currentValue)
                                 return;
@@ -45,7 +45,7 @@ export function PermissionRow({ load, select, usePermission, t }) {
                                 return;
                             }
                             void select(id);
-                        }, align: "end", portal: true, anchor: (_jsxs("button", { type: "button", className: css.selector, "aria-haspopup": "menu", "aria-expanded": open, disabled: busy || !state.writable || state.options.length === 0, onClick: () => { setOpen(value => !value); }, children: [label, _jsx(IconChevronDownOutline14, { className: css.chevron })] })) })] }), _jsx(RiskConfirmation, { open: confirmingFullAccess, title: t('confirm.title'), description: t('confirm.description'), acknowledgeLabel: t('confirm.acknowledge'), cancelLabel: t('confirm.cancel'), closeLabel: t('close'), confirmLabel: t('confirm.enable'), acknowledged: acknowledged, disabled: !state.writable || state.status === 'saving', onAcknowledgedChange: setAcknowledged, onCancel: () => {
+                        }, align: "end", portal: true, anchor: (_jsxs("button", { type: "button", className: css.selector, "aria-haspopup": "menu", "aria-expanded": open, disabled: busy || !state.writable || state.options.length === 0, onClick: () => { setOpen(value => !value); }, children: [label, _jsx(IconChevronDownOutlineRegular, { className: css.chevron })] })) })] }), _jsx(RiskConfirmation, { open: confirmingFullAccess, title: t('confirm.title'), description: t('confirm.description'), acknowledgeLabel: t('confirm.acknowledge'), cancelLabel: t('confirm.cancel'), closeLabel: t('close'), confirmLabel: t('confirm.enable'), acknowledged: acknowledged, disabled: !state.writable || state.status === 'saving', onAcknowledgedChange: setAcknowledged, onCancel: () => {
                     setAcknowledged(false);
                     setConfirmingFullAccess(false);
                 }, onConfirm: () => {

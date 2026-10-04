@@ -145,7 +145,7 @@ export declare class LocalCredentialProvider extends CredentialProvider {
     deleteRecord(key: CredentialKey): Promise<void>;
     /** Queue one exclusive document operation behind every earlier one. */
     private enqueue;
-    /** Queue a reload; only an invariant violation escaping the fan-out can reject it. */
+    /** Queue a reload; `refresh()` contains its own failures, so the queued task never rejects. */
     private queueRefresh;
     /** Queue one line edit; entry checks reject early, the queue re-judges them at run time. */
     private write;
@@ -179,8 +179,7 @@ export declare class LocalCredentialProvider extends CredentialProvider {
      * Re-read the document after a watcher event. Unchanged content (including
      * this provider's own writes) is a no-op; an unreadable document keeps the
      * last good snapshot and warns — a live hot-reload must never take the
-     * process down. An invariant violation escaping the fan-out is not a reload
-     * failure and propagates to the queue's error surface.
+     * process down.
      */
     private refresh;
     /**

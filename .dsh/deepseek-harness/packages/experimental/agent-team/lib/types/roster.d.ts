@@ -1,10 +1,10 @@
 /** Team membership, continuable-child provisioning, and roster-owned teardown. */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { SessionId } from '@deepseek-ai/dsh-session';
-import type { TeamFoldState } from './fold.ts';
+import type { SessionId } from '@deepseek-ai/dsh-session';
 import type { TeamJournal } from './journal.ts';
 import type { TeamRuntimeLifecycle } from './lifecycle.ts';
+import type { TeamState } from './projection.ts';
 import { TeamId } from './types.ts';
 import type { SpawnTeammateRequest, SpawnTeammateResult, TeamMemberView } from './types.ts';
 /** Caller identity inside one implicit Team. */
@@ -17,11 +17,11 @@ export interface TeamMembership {
 /**
  * Resolve one active Team member by model-facing name, including the Lead pseudo-row.
  * @param root - exact live Team Lead.
- * @param state - current Team fold.
+ * @param state - current Team state.
  * @param rawName - candidate member name.
  * @returns resolved durable id and normalized name.
  */
-export declare function resolveActiveMember(root: Agent, state: TeamFoldState, rawName: string): {
+export declare function resolveActiveMember(root: Agent, state: TeamState, rawName: string): {
     id: SessionId;
     name: string;
 };
@@ -82,7 +82,7 @@ export declare class TeamRoster {
      * @returns the target status sampled before cancellation.
      */
     interrupt(caller: Agent, targetName: string): {
-        previousStatus: 'running' | 'idle' | 'inactive';
+        previousStatus: 'running' | 'inactive';
     };
     /**
      * Group exact live roster children by their current Lead for runtime teardown.

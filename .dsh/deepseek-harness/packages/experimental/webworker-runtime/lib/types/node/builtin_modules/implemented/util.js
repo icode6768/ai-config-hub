@@ -80,7 +80,7 @@ export function format(template, ...args) {
     return rest.length === 0 ? substituted : `${substituted} ${rest.map(value => inspect(value)).join(' ')}`;
 }
 /**
- * Structural deep equality, as `isDeepStrictEqual` defines it for plain data.
+ * Structural deep equality over own enumerable properties, as `isDeepStrictEqual` defines it for plain data.
  * @param left - first value.
  * @param right - second value.
  * @returns true when both sides are structurally identical.
@@ -100,7 +100,7 @@ export function isDeepStrictEqual(left, right) {
     const rightKeys = Object.keys(right);
     if (leftKeys.length !== rightKeys.length)
         return false;
-    return leftKeys.every(key => key in right
+    return leftKeys.every(key => Object.hasOwn(right, key)
         && isDeepStrictEqual(left[key], right[key]));
     /* jscpd:ignore-end */
 }

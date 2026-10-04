@@ -1,4 +1,5 @@
 import { Service } from "@deepseek-ai/cordis";
+import { brandString } from "@deepseek-ai/dsh-brand";
 //#region lib/types/index.js
 /**
 * Service Definition for the credential-reference capability seam (`ctx.credentials`). Settings and composition files carry
@@ -19,7 +20,7 @@ const KEY_SEGMENT_PATTERN = /^[a-z][a-z0-9-]*$/;
 */
 function credentialRef(value) {
 	if (!isCredentialRefName(value)) throw new TypeError(`credential ref "${value}" must match ${String(REF_PATTERN)}`);
-	return value;
+	return brandString(value);
 }
 /**
 * Whether a raw string could name a reference at all. Consumers that receive
@@ -54,7 +55,7 @@ function isCredentialKeySegment(value) {
 */
 function credentialKey(scope, id) {
 	for (const segment of [scope, id]) if (!KEY_SEGMENT_PATTERN.test(segment)) throw new TypeError(`credential key segment "${segment}" must match ${String(KEY_SEGMENT_PATTERN)}`);
-	return `${scope}/${id}`;
+	return brandString(`${scope}/${id}`);
 }
 /**
 * Brand a stored `<scope>/<id>` string as a {@link CredentialKey}. This is the
@@ -111,10 +112,7 @@ var CredentialProvider = class extends Service {
 	/**
 	* Fan `credentials/reference-updated` out with contained listener failures: every
 	* listener runs, and a sync throw or async rejection is logged without
-	* changing the committed operation's outcome — except `INVARIANT`-coded
-	* failures, which rethrow after every listener ran (the rethrow reaches the
-	* caller only from synchronous listeners, so invariant checks on this event
-	* must not be async functions). Providers call this only after the write or
+	* changing the committed operation's outcome. Providers call this only after the write or
 	* reload actually committed, so a broken observer can never make a durable
 	* change look failed.
 	* @param ref - the reference whose stored value changed.
@@ -132,7 +130,6 @@ var CredentialProvider = class extends Service {
 	}
 	/** The contained dispatch both notifications run through; see {@link notifyUpdated}. */
 	fanOut(event, subject) {
-		let invariantFailure;
 		const args = [event, subject];
 		for (const listener of this.ctx.events.dispatch("emit", args)) try {
 			const returned = listener(subject);
@@ -140,13 +137,8 @@ var CredentialProvider = class extends Service {
 				this.warnListenerFailure(event, subject, error);
 			});
 		} catch (error) {
-			if (error?.code === "INVARIANT") {
-				invariantFailure ??= error;
-				continue;
-			}
 			this.warnListenerFailure(event, subject, error);
 		}
-		if (invariantFailure !== void 0) throw invariantFailure;
 	}
 	/** Contained-listener diagnostic shared by the sync and async failure paths. */
 	warnListenerFailure(event, subject, error) {

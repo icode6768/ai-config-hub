@@ -1,27 +1,19 @@
 import { SettingsSchemaService } from "./schema.js";
-import { SettingsScopeBinder } from "./settings-scope.js";
+import { ConfigForms } from "./config-form.js";
 import { SettingsDescribeMirror } from "./settings-mirror.js";
 /**
- * Required services: the wire handle for the mirror's reads and the forwarded
- * settings invalidation the mirror refreshes on.
+ * Required services: the Remote namespace the mirror reads through and the
+ * forwarded settings invalidation it refreshes on.
  */
-export const inject = ['connection', 'remote', 'remote.settings'];
-/**
- * Provide the settings-namespace scope service over one shared describe
- * mirror, and keep that mirror fresh on the two signals that can move the
- * settings document: a document commit and a (re)connect.
- *
- * Constructing the service in this plugin's fiber keeps its traced methods
- * bound to each consuming plugin's context.
- * @param ctx - client root context.
+export const inject = ['remote', 'remote.settings'];
+/** Provide shared forms and refresh them on document changes and reconnects.
+ * @param ctx Client provider context.
  */
 export function apply(ctx) {
     const schema = new SettingsSchemaService(ctx);
-    const connection = ctx.get('connection');
-    // Captured once here, where `remote.settings` is declared in this plugin's
-    // own `inject`; the binder hands the same face to every scope it binds.
-    const wire = { settings: ctx.remote.settings };
-    const mirror = new SettingsDescribeMirror(wire, connection.isLoopback ? 'host' : 'memory');
+    // Every form uses the persistence mode resolved from the connected Host.
+    const persistence = ctx.remote.$host.isLoopback ? 'host' : 'memory';
+    const mirror = new SettingsDescribeMirror(ctx, persistence);
     ctx.effect(() => {
         const disposers = [
             ctx.remote.$on('settings/document-updated', () => { void mirror.load(); }),
@@ -35,6 +27,6 @@ export function apply(ctx) {
         return () => { for (const dispose of disposers)
             dispose(); };
     }, 'ui-settings: describe mirror invalidations');
-    new SettingsScopeBinder(ctx, { mirror, schema, wire });
+    new ConfigForms(ctx, { mirror, schema, persistence });
 }
 //# sourceMappingURL=index.js.map

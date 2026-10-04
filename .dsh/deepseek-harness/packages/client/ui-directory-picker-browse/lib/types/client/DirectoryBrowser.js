@@ -37,7 +37,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { Button, IconCheckOutline16, IconChevronRightOutline14, IconEditOutline16, IconFolderClose16, IconFolderOpen16, IconPlusOutline16, Modal, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconCheckOutlineRegular, IconChevronRightOutlineRegular, IconEditOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconPlusOutlineRegular, Modal, } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './DirectoryBrowser.module.css';
 /** Failure text from the injected directory operation. */
 function failureText(error) {
@@ -179,8 +179,8 @@ function LevelColumn({ entries, selectedPath, busy, onPick, showHidden, filterPr
                     // this very column, so focusing the clicked node here would
                     // still fall to body.
                     onClick: () => { onPick(entry); }, children: [selected
-                            ? _jsx(IconFolderOpen16, { size: 16, className: css.rowIconSelected })
-                            : _jsx(IconFolderClose16, { size: 16, className: css.rowIcon }), _jsx("span", { className: css.rowName, children: entry.name }), _jsx(IconChevronRightOutline14, { size: 12, className: css.rowChevron })] }) }, entry.path));
+                            ? _jsx(IconFolderOpenRegular, { size: 16, className: css.rowIconSelected })
+                            : _jsx(IconFolderCloseRegular, { size: 16, className: css.rowIcon }), _jsx("span", { className: css.rowName, children: entry.name }), _jsx(IconChevronRightOutlineRegular, { size: 12, className: css.rowChevron })] }) }, entry.path));
         }) }));
 }
 /**
@@ -742,7 +742,7 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
                     refocusEditZone.current = false;
                     cancelPathEdit();
                 }, children: [_jsxs("div", { className: css.header, children: [_jsx("h2", { className: css.title, children: t('browser.title') }), _jsx("div", { className: css.crumbBar, children: pathDraft === null
-                                    ? (_jsxs(_Fragment, { children: [_jsx("span", { className: css.crumbTrail, role: "navigation", ref: crumbTrailRef, children: crumbs.map((crumb, index) => (_jsxs("span", { className: css.crumbSeat, children: [index > 0 && _jsx(IconChevronRightOutline14, { size: 12, className: css.crumbChevron }), _jsx("button", { type: "button", className: css.crumb, disabled: parentInert, onClick: () => { navigate(crumb.path); }, children: crumb.name })] }, crumb.path))) }), _jsx("button", { type: "button", className: css.crumbEditZone, "aria-label": t('browser.editPath'), title: t('browser.editPath'), 
+                                    ? (_jsxs(_Fragment, { children: [_jsx("span", { className: css.crumbTrail, role: "navigation", ref: crumbTrailRef, children: crumbs.map((crumb, index) => (_jsxs("span", { className: css.crumbSeat, children: [index > 0 && _jsx(IconChevronRightOutlineRegular, { size: 12, className: css.crumbChevron }), _jsx("button", { type: "button", className: css.crumb, disabled: parentInert, onClick: () => { navigate(crumb.path); }, children: crumb.name })] }, crumb.path))) }), _jsx("button", { type: "button", className: css.crumbEditZone, "aria-label": t('browser.editPath'), title: t('browser.editPath'), 
                                                 // Stays available with no listed level: when the home
                                                 // listing itself fails, typing an absolute path is the one
                                                 // remaining way forward.
@@ -764,7 +764,7 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
                                                     const base = selected?.path ?? parent.path;
                                                     const sep = separatorOf(parent);
                                                     setPathDraft(base.endsWith(sep) ? base : `${base}${sep}`);
-                                                }, children: _jsx(IconEditOutline16, { size: 14, className: css.crumbEditGlyph }) })] }))
+                                                }, children: _jsx(IconEditOutlineRegular, { size: 14, className: css.crumbEditGlyph }) })] }))
                                     : (_jsx("input", { className: css.pathInput, value: pathDraft, "aria-label": t('browser.editPath'), autoFocus: true, ref: pathInputRef, disabled: parentInert, onChange: (event) => {
                                             // Editing the draft supersedes any in-flight navigation:
                                             // its completion must neither clear the newer text nor
@@ -800,7 +800,7 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
                                             }
                                         } })) })] }), _jsxs("div", { className: css.content, children: [_jsxs("div", { className: css.millerRow, ref: millerRowRef, children: [parent !== null && (_jsx(LevelColumn, { entries: parent.entries, selectedPath: selected?.path ?? null, busy: parentInert, onPick: select, showHidden: showHidden, filterPrefix: child === null ? typedPrefix : null, pathEditing: draftPending })), twoPane && _jsx("span", { className: css.divider }), twoPane && child !== null && (_jsx(LevelColumn, { entries: child.entries, selectedPath: null, busy: parentInert, onPick: advance, showHidden: showHidden, filterPrefix: typedPrefix, pathEditing: draftPending }))] }), loading && slowScan
                                 && _jsx("div", { className: clsx(css.status, css.loadingFloat), role: "status", children: t('browser.loading') }), (parent?.truncated === true || child?.truncated === true)
-                                && _jsx("div", { className: css.status, role: "status", children: t('browser.truncated') }), error !== null && _jsx("div", { className: css.error, role: "alert", children: error })] }), _jsxs("div", { className: css.footerBar, children: [_jsx(Button, { variant: "outline", icon: _jsx(IconPlusOutline16, { size: 14 }), disabled: parent === null || loading || parentInert || draftPending, onClick: () => {
+                                && _jsx("div", { className: css.status, role: "status", children: t('browser.truncated') }), error !== null && _jsx("div", { className: css.error, role: "alert", children: error })] }), _jsxs("div", { className: css.footerBar, children: [_jsx(Button, { variant: "outline", icon: _jsx(IconPlusOutlineRegular, { size: 14 }), disabled: parent === null || loading || parentInert || draftPending, onClick: () => {
                                     setFolderDraft('');
                                     setCreateError(null);
                                 }, children: t('browser.newFolder') }), _jsxs("button", { type: "button", className: clsx(css.showHiddenToggle, showHidden && css.showHiddenToggleActive), "aria-pressed": showHidden, disabled: parentInert, 
@@ -808,11 +808,11 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
                                 // this filter interleave): while editing, don't steal focus, so
                                 // toggling never blur-cancels a draft mid-thought. Outside editing
                                 // it keeps native focus behavior.
-                                onMouseDown: draftPending ? (event) => { event.preventDefault(); } : undefined, onClick: () => { setShowHidden(prev => !prev); }, children: [t('browser.showHidden'), showHidden && _jsx(IconCheckOutline16, { size: 14 })] }), _jsx("span", { className: css.footerGap }), _jsx(Button, { variant: "outline", className: clsx(css.footerAction), disabled: parentInert, onClick: onClose, children: t('browser.cancel') }), _jsx(Button, { variant: "primary", className: clsx(css.footerAction), disabled: targetPath === null || loading || parentInert || draftPending, 
+                                onMouseDown: draftPending ? (event) => { event.preventDefault(); } : undefined, onClick: () => { setShowHidden(prev => !prev); }, children: [t('browser.showHidden'), showHidden && _jsx(IconCheckOutlineRegular, { size: 14 })] }), _jsx("span", { className: css.footerGap }), _jsx(Button, { variant: "outline", className: clsx(css.footerAction), disabled: parentInert, onClick: onClose, children: t('browser.cancel') }), _jsx(Button, { variant: "primary", className: clsx(css.footerAction), disabled: targetPath === null || loading || parentInert || draftPending, 
                                 /* v8 ignore next -- narrowing guard: Open disables while no target exists. */
                                 onClick: () => { if (targetPath !== null)
                                     onOpen(targetPath); }, children: t('browser.open') })] })] }), _jsx(Modal, { open: folderDraft !== null, onClose: () => { if (!creatingFolder)
-                    setFolderDraft(null); }, title: t('browser.newFolder'), className: clsx(css.createDialog), headless: true, children: _jsxs("div", { className: css.createBody, children: [_jsx("h3", { className: css.createTitle, children: t('browser.newFolder') }), _jsx("p", { className: css.createIn, children: t('browser.createIn', { name: targetName }) }), _jsx("input", { className: css.createInput, value: folderDraft ?? '', "aria-label": t('browser.folderName'), placeholder: t('browser.untitledFolder'), autoFocus: true, disabled: creatingFolder, onChange: (event) => { setFolderDraft(event.target.value); }, ...compositionGuard, onKeyDown: (event) => {
+                    setFolderDraft(null); }, title: t('browser.newFolder'), className: clsx(css.createDialog), headless: true, children: _jsxs("div", { className: css.createBody, children: [_jsx("h3", { className: css.createTitle, children: t('browser.newFolder') }), _jsx("p", { className: css.createIn, children: t('browser.createIn', { name: targetName }) }), _jsx("input", { className: css.createInput, value: folderDraft ?? '', "aria-label": t('browser.folderName'), placeholder: t('browser.untitledFolder'), "data-modal-autofocus": true, disabled: creatingFolder, onChange: (event) => { setFolderDraft(event.target.value); }, ...compositionGuard, onKeyDown: (event) => {
                                 if (event.key === 'Enter' && !composingRef.current) {
                                     event.preventDefault();
                                     confirmCreate();

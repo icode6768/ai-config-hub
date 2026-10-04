@@ -9,7 +9,7 @@ export declare const DSH_ROOT = "/dsh";
 export declare const DSH_HOME = "/dsh/home";
 /** Flat, symlink-free package tree resolved by the worker module loader. */
 export declare const DSH_NODE_MODULES = "/dsh/node_modules";
-/** Directory holding the composed cordis.yml and the agent-preset tree. */
+/** Directory holding the composed cordis.yml. */
 export declare const DSH_CONFIG = "/dsh/config";
 /** Default (empty) workspace directory. */
 export declare const DSH_WORKSPACE = "/dsh/workspace";

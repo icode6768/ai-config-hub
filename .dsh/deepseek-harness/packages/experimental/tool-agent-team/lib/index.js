@@ -1,6 +1,5 @@
 import z from "@deepseek-ai/schemastery";
 import { TeamTaskId } from "@deepseek-ai/dsh-experimental-agent-team";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 //#region lib/types/index.js
 /** Scoped model-facing tools for the opt-in Agent Teams runtime. */
@@ -25,11 +24,11 @@ The Team Lead and all teammates share the same working directory and filesystem.
 
 Prefer read/edit/write for file changes. If a file operation returns FS_STALE_VERSION, read the current file, rebase your intended change onto the new content, and retry. Bash, formatters, code generators, and scripts are not fully protected by the filesystem version guard; coordinate them explicitly and have the Lead review the final diff and run tests.
 
-Use send_message for quiet information that must not start an idle teammate. Use followup_task when the target should run another turn. A delivered peer item starts with its stable message id and sender name. A successful send is already durable even when its result says queued; do not resend it. Shared-task workflow is list, get, claim with the current revision, perform the work, then complete. Task readiness never starts an owner. Before wait_agent, use list_agents and make sure another required member is running or provisioning; use followup_task first when the required member is inactive. wait_agent observes only changes after that call starts, never wakes a member, and returns noProgress immediately when no other member can produce a change. Re-list after wakeup or timeout. The Lead must wait for required teammates before giving the final answer.`;
+Use the target returned by spawn_teammate or list_agents for send_message and interrupt_agent, or as owner when assigning or filtering shared tasks. send_message steers a running target at its nearest step boundary and starts or resumes an inactive target. inactive means no turn is executing; it does not describe task completion, success, failure, or waiting for other agents. provisioning means member creation is in progress; failed means member creation failed. A delivered peer item starts with its stable message id and sender name. A successful send is already durable even when its result says queued; do not resend it. Shared-task workflow is list, get, claim with the current revision, perform the work, then complete. Task readiness never starts an owner. Before wait_agent, use list_agents and make sure another required member is running or provisioning; use send_message first when the required member is inactive. wait_agent observes only changes after that call starts, never wakes a member, and returns noProgress immediately when no other member can produce a change. Re-list after wakeup or timeout. The Lead must wait for required teammates before giving the final answer.`;
 const ACTIVE_WAIT_STATUSES = new Set(["running", "provisioning"]);
-const NO_ACTIVE_PEER_MESSAGE = "No other Team member is running or provisioning. wait_agent cannot make progress or wake inactive teammates. Re-list with list_agents and team_task_list, then use followup_task to wake each required inactive teammate before waiting again.";
+const NO_ACTIVE_PEER_MESSAGE = "No other Team member is running or provisioning. wait_agent cannot make progress or wake inactive teammates. Re-list with list_agents and team_task_list, then use send_message to wake each required inactive teammate before waiting again.";
 /**
-* One roster row, matching `TeamMemberView`. The Lead pseudo-row omits the
+* One model-facing roster row. The Lead pseudo-row omits the
 * teammate-only provisioning fields, so only identity, role, status, and
 * diagnostics are required.
 */
@@ -37,11 +36,7 @@ const MEMBER_VIEW_SCHEMA = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
-		id: {
-			type: "string",
-			required: true
-		},
-		name: {
+		target: {
 			type: "string",
 			required: true
 		},
@@ -55,7 +50,6 @@ const MEMBER_VIEW_SCHEMA = {
 			required: true,
 			enum: [
 				"running",
-				"idle",
 				"inactive",
 				"provisioning",
 				"failed"
@@ -75,6 +69,14 @@ const MEMBER_VIEW_SCHEMA = {
 		}
 	}
 };
+/** Expose the member name as its model-facing target. */
+function modelMember(member) {
+	const { id: _id, name, ...details } = member;
+	return {
+		target: name,
+		...details
+	};
+}
 /** One shared task, matching the public `TeamTaskView`. */
 const TASK_VIEW_SCHEMA = {
 	type: "object",
@@ -187,11 +189,7 @@ const INTERRUPT_VALUE_SCHEMA = {
 	properties: { previousStatus: {
 		type: "string",
 		required: true,
-		enum: [
-			"running",
-			"idle",
-			"inactive"
-		]
+		enum: ["running", "inactive"]
 	} }
 };
 const TASK_LIST_VALUE_SCHEMA = {
@@ -238,11 +236,8 @@ function install(agent, ctx, config) {
 	try {
 		register(scoped.systemPrompt.section({
 			name: "team:policy",
-			order: FIRST_PARTY_SECTION_ORDER.TEAM_POLICY,
-			text: () => {
-				const membership = ctx.agentTeams.membership(agent);
-				return `${POLICY}\n\nYour Team role is ${membership.role}; your Team name is ${membership.name}; Team id is ${membership.id}.`;
-			}
+			order: scoped.systemPrompt.getSectionOrder("TEAM_POLICY"),
+			text: POLICY
 		}));
 		register(scoped.tools.register(defineTool({
 			name: "spawn_teammate",
@@ -273,58 +268,64 @@ function install(agent, ctx, config) {
 			async execute(args, exec) {
 				const agent = callingAgent(exec.agent, "spawn_teammate");
 				const context = args.context ?? "fresh";
-				return await ctx.agentTeams.spawnTeammate(agent, {
+				return { member: modelMember((await ctx.agentTeams.spawnTeammate(agent, {
 					name: args.name,
 					description: args.description,
 					prompt: [{
+						type: "text",
+						text: `<system-reminder>
+You are teammate "${args.name.trim()}".
+Your Team Lead is named "lead".
+Use list_agents({}) to find your teammates and their names.
+To message your Team Lead, use send_message({ target: "lead", message: "..." }).
+To message another teammate, use send_message({ target: "<teammate name>", message: "..." }).
+</system-reminder>
+
+`
+					}, {
 						type: "text",
 						text: args.prompt
 					}],
 					context,
 					provider: context === "fork" ? config.forkProvider : config.freshProvider,
 					signal: exec.signal
+				})).member) };
+			}
+		})));
+		register(scoped.tools.register(defineTool({
+			name: "send_message",
+			description: "Send one durable message to another Team member. A running target receives it at the nearest step boundary; an inactive target starts or resumes a turn.",
+			parameters: {
+				target: {
+					type: "string",
+					required: true,
+					description: "Member target returned by spawn_teammate or list_agents, including lead."
+				},
+				message: {
+					type: "string",
+					required: true,
+					description: "Self-contained message for the target."
+				}
+			},
+			output: jsonOutput(SEND_VALUE_SCHEMA),
+			execute(args, exec) {
+				return ctx.agentTeams.sendMessage(callingAgent(exec.agent, "send_message"), {
+					target: args.target,
+					content: [{
+						type: "text",
+						text: args.message
+					}],
+					signal: exec.signal
 				});
 			}
 		})));
-		const messageTool = (toolName, delivery) => {
-			register(scoped.tools.register(defineTool({
-				name: toolName,
-				description: delivery === "quiet" ? "Send durable information to another Team member without starting an idle member." : "Send a durable follow-up task to another Team member and start a turn when needed.",
-				parameters: {
-					target: {
-						type: "string",
-						required: true,
-						description: "Team member name, or lead."
-					},
-					message: {
-						type: "string",
-						required: true,
-						description: "Self-contained message for the target."
-					}
-				},
-				output: jsonOutput(SEND_VALUE_SCHEMA),
-				execute(args, exec) {
-					return ctx.agentTeams.sendMessage(callingAgent(exec.agent, toolName), {
-						target: args.target,
-						content: [{
-							type: "text",
-							text: args.message
-						}],
-						delivery,
-						signal: exec.signal
-					});
-				}
-			})));
-		};
-		messageTool("send_message", "quiet");
-		messageTool("followup_task", "wakeup");
 		register(scoped.tools.register(defineTool({
 			name: "list_agents",
-			description: "List the Lead and every durable teammate with current runtime status.",
+			description: "List the Lead and every durable teammate with an addressable target and current availability. inactive means no turn is executing, not a task result. provisioning and failed describe member creation.",
 			parameters: {},
 			output: jsonOutput(MEMBER_LIST_VALUE_SCHEMA),
-			async execute(_args, exec) {
-				return Promise.resolve(ctx.agentTeams.listMembers(callingAgent(exec.agent, "list_agents")));
+			execute(_args, exec) {
+				return Promise.resolve(ctx.agentTeams.listMembers(callingAgent(exec.agent, "list_agents")).map(modelMember));
 			}
 		})));
 		register(scoped.tools.register(defineTool({
@@ -355,10 +356,10 @@ function install(agent, ctx, config) {
 			parameters: { target: {
 				type: "string",
 				required: true,
-				description: "Teammate name."
+				description: "Teammate target returned by spawn_teammate or list_agents."
 			} },
 			output: jsonOutput(INTERRUPT_VALUE_SCHEMA),
-			async execute(args, exec) {
+			execute(args, exec) {
 				return Promise.resolve(ctx.agentTeams.interrupt(callingAgent(exec.agent, "interrupt_agent"), args.target));
 			}
 		})));
@@ -412,7 +413,7 @@ function install(agent, ctx, config) {
 				},
 				owner: {
 					type: "string",
-					description: "Optional member-name filter; use unowned for tasks without an owner."
+					description: "Optional member target from spawn_teammate or list_agents, matching ownerName; use unowned for tasks without an owner."
 				},
 				ready: {
 					type: "boolean",
@@ -503,7 +504,7 @@ function install(agent, ctx, config) {
 				},
 				owner: {
 					type: "string",
-					description: "Member name for Lead-only reassign; omit to unassign."
+					description: "Member target from spawn_teammate or list_agents for Lead-only reassign; omit to unassign."
 				}
 			},
 			output: jsonOutput(TASK_VIEW_SCHEMA),

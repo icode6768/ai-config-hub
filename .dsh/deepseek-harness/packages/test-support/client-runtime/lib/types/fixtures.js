@@ -8,7 +8,6 @@ import { EMPTY_CHAT_SNAPSHOT, } from '@deepseek-ai/dsh-client-ui-chat/client';
 export function sessionSnapshot(sessionId) {
     return {
         sessionId,
-        queue: [],
         pendingSubmissions: [],
         running: false,
         subagent: null,
@@ -48,6 +47,7 @@ export function workspaceSnapshot() {
     return {
         items: [],
         archivedSessionIds: [],
+        pinnedSessionIds: [],
         state: 'idle',
         phase: 'ready',
         error: null,

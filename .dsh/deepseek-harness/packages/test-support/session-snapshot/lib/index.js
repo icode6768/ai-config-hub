@@ -12,7 +12,10 @@ import { pathToFileURL } from "node:url";
 import * as yaml from "js-yaml";
 import { entryListSchema } from "@deepseek-ai/cordis-plugin-include";
 import { resolveExampleLaunch } from "@deepseek-ai/dsh-loader-smoke";
-import { decodeSeqRanges, decodeStorageRecord, packChunkRuns } from "@deepseek-ai/dsh-session";
+import { clearedProxyEnv } from "@deepseek-ai/dsh-http-proxy";
+import { parseSessionFormatLogFilename, sessionFormatLogFilename } from "@deepseek-ai/dsh-session-format";
+import { SESSION_FORMAT_VERSION, decodeSeqRanges } from "@deepseek-ai/dsh-session";
+import { prepareSessionSnapshotFixtureForComparison } from "@deepseek-ai/dsh-llm-replay";
 import { isSurfaceEligibleType } from "@deepseek-ai/dsh-session/surface";
 //#region lib/types/identity.js
 /** Relationship-preserving identity redaction for committed session snapshots. */
@@ -88,7 +91,10 @@ function redactSessionSnapshotIds(logs) {
 			collect(item, recordType);
 		}
 	};
-	for (const log of parsed) for (const record of log.records) collect(record, record.type);
+	for (const log of parsed) for (const record of log.records) {
+		if (record.type === "feedback/message-put" && isRecord$1(record.data) && isRecord$1(record.data.item)) claim(record.data.item.version, "id");
+		collect(record, record.type);
+	}
 	const replacements = [...tokenByValue].sort(([left], [right]) => right.length - left.length);
 	const replace = (value) => {
 		if (typeof value === "string") {
@@ -307,7 +313,7 @@ function profileArgs(profile, basePatch, selectedPatch, snapshotMode, cwd) {
 	return [
 		"--profile",
 		profile,
-		...patches.map((file, index) => materializeProfilePatch(file, cwd, materializedDir, index)).flatMap((file) => ["--patch", file])
+		...patches.map((file, index) => materializeProfilePatch(file, cwd, profile, materializedDir, index)).flatMap((file) => ["--patch", file])
 	];
 }
 /** Derive the replay-only sibling patch selected by the former app-bin swap. */
@@ -330,13 +336,13 @@ function packageDirFromPatch(source, packageName) {
 }
 /**
 * Install an authored patch's resolvable bare package into the temporary
-* profile fallback. This mirrors `dsh plugin` while retaining the bare entry
-* name and package provenance used by request metadata.
+* profile. This mirrors `dsh plugin` while retaining the bare entry
+* name and package identity used by request metadata.
 */
-function linkProfilePackage(source, cwd, packageName) {
+function linkProfilePackage(source, cwd, profile, packageName) {
 	const packageDir = packageDirFromPatch(source, packageName);
 	if (packageDir === void 0) return;
-	const link = join(cwd, ".dsh", "profiles", "node_modules", packageName);
+	const link = join(cwd, ".dsh", "profiles", profile, "node_modules", packageName);
 	mkdirSync(dirname(link), { recursive: true });
 	if (existsSync(link)) {
 		if (realpathSync(link) !== packageDir) throw new Error(`snapshot profile package ${packageName} resolves to two directories`);
@@ -348,19 +354,20 @@ function linkProfilePackage(source, cwd, packageName) {
 /**
 * Copy one authored patch into the launch cwd with relative plugin names made absolute.
 * @param source - authored profile patch path.
-* @param cwd - isolated process cwd whose profile fallback receives package links.
+* @param cwd - isolated process cwd whose profile receives package links.
+* @param profile - profile whose local package lookup receives the test links.
 * @param targetDir - existing directory that owns the materialized patch.
 * @param index - stable patch ordinal used in the output filename.
 * @returns absolute materialized patch path.
 */
-function materializeProfilePatch(source, cwd, targetDir, index) {
+function materializeProfilePatch(source, cwd, profile, targetDir, index) {
 	const parsed = yaml.load(readFileSync(source, "utf8"), { schema: entryListSchema });
 	if (!Array.isArray(parsed)) throw new Error(`snapshot profile patch must be a top-level array: ${source}`);
 	const patches = parsed;
 	const baseDir = dirname(source);
 	const resolveName = (value) => {
 		const packageName = barePackageName(value);
-		if (packageName !== void 0) linkProfilePackage(source, cwd, packageName);
+		if (packageName !== void 0) linkProfilePackage(source, cwd, profile, packageName);
 		return value.startsWith("./") || value.startsWith("../") ? pathToFileURL(resolve(baseDir, value)).href : value;
 	};
 	const visitEntry = (entry) => {
@@ -396,6 +403,198 @@ function exitMarkerWithinGrace(exited) {
 /** Whether the child still lacks either OS termination marker. */
 function isRunning(child) {
 	return child.exitCode === null && child.signalCode === null;
+}
+//#endregion
+//#region lib/types/session-files.js
+/** Immutable Session-generation filenames used by recorded-session fixtures. */
+const FIXTURE_FILE = /^session(?:\.([1-9]\d*))?(?:\.v([1-9]\d*))?\.jsonl$/u;
+function nonNegativeSafeInteger(value, label) {
+	if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) throw new Error(`${label} must be a non-negative safe integer`);
+}
+/**
+* Return the canonical fixture filename for one parent/ordinal and generation.
+*
+* @param index - Parent `0` or a positive child/ordinal slot.
+* @param version - Physical format generation; `0` is omitted.
+* @returns The lowercase canonical JSONL filename.
+*/
+function sessionFixtureName(index, version) {
+	nonNegativeSafeInteger(index, "session fixture index");
+	nonNegativeSafeInteger(version, "Session format version");
+	return `session${index === 0 ? "" : `.${index}`}${version === 0 ? "" : `.v${version}`}.jsonl`;
+}
+/**
+* Name the native-writer oracle for a retained historical replay role.
+* This expected output never participates in replay generation selection.
+* @param index - Parent `0` or a positive child/ordinal slot.
+* @returns The expected-output JSONL basename.
+*/
+function writerSnapshotName(index) {
+	nonNegativeSafeInteger(index, "writer snapshot index");
+	return `writer${index === 0 ? "" : `.${index}`}.expected.jsonl`;
+}
+/**
+* Parse one canonical recorded-session fixture filename.
+*
+* @param name - Basename from a scenario directory.
+* @returns Parsed role and generation, or `undefined` for an unrelated file.
+*/
+function parseSessionFixtureName(name) {
+	const match = FIXTURE_FILE.exec(name);
+	if (match === null) {
+		if (name.startsWith("session") && name.endsWith(".jsonl")) throw new Error(`invalid session fixture name: ${name}`);
+		return;
+	}
+	const index = match[1] === void 0 ? 0 : Number(match[1]);
+	const version = match[2] === void 0 ? 0 : Number(match[2]);
+	if (!Number.isSafeInteger(index) || !Number.isSafeInteger(version)) throw new Error(`invalid session fixture name: ${name}`);
+	return {
+		index,
+		version,
+		name
+	};
+}
+/**
+* Select the highest generation for every parent/ordinal fixture role.
+* Older generations remain in the directory but do not count as extra Sessions.
+*
+* @param names - File basenames in one scenario directory.
+* @returns Parent first, followed by contiguous child/ordinal roles.
+*/
+function sessionFixtureFiles(names) {
+	const selected = /* @__PURE__ */ new Map();
+	const identities = /* @__PURE__ */ new Set();
+	for (const name of names) {
+		const fixture = parseSessionFixtureName(name);
+		if (fixture === void 0) continue;
+		const identity = `${fixture.index}/${fixture.version}`;
+		if (identities.has(identity)) throw new Error(`duplicate session fixture generation: ${name}`);
+		identities.add(identity);
+		const previous = selected.get(fixture.index);
+		if (previous === void 0 || fixture.version > previous.version) selected.set(fixture.index, fixture);
+	}
+	if (selected.get(0) === void 0) throw new Error("missing parent session fixture");
+	const ordered = [...selected.values()].sort((left, right) => left.index - right.index);
+	for (const [offset, fixture] of ordered.entries()) if (fixture.index !== offset) throw new Error(`session fixture roles must be contiguous: expected index ${offset}, found ${fixture.name}`);
+	return ordered;
+}
+/**
+* Validate and order a scenario directory's selected Session fixture filenames.
+*
+* @param names - File basenames in one scenario directory.
+* @returns Highest-generation parent and child/ordinal filenames.
+*/
+function sessionFixtureNames(names) {
+	return sessionFixtureFiles(names).map((file) => file.name);
+}
+/**
+* Read the declared physical generation from one Session JSONL header.
+*
+* @param content - Complete UTF-8 JSONL content.
+* @param label - Diagnostic filename or path.
+* @returns The declared non-negative format generation.
+*/
+function sessionHeaderVersion(content, label) {
+	const line = content.split(/\r?\n/u).find((candidate) => candidate.trim().length > 0);
+	if (line === void 0) throw new Error(`${label}: session fixture is empty`);
+	let value;
+	try {
+		value = JSON.parse(line);
+	} catch (error) {
+		throw new Error(`${label}: session header contains invalid JSON`, { cause: error });
+	}
+	if (value === null || typeof value !== "object" || Array.isArray(value) || value.type !== "session") throw new Error(`${label}: first record must be a Session header`);
+	const version = value.version;
+	if (!Number.isSafeInteger(version) || version < 0 || Object.is(version, -0)) throw new Error(`${label}: Session header version must be a non-negative safe integer`);
+	return version;
+}
+/**
+* Require one fixture's canonical filename generation to equal its header.
+*
+* @param name - Canonical fixture basename.
+* @param content - Complete UTF-8 JSONL content.
+* @returns The validated format generation.
+*/
+function assertSessionFixtureVersion(name, content) {
+	const fixture = parseSessionFixtureName(name);
+	if (fixture === void 0) throw new Error(`not a session fixture name: ${name}`);
+	const first = content.split(/\r?\n/u).find((candidate) => candidate.trim().length > 0);
+	if (first !== void 0) {
+		let projected;
+		try {
+			projected = JSON.parse(first);
+		} catch {
+			projected = void 0;
+		}
+		if (projected !== null && typeof projected === "object" && !Array.isArray(projected) && projected.type === "session" && !Object.hasOwn(projected, "version")) {
+			if (fixture.version !== 0) throw new Error(`${name}: a versionless projected Session header is format v0`);
+			return 0;
+		}
+	}
+	const headerVersion = sessionHeaderVersion(content, name);
+	if (headerVersion !== fixture.version) throw new Error(`${name}: filename declares Session format v${fixture.version}, header declares v${headerVersion}`);
+	return headerVersion;
+}
+/**
+* Return the canonical persistence basename for one generation and compression.
+*
+* @param version - Physical format generation; `0` is omitted.
+* @param compression - Backend compression mode.
+* @returns The canonical persistence basename.
+*/
+function persistedSessionFilename(version, compression = "raw") {
+	return `${sessionFormatLogFilename(version)}${compression === "zstd" ? ".zstd" : ""}`;
+}
+/**
+* Parse a canonical persistence basename from a Session's own directory.
+*
+* @param name - Candidate basename.
+* @returns Its generation and compression, or `undefined` for noise and noncanonical names.
+*/
+function parsePersistedSessionFilename(name) {
+	const compression = name.endsWith(".zstd") ? "zstd" : "raw";
+	const version = parseSessionFormatLogFilename(compression === "zstd" ? name.slice(0, -5) : name);
+	if (version === void 0) return void 0;
+	return {
+		version,
+		compression,
+		name
+	};
+}
+/**
+* Select one highest-generation persistence path per physical Session directory.
+*
+* @param paths - Relative or absolute paths beneath a sessions root.
+* @param compression - Compression selected by the snapshot composition.
+* @returns Stable path order with older generations and filesystem noise omitted.
+*/
+function latestPersistedSessionPaths(paths, compression = "raw") {
+	const selected = /* @__PURE__ */ new Map();
+	for (const path of paths) {
+		const parsed = parsePersistedSessionFilename(basename(path));
+		if (parsed === void 0 || parsed.compression !== compression) continue;
+		const directory = dirname(path);
+		const previous = selected.get(directory);
+		if (previous === void 0 || parsed.version > previous.version) selected.set(directory, {
+			path,
+			version: parsed.version
+		});
+	}
+	return [...selected.values()].map((entry) => entry.path).sort();
+}
+/**
+* Require one persistence basename's generation to equal its Session header.
+*
+* @param name - Canonical persistence basename.
+* @param content - Complete uncompressed UTF-8 JSONL content.
+* @returns The validated generation.
+*/
+function assertPersistedSessionVersion(name, content) {
+	const persisted = parsePersistedSessionFilename(name);
+	if (persisted === void 0) throw new Error(`not a canonical Session persistence filename: ${name}`);
+	const headerVersion = sessionHeaderVersion(content, name);
+	if (headerVersion !== persisted.version) throw new Error(`${name}: filename declares Session format v${persisted.version}, header declares v${headerVersion}`);
+	return headerVersion;
 }
 //#endregion
 //#region lib/types/workspace.js
@@ -473,14 +672,14 @@ function captureExpectedWorkspaceSnapshot(root) {
 * shutdown flush. The pure normalizers in ./normalize.ts turn the captured
 * stdout frames and the session-log events into stable, snapshot-able text.
 *
-* See .agents/notes/implemented/testing/2026-06-19-acp-snapshot-tests.md.
+* See packages/test-support/session-snapshot/README.md.
 *
 * @module @deepseek-ai/dsh-session-snapshot/harness
 */
 const DEFAULT_WAIT_TIMEOUT_MS = 1e4;
 const WAIT_POLL_INTERVAL_MS = 10;
 /**
-* Derive one stable, fixed-length spill root owned by this scenario.
+* Derive the stable, fixed-length logical spill prefix; never allocate files here.
 * Windows uses a two-character-shorter root because drive resolution adds its drive prefix.
 * @param fixtureFile - The scenario fixture whose parent directory provides the stable identity.
 * @param platform - the host platform, injectable for unit coverage.
@@ -504,11 +703,12 @@ async function runScenario(input, opts) {
 	const cwd = await mkdtemp(join(opts.workspaceParent ?? tmpdir(), "acp-snap-cwd-"));
 	const cwdAliases = [...new Set([realpathSync(cwd), realpathSync.native(cwd)])];
 	const sessionsRoot = await mkdtemp(join(tmpdir(), "acp-snap-sessions-"));
-	const spillRoot = snapshotSpillRoot(opts.fixtureFile);
+	let spillRoot;
 	let launched;
 	let sessionId;
 	let sessionLogs = [];
 	const outcome = await (async () => {
+		spillRoot = await mkdtemp(join(tmpdir(), "acp-snap-spill-"));
 		if (opts.workspaceDir !== void 0 && existsSync(opts.workspaceDir)) await cp(opts.workspaceDir, cwd, { recursive: true });
 		await opts.prepareWorkspace?.(cwd);
 		const initialWorkspace = await captureWorkspaceSnapshot(cwd, { ignoredRootEntries: [
@@ -519,10 +719,12 @@ async function runScenario(input, opts) {
 		] });
 		const env = {
 			...opts.env,
+			...clearedProxyEnv(),
 			DSH_SNAPSHOT: opts.mode,
 			DSH_SNAPSHOT_FILE: opts.fixtureFile,
 			DSH_SNAPSHOT_SESSIONS_ROOT: sessionsRoot,
 			DSH_SNAPSHOT_SPILL_ROOT: spillRoot,
+			DSH_SNAPSHOT_SPILL_LOCATOR_ROOT: snapshotSpillRoot(opts.fixtureFile),
 			DSH_HOME: join(cwd, ".dsh"),
 			DSH_AGENTS_HOME: join(cwd, ".agents"),
 			...opts.overrideFile !== void 0 ? { DSH_SNAPSHOT_OVERRIDE: opts.overrideFile } : {},
@@ -600,7 +802,8 @@ async function runScenario(input, opts) {
 		recursive: true,
 		force: true
 	}));
-	await cleanup(() => rm(spillRoot, {
+	const allocatedSpillRoot = spillRoot;
+	if (allocatedSpillRoot !== void 0) await cleanup(() => rm(allocatedSpillRoot, {
 		recursive: true,
 		force: true
 	}));
@@ -781,13 +984,18 @@ async function waitForPersistedTurnStart(root, sessionId, timeoutMs = DEFAULT_WA
 * keep subprocess disposal from changing an `aborted` turn into `disposed`.
 */
 async function waitForPersistedTurnEnd(root, sessionId, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS) {
-	await vi.waitFor(async () => {
-		const log = (await harvestSessionLogs(root)).find((candidate) => candidate.id === sessionId);
-		if (log === void 0 || !latestTurnIsClosed(log.content)) throw new Error(`snapshot-harness: session "${sessionId}" did not persist turn/end within ${timeoutMs}ms`);
-	}, {
-		interval: WAIT_POLL_INTERVAL_MS,
-		timeout: timeoutMs
-	});
+	const message = `snapshot-harness: session "${sessionId}" did not persist turn/end within ${timeoutMs}ms`;
+	try {
+		await vi.waitFor(async () => {
+			const log = (await harvestSessionLogs(root)).find((candidate) => candidate.id === sessionId);
+			if (log === void 0 || !latestTurnIsClosed(log.content)) throw new Error(message);
+		}, {
+			interval: WAIT_POLL_INTERVAL_MS,
+			timeout: timeoutMs
+		});
+	} catch (cause) {
+		throw new Error(message, { cause });
+	}
 }
 /**
 * Wait until the Nth harvested child Session closes a model work turn.
@@ -798,13 +1006,18 @@ async function waitForPersistedTurnEnd(root, sessionId, timeoutMs = DEFAULT_WAIT
 * own model work reached a closed turn.
 */
 async function waitForPersistedChildTurnEnd(root, child, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS, minimumTurn = 1) {
-	await vi.waitFor(async () => {
-		const log = (await harvestSessionLogs(root))[child];
-		if (log === void 0 || !latestTurnIsClosed(log.content) || !hasRequestHeaderAfterDescriptor(log.content) || !hasClosedTurn(log.content, minimumTurn)) throw new Error(`snapshot-harness: subagent child #${child} did not persist closed turn ${minimumTurn} within ${timeoutMs}ms`);
-	}, {
-		interval: WAIT_POLL_INTERVAL_MS,
-		timeout: timeoutMs
-	});
+	const message = `snapshot-harness: subagent child #${child} did not persist closed turn ${minimumTurn} within ${timeoutMs}ms`;
+	try {
+		await vi.waitFor(async () => {
+			const log = (await harvestSessionLogs(root))[child];
+			if (log === void 0 || !latestTurnIsClosed(log.content) || !hasRequestHeaderAfterDescriptor(log.content) || !hasClosedTurn(log.content, minimumTurn)) throw new Error(message);
+		}, {
+			interval: WAIT_POLL_INTERVAL_MS,
+			timeout: timeoutMs
+		});
+	} catch (cause) {
+		throw new Error(message, { cause });
+	}
 }
 /** Whether a raw session log contains the requested closed turn. */
 function hasClosedTurn(content, turn) {
@@ -902,13 +1115,14 @@ function latestOpenTurn(content) {
 	return turn;
 }
 /**
-* Harvest EVERY persisted `.jsonl` session log under a sessions root, parse each
+* Harvest every latest-generation raw JSONL Session under a sessions root, parse each
 * header line, and return them ordered primary-first: the top-level session (no
 * `parentSession`) leads, then each subagent child by ascending `createdAt`.
 *
-* Snapshot configs select the JSONL backend's raw mode, which lays sessions
-* out as `<root>/<project>/<session-id>/session.jsonl`. Recursive collection
-* catches the primary and every child session. Returns `[]` if no log was
+* Snapshot configs select the JSONL backend's raw mode, which lays each immutable
+* generation beneath `<root>/<project>/<session-id>/`. Recursive collection
+* chooses the numerically highest generation for the primary and every child.
+* Returns `[]` if no log was
 * produced (a no-session scenario).
 */
 async function harvestSessionLogs(root) {
@@ -919,9 +1133,10 @@ async function harvestSessionLogs(root) {
 		return [];
 	}
 	const logs = [];
-	for (const file of files) {
-		if (basename(file) !== "session.jsonl") continue;
+	for (const file of latestPersistedSessionPaths(files)) {
 		const content = await readFile(join(root, file), "utf8");
+		assertPersistedSessionVersion(basename(file), content);
+		/* v8 ignore next -- the generation validator above rejects header-less content. */
 		const firstLine = content.split("\n").find((line) => line.trim().length > 0) ?? "{}";
 		const header = JSON.parse(firstLine);
 		logs.push({
@@ -941,8 +1156,8 @@ async function harvestSessionLogs(root) {
 /**
 * Pure ACP transcript and session-log normalizers. They scrub session ids, run cwd, RPC ids,
 * timestamps, goal lifecycle clocks, and hook duration while preserving semantic payload values.
-* Request-header scrubbers stay composable so one scenario per header class can pin prompt and
-* tool-schema sidecars.
+* The prompt-text and tool-schema scrubbers stay composable so one scenario per header class can
+* pin prompt and tool-schema sidecars.
 * @module @deepseek-ai/dsh-session-snapshot/normalize
 */
 const SESSION_ID = "{{sessionId}}";
@@ -953,6 +1168,7 @@ const SYSTEM = "{{system}}";
 const TOOLS = "{{tools}}";
 const EVENT_TIME = "{{eventTime}}";
 const EVENT_OMITTED_BYTES = "{{eventOmittedBytes}}";
+const SOURCE_SESSION_FORMAT = "{{sourceSessionFormatVersion}}";
 const PACKED_CHUNK_ROW_TYPES$1 = new Set([
 	"text-chunks",
 	"reasoning-chunks",
@@ -978,8 +1194,8 @@ const PATH_TEXT_BOUNDARY_RE = /[\s<>'"`()\[\]{},;:!?=]/;
 const FILE_URI_PATH_PREFIX_RE = /(?:^|[^a-z0-9+.-])file:\/\/\/?$/i;
 /** A UUID v4 string, the shape `randomUUID()` produces for session ids. */
 const UUID_RE$1 = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const LOCAL_SPILL_PATH_RE = new RegExp(String.raw`\{\{cwd\}\}[\\/]\.spill[\\/]session-[0-9a-f]{12}[\\/][0-9a-f]{12}-([A-Za-z0-9._~-]+?)` + String.raw`(?=\. Use read with offset/limit|[\s)]|$)`, "g");
-const SNAPSHOT_SPILL_PATH_RE = new RegExp(String.raw`(?:[A-Za-z]:)?[\\/](?:tmp|t)[\\/](?:dsh-acp-snap-[0-9a-f]{9}|dsh-acp-snapshot-spill)[\\/]session-[0-9a-f]{12}[\\/][0-9a-f]{12}-([A-Za-z0-9._~-]+?)` + String.raw`(?=\. Use read with offset/limit|[\s)]|$)`, "g");
+const LOCAL_SPILL_PATH_RE = new RegExp(String.raw`\{\{cwd\}\}[\\/]+\.spill[\\/]+session-[0-9a-f]{12}[\\/]+[0-9a-f]{12}-([A-Za-z0-9._~-]+?)` + String.raw`(?=\. Use read with offset/limit|[\s)"]|\\+"|$)`, "g");
+const SNAPSHOT_SPILL_PATH_RE = new RegExp(String.raw`(?:[A-Za-z]:)?[\\/]+(?:tmp|t)[\\/]+(?:dsh-acp-snap-[0-9a-f]{9}|dsh-acp-snapshot-spill)[\\/]+session-[0-9a-f]{12}[\\/]+[0-9a-f]{12}-([A-Za-z0-9._~-]+?)` + String.raw`(?=\. Use read with offset/limit|[\s)"]|\\+"|$)`, "g");
 /**
 * Extract every snapshot-mode spill path from a session log, keyed by spill
 * filename. Used by refresh write-back to keep spill paths stable across runs.
@@ -1151,9 +1367,10 @@ function normalizeStdout(rawStdout, ctx, options = {}) {
 }
 /**
 * Normalize a session JSONL log into a stable expected output: the header line's
-* volatile fields (`createdAt`, `id`, `cwd`) are zeroed/scrubbed, ordinary
-* event `time`, packed-row `time0`, and goal-change lifecycle clock values are
-* zeroed, and all volatile strings are scrubbed. Projected inputs remain
+* volatile fields (`createdAt`, `id`, `cwd`) are zeroed/scrubbed; event,
+* historical packed-row, embedded Assistant-stream, goal lifecycle, and
+* catalog child-creation clocks are zeroed; and all volatile strings are
+* scrubbed. Projected inputs remain
 * projected. Packed `data.dt` gaps are normalized even when the projected row
 * omits its `time0` anchor.
 * Output is JSONL in the same shape as the input — one compact record per
@@ -1176,52 +1393,46 @@ function normalizeSessionLog(rawLog, ctx, options = {}) {
 			const data = record.data;
 			if (data !== null && typeof data === "object" && Array.isArray(data.dt)) data.dt = data.dt.map(() => 0);
 		} else if ("time" in record) record.time = 0;
+		if ((record.type === "assistant/message" || record.type === "assistant/attempt") && record.data !== null && typeof record.data === "object") {
+			const stream = record.data.stream;
+			if (Array.isArray(stream)) for (const member of stream) {
+				if (member === null || typeof member !== "object") continue;
+				const timed = member;
+				if (typeof timed.time === "number") timed.time = 0;
+				if (typeof timed.time0 === "number") timed.time0 = 0;
+				if (Array.isArray(timed.dt)) timed.dt = timed.dt.map(() => 0);
+			}
+		}
 		if (record.type === "hook/result" && record.data !== null && typeof record.data === "object") {
 			const data = record.data;
 			if ("durationMs" in data) data.durationMs = 0;
 		}
+		normalizeFeedbackClocks(record);
 		if (record.type === "goal/change" && record.data !== null && typeof record.data === "object") {
 			const data = record.data;
 			if ("createdAt" in data) data.createdAt = 0;
 			if ("updatedAt" in data) data.updatedAt = 0;
+		}
+		if (record.type === "subagent/catalog" && record.data !== null && typeof record.data === "object") {
+			const data = record.data;
+			if ("childCreatedAt" in data) data.childCreatedAt = 0;
 		}
 		if (Object.hasOwn(record, "sourceEventSeqs")) record.sourceEventSeqs = decodeSeqRanges(record.sourceEventSeqs);
 		return scrubValue(record, ctx, cwdPathMode, identityMode);
 	}).map((r) => JSON.stringify(r)).join("\n") + "\n";
 }
 /**
-* Repack projected body records so persistence flush boundaries do not affect
-* committed snapshots. Synthetic envelopes exist only while the storage codec
-* reconstructs and packs the logical event stream; returned rows stay projected.
+* Canonicalize projected v3 body records. Compact streams are nested event data,
+* so persistence flush boundaries cannot change the row layout.
 */
-function repackSessionSnapshot(rawLog) {
+function projectSessionSnapshot(rawLog) {
 	const lines = rawLog.split("\n").filter((line) => line.trim().length > 0);
-	const header = lines.shift();
-	let nextSeq = 0;
 	return [
-		header,
-		...packChunkRuns(lines.flatMap((line) => {
+		lines.shift(),
+		...lines.map((line) => {
 			const record = JSON.parse(line);
-			if (isPackedFixtureRow(record)) {
-				const decoded = decodeStorageRecord({
-					...record,
-					seq0: nextSeq,
-					time0: 0
-				});
-				nextSeq += decoded.length;
-				return decoded;
-			}
-			const event = {
-				...record,
-				seq: nextSeq,
-				time: 0
-			};
-			nextSeq += 1;
-			return [event];
-		})).map((stored) => {
-			const projected = { ...stored };
-			omitFixtureEnvelope(projected);
-			return JSON.stringify(projected);
+			omitFixtureEnvelope(record);
+			return JSON.stringify(record);
 		}),
 		""
 	].join("\n");
@@ -1229,8 +1440,9 @@ function repackSessionSnapshot(rawLog) {
 /**
 * Normalize and project persisted session JSONL for a committed fixture.
 * This composes ordinary log normalization with request-header scrubbing and
-* persistence-envelope projection, then packs the logical event stream into a
-* canonical layout independent of persistence flush boundaries.
+* persistence-envelope projection, then writes the v3 logical event stream as
+* one record per event, independent of persistence flush boundaries. Event order
+* and source-event references are preserved.
 *
 * @param rawLog - persisted or already-projected session JSONL.
 * @param ctx - the run's volatile values to scrub.
@@ -1238,79 +1450,114 @@ function repackSessionSnapshot(rawLog) {
 * @returns normalized committed session snapshot JSONL.
 */
 function normalizeSessionSnapshot(rawLog, ctx, options = {}) {
-	return repackSessionSnapshot(scrubSessionSnapshot(normalizeSessionLog(rawLog, ctx, options)));
+	return projectSessionSnapshot(scrubSessionSnapshot(normalizeSessionLog(rawLog, ctx, options)));
 }
 /**
 * Normalize one scenario's primary and child logs with shared typed identity redaction.
+* Native-writer comparison strictly restores each input before tokenizing its own delivery generation.
 * @param rawLogs - primary-first persisted or projected session JSONL.
 * @param ctx - generated cwd spellings and other volatile run facts.
-* @param options - separator controls; relationship-preserving identity mode is mandatory.
-* @returns normalized session fixtures in input order.
+* @param options - separator and native-writer comparison controls; identity relationships are preserved.
+* @returns comparison-only Session records in input order; not persistence or fixture write-back input.
 */
 function normalizeSessionSnapshots(rawLogs, ctx, options = {}) {
-	return redactSessionSnapshotIds(rawLogs).map((log) => repackSessionSnapshot(scrubSessionSnapshot(normalizeSessionLog(log, {
+	const { nativeWriterOutput, ...normalizeOptions } = options;
+	return redactSessionSnapshotIds(rawLogs.map((log) => {
+		if (!hasSessionFormatVersion(log)) return normalizeSessionFormatMetadata(log);
+		return normalizeSessionFormatMetadata(prepareSessionSnapshotFixtureForComparison(log), nativeWriterOutput ? sessionHeaderVersion(log, "source Session snapshot") : void 0);
+	})).map((log) => projectSessionSnapshot(scrubSessionSnapshot(normalizeSessionLog(log, {
 		...ctx,
 		sessionIds: []
 	}, {
-		...options,
+		...normalizeOptions,
 		identityMode: "preserve"
 	}))));
 }
 /**
-* Replace system-prompt content in request headers with `{{system}}` tokens
-* while retaining field presence.
-* Other header content stays verbatim, so a header-pinning fixture can keep
-* its complete tool schemas while every JSONL fixture omits the prompt text.
-* Lines without a system payload pass through byte-for-byte; the transform is
-* idempotent.
+* Omit the artifact header generation after official migration for comparison.
+* An explicit source version tokenizes only delivery markers for that original input generation.
+* Other delivery generations and every captured-source generation retain their recorded values.
+* @param rawLog - Session records or events as compact JSON lines.
+* @param sourceVersion - original generation of strictly validated native writer output; otherwise omit.
+* @returns comparison-only records with the Session header version omitted and native delivery qualifiers tokenized.
+*/
+function normalizeSessionFormatMetadata(rawLog, sourceVersion) {
+	return rawLog.split("\n").map((line) => {
+		if (line.trim().length === 0) return line;
+		const record = JSON.parse(line);
+		if (record.type === "session" && Object.hasOwn(record, "version")) delete record.version;
+		else if (sourceVersion !== void 0 && record.type === "session-log-deepseek/delivery-accepted") {
+			const data = record.data;
+			if (data?.sessionFormatVersion !== sourceVersion) return line;
+			data.sessionFormatVersion = SOURCE_SESSION_FORMAT;
+		} else return line;
+		return JSON.stringify(record);
+	}).join("\n");
+}
+/** Whether a fixture declares a released Session format and therefore participates in migration burn-in. */
+function hasSessionFormatVersion(rawLog) {
+	const firstLine = rawLog.split(/\r?\n/).find((line) => line.trim().length > 0);
+	if (firstLine === void 0) throw new Error("session snapshot must start with a session header");
+	const header = JSON.parse(firstLine);
+	if (header === null || typeof header !== "object" || Array.isArray(header) || header["type"] !== "session") throw new Error("session snapshot must start with a session header");
+	return Object.hasOwn(header, "version");
+}
+/**
+* Replace the rendered prompt text of every `system/message` event with the
+* `{{system}}` token. The text block keeps its position and type, so the
+* fixture still shows one system node per prompt version; an empty `content`
+* (no system prompt) stays empty. Request headers and every other line pass
+* through byte-for-byte; the transform is idempotent.
 *
 * @param rawLog The raw session `.jsonl` content.
-* @returns The JSONL with system-prompt content tokenized.
+* @returns The JSONL with system-prompt text tokenized.
 */
 function scrubSystemPrompts(rawLog) {
-	return scrubHeaderContent(rawLog, { system: true });
+	return scrubModelRequestContent(rawLog, { system: true });
 }
 /**
 * Replace tool schemas in full request-header snapshots with `{{tools}}`
-* tokens while retaining field presence. System prompts and session-prefix
-* messages stay verbatim so pinning fixtures can move only schema bulk into
-* their dedicated JSON sidecar. Lines without a tool payload pass through
-* byte-for-byte; the transform is idempotent.
+* tokens while retaining field presence. Logs containing developer messages
+* retain tool names so historical addition references remain verifiable.
+* System-prompt text stays verbatim so
+* pinning fixtures can move only schema bulk into their dedicated JSON
+* sidecar. Lines without a tool payload pass through byte-for-byte; the
+* transform is idempotent.
 *
 * @param rawLog The raw session `.jsonl` content.
 * @returns The JSONL with tool-schema content tokenized.
 */
 function scrubToolSchemas(rawLog) {
-	return scrubHeaderContent(rawLog, { tools: true });
+	return scrubModelRequestContent(rawLog, { tools: true });
 }
 /**
-* Replace all bulky request-header content in a session JSONL with stable
-* tokens. This includes the system-prompt fields handled by
-* {@link scrubSystemPrompts}, tool schemas, and session-prefix messages. It
-* keeps prefix message counts, field presence, config, and reason. Lines
-* without content to scrub pass through byte-for-byte, and the transform is
-* idempotent.
+* Replace all bulky model-request content in a session JSONL with stable
+* tokens: the `system/message` prompt text handled by
+* {@link scrubSystemPrompts} and the request-header tool schemas handled by
+* {@link scrubToolSchemas}. Field presence, config, and reason are kept.
+* Lines without content to scrub pass through byte-for-byte, and the
+* transform is idempotent.
 *
 * @param rawLog The raw session `.jsonl` content.
-* @returns The JSONL with all header bulk tokenized, other lines byte-identical.
+* @returns The JSONL with prompt text and schema bulk tokenized, other lines byte-identical.
 */
-function scrubRequestHeaders(rawLog) {
-	return scrubHeaderContent(rawLog, {
+function scrubModelRequestBulk(rawLog) {
+	return scrubModelRequestContent(rawLog, {
 		system: true,
 		tools: true
 	});
 }
 /**
-* Project a persisted session log while tokenizing all request-header bulk.
-* Each non-empty line is parsed at most once; the session header stays
-* byte-identical. Body records omit their persistence-only envelopes, and
-* request-header payloads are tokenized.
+* Project a persisted session log while tokenizing prompt text and schema
+* bulk. Each non-empty line is parsed at most once; the session header stays
+* byte-identical. Body records omit their persistence-only envelopes and expand
+* source-event ranges without changing reference order.
 *
 * @param rawLog - persisted or already-projected session JSONL.
-* @returns committed snapshot JSONL with request headers tokenized.
+* @returns committed snapshot JSONL with prompt text and tool schemas tokenized.
 */
 function scrubSessionSnapshot(rawLog) {
-	const scrubbed = scrubRequestHeaders(rawLog);
+	const scrubbed = scrubModelRequestBulk(rawLog);
 	let recordIndex = 0;
 	return scrubbed.split("\n").map((line) => {
 		if (line.trim().length === 0) return line;
@@ -1320,29 +1567,48 @@ function scrubSessionSnapshot(rawLog) {
 			return line;
 		}
 		omitFixtureEnvelope(record);
+		if (Object.hasOwn(record, "sourceEventSeqs")) record.sourceEventSeqs = decodeSeqRanges(record.sourceEventSeqs);
+		normalizeFeedbackClocks(record);
 		return JSON.stringify(record);
 	}).join("\n");
 }
-/** Transform the selected request-header payloads. */
-function scrubHeaderContent(rawLog, options) {
-	return rawLog.split("\n").map((line) => {
-		if (line.trim().length === 0) return line;
-		const record = JSON.parse(line);
+/** Normalize service-owned feedback clocks without touching user-authored payloads. */
+function normalizeFeedbackClocks(record) {
+	if (record.type !== "feedback/message-put" || record.data === null || typeof record.data !== "object") return;
+	const item = record.data.item;
+	if (item === null || typeof item !== "object") return;
+	const clocks = item;
+	if ("createdAt" in clocks) clocks.createdAt = 0;
+	if ("updatedAt" in clocks) clocks.updatedAt = 0;
+}
+/** Return the first text block of a `system/message` payload, or `undefined` when it carries none. */
+function systemPromptBlock(data) {
+	const message = data.message;
+	if (message === null || typeof message !== "object" || !Array.isArray(message.content)) return void 0;
+	const block = message.content[0];
+	return block !== null && typeof block === "object" && typeof block.text === "string" ? block : void 0;
+}
+/** Transform the selected model-request payloads. */
+function scrubModelRequestContent(rawLog, options) {
+	const lines = rawLog.split("\n");
+	const records = lines.map((line) => line.trim().length === 0 ? void 0 : JSON.parse(line));
+	const retainToolNames = records.some((record) => record?.type === "developer/message");
+	return lines.map((line, index) => {
+		const record = records[index];
+		if (record === void 0) return line;
 		const data = record.data;
 		if (data === null || typeof data !== "object") return line;
-		if (record.type === "request/header") {
+		if (options.system === true && record.type === "system/message") {
+			const block = systemPromptBlock(data);
+			if (block === void 0) return line;
+			block.text = SYSTEM;
+			return JSON.stringify(record);
+		}
+		if (options.tools === true && record.type === "request/header") {
 			const header = data.header;
-			if (header === null || typeof header !== "object") return line;
-			let touched = false;
-			if (options.system === true && "system" in header) {
-				header.system = SYSTEM;
-				touched = true;
-			}
-			if (options.tools === true && "tools" in header) {
-				header.tools = TOOLS;
-				touched = true;
-			}
-			return touched ? JSON.stringify(record) : line;
+			if (header === null || typeof header !== "object" || !("tools" in header)) return line;
+			header.tools = retainToolNames && Array.isArray(header.tools) ? header.tools.map((tool) => typeof tool === "string" ? tool : tool.name) : TOOLS;
+			return JSON.stringify(record);
 		}
 		return line;
 	}).join("\n");
@@ -1350,6 +1616,18 @@ function scrubHeaderContent(rawLog, options) {
 //#endregion
 //#region lib/types/manifest.js
 /** Parse and validate one recorded-session snapshot manifest. */
+/**
+* Whether one run writes current-writer Session fixtures for this scenario.
+* Explicit historical generations remain immutable replay inputs; record and
+* refresh may still update their non-Session expected outputs.
+*
+* @param manifest - Parsed scenario ownership and retained-generation metadata.
+* @param mode - Snapshot execution mode.
+* @returns True only when a write-capable mode tracks the current writer.
+*/
+function writesCurrentSessionFixtures(manifest, mode) {
+	return mode !== "replay" && manifest.session === void 0 && manifest.sessionFormat === void 0;
+}
 const PROFILES = new Set([
 	"headless",
 	"sdk",
@@ -1362,6 +1640,14 @@ const PERMISSIONS = new Set([
 	"read-only",
 	"workspace-write",
 	"danger-full-access"
+]);
+const SESSION_FORMAT_COVERAGE = new Set([
+	"multi-hop",
+	"packed-row",
+	"retry-failure",
+	"shipped-profile",
+	"adjacent-migration",
+	"retired-tools"
 ]);
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 function record(value, label) {
@@ -1412,7 +1698,8 @@ function parseSnapshotManifest(source, path = "snapshot.yml") {
 			"environment",
 			"workspace",
 			"input",
-			"session"
+			"session",
+			"sessionFormat"
 		], "manifest");
 		if (root.version !== 1) throw new Error("manifest.version must equal 1");
 		const scenario = root.scenario === void 0 ? void 0 : name(root.scenario, "manifest.scenario");
@@ -1433,10 +1720,11 @@ function parseSnapshotManifest(source, path = "snapshot.yml") {
 				"toolSchemasSource",
 				"childSystemPrompts",
 				"childToolSchemas",
-				"changes"
+				"changes",
+				"promptChanges"
 			], "manifest.header");
 			if (value.pin !== void 0 && value.pin !== true) throw new Error("manifest.header.pin must equal true when present");
-			if (value.changes !== void 0 && (!Number.isInteger(value.changes) || Number(value.changes) < 0)) throw new Error("manifest.header.changes must be a non-negative integer");
+			for (const field of ["changes", "promptChanges"]) if (value[field] !== void 0 && (!Number.isInteger(value[field]) || Number(value[field]) < 0)) throw new Error(`manifest.header.${field} must be a non-negative integer`);
 			header = {
 				class: name(value.class, "manifest.header.class"),
 				...value.pin === true ? { pin: true } : {},
@@ -1444,7 +1732,8 @@ function parseSnapshotManifest(source, path = "snapshot.yml") {
 				...value.toolSchemasSource === void 0 ? {} : { toolSchemasSource: scenarioSource(value.toolSchemasSource, "manifest.header.toolSchemasSource") },
 				...value.childSystemPrompts === void 0 ? {} : { childSystemPrompts: positiveIndexes(value.childSystemPrompts, "manifest.header.childSystemPrompts") },
 				...value.childToolSchemas === void 0 ? {} : { childToolSchemas: positiveIndexes(value.childToolSchemas, "manifest.header.childToolSchemas") },
-				...value.changes === void 0 ? {} : { changes: Number(value.changes) }
+				...value.changes === void 0 ? {} : { changes: Number(value.changes) },
+				...value.promptChanges === void 0 ? {} : { promptChanges: Number(value.promptChanges) }
 			};
 		}
 		let replay;
@@ -1479,11 +1768,11 @@ function parseSnapshotManifest(source, path = "snapshot.yml") {
 				"parent"
 			], "manifest.workspace");
 			if (value.final !== void 0 && value.final !== true) throw new Error("manifest.workspace.final must equal true when present");
-			if (value.parent !== void 0 && value.parent !== "home") throw new Error("manifest.workspace.parent must equal home");
+			if (value.parent !== void 0 && value.parent !== "outside-temp") throw new Error("manifest.workspace.parent must equal outside-temp");
 			workspace = {
 				...value.setup === void 0 ? {} : { setup: name(value.setup, "manifest.workspace.setup") },
 				...value.final === true ? { final: true } : {},
-				...value.parent === "home" ? { parent: "home" } : {}
+				...value.parent === "outside-temp" ? { parent: "outside-temp" } : {}
 			};
 			if (Object.keys(workspace).length === 0) throw new Error("manifest.workspace must not be empty");
 		}
@@ -1527,6 +1816,18 @@ function parseSnapshotManifest(source, path = "snapshot.yml") {
 			if (isAbsolute(value.source) || value.source.includes("\\") || value.source.includes("\0")) throw new Error("manifest.session.source must be a relative POSIX path");
 			session = { source: value.source };
 		}
+		let sessionFormat;
+		if (root.sessionFormat !== void 0) {
+			const value = record(root.sessionFormat, "manifest.sessionFormat");
+			exactKeys(value, ["version", "coverage"], "manifest.sessionFormat");
+			if (!Number.isSafeInteger(value.version) || Number(value.version) < 0 || Object.is(value.version, -0)) throw new Error("manifest.sessionFormat.version must be a non-negative safe integer");
+			if (!Array.isArray(value.coverage) || value.coverage.length === 0 || value.coverage.some((item) => typeof item !== "string" || !SESSION_FORMAT_COVERAGE.has(item)) || new Set(value.coverage).size !== value.coverage.length) throw new Error("manifest.sessionFormat.coverage must be a non-empty array of unique supported coverage names");
+			if (session !== void 0) throw new Error("manifest.sessionFormat is only valid when the scenario owns its Session fixtures");
+			sessionFormat = {
+				version: Number(value.version),
+				coverage: [...value.coverage]
+			};
+		}
 		return {
 			version: 1,
 			...scenario === void 0 ? {} : { scenario },
@@ -1540,7 +1841,8 @@ function parseSnapshotManifest(source, path = "snapshot.yml") {
 			...environment === void 0 ? {} : { environment },
 			...workspace === void 0 ? {} : { workspace },
 			...input === void 0 ? {} : { input },
-			...session === void 0 ? {} : { session }
+			...session === void 0 ? {} : { session },
+			...sessionFormat === void 0 ? {} : { sessionFormat }
 		};
 	} catch (error) {
 		/* v8 ignore next -- every parser and validator above throws Error instances. */
@@ -1560,9 +1862,10 @@ function parseSnapshotManifest(source, path = "snapshot.yml") {
 * refresh stay serial while writing.
 *
 * Exactly one scenario per header-composition class pins the tokenized header
-* sequence. Its prompt and tool-schema sequences live in independent
-* sidecars, each of which may be shared with another class pin when the bytes
-* are identical. Every live header is checked against the composed pin, so
+* sequence and the tokenized `system/message` sequence. Its prompt and
+* tool-schema sequences live in independent sidecars, each of which may be
+* shared with another class pin when the bytes are identical. Every live
+* header and system prompt is checked against the composed pin, so
 * session-dependent composition must declare a separate class instead of
 * escaping coverage.
 * @module @deepseek-ai/dsh-session-snapshot/suite
@@ -1592,9 +1895,10 @@ const PACKED_CHUNK_ROW_TYPES = new Set([
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
 * Whether a scenario's run test is skipped for this mode and host: record mode
-* skips authored (non-`recorded`) scenarios, {@link Scenario.posixOnly}
-* scenarios skip on Windows, and {@link Scenario.pwshOnly} scenarios skip
-* when the caller's `hasPwsh` probe is false.
+* skips authored (non-`recorded`) scenarios and explicit historical Session
+* generations, {@link Scenario.posixOnly} scenarios skip on Windows, and
+* {@link Scenario.pwshOnly} scenarios skip when the caller's `hasPwsh` probe
+* is false.
 *
 * @param scenario The scenario whose run test is being registered.
 * @param recording Whether the suite runs in record mode.
@@ -1604,7 +1908,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 * @returns True when the scenario's run test must not execute.
 */
 function scenarioSkipped(scenario, recording, platform = process.platform, hasPwsh) {
-	if (recording && !scenario.recorded) return true;
+	if (recording && (!scenario.recorded || scenario.sessionFormat !== void 0)) return true;
 	if (scenario.posixOnly === true && platform === "win32") return true;
 	return scenario.pwshOnly === true && hasPwsh !== true;
 }
@@ -1660,47 +1964,20 @@ function assertUniqueSnapshotContents(kind, snapshots) {
 		firstPathByContent.set(snapshot.content, snapshot.path);
 	}
 }
-/**
-* Validate and order a scenario directory's session-fixture filenames.
-*
-* The primary fixture is always `session.jsonl`; child sessions are discovered
-* from contiguous `session.1.jsonl` … filenames. The directory is the source of
-* truth, so scenario tables do not duplicate a child count that can drift from
-* the files. A session-like JSONL with any other suffix fails loud.
-*
-* @param names File names in one scenario directory.
-* @returns The primary and child fixture names in replay/harvest order.
-*/
-function sessionFixtureNames(names) {
-	if (!names.includes("session.jsonl")) throw new Error("missing session.jsonl");
-	const children = [];
-	for (const name of names) {
-		if (name === "session.jsonl") continue;
-		if (!name.startsWith("session.") || !name.endsWith(".jsonl")) continue;
-		const match = /^session\.([1-9]\d*)\.jsonl$/.exec(name);
-		if (match === null) throw new Error(`invalid child session fixture name: ${name}`);
-		children.push({
-			name,
-			index: Number(match[1])
-		});
-	}
-	children.sort((a, b) => a.index - b.index);
-	for (const [offset, child] of children.entries()) {
-		const expected = offset + 1;
-		if (child.index !== expected) throw new Error(`child session fixtures must be contiguous: expected session.${expected}.jsonl, found ${child.name}`);
-	}
-	return ["session.jsonl", ...children.map((child) => child.name)];
-}
 /** Read one scenario directory's validated session-fixture inventory. */
 async function sessionFixtures(dir) {
-	return sessionFixtureNames((await readdir(dir, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name));
+	const names = sessionFixtureNames((await readdir(dir, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name));
+	await Promise.all(names.map(async (name) => {
+		assertSessionFixtureVersion(name, await readFile(join(dir, name), "utf8"));
+	}));
+	return names;
 }
 /**
 * Derive normalization values from a fixture's own session header. Recorded ids and cwd differ
 * from the live replay run; the non-empty sentinel for missing cwd avoids accidental empty-
 * string replacement.
 *
-* @param fixture The committed `session.jsonl` content.
+* @param fixture The selected committed parent Session fixture content.
 * @returns The fixture's own volatile values, ready for {@link normalizeSessionLog}.
 */
 function fixtureContext(fixture) {
@@ -1713,10 +1990,13 @@ function fixtureContext(fixture) {
 }
 /** Normalize request-header payloads while retaining the reason that selects a pin revision. */
 function normalizedHeaderEvents(rawLog, ctx) {
-	return normalizeSessionLog(rawLog, ctx).split("\n").filter((line) => line.trim().length > 0).map((line) => JSON.parse(line)).filter((record) => record.type === "request/header").map((record) => ({
-		header: record.data?.header,
-		reason: record.data?.reason
-	}));
+	return parseJsonlRecords(normalizeSessionLog(rawLog, ctx)).filter((record) => record.type === "request/header").map((record) => {
+		const data = record.data;
+		return {
+			header: data?.header,
+			reason: data?.reason
+		};
+	});
 }
 /**
 * Header revisions that own sidecar content. `series` reuses the current revision, while
@@ -1727,13 +2007,17 @@ function normalizedHeaderEvents(rawLog, ctx) {
 function pinningHeaderPayloads(rawLog, ctx) {
 	return normalizedHeaderEvents(rawLog, ctx).filter((event) => event.reason !== "series").map((event) => event.header);
 }
-/** Extract every string system prompt from a normalized header sequence. */
-function systemPromptsFrom(headers) {
-	return headers.flatMap((header) => {
-		if (header === null || typeof header !== "object") return [];
-		const system = header.system;
-		return typeof system === "string" ? [system] : [];
-	});
+/**
+* The rendered prompt text of one parsed `system/message` record: its single
+* text block, or `''` when the empty `content` records "no system prompt".
+* Any other record yields `undefined`.
+*/
+function systemPromptOf(record) {
+	if (record.type !== "system/message") return void 0;
+	const content = record.data?.message?.content;
+	if (!Array.isArray(content)) return void 0;
+	const block = content[0];
+	return content.length === 0 ? "" : typeof block?.text === "string" ? block.text : void 0;
 }
 /** Extract every array-valued tool catalog from a normalized header sequence. */
 function toolSchemasFrom(headers) {
@@ -1747,8 +2031,7 @@ function toolSchemasFrom(headers) {
 * The `data.header` payload of every `request/header` event in a session
 * JSONL, in log order, with the log's volatile values scrubbed first
 * ({@link normalizeSessionLog}) so headers harvested from different runs —
-* each embedding its own generated cwd in the composed prompt — compare on equal
-* footing.
+* each embedding its own generated cwd — compare on equal footing.
 *
 * @param rawLog The session `.jsonl` content to extract headers from.
 * @param ctx The volatile values of the run that produced it.
@@ -1758,16 +2041,35 @@ function normalizedHeaders(rawLog, ctx) {
 	return normalizedHeaderEvents(rawLog, ctx).map((event) => event.header);
 }
 /**
-* The normalized string-valued system prompts carried by request headers in a
-* session JSONL, in log order. Headers without a string prompt are omitted so
-* callers can assert one prompt per header explicitly.
+* The normalized prompt text of every `system/message` event in a session
+* JSONL, in log order: the first is the initial system prompt (surface node 0)
+* and each later one replaced it or, on an in-history route, appended the
+* changed prompt after the cached history. An empty `content` yields `''`; a
+* `system/message` without a text block is omitted.
 *
 * @param rawLog The session `.jsonl` content to inspect.
 * @param ctx The volatile values of the run that produced it.
-* @returns The normalized system prompts, in header order.
+* @returns The normalized system prompts, in log order.
 */
 function normalizedSystemPrompts(rawLog, ctx) {
-	return systemPromptsFrom(normalizedHeaders(rawLog, ctx));
+	return parseJsonlRecords(normalizeSessionLog(rawLog, ctx)).flatMap((record) => {
+		const prompt = systemPromptOf(record);
+		return prompt === void 0 ? [] : [prompt];
+	});
+}
+/**
+* Whether every model request in a session JSONL is preceded by its system
+* prompt: the log has no `request/header`, or a `system/message` event comes
+* before its first `request/header`.
+*
+* @param rawLog The session `.jsonl` content to inspect.
+* @returns True when the first `request/header` (if any) follows a `system/message`.
+*/
+function systemPromptPrecedesRequests(rawLog) {
+	const types = parseJsonlRecords(rawLog).map((record) => record.type);
+	const firstHeader = types.indexOf("request/header");
+	const firstPrompt = types.indexOf("system/message");
+	return firstHeader < 0 || firstPrompt >= 0 && firstPrompt < firstHeader;
 }
 /**
 * The normalized tool-schema arrays carried by request headers in a session
@@ -1813,34 +2115,55 @@ function parseToolSchemasSnapshot(snapshot) {
 /**
 * Restore one sidecar schema set into a tokenized pinned header.
 *
-* @param header The parsed request header carrying `tools: "{{tools}}"`.
+* @param header The parsed request header carrying a tools token or ordered tool names matching the sidecar.
 * @param schemas The complete schemas for this full header snapshot.
 * @returns A copy of the header with its complete schemas restored.
 */
 function restorePinnedToolSchemas(header, schemas) {
 	if (header === null || typeof header !== "object" || Array.isArray(header)) throw new Error("acp-snapshot: pinned request header must be an object");
-	if (header.tools !== TOOLS_TOKEN) throw new Error(`acp-snapshot: pinned request header tools must equal ${TOOLS_TOKEN}`);
+	const tools = header.tools;
+	const namesMatch = Array.isArray(tools) && tools.length === schemas.length && tools.every((name, index) => {
+		const schema = schemas[index];
+		return typeof name === "string" && schema !== null && typeof schema === "object" && "name" in schema && schema.name === name;
+	});
+	if (tools !== TOOLS_TOKEN && !namesMatch) throw new Error(`acp-snapshot: pinned request header tools must equal ${TOOLS_TOKEN} or the ordered sidecar tool names`);
 	return {
 		...header,
 		tools: schemas
 	};
 }
+/** Marker line separating one replaced prompt from the previous one in a prompt sidecar. */
+const SYSTEM_PROMPT_CHANGE_MARKER = "\n<!-- system/message change ";
 /**
 * Render a normalized prompt as a repository-friendly Markdown snapshot.
 * Prompt text is unchanged except that a missing terminal newline is added so
 * the committed file follows the repository newline contract.
 *
-* @param prompt The normalized system prompt.
-* @param changes Full normalized prompts from later changed-header snapshots.
+* @param prompt The normalized initial system prompt (surface node 0).
+* @param changes Full normalized prompts from later `system/message` events, replacements or in-history appends.
 * @returns Markdown snapshot text ending in a newline.
 */
 function formatSystemPromptSnapshot(prompt, changes = []) {
 	let snapshot = prompt.endsWith("\n") ? prompt : `${prompt}\n`;
 	for (const [index, change] of changes.entries()) {
-		snapshot += `\n<!-- request/header change ${index + 1} -->\n\n`;
+		snapshot += `${SYSTEM_PROMPT_CHANGE_MARKER}${index + 1} -->\n\n`;
 		snapshot += change.endsWith("\n") ? change : `${change}\n`;
 	}
 	return snapshot;
+}
+/**
+* Split a prompt sidecar into its initial prompt and each later change, the
+* inverse of {@link formatSystemPromptSnapshot}.
+*
+* @param snapshot The Markdown sidecar text.
+* @returns The initial prompt snapshot plus one entry per later `system/message`.
+*/
+function parseSystemPromptSnapshot(snapshot) {
+	const parts = snapshot.split(/\n<!-- system\/message change [1-9]\d* -->\n\n/);
+	return {
+		initial: parts[0],
+		changes: parts.slice(1)
+	};
 }
 /**
 * Reject a child prompt sidecar that cannot own distinct, canonical prompt text.
@@ -1853,10 +2176,9 @@ function assertChildSystemPromptSnapshot(sidecar, classPin, label) {
 	if (!sidecar.endsWith("\n")) throw new Error(`${label} must end in a newline`);
 	if (sidecar === classPin) throw new Error(`${label} must differ from its class pin`);
 }
-/** Return the initial-prompt portion of a possibly multi-header snapshot. */
+/** Return the initial-prompt portion of a possibly multi-prompt snapshot. */
 function initialSystemPromptSnapshot(snapshot) {
-	const marker = snapshot.indexOf("\n<!-- request/header change ");
-	return marker < 0 ? snapshot : snapshot.slice(0, marker);
+	return parseSystemPromptSnapshot(snapshot).initial;
 }
 /**
 * Count changed `request/header` snapshots in a session JSONL.
@@ -1889,6 +2211,8 @@ function surfaceEventMessage(record) {
 		case "user/message":
 			message = data;
 			break;
+		case "system/message":
+		case "developer/message":
 		case "assistant/message":
 		case "tool/result":
 			message = data.message;
@@ -2058,6 +2382,28 @@ function refreshFixtureReplacements(logs, fixtures) {
 	}
 	return replacements;
 }
+/**
+* Check raw parent/child clocks before normalization, or preserve their equality during refresh.
+* @param logs - one scenario's parent and child logs with shared Session ids.
+* @param policy - validate live output, or align refreshed catalogs to the retained child headers.
+* @returns logs with only conflicting catalog creation times replaced under preserve-headers.
+*/
+function reconcileCatalogCreationTimes(logs, policy) {
+	const headers = new Map(logs.map((log) => {
+		const header = parseJsonlRecords(log)[0];
+		return [header?.["id"], header];
+	}));
+	return logs.map((log) => log.split("\n").map((line) => {
+		if (line.length === 0) return line;
+		const record = JSON.parse(line);
+		if (record.type !== "subagent/catalog" || !isRecord(record.data)) return line;
+		const child = headers.get(record.data.childId);
+		if (child === void 0 || record.data.childCreatedAt === child.createdAt) return line;
+		if (policy === "validate") throw new Error(`catalog child ${String(record.data.childId)} creation time ${String(record.data.childCreatedAt)} disagrees with child header ${String(child.createdAt)}`);
+		record.data.childCreatedAt = child.createdAt;
+		return JSON.stringify(record);
+	}).join("\n"));
+}
 function preserveFixtureVolatiles(record, existing) {
 	if (existing === void 0 || existing.type !== record.type) return;
 	if (record.type === "session") {
@@ -2206,11 +2552,34 @@ function stabilizeRefreshLog(fresh, existing, replacements, freshContext) {
 	return records.map((record) => JSON.stringify(record)).join("\n") + "\n";
 }
 /**
+* Check every selected role for tool/path defects and current generations for canonical prompt/identity storage.
+* Historical roles retain their released bytes, including roles retired by the current writer.
+* @param dir Scenario directory containing canonical Session fixtures.
+* @param scenarioName Scenario name used in failure diagnostics.
+* @returns Resolves when all selected fixtures satisfy the storage checks.
+*/
+async function assertSessionFixtureStorage(dir, scenarioName) {
+	const files = await sessionFixtures(dir);
+	const currentFixtures = [];
+	for (const file of files) {
+		const fixture = await readFile(join(dir, file), "utf8");
+		const version = assertSessionFixtureVersion(file, fixture);
+		expect(unknownToolCallIds(fixture), `${scenarioName}/${file} contains UNKNOWN_TOOL`).toEqual([]);
+		expect(fixture, `${scenarioName}/${file} carries a non-canonical macOS cwd token`).not.toContain("/private{{cwd}}");
+		if (version !== SESSION_FORMAT_VERSION) continue;
+		currentFixtures.push(fixture);
+		expect(scrubSystemPrompts(fixture), `${scenarioName}/${file} carries an unscrubbed system prompt`).toEqual(fixture);
+		expect(scrubToolSchemas(fixture), `${scenarioName}/${file} carries unscrubbed tool schemas`).toEqual(fixture);
+		expect(systemPromptPrecedesRequests(fixture), `${scenarioName}/${file} has a request/header with no preceding system/message`).toBe(true);
+	}
+	expect(redactSessionSnapshotIds(currentFixtures), `${scenarioName}: identity redaction fixed point`).toEqual(currentFixtures);
+}
+/**
 * Register the suite: one test per scenario (the expected-output and log comparisons and
-* the header-uniformity guard) plus the fixture guard block (no orphan
+* the header and prompt uniformity guard) plus the fixture guard block (no orphan
 * scenario dirs, required files present, exactly one pin per header class,
-* shared sidecars unique and well-formed, every JSONL prompt-scrubbed,
-* non-pinning fixtures fully header-scrubbed). Must
+* shared sidecars unique and well-formed, every JSONL prompt- and
+* schema-scrubbed with a `system/message` before its first request). Must
 * run at vitest collection time — it calls `describe`/`it`. Throws
 * immediately if any header class lacks a pinning scenario or carries two
 * (the uniformity guard needs exactly one comparison anchor per class).
@@ -2229,7 +2598,12 @@ function defineAcpSnapshotSuite(options) {
 	for (const scenario of scenarios) {
 		if (scenariosByName.has(scenario.name)) throw new Error(`acp-snapshot: duplicate scenario name "${scenario.name}"`);
 		scenariosByName.set(scenario.name, scenario);
-		for (const field of ["systemPromptSource", "toolSchemasSource"]) if (scenario[field] !== void 0 && scenario.pinsHeader !== true) throw new Error(`acp-snapshot: ${scenario.name}.${field} is only valid on a header-pinning scenario`);
+		for (const field of [
+			"systemPromptSource",
+			"toolSchemasSource",
+			"expectedHeaderChanges",
+			"expectedPromptChanges"
+		]) if (scenario[field] !== void 0 && scenario.pinsHeader !== true) throw new Error(`acp-snapshot: ${scenario.name}.${field} is only valid on a header-pinning scenario`);
 	}
 	/** Each header class's single pinning scenario. Guarded here (and by meta-tests) so a pin cannot silently vanish or split. */
 	const pinningByClass = /* @__PURE__ */ new Map();
@@ -2241,14 +2615,19 @@ function defineAcpSnapshotSuite(options) {
 		pinningByClass.set(cls, scenario);
 	}
 	for (const scenario of scenarios) if (!pinningByClass.has(classOf(scenario))) throw new Error(`acp-snapshot: no scenario pins the request-header content of class "${classOf(scenario)}" (needed by ${scenario.name})`);
+	/**
+	* Resolve one pin's sidecar source. A prompt sidecar spans `1 + expectedPromptChanges`
+	* prompts and a schema sidecar spans `1 + expectedHeaderChanges` schema sets, so a shared
+	* source must declare the count that sizes the sidecar it lends.
+	*/
 	const sourceFor = (pinningScenario, field, label) => {
 		const sourceName = pinningScenario[field] ?? pinningScenario.name;
 		const source = scenariosByName.get(sourceName);
 		if (source === void 0) throw new Error(`acp-snapshot: ${pinningScenario.name} names unknown ${label} source "${sourceName}"`);
 		if (source.pinsHeader !== true) throw new Error(`acp-snapshot: ${pinningScenario.name} names non-pinning ${label} source "${sourceName}"`);
 		if (source[field] !== void 0 && source[field] !== source.name) throw new Error(`acp-snapshot: ${pinningScenario.name} names ${label} source "${sourceName}", which does not own its sidecar`);
-		const expectedChanges = pinningScenario.expectedHeaderChanges ?? 0;
-		if ((source.expectedHeaderChanges ?? 0) !== expectedChanges) throw new Error(`acp-snapshot: ${pinningScenario.name} and ${sourceName} declare different header-change counts for shared ${label}`);
+		const countField = field === "systemPromptSource" ? "expectedPromptChanges" : "expectedHeaderChanges";
+		if ((source[countField] ?? 0) !== (pinningScenario[countField] ?? 0)) throw new Error(`acp-snapshot: ${pinningScenario.name} and ${sourceName} declare different ${countField} counts for shared ${label}`);
 		return source;
 	};
 	const promptSourceByClass = /* @__PURE__ */ new Map();
@@ -2271,11 +2650,12 @@ function defineAcpSnapshotSuite(options) {
 			const workspaceDir = join(dir, "workspace");
 			let fixtureFiles = RECORDING ? [] : await sessionFixtures(dir);
 			const childFixtureFiles = fixtureFiles.slice(1);
-			const comparesLog = scenario.comparesLog ?? scenario.hasModelTurn;
+			const primaryFixtureFile = fixtureFiles[0] ?? sessionFixtureName(0, 0);
+			const comparesLog = scenario.comparesLog ?? (scenario.hasModelTurn && manifest.sessionFormat === void 0);
 			const result = await runScenario(input, {
 				agent,
 				mode: childMode,
-				fixtureFile: join(dir, "session.jsonl"),
+				fixtureFile: join(dir, primaryFixtureFile),
 				...scenario.env !== void 0 ? { env: scenario.env } : {},
 				...existsSync(overrideFile) ? { overrideFile } : {},
 				...!RECORDING && childFixtureFiles.length > 0 ? { childFiles: childFixtureFiles.map((file) => join(dir, file)) } : {},
@@ -2284,6 +2664,7 @@ function defineAcpSnapshotSuite(options) {
 				...scenario.workspaceParent !== void 0 ? { workspaceParent: scenario.workspaceParent } : {},
 				...scenario.configPath !== void 0 ? { configPath: scenario.configPath } : {}
 			});
+			reconcileCatalogCreationTimes(result.sessionLogs.map((log) => log.content), "validate");
 			for (const log of result.sessionLogs) expect(unknownToolCallIds(log.content), `session ${log.id}: snapshot scenarios must not accept UNKNOWN_TOOL`).toEqual([]);
 			const ctx = {
 				sessionIds: [...result.sessionId !== void 0 ? [result.sessionId] : [], ...result.sessionLogs.map((l) => l.id)],
@@ -2293,35 +2674,29 @@ function defineAcpSnapshotSuite(options) {
 			const childSchemaPins = new Set(scenario.pinsChildToolSchemas ?? []);
 			const childPromptPins = new Set(scenario.pinsChildSystemPrompts ?? []);
 			const portableFixture = scenario.workspaceParent === void 0 ? tokenizeSessionFixtureCwd : (log) => log;
-			if (RECORDING && scenario.recorded && scenario.hasModelTurn || REFRESHING && comparesLog) {
+			if (writesCurrentSessionFixtures(manifest, mode) && (RECORDING && scenario.recorded && scenario.hasModelTurn || REFRESHING && comparesLog)) {
 				expect(result.sessionLogs.length, `${mode} produced no session log to harvest`).toBeGreaterThan(0);
 				if (REFRESHING) expect(result.sessionLogs.length, `expected ${fixtureFiles.length} session logs (parent + children)`).toBe(fixtureFiles.length);
-				const outputFixtureFiles = ["session.jsonl", ...Array.from({ length: result.sessionLogs.length - 1 }, (_, i) => `session.${i + 1}.jsonl`)];
-				const existingFixtures = await Promise.all(outputFixtureFiles.map(async (file) => {
-					const path = join(dir, file);
-					return existsSync(path) ? readFile(path, "utf8") : "";
+				const outputFixtureFiles = result.sessionLogs.map((log, index) => sessionFixtureName(index, sessionHeaderVersion(log.content, `harvested Session ${index}`)));
+				const existingFixtures = await Promise.all(outputFixtureFiles.map(async (_file, index) => {
+					const file = fixtureFiles[index];
+					if (file === void 0) return "";
+					return readFile(join(dir, file), "utf8");
 				}));
 				const refreshReplacements = REFRESHING ? refreshFixtureReplacements(result.sessionLogs, existingFixtures) : [];
-				const outputFixtures = redactSessionSnapshotIds(stabilizeFixtureMessageIds(REFRESHING ? result.sessionLogs.map((log, index) => scrubSessionSnapshot(portableFixture(stabilizeRefreshLog(log.content, existingFixtures[index], refreshReplacements, ctx)))) : result.sessionLogs.map((log) => scrubSessionSnapshot(portableFixture(log.content))), existingFixtures));
+				const outputFixtures = redactSessionSnapshotIds(stabilizeFixtureMessageIds(reconcileCatalogCreationTimes(REFRESHING ? result.sessionLogs.map((log, index) => scrubSessionSnapshot(portableFixture(stabilizeRefreshLog(log.content, existingFixtures[index], refreshReplacements, ctx)))) : result.sessionLogs.map((log) => scrubSessionSnapshot(portableFixture(log.content))), "preserve-headers"), existingFixtures));
 				await Promise.all(outputFixtures.map((fixture, index) => writeFile(join(dir, outputFixtureFiles[index]), fixture)));
-				if (RECORDING) {
-					const outputNames = new Set(outputFixtureFiles);
-					const entries = await readdir(dir, { withFileTypes: true });
-					await Promise.all(entries.filter((entry) => entry.isFile() && /^session\.[1-9]\d*\.jsonl$/.test(entry.name) && !outputNames.has(entry.name)).map((entry) => rm(join(dir, entry.name))));
-					fixtureFiles = outputFixtureFiles;
-				}
+				fixtureFiles = outputFixtureFiles;
 				if (scenario.pinsHeader === true) {
 					const primary = result.sessionLogs[0];
-					const pinningHeaders = pinningHeaderPayloads(primary.content, ctx);
-					const prompts = systemPromptsFrom(pinningHeaders);
-					expect(prompts.length, `${mode} produced no system prompt to snapshot`).toBeGreaterThan(0);
+					const prompts = normalizedSystemPrompts(primary.content, ctx);
+					expect(prompts.length, `${mode} produced a system prompt count that differs from 1 + expectedPromptChanges`).toBe(1 + (scenario.expectedPromptChanges ?? 0));
 					const promptSnapshot = formatSystemPromptSnapshot(prompts[0], prompts.slice(1));
 					const promptPath = join(snapshotsDir, (promptSourceByClass.get(classOf(scenario)) ?? scenario).name, SYSTEM_PROMPT_SNAPSHOT);
 					claimSharedSnapshot(promptClaims, promptPath, scenario.name, promptSnapshot);
 					await writeFile(promptPath, promptSnapshot);
-					const schemaSets = toolSchemasFrom(pinningHeaders);
-					expect(schemaSets.length, `${mode} produced no tool schemas to snapshot`).toBeGreaterThan(0);
-					expect(schemaSets.length, `${mode} produced a tool-schema sequence that differs from its prompt sequence`).toBe(prompts.length);
+					const schemaSets = toolSchemasFrom(pinningHeaderPayloads(primary.content, ctx));
+					expect(schemaSets.length, `${mode} produced a tool-schema count that differs from 1 + expectedHeaderChanges`).toBe(1 + (scenario.expectedHeaderChanges ?? 0));
 					const toolSchemasSnapshot = formatToolSchemasSnapshot(schemaSets[0], schemaSets.slice(1));
 					const schemaPath = join(snapshotsDir, (schemaSourceByClass.get(classOf(scenario)) ?? scenario).name, TOOL_SCHEMAS_SNAPSHOT);
 					claimSharedSnapshot(schemaClaims, schemaPath, scenario.name, toolSchemasSnapshot);
@@ -2337,7 +2712,7 @@ function defineAcpSnapshotSuite(options) {
 				for (const index of childPromptPins) {
 					const log = result.sessionLogs[index];
 					expect(log, `${mode}: no child session log at index ${index} to snapshot a prompt from`).toBeDefined();
-					const prompts = systemPromptsFrom(pinningHeaderPayloads(log.content, ctx));
+					const prompts = normalizedSystemPrompts(log.content, ctx);
 					expect(prompts.length, `${mode}: child ${index} produced no system prompt to snapshot`).toBeGreaterThan(0);
 					await writeFile(join(dir, childSystemPromptSnapshot(index)), formatSystemPromptSnapshot(prompts[0]));
 				}
@@ -2356,8 +2731,8 @@ function defineAcpSnapshotSuite(options) {
 					sessionIds: fixtureContexts.flatMap((context) => context.sessionIds),
 					cwd: fixtureContexts[0].cwd
 				};
-				const actualSnapshots = normalizeSessionSnapshots(harvested, ctx);
-				const expectedSnapshots = normalizeSessionSnapshots(fixtures, fixtureCtx);
+				const actualSnapshots = normalizeSessionSnapshots(harvested, ctx, { nativeWriterOutput: true });
+				const expectedSnapshots = normalizeSessionSnapshots(fixtures, fixtureCtx, { nativeWriterOutput: true });
 				for (const [index, actual] of actualSnapshots.entries()) expect(actual, `${fixtureFiles[index]} mismatch`).toEqual(expectedSnapshots[index]);
 			}
 			/* v8 ignore next -- construction guarantees the pin exists; a miss would fail the one-header assertion loudly. */
@@ -2366,11 +2741,14 @@ function defineAcpSnapshotSuite(options) {
 			const promptSource = promptSourceByClass.get(classOf(scenario)) ?? pinningScenario;
 			/* v8 ignore next -- registration guarantees every scenario class has resolved sources. */
 			const schemaSource = schemaSourceByClass.get(classOf(scenario)) ?? pinningScenario;
-			const pinnedFixture = await readFile(join(join(snapshotsDir, pinningScenario.name), "session.jsonl"), "utf8");
+			const pinningDir = join(snapshotsDir, pinningScenario.name);
+			const [pinningFixtureFile] = await sessionFixtures(pinningDir);
+			const pinnedFixture = await readFile(join(pinningDir, pinningFixtureFile), "utf8");
 			const pinned = pinningHeaderPayloads(pinnedFixture, fixtureContext(pinnedFixture));
 			const promptSnapshot = await readFile(join(snapshotsDir, promptSource.name, SYSTEM_PROMPT_SNAPSHOT), "utf8");
 			const initialPromptSnapshot = initialSystemPromptSnapshot(promptSnapshot);
 			expect(pinned.length, `the pinning fixture (${pinningScenario.name}) has an unexpected request/header count`).toBe(1 + (pinningScenario.expectedHeaderChanges ?? 0));
+			expect(parseSystemPromptSnapshot(promptSnapshot).changes.length, `the prompt source (${promptSource.name}) has an unexpected system prompt change count`).toBe(pinningScenario.expectedPromptChanges ?? 0);
 			const toolSchemasSnapshot = await readFile(join(snapshotsDir, schemaSource.name, TOOL_SCHEMAS_SNAPSHOT), "utf8");
 			const toolSchemas = parseToolSchemasSnapshot(toolSchemasSnapshot);
 			const pinnedSchemaSets = [toolSchemas.initial, ...toolSchemas.changes];
@@ -2385,14 +2763,18 @@ function defineAcpSnapshotSuite(options) {
 			for (const index of childPromptPins) childPinnedPrompts.set(index, await readFile(join(dir, childSystemPromptSnapshot(index)), "utf8"));
 			for (const [logIndex, log] of result.sessionLogs.entries()) {
 				const childSchemas = childPinnedSchemas.get(logIndex);
-				const expectedChanges = scenario.pinsHeader === true && logIndex === 0 ? scenario.expectedHeaderChanges ?? 0 : 0;
+				const pinsPrimary = scenario.pinsHeader === true && logIndex === 0;
+				const expectedChanges = pinsPrimary ? scenario.expectedHeaderChanges ?? 0 : 0;
+				const expectedPromptChanges = pinsPrimary ? scenario.expectedPromptChanges ?? 0 : 0;
 				expect(headerChangeCount(log.content), `session ${log.id}: changed request/header count`).toBe(expectedChanges);
-				const headerEvents = normalizedHeaderEvents(scrubSystemPrompts(log.content), ctx);
+				const headerEvents = normalizedHeaderEvents(log.content, ctx);
 				const headers = headerEvents.map((event) => event.header);
 				const prompts = normalizedSystemPrompts(log.content, ctx);
-				const schemaSets = normalizedToolSchemas(log.content, ctx);
-				expect(prompts.length, `session ${log.id}: every request/header must carry a string system prompt`).toBe(headers.length);
-				expect(schemaSets.length, `session ${log.id}: every request/header must carry an array-valued tools field`).toBe(headers.length);
+				expect(normalizedToolSchemas(log.content, ctx).length, `session ${log.id}: every request/header must carry an array-valued tools field`).toBe(headers.length);
+				if (headers.length > 0) {
+					expect(systemPromptPrecedesRequests(log.content), `session ${log.id}: a system/message must precede the first request/header`).toBe(true);
+					expect(prompts.length, `session ${log.id}: system/message count`).toBe(1 + expectedPromptChanges);
+				}
 				if (childSchemas !== void 0) expect(childSchemas.length, `session ${log.id}: ${childToolSchemasSnapshot(logIndex)} has an unexpected tool-schema count`).toBe(1 + headerChangeCount(log.content));
 				let revision = 0;
 				for (const [k, header] of headers.entries()) {
@@ -2403,17 +2785,15 @@ function defineAcpSnapshotSuite(options) {
 						tools: childSchemas[revision]
 					};
 					expect(header, `session ${log.id}: request/header #${k + 1} diverged from the pinned (${pinningScenario.name}) header`).toEqual(expected);
-					if (expectedChanges === 0) {
-						const childPrompt = childPinnedPrompts.get(logIndex);
-						const promptOrigin = childPrompt === void 0 ? `${promptSource.name}/${SYSTEM_PROMPT_SNAPSHOT}` : childSystemPromptSnapshot(logIndex);
-						expect(formatSystemPromptSnapshot(prompts[k]), `session ${log.id}: initial system prompt #${k + 1} diverged from ${promptOrigin}`).toEqual(childPrompt ?? initialPromptSnapshot);
-					}
 				}
-				if (scenario.pinsHeader === true && logIndex === 0) {
-					const pinningHeaders = pinningHeaderPayloads(log.content, ctx);
-					const pinningPrompts = systemPromptsFrom(pinningHeaders);
-					const pinningSchemas = toolSchemasFrom(pinningHeaders);
-					expect(formatSystemPromptSnapshot(pinningPrompts[0], pinningPrompts.slice(1)), `session ${log.id}: changed system prompts diverged from ${promptSource.name}/${SYSTEM_PROMPT_SNAPSHOT}`).toEqual(promptSnapshot);
+				if (expectedPromptChanges === 0) {
+					const childPrompt = childPinnedPrompts.get(logIndex);
+					const promptOrigin = childPrompt === void 0 ? `${promptSource.name}/${SYSTEM_PROMPT_SNAPSHOT}` : childSystemPromptSnapshot(logIndex);
+					for (const [k, prompt] of prompts.entries()) expect(formatSystemPromptSnapshot(prompt), `session ${log.id}: system prompt #${k + 1} diverged from ${promptOrigin}`).toEqual(childPrompt ?? initialPromptSnapshot);
+				}
+				if (pinsPrimary) {
+					const pinningSchemas = toolSchemasFrom(pinningHeaderPayloads(log.content, ctx));
+					expect(formatSystemPromptSnapshot(prompts[0], prompts.slice(1)), `session ${log.id}: changed system prompts diverged from ${promptSource.name}/${SYSTEM_PROMPT_SNAPSHOT}`).toEqual(promptSnapshot);
 					expect(formatToolSchemasSnapshot(pinningSchemas[0], pinningSchemas.slice(1)), `session ${log.id}: changed tool schemas diverged from ${schemaSource.name}/${TOOL_SCHEMAS_SNAPSHOT}`).toEqual(toolSchemasSnapshot);
 				}
 			}
@@ -2444,7 +2824,6 @@ function defineAcpSnapshotSuite(options) {
 				expect(existsSync(join(dir, "input.json")), `${name}/input.json`).toBe(true);
 				expect(existsSync(join(dir, "stdout.expected.jsonl")), `${name}/stdout.expected.jsonl`).toBe(true);
 				expect(existsSync(join(dir, WINDOWS_STDOUT_SNAPSHOT)), `${name}/${WINDOWS_STDOUT_SNAPSHOT} presence must match \`pinsNativeWindowsStdout\``).toBe(pinsNativeWindowsStdout === true);
-				expect(existsSync(join(dir, "session.jsonl")), `${name}/session.jsonl`).toBe(true);
 				expect(existsSync(join(dir, "replay.override.json")), `${name}/replay.override.json presence must match \`overridden\``).toBe(overridden === true);
 				expect(existsSync(join(dir, SYSTEM_PROMPT_SNAPSHOT)), `${name}/${SYSTEM_PROMPT_SNAPSHOT} presence must match snapshot-source ownership`).toBe(promptOwners.has(name));
 				expect(existsSync(join(dir, TOOL_SCHEMAS_SNAPSHOT)), `${name}/${TOOL_SCHEMAS_SNAPSHOT} presence must match snapshot-source ownership`).toBe(schemaOwners.has(name));
@@ -2466,7 +2845,9 @@ function defineAcpSnapshotSuite(options) {
 				const promptSource = promptSourceByClass.get(classOf(scenario)) ?? scenario;
 				/* v8 ignore next -- registration guarantees every pin has resolved sources. */
 				const schemaSource = schemaSourceByClass.get(classOf(scenario)) ?? scenario;
-				const fixture = await readFile(join(snapshotsDir, scenario.name, "session.jsonl"), "utf8");
+				const fixtureDir = join(snapshotsDir, scenario.name);
+				const [fixtureFile] = await sessionFixtures(fixtureDir);
+				const fixture = await readFile(join(fixtureDir, fixtureFile), "utf8");
 				const headers = pinningHeaderPayloads(fixture, fixtureContext(fixture));
 				const promptSnapshot = await readFile(join(snapshotsDir, promptSource.name, SYSTEM_PROMPT_SNAPSHOT), "utf8");
 				expect(headers.length, `${scenario.name}: unexpected request/header count`).toBe(1 + (scenario.expectedHeaderChanges ?? 0));
@@ -2477,6 +2858,8 @@ function defineAcpSnapshotSuite(options) {
 				for (const [index, header] of headers.entries()) expect(() => restorePinnedToolSchemas(header, schemaSets[index]), `${scenario.name}: tools must use the sidecar token`).not.toThrow();
 				expect(promptSnapshot.length, `${promptSource.name}/${SYSTEM_PROMPT_SNAPSHOT} must not be empty`).toBeGreaterThan(0);
 				expect(promptSnapshot.endsWith("\n"), `${promptSource.name}/${SYSTEM_PROMPT_SNAPSHOT} must end in a newline`).toBe(true);
+				expect(parseSystemPromptSnapshot(promptSnapshot).changes.length, `${promptSource.name}: prompt change count must match ${scenario.name}'s expectedPromptChanges`).toBe(scenario.expectedPromptChanges ?? 0);
+				expect(normalizedSystemPrompts(fixture, fixtureContext(fixture)).length, `${scenario.name}: a pinning fixture must carry exactly its declared system/message count`).toBe(1 + (scenario.expectedPromptChanges ?? 0));
 				expect(toolSchemasSnapshot, `${schemaSource.name}/${TOOL_SCHEMAS_SNAPSHOT} must use canonical JSON formatting`).toBe(formatToolSchemasSnapshot(toolSchemas.initial, toolSchemas.changes));
 				expect(headerChangeCount(fixture), `${scenario.name}: a pinning fixture must carry exactly its declared changed headers`).toBe(scenario.expectedHeaderChanges ?? 0);
 			}
@@ -2513,22 +2896,9 @@ function defineAcpSnapshotSuite(options) {
 			}
 		});
 		it("every committed JSONL has valid tool results and canonical fixture storage", async () => {
-			for (const scenario of scenarios) {
-				const dir = join(snapshotsDir, scenario.name);
-				const files = await sessionFixtures(dir);
-				for (const file of files) {
-					const fixture = await readFile(join(dir, file), "utf8");
-					expect(unknownToolCallIds(fixture), `${scenario.name}/${file} contains UNKNOWN_TOOL`).toEqual([]);
-					expect(fixture, `${scenario.name}/${file} carries a non-canonical macOS cwd token`).not.toContain("/private{{cwd}}");
-					expect(scrubSystemPrompts(fixture), `${scenario.name}/${file} carries an unscrubbed system prompt`).toEqual(fixture);
-					expect(scrubToolSchemas(fixture), `${scenario.name}/${file} carries unscrubbed tool schemas`).toEqual(fixture);
-					if (scenario.pinsHeader !== true) expect(scrubRequestHeaders(fixture), `${scenario.name}/${file} carries unscrubbed header content`).toEqual(fixture);
-				}
-				const fixtures = await Promise.all(files.map((file) => readFile(join(dir, file), "utf8")));
-				expect(redactSessionSnapshotIds(fixtures), `${scenario.name}: identity redaction fixed point`).toEqual(fixtures);
-			}
+			for (const scenario of scenarios) await assertSessionFixtureStorage(join(snapshotsDir, scenario.name), scenario.name);
 		});
 	});
 }
 //#endregion
-export { EMPTY_WORKSPACE_MARKER, captureExpectedWorkspaceSnapshot, captureWorkspaceSnapshot, defineAcpSnapshotSuite, extractSnapshotSpillPaths, fixtureContext, formatSystemPromptSnapshot, formatToolSchemasSnapshot, headerChangeCount, launchAcpTestAgent, materializeProfilePatch, normalizeSessionLog, normalizeSessionSnapshot, normalizeSessionSnapshots, normalizeStdout, normalizedHeaders, normalizedSystemPrompts, normalizedToolSchemas, parseSnapshotManifest, parseToolSchemasSnapshot, redactSessionSnapshotIds, refreshFixtureReplacements, restorePinnedToolSchemas, runScenario, scrubRequestHeaders, scrubSessionSnapshot, scrubSystemPrompts, scrubToolSchemas, sessionFixtureNames, snapshotSpillRoot, stabilizeFixtureMessageIds, stabilizeRefreshLog, tokenizeSessionFixtureCwd };
+export { EMPTY_WORKSPACE_MARKER, assertPersistedSessionVersion, assertSessionFixtureVersion, captureExpectedWorkspaceSnapshot, captureWorkspaceSnapshot, defineAcpSnapshotSuite, extractSnapshotSpillPaths, fixtureContext, formatSystemPromptSnapshot, formatToolSchemasSnapshot, headerChangeCount, latestPersistedSessionPaths, launchAcpTestAgent, materializeProfilePatch, normalizeSessionFormatMetadata, normalizeSessionLog, normalizeSessionSnapshot, normalizeSessionSnapshots, normalizeStdout, normalizedHeaders, normalizedSystemPrompts, normalizedToolSchemas, parsePersistedSessionFilename, parseSessionFixtureName, parseSnapshotManifest, parseSystemPromptSnapshot, parseToolSchemasSnapshot, persistedSessionFilename, reconcileCatalogCreationTimes, redactSessionSnapshotIds, refreshFixtureReplacements, restorePinnedToolSchemas, runScenario, scrubModelRequestBulk, scrubSessionSnapshot, scrubSystemPrompts, scrubToolSchemas, sessionFixtureFiles, sessionFixtureName, sessionFixtureNames, sessionHeaderVersion, snapshotSpillRoot, stabilizeFixtureMessageIds, stabilizeRefreshLog, systemPromptPrecedesRequests, tokenizeSessionFixtureCwd, writerSnapshotName, writesCurrentSessionFixtures };

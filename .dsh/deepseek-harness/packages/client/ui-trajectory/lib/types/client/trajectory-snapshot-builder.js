@@ -153,6 +153,8 @@ export class TrajectorySnapshotBuilder {
                     : previous?.change === undefined ? {} : { change: previous.change }),
             });
         }
+        const representedPrompts = new Set(this.contributions.flatMap(node => node.data.kind === 'request-header' && node.data.header.change !== undefined ? [node.data.header.change.seq] : []));
+        const systemPrompts = [];
         const finalized = [];
         const eventLocations = new Map();
         const requests = [];
@@ -166,6 +168,11 @@ export class TrajectorySnapshotBuilder {
         const runningCalls = [];
         for (const contribution of this.contributions) {
             const data = contribution.data;
+            if (data.kind === 'system-prompt') {
+                if (!representedPrompts.has(data.prompt.seq))
+                    systemPrompts.push(data.prompt);
+                continue;
+            }
             if (data.kind === 'request-header') {
                 previousHeader = data.header;
                 previousTools = indexTools(data.header.prompt.tools);
@@ -226,6 +233,7 @@ export class TrajectorySnapshotBuilder {
         const eventNodes = finalized;
         return {
             eventNodes,
+            ...systemPrompts.length > 0 ? { systemPrompts } : {},
             eventLocations,
             requests,
             callSchemas,
@@ -245,6 +253,7 @@ export class TrajectorySnapshotBuilder {
 /** Trajectory target factory preserving the existing stage-oriented view model. */
 export const trajectoryViewDefinition = {
     target: 'trajectory',
+    toolCallFocus: callId => callId,
     create: () => new TrajectorySnapshotBuilder(),
 };
 /**

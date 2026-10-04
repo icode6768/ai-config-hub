@@ -56,17 +56,17 @@ export function toolCallUpdate(event) {
  * @returns the standard completed or failed tool-call update.
  */
 export async function toolResultUpdate(ctx, event) {
-    const result = event.data.message.content[0];
+    const message = event.data.message;
     const content = [];
-    for (const block of result.content) {
+    for (const block of message.content) {
         const converted = await assistantBlockToAcp(ctx, block);
         if (converted !== undefined)
             content.push({ type: 'content', content: converted });
     }
     return {
         sessionUpdate: 'tool_call_update',
-        toolCallId: result.toolCallId,
-        status: result.isError === true ? 'failed' : 'completed',
+        toolCallId: message.toolCallId,
+        status: message.isError === true ? 'failed' : 'completed',
         content,
     };
 }

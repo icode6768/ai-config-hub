@@ -8,7 +8,7 @@
  *
  * @module @deepseek-ai/dsh-skill-filesystem
  */
-import { access, lstat, readdir, readFile, stat } from 'node:fs/promises';
+import { access, lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { unwatchFile, watchFile } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
@@ -128,7 +128,7 @@ export class FileSystemSkillProvider {
             source: candidate.source,
             provider: this.name,
             resourceBase: { kind: 'directory', path: locator.directory },
-            path: locator.path,
+            path: parsed.path,
             ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
             content: parsed.content,
         };
@@ -630,7 +630,7 @@ async function discoverRoot(root, ctx, provider) {
             rank: root.rank,
             locator,
             resourceBase: { kind: 'directory', path: locator.directory },
-            path: locator.path,
+            path: parsed.path,
             ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
         });
     }
@@ -687,7 +687,7 @@ async function parseSkillFile(path, ctx, signal, trustedHost = false) {
     }
     let parsed;
     try {
-        parsed = parseFrontmatter(raw);
+        parsed = parseFrontmatter(raw.content);
     }
     catch (error) {
         ctx.logger.warn(`skill file ${path} ignored: invalid YAML frontmatter: ${errorMessage(error)}`);
@@ -721,6 +721,7 @@ async function parseSkillFile(path, ctx, signal, trustedHost = false) {
         ...optionalString(parsed.data, 'whenToUse'),
         invocation,
         ...optionalMetadata(parsed.data),
+        path: raw.path,
         content: parsed.body.trim(),
     };
 }
@@ -734,7 +735,8 @@ async function readSkillText(ctx, path, signal, trustedHost = false) {
         return await readSkillTextFromFileSystem(ctx, fs, path, signal);
     }
     try {
-        return await readFile(path, { encoding: 'utf8', signal });
+        const resolvedPath = await realpath(path);
+        return { path: resolvedPath, content: await readFile(resolvedPath, { encoding: 'utf8', signal }) };
     }
     catch (error) {
         signal?.throwIfAborted();
@@ -769,7 +771,7 @@ async function readSkillTextFromFileSystem(ctx, fs, path, signal) {
     if (info === undefined || info.type !== 'file')
         return undefined;
     try {
-        return await fs.readText(target, signal);
+        return { path: fs.processPath(target), content: await fs.readText(target, signal) };
     }
     catch (error) {
         signal?.throwIfAborted();

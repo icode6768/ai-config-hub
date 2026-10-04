@@ -15,7 +15,7 @@ let nextApprovalKey = 0;
 export class PendingApproval {
     sessionId;
     /** Domain discriminator used by Session pending-interaction consumers. */
-    kind = 'approval';
+    kind;
     /** Opaque render identity and one-shot remount axis. */
     key;
     /** Tool requesting the decision. */
@@ -24,6 +24,8 @@ export class PendingApproval {
     callId;
     /** Human-readable reason supplied by the asker. */
     reason;
+    /** Localized presentation copy, when supplied by the asker. */
+    displayReason;
     /** Result returned by the Remote Event listener to the Host waterfall. */
     result;
     #resolve;
@@ -38,11 +40,13 @@ export class PendingApproval {
      */
     constructor(sessionId, request) {
         this.sessionId = sessionId;
+        this.kind = 'approval';
         nextApprovalKey += 1;
         this.key = `approval:${String(nextApprovalKey)}`;
         this.toolName = request.toolName;
         this.callId = request.callId;
         this.reason = request.reason;
+        this.displayReason = request.displayReason;
         const completion = Promise.withResolvers();
         this.result = completion.promise;
         this.#resolve = completion.resolve;
@@ -59,6 +63,13 @@ export class PendingApproval {
         request.signal.addEventListener('abort', onAbort, { once: true });
         if (request.signal.aborted)
             onAbort();
+    }
+    /**
+     * Availability of this pending request after answer or withdrawal.
+     * @returns whether this request can still accept a decision.
+     */
+    get answerable() {
+        return !this.#settled;
     }
     /**
      * Resolve the Host waterfall with the user's decision.

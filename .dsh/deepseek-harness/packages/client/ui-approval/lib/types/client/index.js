@@ -16,6 +16,7 @@ async function answerApproval(ctx, owner, request, next, registerPendingInteract
             ? {}
             : { callId: request.callId }),
         ...(request.reason === undefined ? {} : { reason: request.reason }),
+        ...(request.displayReason === undefined ? {} : { displayReason: request.displayReason }),
         ...(request.signal === undefined ? {} : { signal: request.signal }),
     });
     const completed = Promise.withResolvers();
@@ -45,12 +46,24 @@ async function answerApproval(ctx, owner, request, next, registerPendingInteract
  */
 export function apply(ctx) {
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-approval: dictionaries');
+    ctx.inject(['shortcuts'], (scope) => {
+        const t = ctx.locale.bind(NS);
+        scope.effect(() => scope.shortcuts.registerFixed({
+            id: 'approval.allow', label: () => t('allowOnce'), keys: ['Enter'], bindings: [{ code: 'Enter', modifiers: [] }], group: 'approval',
+        }), 'ui-approval: fixed allow reference');
+        scope.effect(() => scope.shortcuts.registerFixed({
+            id: 'approval.reject', label: () => t('reject'), keys: ['Esc'], bindings: [{ code: 'Escape', modifiers: [] }], group: 'approval',
+        }), 'ui-approval: fixed reject reference');
+    });
     const registerPendingInteraction = ctx.uiSession.registerPendingInteraction(() => 0);
     ctx.slots.inject('conversation.composer', () => ctx.slots.register({
         name: 'conversation.composer',
         priority: 1,
         select: ({ pendingInteraction }) => pendingInteraction instanceof PendingApproval ? pendingInteraction : null,
         locale: NS,
+        inject: () => ({
+            resolveReason: (reason) => ctx.locale.resolveText(reason),
+        }),
         children: {
             'conversation.approval.detail': { kind: 'single', scope: 'session' },
         },

@@ -75,14 +75,15 @@ export declare class LspInstance {
     dispose(): Promise<void>;
     /** Publish disposal once and make every caller await the same quiescence boundary. */
     private startTeardown;
+    /** Await teardown while leaving its memoized failure for provider-level finalization. */
+    private awaitTeardownAttempt;
     private tearDown;
     /** Best-effort LSP `shutdown`/`exit`, including process close, bounded by `signal`. */
     private gracefulShutdown;
     /**
-     * Terminate the tree (the seam escalates SIGTERM→`killGraceMs`→SIGKILL),
-     * then await leader and helper exit. The awaits are unbounded on purpose:
-     * the seam's escalation already committed to SIGKILL, so quiescence — not
-     * another timer — is the postcondition disposal owes its callers.
+     * Terminate the provider-managed range, then await the direct server result
+     * and whole-range quiescence. The awaits are unbounded on purpose because
+     * quiescence, not another timer, is the postcondition disposal owes callers.
      */
     private forceTerminate;
 }

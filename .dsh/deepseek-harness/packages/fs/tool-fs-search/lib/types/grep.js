@@ -11,7 +11,6 @@
  * @module @deepseek-ai/dsh-tool-fs-search/grep
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt';
 import { SearchError, previewLine, retainGrepMatches, runRipgrep, toWorkdirRelative, trySaveFormattedResult } from "./search-core.js";
 import { grepSearchMeta, searchViewFromMeta } from "./presentation.js";
 import { acceptedDirectCallValue } from "./direct-call.js";
@@ -241,7 +240,7 @@ export function presentGrepResult(_args, result) {
     return view;
 }
 /**
- * Register the `grep` tool and its system-prompt guidance.
+ * Register the `grep` tool and its scope-aware system-prompt guidance.
  *
  * @param ctx - the plugin context; registrations are effects scoped to it, and
  *   execution uses its `subprocess` service.
@@ -250,14 +249,16 @@ export function presentGrepResult(_args, result) {
 export function applyGrepTool(ctx, caps) {
     ctx.systemPrompt.section({
         name: 'tool:grep',
-        order: FIRST_PARTY_SECTION_ORDER.TOOL_GREP,
-        text: 'Use the grep tool — not shell grep or rg — to search file contents. Use read on a matched file when you need surrounding context.',
+        order: ctx.systemPrompt.getSectionOrder('TOOL_GREP'),
+        text: ({ scope }) => ctx.tools.get('grep', scope) === undefined
+            ? ''
+            : 'Use the grep tool — not shell grep or rg — to search file contents.'
+                + (ctx.tools.get('read', scope) === undefined ? '' : ' Use read on a matched file when you need surrounding context.'),
     });
     const tool = defineTool({
         name: 'grep',
         description: 'Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. '
-            + `Returns the first ${caps.maxMatches} matches inline; a capped result reports where the complete match list was saved. `
-            + 'Use read on a matched file for surrounding context.',
+            + `Returns up to ${caps.maxMatches} matches; a larger result reports where the complete match list was saved.`,
         parameters: {
             pattern: { type: 'string', required: true, description: 'Regular expression to search for (ripgrep syntax).' },
             path: { type: 'string', description: 'File or directory to search. Defaults to the session workspace; a relative path resolves against it.' },

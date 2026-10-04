@@ -14,10 +14,10 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * with no readable listing) is not a dead end: the failure is shown next to the
  * rows the user can still fill in by hand.
  */
-import { useState } from 'react';
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, IconPlusOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
 import { formatCapacity, parseCapacity } from "./DeepSeekModelsEditor.js";
-import { messageOf } from "./store.js";
+import { ModelRow } from "./ModelRow.js";
 import styles from './ModelsSection.module.css';
 /** A row's text field, or the empty string when unset or not a string. */
 function textOf(model, key) {
@@ -28,14 +28,6 @@ function textOf(model, key) {
 function numberOf(model, key) {
     const value = model[key];
     return typeof value === 'number' ? value : undefined;
-}
-/** Disclosure chevron; rotates to point down while its row is open. */
-function IconChevron({ open }) {
-    return (_jsx("svg", { width: "14", height: "14", viewBox: "0 0 16 16", fill: "none", "aria-hidden": true, style: { transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 120ms ease' }, children: _jsx("path", { d: "M6 3.5L10.5 8L6 12.5", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }) }));
-}
-/** Removal glyph for one model row. */
-function IconTrash() {
-    return (_jsx("svg", { width: "14", height: "14", viewBox: "0 0 16 16", fill: "none", "aria-hidden": true, children: _jsx("path", { d: "M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4", stroke: "currentColor", strokeWidth: "1.3", strokeLinecap: "round", strokeLinejoin: "round" }) }));
 }
 /**
  * What an empty capacity field is worth, shown as its placeholder so a row left
@@ -62,13 +54,14 @@ const CAPACITY_HINT = {
 function capacitySpelling(value) {
     return value === undefined ? '' : formatCapacity(value);
 }
-/** Adopt a candidate, keeping whatever capacities the provider disclosed. */
+/** Adopt a candidate, preserving disclosed capacities and input types. */
 function adopt(candidate) {
     return {
         id: candidate.id,
         ...candidate.name === undefined ? {} : { name: candidate.name },
         ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
         ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },
+        ...candidate.inputModalities === undefined ? {} : { input: [...candidate.inputModalities] },
     };
 }
 /**
@@ -77,13 +70,29 @@ function adopt(candidate) {
  * @returns the model-list editor.
  */
 export function ModelListEditor(props) {
-    const { models, onChange, probe, api, t, disabled } = props;
+    const { models, onChange, probe, operations, t, disabled, onBusyChange } = props;
+    const { catalogProvider } = props;
     const [busy, setBusy] = useState(false);
+    useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
     const [failure, setFailure] = useState(undefined);
+    const [inheritedCatalog, setInheritedCatalog] = useState(undefined);
+    useEffect(() => {
+        if (catalogProvider === undefined)
+            return;
+        let current = true;
+        void operations.discoverModels(probe.settingsNs, { provider: catalogProvider }).then((answer) => {
+            if (!current)
+                return;
+            setInheritedCatalog({ provider: catalogProvider, models: answer.kind === 'found' ? answer.models : [] });
+            setFailure(answer.kind === 'refused' ? answer.message : undefined);
+        });
+        return () => { current = false; };
+    }, [catalogProvider, operations, probe.settingsNs]);
+    const catalog = inheritedCatalog?.provider === catalogProvider ? inheritedCatalog?.models : undefined;
+    const inputDefaults = useMemo(() => new Map(catalog?.map(model => [model.id, model.inputModalities])), [catalog]);
     const [candidates, setCandidates] = useState(undefined);
     const [picked, setPicked] = useState(new Set());
-    // Rows carry an id and a name; capacities are the exception, so they stay
-    // folded until asked for rather than crowding every row with four inputs.
+    const [candidateQuery, setCandidateQuery] = useState('');
     const [expanded, setExpanded] = useState(new Set());
     // Capacities are edited as text, so a field's keystrokes are held here rather
     // than re-derived from the parsed count on every change — that would rewrite
@@ -137,17 +146,19 @@ export function ModelListEditor(props) {
         setBusy(true);
         setFailure(undefined);
         try {
-            const response = await api.llm.discoverModels(probe.settingsNs, {
+            const answer = await operations.discoverModels(probe.settingsNs, {
                 ...probe.provider === undefined ? {} : { provider: probe.provider },
                 ...probe.baseURL === undefined || probe.baseURL.length === 0 ? {} : { baseURL: probe.baseURL },
                 ...probe.api === undefined ? {} : { api: probe.api },
                 ...probe.apiKey === undefined ? {} : { apiKey: probe.apiKey },
             });
-            if (!response.ok) {
-                setFailure(response.error.message);
+            if (answer.kind === 'refused') {
+                setFailure(answer.message);
                 return;
             }
-            const found = response.value;
+            const found = answer.models;
+            if (catalogProvider !== undefined)
+                setInheritedCatalog({ provider: catalogProvider, models: found });
             if (found.length === 0) {
                 setFailure(t('fetchEmpty'));
                 return;
@@ -155,13 +166,9 @@ export function ModelListEditor(props) {
             // Everything already configured starts unchecked, so adopting a
             // selection never silently rewrites a capacity the user corrected.
             const known = new Set(models.map(model => textOf(model, 'id')));
+            setCandidateQuery('');
             setCandidates(found);
             setPicked(new Set(found.filter(model => !known.has(model.id)).map(model => model.id)));
-        }
-        catch (error) {
-            // The transport rejected rather than answering; without this the button
-            // would stay busy with nothing shown.
-            setFailure(messageOf(error));
         }
         finally {
             setBusy(false);
@@ -170,6 +177,7 @@ export function ModelListEditor(props) {
     const closePicker = () => {
         setCandidates(undefined);
         setPicked(new Set());
+        setCandidateQuery('');
     };
     const adoptPicked = () => {
         /* v8 ignore next -- the dialog only renders with candidates loaded */
@@ -197,13 +205,22 @@ export function ModelListEditor(props) {
         });
     };
     const activeCandidates = candidates ?? [];
-    const allCandidatesPicked = activeCandidates.length > 0
-        && activeCandidates.every(candidate => picked.has(candidate.id));
-    const toggleAllCandidates = () => {
+    const normalizedCandidateQuery = candidateQuery.trim().toLowerCase();
+    const visibleCandidates = normalizedCandidateQuery.length === 0
+        ? activeCandidates
+        : activeCandidates.filter(candidate => candidate.id.toLowerCase().includes(normalizedCandidateQuery)
+            || candidate.name?.toLowerCase().includes(normalizedCandidateQuery) === true);
+    const allVisibleCandidatesPicked = visibleCandidates.length > 0
+        && visibleCandidates.every(candidate => picked.has(candidate.id));
+    const toggleVisibleCandidates = () => {
         setPicked((current) => {
-            return activeCandidates.every(candidate => current.has(candidate.id))
-                ? new Set()
-                : new Set(activeCandidates.map(candidate => candidate.id));
+            if (visibleCandidates.every(candidate => current.has(candidate.id))) {
+                return new Set();
+            }
+            const next = new Set(current);
+            for (const candidate of visibleCandidates)
+                next.add(candidate.id);
+            return next;
         });
     };
     // A route the adapter already describes answers without an endpoint; only a
@@ -215,25 +232,29 @@ export function ModelListEditor(props) {
                         ? (_jsx("button", { type: "button", className: styles['linkButton'], disabled: disabled, onClick: props.onReset, children: t('resetModels') }))
                         : null, _jsx("button", { type: "button", className: styles['linkButton'], disabled: disabled || busy || !askable || props.probeBlocked !== undefined, title: props.probeBlocked !== undefined
                             ? t(props.probeBlocked)
-                            : askable ? undefined : t('fetchNeedsBaseUrl'), onClick: () => { void fetchModels(); }, children: busy ? t('fetching') : t('fetchModels') })] }), models.length === 0 ? _jsx("p", { className: styles['modelEmpty'], children: t('modelsEmpty') }) : null, models.map((model, index) => (_jsxs("div", { className: styles['modelEntry'], children: [_jsxs("div", { className: styles['modelRow'], children: [_jsx("input", { className: styles['input'], type: "text", value: textOf(model, 'id'), placeholder: t('modelId'), "aria-label": `${t('modelId')} ${index + 1}`, disabled: disabled, onChange: (event) => { patch(index, { id: event.target.value }); } }), _jsx("input", { className: styles['input'], type: "text", value: textOf(model, 'name'), placeholder: t('modelName'), "aria-label": `${t('modelName')} ${index + 1}`, disabled: disabled, onChange: (event) => { patch(index, { name: event.target.value === '' ? undefined : event.target.value }); } }), _jsx("button", { type: "button", className: styles['iconButton'], "aria-label": `${t('modelAdvanced')} ${index + 1}`, "aria-expanded": expanded.has(index), title: t('modelAdvanced'), onClick: () => { toggleExpanded(index); }, children: _jsx(IconChevron, { open: expanded.has(index) }) }), _jsx("button", { type: "button", className: `${styles['iconButton']} ${styles['iconButtonDanger']}`, "aria-label": `${t('removeModel')} ${index + 1}`, title: t('removeModel'), disabled: disabled, onClick: () => {
-                                    onChange(models.filter((_model, at) => at !== index));
-                                    // Both stores are keyed by position, so every row after this
-                                    // one shifts down and would otherwise inherit its neighbour's
-                                    // state — a different row's capacities popping open, or its
-                                    // half-typed text appearing in another row's field.
-                                    setExpanded((current) => {
-                                        const next = new Set();
-                                        for (const at of current) {
-                                            if (at < index)
-                                                next.add(at);
-                                            else if (at > index)
-                                                next.add(at - 1);
-                                        }
-                                        return next;
-                                    });
-                                    setEditing(current => reindexOnRemove(current, index));
-                                }, children: _jsx(IconTrash, {}) })] }), expanded.has(index)
-                        ? (_jsxs("div", { className: styles['modelAdvanced'], children: [_jsxs("label", { className: styles['modelField'], children: [_jsx("span", { className: styles['modelFieldLabel'], children: t('modelContextWindow') }), _jsx("input", { className: styles['input'], type: "text", inputMode: "numeric", value: capacityText(model, index, 'contextWindow'), placeholder: CAPACITY_HINT.contextWindow, "aria-label": `${t('modelContextWindow')} ${index + 1}`, disabled: disabled, onChange: (event) => { editCapacity(index, 'contextWindow', event.target.value); } })] }), _jsxs("label", { className: styles['modelField'], children: [_jsx("span", { className: styles['modelFieldLabel'], children: t('modelMaxTokens') }), _jsx("input", { className: styles['input'], type: "text", inputMode: "numeric", value: capacityText(model, index, 'maxTokens'), placeholder: CAPACITY_HINT.maxTokens, "aria-label": `${t('modelMaxTokens')} ${index + 1}`, disabled: disabled, onChange: (event) => { editCapacity(index, 'maxTokens', event.target.value); } })] })] }))
-                        : null] }, index))), _jsx("button", { type: "button", className: styles['addModelButton'], disabled: disabled, onClick: () => { onChange([...models, { id: '' }]); }, children: t('addModel') }), failure !== undefined ? _jsx("p", { className: styles['error'], children: failure }) : null, _jsxs(Modal, { open: candidates !== undefined, onClose: closePicker, title: t('fetchTitle'), closeLabel: t('close'), description: t('fetchDescription'), className: styles['fetchDialog'], footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", onClick: closePicker, children: t('cancel') }), _jsx(Button, { variant: "outline", onClick: adoptPicked, children: t('fetchAdopt') })] })), children: [_jsx("div", { className: styles['candidateActions'], children: _jsx(Button, { variant: "ghost", size: "sm", onClick: toggleAllCandidates, children: t(allCandidatesPicked ? 'fetchDeselectAll' : 'fetchSelectAll') }) }), _jsx("ul", { className: styles['candidateList'], children: (candidates ?? []).map(candidate => (_jsx("li", { className: styles['candidate'], children: _jsxs("label", { className: styles['candidateLabel'], children: [_jsx("input", { type: "checkbox", checked: picked.has(candidate.id), onChange: () => { toggle(candidate.id); } }), _jsx("span", { className: styles['candidateId'], children: candidate.id })] }) }, candidate.id))) })] })] }));
+                            : askable ? undefined : t('fetchNeedsBaseUrl'), onClick: () => { void fetchModels(); }, children: busy ? t('fetching') : t('fetchModels') })] }), models.length === 0 ? _jsx("p", { className: styles['modelEmpty'], children: t('modelsEmpty') }) : null, _jsx("div", { className: styles['modelList'], children: models.map((model, index) => (_jsx(ModelRow, { model: model, position: index + 1, inputField: "input", inputFallback: inputDefaults.get(textOf(model, 'id')) ?? props.defaultInput, inputLoading: catalogProvider !== undefined && catalog === undefined, expanded: expanded.has(index), disabled: disabled, t: t, contextWindow: {
+                        value: capacityText(model, index, 'contextWindow'),
+                        placeholder: CAPACITY_HINT.contextWindow,
+                        onChange: (text) => { editCapacity(index, 'contextWindow', text); },
+                    }, maxTokens: {
+                        value: capacityText(model, index, 'maxTokens'),
+                        placeholder: CAPACITY_HINT.maxTokens,
+                        onChange: (text) => { editCapacity(index, 'maxTokens', text); },
+                    }, onFieldChange: (field, value) => { patch(index, { [field]: value }); }, onChange: (next) => { onChange(models.map((row, at) => at === index ? next : row)); }, onToggle: () => { toggleExpanded(index); }, onRemove: () => {
+                        onChange(models.filter((_model, at) => at !== index));
+                        setExpanded((current) => {
+                            const next = new Set();
+                            for (const at of current) {
+                                if (at < index)
+                                    next.add(at);
+                                else if (at > index)
+                                    next.add(at - 1);
+                            }
+                            return next;
+                        });
+                        setEditing(current => reindexOnRemove(current, index));
+                    } }, index))) }), _jsxs("button", { type: "button", className: styles['addModelButton'], disabled: disabled, onClick: () => { onChange([...models, { id: '' }]); }, children: [_jsx(IconPlusOutlineRegular, { size: 14 }), t('addModel')] }), failure !== undefined ? _jsx("p", { className: styles['error'], children: failure }) : null, _jsxs(Modal, { open: candidates !== undefined, onClose: closePicker, title: t('fetchTitle'), closeLabel: t('close'), description: t('fetchDescription'), className: styles['fetchDialog'], footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", onClick: closePicker, children: t('cancel') }), _jsx(Button, { variant: "outline", onClick: adoptPicked, children: t('fetchAdopt') })] })), children: [_jsxs("div", { className: styles['candidateToolbar'], children: [_jsx("input", { className: `${styles['input']} ${styles['candidateSearch']}`, type: "search", value: candidateQuery, placeholder: t('fetchSearch'), "aria-label": t('fetchSearch'), onChange: (event) => { setCandidateQuery(event.target.value); } }), _jsx(Button, { variant: "ghost", size: "sm", disabled: visibleCandidates.length === 0, onClick: toggleVisibleCandidates, children: t(allVisibleCandidatesPicked ? 'fetchDeselectAll' : 'fetchSelectAll') })] }), visibleCandidates.length === 0
+                        ? _jsx("p", { className: styles['candidateEmpty'], role: "status", children: t('fetchNoMatches') })
+                        : (_jsx("ul", { className: styles['candidateList'], children: visibleCandidates.map(candidate => (_jsx("li", { className: styles['candidate'], children: _jsxs("label", { className: styles['candidateLabel'], children: [_jsx("input", { type: "checkbox", checked: picked.has(candidate.id), onChange: () => { toggle(candidate.id); } }), _jsx("span", { className: styles['candidateId'], title: candidate.name ?? candidate.id, children: candidate.id })] }) }, candidate.id))) }))] })] }));
 }
 //# sourceMappingURL=ModelListEditor.js.map

@@ -9,12 +9,20 @@ import type { ScopeKey, Scoped } from '@deepseek-ai/dsh-scope';
 import type { ToolCallId, ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import type { JsonValue, UserMessage } from '@deepseek-ai/dsh-session';
+import type { UserMessage } from '@deepseek-ai/dsh-session';
+import { type JsonValue } from '@deepseek-ai/dsh-util-values';
 import type { ToolCallView, ToolResultView } from './presentation.ts';
 import type { JsonSchemaNode } from './json-schema.ts';
+declare module '@deepseek-ai/dsh-llm' {
+    interface MessageSourceMap {
+        /** Tool availability changes supplied by the tool registry. */
+        'tool-registry': {
+            kind: 'tool-registry';
+        };
+    }
+}
 export { defineTool, valueSchemaSpecToJsonSchema, parameterSchemaSpecToJsonSchema, validateArgs, ToolArgsError, type ValueSchemaAnnotations, type StringValueSchemaSpec, type NumberValueSchemaSpec, type IntegerValueSchemaSpec, type BooleanValueSchemaSpec, type NullValueSchemaSpec, type ArrayValueSchemaSpec, type ObjectValueSchemaSpec, type JsonValueSchemaSpec, type OneOfValueSchemaSpec, type ValueSchemaSpec, type ParameterPropertySpec, type ParameterSchemaSpec, type ParameterJsonSchema, type InferValue, type InferArgs, type DefineToolOptions, } from './schema.ts';
 export { assertSupportedJsonSchema, assertObjectJsonSchema, validateJsonSchemaValue, JsonSchemaError, type JsonSchemaNode, type ObjectJsonSchema, type JsonSchemaType, type JsonSchemaScalar, } from './json-schema.ts';
-export type { JsonValue } from '@deepseek-ai/dsh-session';
 export type { PtcDispatchEventData, PtcDispatchStartEventData } from './types.ts';
 export { CodeRunFailedError, RUN_CODE_NAME } from './ptc.ts';
 export { jsonSchemaToTs, renderToolsSdk } from './ts-types.ts';
@@ -27,7 +35,8 @@ declare module '@deepseek-ai/cordis' {
     }
     interface Events {
         /**
-         * Allow, deny, or ask before dispatch. `next()` delegates to allow; missing
+         * Allow, deny, cancel, or ask before dispatch. `next()` delegates to allow;
+         * `cancel` selects the canonical pre-dispatch cancellation result, and missing
          * approval support turns `ask` into denial. Async gates must observe
          * `exec.signal`; the registry rechecks cancellation after they settle but
          * never abandons their promise.
@@ -62,7 +71,7 @@ declare module '@deepseek-ai/cordis' {
         /**
          * Allow a listener to replace content in the DURABLE LOG COPY of one
          * `run_code` sub-dispatch outcome before the bridge appends its
-         * `tool/code-dispatch` event. `next()` keeps the
+         * `tool/ptc-dispatch` event. `next()` keeps the
          * content unchanged; a listener may return replacement blocks (e.g. the
          * spill policy's preview + locator for an oversized text result). Only the
          * logged copy is affected — the program already received the complete
@@ -117,6 +126,16 @@ export interface ToolDefinition extends ToolSchema {
      * @returns the canonical value declared by `output.schema`.
      */
     execute(args: unknown, exec: ToolRunContext): Promise<unknown>;
+    /**
+     * Install execution-prepared content before `tools/post-execute` policies.
+     * The callback is captured when the call starts and runs once for a
+     * normalized outcome entering post-execute. Policy replacements remain
+     * authoritative; pipeline failures that bypass post-execute skip projection.
+     * @param exec - immutable execution identity and arguments.
+     * @param result - normalized result before post-execute policy.
+     * @returns replacement content, or undefined to preserve the renderer output.
+     */
+    projectContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;
     /**
      * Synchronous last-mile transform for model-facing content. The registry
      * snapshots this callback when execution starts and invokes it exactly once
@@ -202,6 +221,8 @@ export interface ToolExecutionInput {
      */
     readonly rootCallId?: ToolCallId;
     readonly name: string;
+    /** Binding-time tool schema for a PTC inner call; frozen by its producer and never logged. */
+    readonly schema?: ToolSchema;
     /** Losslessly JSON-serializable parsed arguments (tools validate their own schema). */
     readonly arguments: unknown;
     /** The agent on whose behalf the call runs (set by the agent loop). */
@@ -235,14 +256,14 @@ export type ToolExecutionMode = {
  * copy a listener may reshape. `content` is the RENDERED result projection
  * (what a native `tool/result` would carry) — the program itself received
  * the structured `value` (or just the error message on failure); only the
- * `tool/code-dispatch` event's copy changes.
+ * `tool/ptc-dispatch` event's copy changes.
  */
 export interface PtcDispatchLog {
     /** The outer `run_code` execution. */
     readonly exec: ToolExecution;
     /** The calling agent (the scope routing key and the spill owner), when the outer call has one. */
     readonly agent?: Agent;
-    /** Deterministic sub-call id (`<parent>:code:<n>`). */
+    /** Opaque sub-call id; new calls use `<parent>:ptc:<n>`. */
     readonly subCallId: ToolCallId;
     /** The dispatched sub-tool name. */
     readonly name: string;
@@ -357,6 +378,8 @@ export declare const TOOL_ABORTED_BEFORE_DISPATCH = "ABORTED_BEFORE_DISPATCH";
 export interface ToolErrorInfo {
     name: string;
     code: string;
+    /** Optional raw user-facing detail; durable projections preserve it but model-facing content does not include it. */
+    reason?: string;
 }
 /** Canonical failure detail; internal routing information remains optional. */
 export interface ToolFailure {
@@ -411,9 +434,12 @@ export interface ToolExecutionFailure {
 /** The discriminated, execution-local outcome of one tool call. */
 export type ToolExecutionResult = ToolExecutionSuccess | ToolExecutionFailure;
 /**
- * Pre-dispatch decision. `allow` runs the call; `deny` materializes an error;
- * `ask` runs only after an approval service returns `allowed-once` and otherwise
- * denies. Input rewriting is excluded because arguments are already logged and
+ * Pre-dispatch decision. `allow` runs the call; `deny` materializes its
+ * model-facing reason and optional structured error identity; `cancel` selects
+ * the canonical cancellation result without presenting a policy denial; `ask`
+ * runs only after an approval service returns `allowed-once` and otherwise
+ * denies; its `reason` is the audited approval reason and its optional
+ * `displayReason` is the localized prompt text. Input rewriting is excluded because arguments are already logged and
  * presented.
  */
 export type PreToolDecision = {
@@ -421,9 +447,16 @@ export type PreToolDecision = {
 } | {
     kind: 'deny';
     reason: string;
+    info?: ToolErrorInfo;
+} | {
+    kind: 'cancel';
 } | {
     kind: 'ask';
     reason?: string;
+    displayReason?: {
+        readonly en: string;
+        readonly [locale: string]: string;
+    };
 };
 /**
  * Post-dispatch decision: accept, replace one projection, attach context for the
@@ -453,7 +486,7 @@ export interface Config {
      * sends only `run_code` plus a generated SDK prompt and collapses the
      * executor to the same surface (a model-direct call may only name
      * `run_code`; `run_code` SDK sub-dispatches keep every visible tool); `both`
-     * sends both forms. PTC mode requires a `ctx.codeRuntime` whose `language`
+     * sends both forms. PTC mode requires a `ctx.ptcRuntime` whose `language`
      * has a registered SDK renderer (TypeScript or Python) and fail prompt
      * assembly when it is absent or has no renderer. Under `ptc`, native names
      * in `toolOrder` are invalid.
@@ -504,6 +537,8 @@ export declare class ToolRuntime extends Service {
     private cancellationStates;
     /** Definition-owned final content transform snapshotted before policy begins. */
     private contentFinalizers;
+    /** Execution-prepared content installed before post-execute policy. */
+    private contentProjectors;
     private readonly layers;
     /** Presentation for scopes that declare none; {@link presentAs} shadows it per scope. */
     private readonly defaultMode;
@@ -525,8 +560,8 @@ export declare class ToolRuntime extends Service {
      * Without this the model reads a catalog of tools it is told to use and no
      * statement that only `run_code` may be called, so it emits a native call,
      * receives `UNKNOWN_TOOL` for a tool the prompt just declared, and concludes
-     * the deployment is inconsistent. {@link COLLAPSE_SECTION_ORDER} places the rule
-     * before that guidance rather than after it.
+     * the deployment is inconsistent. Its order places the rule before that
+     * guidance rather than after it.
      *
      * `both` renders empty: native calls do execute there, so the rule is false.
      * @returns the section registration.
@@ -559,7 +594,7 @@ export declare class ToolRuntime extends Service {
      * and only for scopes whose mode actually presents it.
      * @returns the shared transport definition.
      */
-    private requireCodeTransport;
+    private requirePtcTransport;
     /**
      * Present the calling scope's tools in `mode` instead of the deployment
      * default. Nearest scope on the chain wins, so a preset's standing
@@ -578,10 +613,10 @@ export declare class ToolRuntime extends Service {
      */
     private wireSchemas;
     /**
-     * Resolve the code runtime or throw the actionable misconfiguration error.
+     * Resolve the PTC runtime or throw the actionable misconfiguration error.
      * Read at use time (assembly / run_code execution), NOT via static
      * `inject`: an inject entry would hold `ctx.tools` — and every tool plugin
-     * behind it — hostage to a code runtime existing even under `mode:
+     * behind it — hostage to a PTC runtime existing even under `mode:
      * 'native'`.
      *
      * Assembly and `run_code` execution read separately, so the language is not
@@ -589,10 +624,9 @@ export declare class ToolRuntime extends Service {
      * reads return the same flavor — but a reload that swapped in a second
      * language between them would hand a program written against one SDK to the
      * other. Binding it is deferred until a second backend ships (the first
-     * point it is testable); rationale in the
-     * [language-dispatch note](../../../../.agents/notes/implemented/feature/2026-07-31-ptc-language-dispatch.md).
+     * point it is testable).
      */
-    private requireCodeRuntime;
+    private requirePtcRuntime;
     /**
      * Register globally or in the calling agent scope. Scoped tools shadow
      * globals; duplicates within one layer and the reserved `run_code` name fail.
@@ -631,9 +665,9 @@ export declare class ToolRuntime extends Service {
      * A restriction filters what a scope inherits — the global layer and every
      * ancestor layer on its chain — and never what its OWN layer registers.
      * That exemption is what a per-child capability filter has to keep intact:
-     * the delegation runtime registers a child's reporting and structured-output
-     * tools into the child's own layer, and a filter naming the capabilities the
-     * child may use must not strip the machinery it answers through.
+     * the delegation runtime registers a child's structured-output tool into the
+     * child's own layer, and a filter naming the capabilities the child may use
+     * must not strip the machinery it answers through.
      *
      * Reading the exempt set as "the global layer" instead of "not mine" held
      * only while every model-facing tool sat in the host composition. Once
@@ -689,7 +723,7 @@ export declare class ToolRuntime extends Service {
     executionMode(exec: ToolExecutionInput): ToolExecutionMode;
     /**
      * Run the `tools/ptc-dispatch-log` waterfall over one settled sub-dispatch
-     * and return the content the bridge should log on `tool/code-dispatch`.
+     * and return the content the bridge should log on `tool/ptc-dispatch`.
      * Contained: when a listener throws, the method logs the original settled
      * content; that failure must not fail the dispatch or omit the settle event. Private:
      * the ONE consumer is the `run_code` bridge this registry constructs, which

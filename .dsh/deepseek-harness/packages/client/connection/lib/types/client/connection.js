@@ -1,9 +1,7 @@
-const CONNECTION_DEFAULTS = {
-    backoffBaseMs: 500,
-    backoffFactor: 2,
-    backoffMaxMs: 10_000,
-    generationReadyTimeoutMs: 3_000,
-};
+/** Connection generation readiness, cancellation, and continuous recovery. */
+import { resolveConnectionConfig } from "../recovery-config.js";
+const MANUAL_RECONNECT = new Error('connection: manual reconnect requested');
+const NETWORK_STATE_CHANGED = new Error('connection: browser network state changed');
 function sleep(ms, signal) {
     return new Promise((resolve) => {
         const t = setTimeout(done, ms);
@@ -13,6 +11,13 @@ function sleep(ms, signal) {
             signal.removeEventListener('abort', done);
             resolve();
         }
+    });
+}
+function waitForAbort(signal) {
+    if (signal.aborted)
+        return Promise.resolve();
+    return new Promise((resolve) => {
+        signal.addEventListener('abort', () => { resolve(); }, { once: true });
     });
 }
 /**
@@ -26,13 +31,16 @@ export class ConnectionController {
     generation = 0;
     attempt = 0;
     current = null;
+    retryDelay = null;
     running = false;
-    lastState = null;
+    immediateRetry = false;
+    networkAvailable = true;
+    lastState;
     config;
     constructor(source, sinks = {}, config = {}) {
         this.source = source;
         this.sinks = sinks;
-        this.config = { ...CONNECTION_DEFAULTS, ...config };
+        this.config = resolveConnectionConfig(config);
     }
     /** Idempotent: begin the connect/pump/reconnect loop. */
     start() {
@@ -46,11 +54,50 @@ export class ConnectionController {
         this.running = false;
         this.current?.abort();
         this.current = null;
+        this.retryDelay?.abort();
+        this.retryDelay = null;
+    }
+    /** Reset the retry sequence and replace the current generation or retry delay immediately. */
+    reconnect() {
+        if (!this.running)
+            return;
+        this.attempt = 0;
+        this.immediateRetry = true;
+        this.emitState('connecting');
+        if (!this.isRunning())
+            return;
+        this.current?.abort(MANUAL_RECONNECT);
+        this.retryDelay?.abort(MANUAL_RECONNECT);
+    }
+    /**
+     * Suspend automatic retries while offline and restart backoff when the network returns.
+     * @param available - whether the browser reports network access.
+     */
+    setNetworkAvailable(available) {
+        if (this.networkAvailable === available)
+            return;
+        this.networkAvailable = available;
+        this.attempt = 0;
+        this.immediateRetry = false;
+        if (!this.running)
+            return;
+        this.emitState(available ? 'connecting' : 'disconnected');
+        if (!this.isRunning())
+            return;
+        this.current?.abort(NETWORK_STATE_CHANGED);
+        this.retryDelay?.abort(NETWORK_STATE_CHANGED);
+    }
+    backoffCap(attempt) {
+        const { backoffBaseMs, backoffFactor, backoffMaxMs } = this.config;
+        return Math.min(backoffMaxMs, backoffBaseMs * backoffFactor ** Math.max(0, attempt - 1));
     }
     backoffDelay(attempt) {
-        const { backoffBaseMs, backoffFactor, backoffMaxMs } = this.config;
-        const cap = Math.min(backoffMaxMs, backoffBaseMs * backoffFactor ** Math.max(0, attempt - 1));
+        const cap = this.backoffCap(attempt);
         return cap / 2 + Math.random() * (cap / 2);
+    }
+    /** Re-read retry inputs after a potentially reentrant state sink. */
+    isRetryInterrupted(immediate) {
+        return this.immediateRetry || (!this.networkAvailable && !immediate);
     }
     /** Read through a method: stop() flips the flag across awaits, so narrowing from the loop condition must not stick. */
     isRunning() {
@@ -61,7 +108,49 @@ export class ConnectionController {
         return this.isRunning() && !controller.signal.aborted;
     }
     async loop() {
+        let retry = false;
         while (this.running) {
+            if (!this.networkAvailable && !this.immediateRetry) {
+                const retryDelay = new AbortController();
+                this.retryDelay = retryDelay;
+                this.emitState('disconnected');
+                await waitForAbort(retryDelay.signal);
+                if (this.retryDelay === retryDelay)
+                    this.retryDelay = null;
+                if (!this.isRunning())
+                    return;
+                retry = true;
+                continue;
+            }
+            let manualAttempt = false;
+            if (retry) {
+                const immediate = this.immediateRetry;
+                this.immediateRetry = false;
+                if (immediate)
+                    this.attempt = 0;
+                manualAttempt = immediate;
+                const attempt = ++this.attempt;
+                this.emitState('connecting');
+                if (!this.isRunning())
+                    return;
+                if (this.isRetryInterrupted(immediate))
+                    continue;
+                if (!immediate) {
+                    const retryDelay = new AbortController();
+                    this.retryDelay = retryDelay;
+                    await sleep(this.backoffDelay(attempt), retryDelay.signal);
+                    if (this.retryDelay === retryDelay)
+                        this.retryDelay = null;
+                    if (!this.isRunning())
+                        return;
+                    if (retryDelay.signal.aborted)
+                        continue;
+                }
+                console.warn(`[connection] connection lost, retry #${String(attempt)}`);
+                this.callSink(() => { this.sinks.onReconnectRequested?.(); });
+                if (!this.isRunning())
+                    return;
+            }
             const gen = ++this.generation;
             const ac = new AbortController();
             this.current = ac;
@@ -77,7 +166,7 @@ export class ConnectionController {
                 rejectSourceLost = reject;
             });
             const reportReady = (host) => {
-                if (sourceReady)
+                if (sourceReady || gen !== this.generation || !this.isGenerationActive(ac))
                     return;
                 sourceReady = true;
                 resolveReady(host);
@@ -108,7 +197,7 @@ export class ConnectionController {
             });
             try {
                 const host = await Promise.race([
-                    waitForReady(ready, this.config.generationReadyTimeoutMs, ac.signal),
+                    waitForReady(ready, this.config, ac.signal),
                     sourceLost,
                 ]);
                 if (ac.signal.aborted)
@@ -120,19 +209,16 @@ export class ConnectionController {
                     this.callSink(() => { this.sinks.onConnected?.(host); });
                 }
             }
-            catch {
-                // Transport failure: treat as generation failure, fall through to the shared backoff.
+            catch (error) {
                 if (!ac.signal.aborted)
-                    ac.abort();
+                    ac.abort(error);
             }
             await failed;
             if (!this.isRunning())
                 return;
-            this.emitState('reconnecting');
-            this.attempt += 1;
-            console.warn(`[connection] connection lost, retry #${this.attempt}`);
-            const idle = new AbortController();
-            await sleep(this.backoffDelay(this.attempt), idle.signal);
+            if (manualAttempt)
+                this.attempt = 0;
+            retry = true;
         }
     }
     /** Deduplicated state emission (sink isolation applies). */
@@ -152,13 +238,18 @@ export class ConnectionController {
         }
     }
 }
-/** Await source readiness without letting a stalled carrier wedge startup forever. */
-function waitForReady(ready, timeoutMs, signal) {
+/** Report a slow handshake before the hard deadline ends its generation. */
+function waitForReady(ready, config, signal) {
     return new Promise((resolve, reject) => {
         let settled = false;
+        const warning = setTimeout(() => {
+            console.warn(`[connection] generation is still not ready after ${String(config.generationReadyWarnMs)}ms`);
+        }, config.generationReadyWarnMs);
         const timeout = setTimeout(() => {
-            finish({ error: new Error(`connection generation was not ready within ${String(timeoutMs)}ms`) });
-        }, timeoutMs);
+            const error = new Error(`connection generation was not ready within ${String(config.generationReadyTimeoutMs)}ms`);
+            console.warn(`[connection] ${error.message}; cancelling generation`);
+            finish({ error });
+        }, config.generationReadyTimeoutMs);
         const aborted = () => {
             finish({ error: new Error('connection generation aborted', { cause: signal.reason }) });
         };
@@ -166,6 +257,7 @@ function waitForReady(ready, timeoutMs, signal) {
             if (settled)
                 return;
             settled = true;
+            clearTimeout(warning);
             clearTimeout(timeout);
             signal.removeEventListener('abort', aborted);
             if ('error' in outcome)

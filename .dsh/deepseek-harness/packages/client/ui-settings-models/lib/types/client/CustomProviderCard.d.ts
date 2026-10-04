@@ -3,12 +3,15 @@
  * gateway, a self-hosted server, or a provider newer than the installed
  * catalog.
  *
- * This is a create, not an edit, which is why it is its own card rather than
+ * This is a create, not an edit, which is why it is its own form rather than
  * the provider editor with extra fields: the route id is being *chosen* here,
- * and the settings address does not exist until it is. One `settings.mutate`
- * sets the whole profile at `providers.<route>`; the key travels separately
- * through `credentials/set` under the reference the profile records, exactly as
- * an existing provider's key does.
+ * and the settings address does not exist until it is. It renders as the
+ * custom-API panel of the section's add card; the card's mode switch names it
+ * when both modes are offered, and with the custom mode alone the card shows
+ * this form directly. One `settings.mutate` sets the whole profile at
+ * `providers.<route>`; the key travels separately through `credentials/set`
+ * under the reference the profile records, exactly as an existing provider's
+ * key does.
  *
  * The three fields a hand-declared route cannot default — endpoint, protocol,
  * and at least one model — are required here rather than at load, so the
@@ -21,7 +24,7 @@
  * levels instead.
  */
 import type { ReactNode } from 'react';
-import type { ModelsWire } from './store.ts';
+import type { ModelsOperations } from './operations.ts';
 import type { en } from './locales.ts';
 /** Props of {@link CustomProviderCard}. */
 export interface CustomProviderCardProps {
@@ -35,14 +38,19 @@ export interface CustomProviderCardProps {
      * than a silent overwrite of its whole profile.
      */
     revision: number;
-    /** Wire faces for the write and for interrogating the endpoint. */
-    api: ModelsWire;
+    /** The Host operations this card writes and interrogates through. */
+    operations: ModelsOperations;
     /** Section copy. */
     t: (key: keyof typeof en) => string;
     /** Disable writes (read-only settings provider). */
     readOnly: boolean;
     /** Close the card; `changed` reports whether a provider was created. */
     onClose: (changed: boolean) => void;
+    /**
+     * Called once per change with whether the create or the list's endpoint
+     * interrogation is in flight, so the owner can hold its surface still.
+     */
+    onBusyChange?: (busy: boolean) => void;
 }
 /**
  * Render the custom-provider creation card.

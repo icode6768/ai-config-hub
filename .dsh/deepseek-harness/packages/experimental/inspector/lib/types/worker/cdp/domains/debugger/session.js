@@ -271,6 +271,8 @@ export class DebuggerDomainSession {
             this.publishScript(realm, realm.sources.backend, script);
     }
     publishScript(realm, source, script) {
+        if (this.closed || !this.enabled || !this.realms.all().includes(realm))
+            return;
         const registered = this.scripts.register({ realm, source, script });
         if (registered.fresh)
             this.transport.send(scriptParsedEvent(realm, script));

@@ -2,7 +2,7 @@
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { Context } from '@deepseek-ai/cordis';
 import type { SessionEventMap, SessionId } from '@deepseek-ai/dsh-session';
-import type { TeamFoldState } from './fold.ts';
+import type { TeamState } from './projection.ts';
 type MutableTeamEventType = 'team/member' | 'team/task' | 'team/message/queued' | 'team/message/delivered';
 /** Owns per-Lead transaction order and committed Team event publication. */
 export declare class TeamJournal {
@@ -15,11 +15,11 @@ export declare class TeamJournal {
      */
     constructor(ctx: Context, onCommit: (root: Agent) => void);
     /**
-     * Fold authoritative Team state for one exact live Lead.
+     * Read authoritative Team state for one exact live Lead.
      * @param root - exact live Team Lead.
-     * @returns current replay state selected by the Lead Team id.
+     * @returns current projected state selected by the Lead Team id.
      */
-    state(root: Agent): TeamFoldState;
+    state(root: Agent): TeamState;
     /**
      * Serialize one Lead's asynchronous mutation operation.
      * @param rootId - Lead Session identity selecting the transaction queue.

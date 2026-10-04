@@ -51,15 +51,39 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
+import { modelAvailable } from "./catalog.js";
 import { randomUUID } from 'node:crypto';
-import { PresetMountError, UnknownPresetError } from '@deepseek-ai/dsh-agent-presets';
-import { AttachmentError, admitEncodedImages } from '@deepseek-ai/dsh-attachment';
-import { ReasoningEffortId, createUserMessage, freezeMessage, } from '@deepseek-ai/dsh-llm';
-import { SessionId } from '@deepseek-ai/dsh-session';
+import { brandString } from '@deepseek-ai/dsh-brand';
+import { AttachmentError } from '@deepseek-ai/dsh-attachment';
+import { ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage, } from '@deepseek-ai/dsh-llm';
+import { buildForkSeed } from '@deepseek-ai/dsh-session/fork';
+import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title';
-import { TypertRemoteFailure } from '@deepseek-ai/dsh-typert-protocol';
+import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time';
+import { assertNever } from '@deepseek-ai/dsh-util-values';
+import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol';
 import { ApiSessionCwdConflict, ApiSessionNotFound, ApiSessionPresetConflict, ApiSessionSubagentOwnership, apiSessionSubagentOwnershipError, hasApiSessionSubagentOwner, inspectApiSession, } from "./agent.js";
+function hasPromptContent(content) {
+    return content.some(part => part.type !== 'text' || part.text.trim().length > 0);
+}
+/**
+ * Resolve the omitted-`atSeq` default to the latest completed-turn prefix,
+ * including standalone events before the next turn begins.
+ */
+function latestCompletedPrefixBoundary(events) {
+    const lastTurnEnd = events.findLast(event => event.type === 'turn/end');
+    if (lastTurnEnd === undefined)
+        return undefined;
+    let boundary = lastTurnEnd.seq;
+    for (const next of events.slice(boundary + 1)) {
+        if (next.type === 'turn/start' || (next.type === 'user/message' && next.surfaceOp === 'append')
+            || next.type === 'agent/inbox/spliced')
+            break;
+        boundary = next.seq;
+    }
+    return boundary;
+}
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
     ctx;
@@ -82,14 +106,14 @@ export class SessionCommandController {
      */
     async create(request) {
         if (request.workspaceId !== undefined && request.cwd !== undefined) {
-            reject('bad-request', 'session.create accepts workspaceId or cwd, not both', {});
+            throw new RemoteError('gateway/bad-request', 'session.create accepts workspaceId or cwd, not both', {});
         }
-        const sessionId = request.sessionId ?? SessionId(`session-${randomUUID()}`);
+        const sessionId = request.sessionId ?? brandString(`session-${randomUUID()}`);
         let workspace;
         if (request.workspaceId !== undefined) {
             workspace = this.ctx.workspaceRegistry.get(request.workspaceId);
             if (workspace === undefined) {
-                reject('workspace-not-found', `workspace "${request.workspaceId}" not found`, {
+                throw new RemoteError('workspace/not-found', `workspace "${request.workspaceId}" not found`, {
                     workspaceId: request.workspaceId,
                 });
             }
@@ -107,21 +131,22 @@ export class SessionCommandController {
                 await workspace.attachSession(sessionId);
             }
             catch (error) {
-                reject('workspace-attach-failed', `session "${sessionId}" was created but could not attach to workspace "${workspace.id}": ${String(error)}`, { sessionId, workspaceId: workspace.id });
+                throw new RemoteError('session/workspace-attach-failed', `session "${sessionId}" was created but could not attach to workspace "${workspace.id}": ${String(error)}`, { sessionId, workspaceId: workspace.id });
             }
         }
         const agentPreset = this.agents.presetForSession(adopted.session);
         return { sessionId, ...(agentPreset === undefined ? {} : { agentPreset }) };
     }
     /**
-     * Validate and install one Session-local model selection.
+     * Validate and install one Session-local model selection; save the default in the background.
      * @param request - Session identity and requested model selection.
-     * @returns the normalized selection installed for the Session.
+     * @returns the normalized selection installed for the Session, without waiting for default persistence.
      */
     async selectModel(request) {
         const agent = await this.resolveAgent(request.sessionId);
         return this.agents.serializeImageAdmission(agent, async () => {
             try {
+                await this.requireModel(request);
                 const resolved = await this.ctx.llm.resolveCallConfig({
                     provider: request.provider,
                     model: request.model,
@@ -137,18 +162,15 @@ export class SessionCommandController {
                         : { reasoningEffort: resolved.reasoningEffort }),
                 };
                 this.agents.selectForNextRequest(agent, selected);
-                try {
-                    await this.ctx.agentDefaultModel.saveSelection(selected);
-                }
-                catch (error) {
+                void this.ctx.agentDefaultModel.saveSelection(selected).catch((error) => {
                     this.ctx.logger.warn(`session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`);
-                }
+                });
                 return { selected: { ...selected } };
             }
             catch (error) {
-                if (error instanceof TypertRemoteFailure)
+                if (remoteErrorOf(error) !== undefined)
                     throw error;
-                reject('model-unavailable', error instanceof Error ? error.message : String(error), { provider: request.provider, model: request.model });
+                throw new RemoteError('session/model-unavailable', error instanceof Error ? error.message : String(error), { provider: request.provider, model: request.model });
             }
         });
     }
@@ -161,7 +183,7 @@ export class SessionCommandController {
         const agent = await this.resolveAgent(request.sessionId);
         const titles = this.ctx.get('sessionTitle');
         if (titles === undefined) {
-            reject('internal', 'renaming is unavailable: this deployment mounts no session-title service', {});
+            throw new RemoteError('gateway/internal', 'renaming is unavailable: this deployment mounts no session-title service', {});
         }
         try {
             const accepted = titles.rename(agent.session, request.title);
@@ -169,22 +191,27 @@ export class SessionCommandController {
         }
         catch (error) {
             if (error instanceof SessionTitleInvalidError) {
-                reject('title-invalid', error.message, { sessionId: request.sessionId });
+                throw new RemoteError('session/title-invalid', error.message, { sessionId: request.sessionId });
             }
-            reject('internal', `failed to rename session "${request.sessionId}": ${String(error)}`, {});
+            throw new RemoteError('gateway/internal', `failed to rename session "${request.sessionId}": ${String(error)}`, {});
         }
     }
     /**
-     * Create a new ordinary Session from one completed-turn prefix.
-     * @param request - source Session and optional event anchor.
+     * Create a new ordinary Session from an exact event prefix. An explicit
+     * `atSeq` is the inclusive cut; an omitted value selects the latest
+     * completed-turn prefix. An open cut receives synthetic fork closers.
+     * @param request - source Session and optional exact event boundary.
      * @returns the new Session identity.
      */
     async fork(request) {
         const env_1 = { stack: [], error: void 0, hasError: false };
         try {
-            if (request.atSeq !== undefined
-                && (!Number.isInteger(request.atSeq) || request.atSeq < 0)) {
-                reject('bad-request', 'atSeq must be a non-negative integer', {});
+            let atSeq;
+            try {
+                atSeq = request.atSeq === undefined ? undefined : SessionSeq(request.atSeq);
+            }
+            catch {
+                throw new RemoteError('gateway/bad-request', 'atSeq must be a non-negative safe integer', {});
             }
             let observed;
             try {
@@ -193,48 +220,39 @@ export class SessionCommandController {
             catch (error) {
                 if (error instanceof SessionQueryError
                     && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') {
-                    reject('session-not-found', `session "${request.sessionId}" not found`, {
+                    throw new RemoteError('session/not-found', `session "${request.sessionId}" not found`, {
                         sessionId: request.sessionId,
                     });
                 }
-                reject('internal', `fork source unavailable for session "${request.sessionId}": ${String(error)}`, {});
+                throw new RemoteError('gateway/internal', `fork source unavailable for session "${request.sessionId}": ${String(error)}`, {});
             }
             const source = __addDisposableResource(env_1, observed, false);
-            const lastSeq = source.events.at(-1)?.seq ?? -1;
-            const atSeq = request.atSeq;
-            const anchoredBoundary = atSeq === undefined
-                ? undefined
-                : source.events.find(event => event.type === 'turn/end' && event.seq >= atSeq);
-            const boundary = anchoredBoundary
-                ?? (atSeq === undefined || atSeq > lastSeq
-                    ? source.events.findLast(event => event.type === 'turn/end')
-                    : undefined);
-            if (boundary === undefined) {
-                reject('fork-unavailable', atSeq !== undefined && atSeq <= lastSeq
-                    ? `session "${request.sessionId}" has not completed the turn containing event ${String(atSeq)}`
-                    : `session "${request.sessionId}" has no completed turn to fork from`, { sessionId: request.sessionId });
+            const boundary = atSeq ?? latestCompletedPrefixBoundary(source.events);
+            if (boundary === undefined || source.events[boundary]?.seq !== boundary) {
+                throw new RemoteError('session/fork-unavailable', request.atSeq === undefined
+                    ? `session "${request.sessionId}" has no completed turn to fork from`
+                    : `event ${String(request.atSeq)} does not exist in session "${request.sessionId}" (last seq: ${String(source.events.at(-1)?.seq ?? 'none')})`, { sessionId: request.sessionId });
             }
-            let cut = boundary.seq + 1;
-            while (cut < source.events.length && source.events[cut]?.type !== 'turn/start')
-                cut++;
+            const seed = buildForkSeed(source.events, boundary);
             let workspace;
             try {
                 workspace = await this.forkWorkspace(source.header);
             }
             catch (error) {
-                reject('internal', `failed to resolve fork workspace for session "${request.sessionId}": ${String(error)}`, {});
+                throw new RemoteError('gateway/internal', `failed to resolve fork workspace for session "${request.sessionId}": ${String(error)}`, {});
             }
-            const childId = SessionId(`session-${randomUUID()}`);
+            const childId = brandString(`session-${randomUUID()}`);
             const composition = await this.agents.composeAgent(this.agents.presetForObservation(source));
             try {
                 const { provider, model } = this.ctx.agentDefaultModel.currentSelection();
                 await this.ctx.agents.create({
                     sessionId: childId,
-                    seed: source.events.slice(0, cut),
+                    seed,
+                    inheritedEventCount: SessionLogOffset(boundary + 1),
                     meta: {
                         ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
                         parentSession: source.header.id,
-                        seedLength: cut,
+                        isSeeded: true,
                         ...(composition.agentPreset === undefined
                             ? {}
                             : { agentPreset: composition.agentPreset }),
@@ -244,14 +262,14 @@ export class SessionCommandController {
                 });
             }
             catch (error) {
-                reject('internal', `failed to fork session "${request.sessionId}": ${String(error)}`, {});
+                throw new RemoteError('gateway/internal', `failed to fork session "${request.sessionId}": ${String(error)}`, {});
             }
             if (workspace !== undefined) {
                 try {
                     await workspace.attachSession(childId);
                 }
                 catch (error) {
-                    reject('workspace-attach-failed', `session "${childId}" was forked but could not attach to workspace "${workspace.id}": ${String(error)}`, { sessionId: childId, workspaceId: workspace.id });
+                    throw new RemoteError('session/workspace-attach-failed', `session "${childId}" was forked but could not attach to workspace "${workspace.id}": ${String(error)}`, { sessionId: childId, workspaceId: workspace.id });
                 }
             }
             return { sessionId: childId };
@@ -265,22 +283,23 @@ export class SessionCommandController {
         }
     }
     /**
-     * Admit one browser prompt after explicit Agent resume and image validation.
+     * Reject empty content, then admit one prompt after Agent and attachment validation.
      * @param request - Session identity, prompt content, source metadata, and delivery mode.
      * @returns acknowledgement that the Agent accepted the prompt.
      */
     async prompt(request) {
+        if (!hasPromptContent(request.content)) {
+            throw new RemoteError('gateway/bad-request', 'prompt content must include non-whitespace text or an attachment', {});
+        }
         const clientTimeZone = request.clientTimeZone === undefined
             ? undefined
             : canonicalClientTimeZone(request.clientTimeZone);
         if (request.clientTimeZone !== undefined && clientTimeZone === undefined) {
-            reject('invalid-time-zone', 'clientTimeZone must be UTC or a valid IANA Area/Location name', { value: request.clientTimeZone });
+            throw new RemoteError('session/invalid-time-zone', 'clientTimeZone must be UTC or a valid IANA Area/Location name', { value: request.clientTimeZone });
         }
         const agent = await this.resolveAgent(request.sessionId);
-        const selection = this.agents.selectionFor(agent).current;
-        if (!routeServed(this.ctx, selection.provider)) {
-            reject('model-unavailable', `no adapter serves provider "${selection.provider}"; select a model for this session`, { provider: selection.provider, model: selection.model });
-        }
+        if (hasPromptRequest(agent, request.requestId))
+            return { accepted: true };
         const source = {
             kind: 'user',
             rpcId: request.requestId,
@@ -289,31 +308,52 @@ export class SessionCommandController {
         const hasImage = request.content.some(part => part.type === 'image');
         const admit = async () => {
             try {
-                if (hasImage) {
-                    const current = this.agents.selectionFor(agent).current;
-                    const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model);
-                    if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
-                        reject('attachment-error', `Model "${current.model}" does not support image input.`, { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' });
+                const env_2 = { stack: [], error: void 0, hasError: false };
+                try {
+                    if (hasImage) {
+                        const current = this.agents.selectionFor(agent).current;
+                        const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model);
+                        if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
+                            throw new RemoteError('session/attachment-invalid', `Model "${current.model}" does not support image input.`, { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' });
+                        }
                     }
+                    const admission = resolvePromptFileReceipts(request.content, receiptId => this.ctx.fileUploads.resolve(agent, receiptId));
+                    const content = await this.ctx.attachments.admitPromptContent(admission.content);
+                    const message = createUserMessage({ content, source });
+                    if (this.ctx.agents.get(agent.id) !== agent) {
+                        throw new RemoteError('session/not-found', `session "${agent.id}" was disposed during prompt admission`, { sessionId: agent.id });
+                    }
+                    const binding = __addDisposableResource(env_2, this.ctx.fileUploads.bindPrompt(agent, admission.receiptIds, request.requestId), false);
+                    if (request.mode === 'steer')
+                        agent.steer(message);
+                    else
+                        agent.followup(message);
+                    binding.commit();
                 }
-                const content = await durablePromptContent(this.ctx, request.content);
-                const message = createUserMessage({ content, source });
-                if (request.mode === 'steer')
-                    agent.steer(message);
-                else
-                    agent.followup(message);
+                catch (e_2) {
+                    env_2.error = e_2;
+                    env_2.hasError = true;
+                }
+                finally {
+                    __disposeResources(env_2);
+                }
             }
             catch (error) {
-                if (error instanceof TypertRemoteFailure)
+                if (remoteErrorOf(error) !== undefined)
                     throw error;
                 if (error instanceof AttachmentError) {
-                    reject('attachment-error', error.message, { reason: error.code });
+                    throw new RemoteError('session/attachment-invalid', error.message, { reason: error.code });
                 }
-                reject('agent-busy', 'prompt rejected', { reason: String(error) });
+                throw new RemoteError('session/agent-busy', 'prompt rejected', { reason: String(error) });
             }
             return { accepted: true };
         };
         return hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit();
+    }
+    async requireModel(selection) {
+        if (!await modelAvailable(this.ctx, selection)) {
+            throw new RemoteError('session/model-unavailable', 'Select an available model before sending a message.', { provider: selection.provider, model: selection.model });
+        }
     }
     /**
      * Read one durable image after proving the Session log references it.
@@ -327,13 +367,13 @@ export class SessionCommandController {
         }
         catch (error) {
             if (error instanceof ApiSessionNotFound) {
-                reject('session-not-found', error.message, { sessionId: request.sessionId });
+                throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId });
             }
-            reject('internal', `attachment authorization unavailable for session "${request.sessionId}": ${String(error)}`, {});
+            throw new RemoteError('gateway/internal', `attachment authorization unavailable for session "${request.sessionId}": ${String(error)}`, {});
         }
         const ref = referencedImage(source.events, String(request.attachmentId));
         if (ref === undefined) {
-            reject('attachment-error', 'Image is not referenced by this session.', { reason: 'ATTACHMENT_NOT_REFERENCED' });
+            throw new RemoteError('session/attachment-invalid', 'Image is not referenced by this session.', { reason: 'ATTACHMENT_NOT_REFERENCED' });
         }
         try {
             const stored = await this.ctx.attachments.readImage(ref);
@@ -344,27 +384,44 @@ export class SessionCommandController {
         }
         catch (error) {
             if (error instanceof AttachmentError) {
-                reject('attachment-error', error.message, { reason: error.code });
+                throw new RemoteError('session/attachment-invalid', error.message, { reason: error.code });
             }
-            reject('internal', 'Unable to read image attachment.', {});
+            throw new RemoteError('gateway/internal', 'Unable to read image attachment.', {});
         }
     }
     /**
-     * Mutate one still-pending queue occurrence without resuming a cold Agent.
+     * Mutate one pending Inbox occurrence, restoring an ordinary cold Agent when needed.
      * @param request - Session, queue item, and requested mutation.
      * @returns acknowledgement that the queue mutation was applied.
      */
-    updateQueue(request) {
-        if (request.action.kind === 'edit'
-            && request.action.content.some(block => block.type !== 'text')) {
-            reject('attachment-error', 'queue edits accept text content only', { reason: 'QUEUE_EDIT_NON_TEXT' });
+    async updateQueue(request) {
+        if (request.action.kind === 'edit') {
+            // oxlint-disable-next-line typescript/no-unnecessary-condition -- Remote callers can submit untyped JSON.
+            if (request.action.content.some(block => block.type !== 'text')) {
+                throw new RemoteError('session/attachment-invalid', 'queue edits accept text content only', { reason: 'QUEUE_EDIT_NON_TEXT' });
+            }
+            if (!hasPromptContent(request.action.content)) {
+                throw new RemoteError('gateway/bad-request', 'queue edit content must include non-whitespace text', {});
+            }
         }
-        const agent = this.ctx.agents.get(request.sessionId);
-        if (agent !== undefined && hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
-            rejectFailure(apiSessionSubagentOwnershipError(request.sessionId));
-        }
+        let agent = this.ctx.agents.get(request.sessionId);
         if (agent === undefined) {
-            reject('queue-item-not-found', 'queued item is no longer pending', { itemId: request.itemId });
+            const found = await this.agents.resolveAgent(request.sessionId);
+            if ('error' in found) {
+                if (found.error.code !== 'session/not-found')
+                    throw found.error;
+                throw new RemoteError('session/queue-item-not-found', 'queued item is no longer pending', { itemId: request.itemId });
+            }
+            agent = found.agent;
+        }
+        if (hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
+            const identity = this.ctx.sessionProjections
+                .snapshot(agent.session, ['subagent'])
+                .values.subagent;
+            if (identity?.mode !== 'continuable'
+                || !agent.session.isOwnSeq(identity.seq)) {
+                throw apiSessionSubagentOwnershipError(request.sessionId);
+            }
         }
         const nextTurn = agent.inbox.nextTurn.find(message => message.id === request.itemId);
         const nextStep = agent.inbox.nextStep.find(message => message.id === request.itemId);
@@ -372,22 +429,34 @@ export class SessionCommandController {
             ? nextStep === undefined ? undefined : { target: 'next-step', message: nextStep }
             : { target: 'next-turn', message: nextTurn };
         if (located === undefined) {
-            reject('queue-item-not-found', 'queued item is no longer pending', { itemId: request.itemId });
+            throw new RemoteError('session/queue-item-not-found', 'queued item is no longer pending', { itemId: request.itemId });
         }
         const { target, message } = located;
         if (request.action.kind === 'steer' && (target !== 'next-turn' || agent.status !== 'running')) {
-            reject('steer-unavailable', 'current turn no longer accepts steering', { itemId: request.itemId });
+            throw new RemoteError('session/steer-unavailable', 'current turn no longer accepts steering', { itemId: request.itemId });
         }
-        if (request.action.kind === 'edit') {
-            agent.inbox.replace(request.itemId, freezeMessage({
-                ...message,
-                content: [...request.action.content],
-            }));
-        }
-        else {
-            agent.inbox.remove(request.itemId);
-            if (request.action.kind === 'steer')
+        switch (request.action.kind) {
+            case 'edit':
+                agent.inbox.replace(request.itemId, freezeMessage({
+                    ...message,
+                    content: [...request.action.content],
+                }));
+                break;
+            case 'remove': {
+                agent.inbox.remove(request.itemId);
+                const source = message.source;
+                if (source.kind === 'user' && 'rpcId' in source) {
+                    this.ctx.fileUploads.retirePrompt(agent, source.rpcId);
+                }
+                break;
+            }
+            case 'steer':
+                agent.inbox.remove(request.itemId);
                 agent.steer(message);
+                break;
+            /* v8 ignore next 2 -- closed-union exhaustiveness guard */
+            default:
+                assertNever(request.action, 'queue action');
         }
         return { accepted: true };
     }
@@ -399,10 +468,10 @@ export class SessionCommandController {
     cancel(request) {
         const agent = this.ctx.agents.get(request.sessionId);
         if (agent === undefined) {
-            reject('session-not-found', `session "${request.sessionId}" not found (not attached)`, { sessionId: request.sessionId });
+            throw new RemoteError('session/not-found', `session "${request.sessionId}" not found (not attached)`, { sessionId: request.sessionId });
         }
         if (hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
-            rejectFailure(apiSessionSubagentOwnershipError(request.sessionId));
+            throw apiSessionSubagentOwnershipError(request.sessionId);
         }
         agent.cancel({ kind: 'user' }, { keepInbox: true });
         return { accepted: true };
@@ -410,45 +479,39 @@ export class SessionCommandController {
     async resolveAgent(sessionId) {
         const found = await this.agents.resolveAgent(sessionId);
         if ('error' in found)
-            rejectFailure(found.error);
+            throw found.error;
         return found.agent;
     }
     rejectCreation(sessionId, error) {
+        if (remoteErrorOf(error) !== undefined)
+            throw error;
+        if (error instanceof Error && error.name === 'SessionAlreadyOwnedError') {
+            throw new RemoteError('session/writer-held', error.message, { sessionId });
+        }
         if (error instanceof ApiSessionPresetConflict) {
-            reject('agent-preset-conflict', error.message, {
+            throw new RemoteError('agent-preset/conflict', error.message, {
                 sessionId: error.sessionId,
                 requestedPreset: error.requestedPreset,
                 ...(error.existingPreset === undefined ? {} : { existingPreset: error.existingPreset }),
             });
         }
-        if (error instanceof UnknownPresetError) {
-            reject('agent-preset-not-found', error.message, {
-                agentPreset: error.presetId,
-                available: [...error.available],
-            });
-        }
-        if (error instanceof PresetMountError) {
-            reject('agent-preset-invalid', error.message, {
-                agentPreset: error.presetId,
-                reason: error.reason,
-            });
-        }
         if (error instanceof ApiSessionCwdConflict) {
-            reject('session-conflict', error.message, {
+            throw new RemoteError('session/conflict', error.message, {
                 sessionId: error.sessionId,
                 requestedCwd: error.requestedCwd,
                 ...(error.existingCwd === undefined ? {} : { existingCwd: error.existingCwd }),
             });
         }
         if (error instanceof ApiSessionSubagentOwnership) {
-            rejectFailure(apiSessionSubagentOwnershipError(error.sessionId));
+            throw apiSessionSubagentOwnershipError(error.sessionId);
         }
-        reject('internal', `failed to create session "${sessionId}": ${String(error)}`, {});
+        throw new RemoteError('gateway/internal', `failed to create session "${sessionId}": ${String(error)}`, {});
     }
     async readSessionState(sessionId) {
         const attached = this.ctx.sessions.get(sessionId);
         if (attached !== undefined) {
-            return { id: attached.id, header: attached.header, events: [...attached.events] };
+            // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+            return { id: attached.id, header: attached.header, events: attached.snapshotEvents() };
         }
         const inspected = await inspectApiSession(this.ctx, sessionId);
         return { id: inspected.meta.id, header: inspected.meta, events: inspected.events };
@@ -467,22 +530,34 @@ export class SessionCommandController {
         return undefined;
     }
 }
-function rejectFailure(error) {
-    throw new TypertRemoteFailure(error);
+function resolvePromptFileReceipts(content, stagedFile) {
+    const receiptIds = new Set();
+    const resolved = content.map((part) => {
+        if (part.type !== 'file')
+            return part;
+        const attachment = stagedFile(part.receiptId);
+        if (attachment === undefined) {
+            throw new RemoteError('session/attachment-invalid', 'File was not uploaded for this session.', { reason: 'FILE_NOT_STAGED' });
+        }
+        receiptIds.add(part.receiptId);
+        return { type: 'file', attachment };
+    });
+    return { content: resolved, receiptIds: [...receiptIds] };
 }
-function reject(code, message, details) {
-    throw new TypertRemoteFailure({ code, message, details });
-}
-async function durablePromptContent(ctx, content) {
-    if (content.every(part => part.type === 'text')) {
-        return content.map(part => ({ type: 'text', text: part.text }));
-    }
-    const refs = await admitEncodedImages(ctx.attachments, content.filter(part => part.type === 'image'));
-    let next = 0;
-    return content.map(part => part.type === 'text'
-        ? { type: 'text', text: part.text }
-        // admitEncodedImages returns one reference per image part in order.
-        : { type: 'image', attachment: refs[next++] });
+function hasPromptRequest(agent, requestId) {
+    const matches = (message) => {
+        const source = message.source;
+        return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId;
+    };
+    if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches))
+        return true;
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+    return agent.session.snapshotEvents().some((event) => {
+        if (event.type !== 'user/message')
+            return false;
+        const source = event.data.source;
+        return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId;
+    });
 }
 function imageBlockIn(content, match) {
     if (!Array.isArray(content))
@@ -496,30 +571,54 @@ function imageBlockIn(content, match) {
             if (match(ref))
                 return ref;
         }
-        if (block.type === 'tool-result') {
-            const nested = imageBlockIn(block.content, match);
-            if (nested !== undefined)
-                return nested;
-        }
     }
     return undefined;
 }
+/** Read only first-party declared content fields; unknown event payloads stay opaque. */
 function imageInEvent(event, match) {
     const data = event.data;
-    const direct = imageBlockIn(data.content, match);
-    if (direct !== undefined)
-        return direct;
-    const message = imageBlockIn(data.message?.content, match);
-    if (message !== undefined)
-        return message;
-    for (const inserted of data.inserted ?? []) {
-        const found = imageBlockIn(inserted.content, match);
+    // First-party event payloads can be present without their producer plugin mounted.
+    const type = event.type;
+    switch (type) {
+        case 'user/message':
+        case 'tool/ptc-dispatch':
+            return imageBlockIn(data.content, match);
+        case 'system/message':
+        case 'developer/message':
+        case 'tool/result':
+        case 'team/message/queued':
+            return imageBlockIn(data.message?.content, match);
+        case 'agent/inbox/spliced': {
+            const messages = data.inserted;
+            if (!Array.isArray(messages))
+                return undefined;
+            for (const message of messages) {
+                if (typeof message !== 'object' || message === null || Array.isArray(message))
+                    continue;
+                const found = imageBlockIn(message.content, match);
+                if (found !== undefined)
+                    return found;
+            }
+            return undefined;
+        }
+        case 'compaction/summary':
+            return imageBlockIn(data.summary, match) ?? imageBlockIn(data.rawOutput, match);
+        case 'assistant/message': {
+            const found = imageBlockIn(data.message?.content, match);
+            if (found !== undefined)
+                return found;
+            break;
+        }
+        case 'assistant/attempt': break;
+        default: return undefined;
+    }
+    const assistant = event;
+    for (const chunk of assistantStreamChunks(assistant.data.stream, 'block-end')) {
+        const found = imageBlockIn([chunk.block], match);
         if (found !== undefined)
             return found;
     }
-    return event.type === 'assistant/chunk' && data.chunk?.type === 'block-end'
-        ? imageBlockIn([data.chunk.block], match)
-        : undefined;
+    return undefined;
 }
 function referencedImage(events, attachmentId) {
     for (const event of events) {
@@ -528,20 +627,5 @@ function referencedImage(events, attachmentId) {
             return found;
     }
     return undefined;
-}
-const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)+$/;
-function canonicalClientTimeZone(value) {
-    if (value.length === 0 || value.trim() !== value
-        || (value !== 'UTC' && !IANA_TIME_ZONE.test(value)))
-        return undefined;
-    try {
-        return new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions().timeZone;
-    }
-    catch {
-        return undefined;
-    }
-}
-function routeServed(ctx, provider) {
-    return ctx.llm.listProviders().some(entry => entry.id === provider);
 }
 //# sourceMappingURL=commands.js.map

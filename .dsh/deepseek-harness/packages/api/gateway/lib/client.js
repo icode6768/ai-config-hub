@@ -5,6 +5,101 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let _deepseek_ai_cordis = require("@deepseek-ai/cordis");
+		//#region ../../typert/protocol/lib/index.js
+		/** The one Remote failure class shared by owners, the Gateway, and consumers. */
+		/**
+		* One Remote call failure: a real Error carrying its stable code and typed
+		* details. Owners throw it at the failure point; the Host Gateway encodes it
+		* onto the wire unchanged; the Client face rebuilds an instance for the
+		* `RemoteResult` error branch, so `throw result.error` keeps throw semantics.
+		* Discrimination is always by `code`, never by instanceof.
+		*/
+		var RemoteError = class extends Error {
+			code;
+			details;
+			/** Structural marker: cross-realm/bundle identification never uses instanceof. */
+			isDSHRemoteError = true;
+			/**
+			* @param code - stable failure code declared in {@link RemoteErrorDetailsMap}.
+			* @param message - human diagnostic carried across the wire.
+			* @param details - structured payload typed by the code.
+			* @param options - standard Error options (`cause` survives in-process only).
+			*/
+			constructor(code, message, details, options) {
+				super(message, options);
+				this.code = code;
+				this.details = details;
+				this.name = "RemoteError";
+			}
+		};
+		/**
+		* Structurally identify a RemoteError thrown across module or realm copies of
+		* this class. Mechanism-internal: the Gateway and test assertions use it;
+		* business code receives typed failures and never needs it.
+		* @param value - a caught value.
+		* @returns the failure when the marker matches, otherwise undefined.
+		*/
+		function remoteErrorOf(value) {
+			if (typeof value === "object" && value !== null && value.isDSHRemoteError === true && typeof value.code === "string") return value;
+		}
+		/** Generic invocation-owned values returned by synchronous Client Context resolvers. */
+		/** Shared identity across independently bundled Context providers and Gateway. */
+		const TYPERT_OWNED_VALUE = Symbol.for("dsh.typert.owned-value");
+		/**
+		* Identify invocation-owned values using the shared marker.
+		* @param value - borrowed or owned resolver result.
+		* @returns whether the result carries invocation cleanup.
+		*/
+		function isTypertOwnedValue(value) {
+			return typeof value === "object" && value !== null && TYPERT_OWNED_VALUE in value && value[TYPERT_OWNED_VALUE] === true;
+		}
+		/**
+		* Lossless JSON checks every Remote carrier shares: the Client handle before it
+		* queues an uplink item, the Gateway at its wire and codec-less uplink
+		* boundaries, and the in-process mock.
+		*/
+		/**
+		* Test whether a value crosses JSON transport without coercion or omission.
+		* @param value - candidate boundary value.
+		* @returns whether the value is losslessly JSON-compatible.
+		*/
+		function isRemoteJsonValue(value) {
+			return visitJsonValue(value, /* @__PURE__ */ new Set());
+		}
+		/**
+		* Test whether a value may travel as one uplink item: a lossless JSON value, or
+		* a top-level `undefined`, which the wire carries as an `item` frame without
+		* `value`. Nested `undefined`, `NaN`, and infinities stay rejected.
+		* @param value - candidate uplink item.
+		* @returns whether the item crosses every carrier unchanged.
+		*/
+		function isRemoteUplinkItem(value) {
+			return value === void 0 || isRemoteJsonValue(value);
+		}
+		function visitJsonValue(value, ancestors) {
+			if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+			if (typeof value === "number") return Number.isFinite(value) && !Object.is(value, -0);
+			if (typeof value !== "object") return false;
+			if (ancestors.has(value)) return false;
+			ancestors.add(value);
+			try {
+				if (Array.isArray(value)) {
+					if (Object.getPrototypeOf(value) !== Array.prototype || Reflect.ownKeys(value).length !== value.length + 1) return false;
+					for (let index = 0; index < value.length; index++) if (!Object.hasOwn(value, index) || !visitJsonValue(value[index], ancestors)) return false;
+					return true;
+				}
+				const prototype = Object.getPrototypeOf(value);
+				if (prototype !== Object.prototype && prototype !== null) return false;
+				for (const key of Reflect.ownKeys(value)) {
+					if (typeof key !== "string") return false;
+					if (Object.getOwnPropertyDescriptor(value, key)?.enumerable !== true || !visitJsonValue(Reflect.get(value, key), ancestors)) return false;
+				}
+				return true;
+			} finally {
+				ancestors.delete(value);
+			}
+		}
+		//#endregion
 		//#region lib/types/stream-protocol.js
 		/** Wire messages for Gateway-owned Remote streams and event-result RPCs. */
 		/** Exact WebSocket route carrying every Typert Remote stream. */
@@ -32,14 +127,6 @@ window.__ModuleLoader__.load({
 				...code === void 0 ? {} : { code },
 				...details === void 0 || !isRemoteJsonValue(details) ? {} : { details }
 			};
-		}
-		/**
-		* Test whether a value crosses JSON transport without coercion or omission.
-		* @param value - candidate boundary value.
-		* @returns whether the value is losslessly JSON-compatible.
-		*/
-		function isRemoteJsonValue(value) {
-			return visitJsonValue(value, /* @__PURE__ */ new Set());
 		}
 		/**
 		* Recognize a non-empty Remote Event correlation id at a wire boundary.
@@ -114,29 +201,91 @@ window.__ModuleLoader__.load({
 			const candidate = Reflect.get(value, key);
 			return typeof candidate === "string" ? candidate : void 0;
 		}
-		function visitJsonValue(value, ancestors) {
-			if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-			if (typeof value === "number") return Number.isFinite(value) && !Object.is(value, -0);
-			if (typeof value !== "object") return false;
-			if (ancestors.has(value)) return false;
-			ancestors.add(value);
-			try {
-				if (Array.isArray(value)) {
-					if (Object.getPrototypeOf(value) !== Array.prototype || Reflect.ownKeys(value).length !== value.length + 1) return false;
-					for (let index = 0; index < value.length; index++) if (!Object.hasOwn(value, index) || !visitJsonValue(value[index], ancestors)) return false;
-					return true;
-				}
-				const prototype = Object.getPrototypeOf(value);
-				if (prototype !== Object.prototype && prototype !== null) return false;
-				for (const key of Reflect.ownKeys(value)) {
-					if (typeof key !== "string") return false;
-					if (Object.getOwnPropertyDescriptor(value, key)?.enumerable !== true || !visitJsonValue(Reflect.get(value, key), ancestors)) return false;
-				}
-				return true;
-			} finally {
-				ancestors.delete(value);
+		//#endregion
+		//#region ../../util/deque/lib/index.js
+		/**
+		* Zero-dependency circular deque for queues that retain entries across asynchronous work.
+		* @module @deepseek-ai/dsh-deque
+		*/
+		const MIN_CAPACITY = 16;
+		/**
+		* A circular deque with amortized constant-time insertion and removal.
+		* Removed entries are cleared immediately, and sparse storage shrinks after
+		* the live entry count reaches one quarter of its capacity.
+		*/
+		var Deque = class {
+			buffer = new Array(MIN_CAPACITY);
+			head = 0;
+			count = 0;
+			/** Number of entries available to remove. */
+			get size() {
+				return this.count;
 			}
-		}
+			/**
+			* Append one entry after the current tail.
+			* @param value - entry to append.
+			*/
+			pushBack(value) {
+				this.ensureCapacity();
+				const tail = this.head + this.count;
+				this.buffer[tail < this.buffer.length ? tail : tail - this.buffer.length] = value;
+				this.count += 1;
+			}
+			/**
+			* Insert one entry before the current head.
+			* @param value - entry to prepend.
+			*/
+			pushFront(value) {
+				this.ensureCapacity();
+				this.head = this.head === 0 ? this.buffer.length - 1 : this.head - 1;
+				this.buffer[this.head] = value;
+				this.count += 1;
+			}
+			/**
+			* Remove the current head entry and clear its retained reference.
+			* Callers whose element type includes `undefined` use {@link size} to
+			* distinguish an empty deque from an `undefined` entry.
+			* @returns the removed entry, or `undefined` when the deque is empty.
+			*/
+			popFront() {
+				if (this.count === 0) return void 0;
+				const value = this.buffer[this.head];
+				this.buffer[this.head] = void 0;
+				this.head += 1;
+				if (this.head === this.buffer.length) this.head = 0;
+				this.count -= 1;
+				this.compact();
+				return value;
+			}
+			/** Drop every entry and release the current backing storage. */
+			clear() {
+				this.buffer = new Array(MIN_CAPACITY);
+				this.head = 0;
+				this.count = 0;
+			}
+			ensureCapacity() {
+				if (this.count < this.buffer.length) return;
+				this.resize(this.buffer.length * 2);
+			}
+			compact() {
+				if (this.count === 0) {
+					this.head = 0;
+					return;
+				}
+				if (this.buffer.length > MIN_CAPACITY && this.count <= this.buffer.length / 4) this.resize(Math.max(MIN_CAPACITY, this.buffer.length / 2));
+			}
+			resize(capacity) {
+				const next = new Array(capacity);
+				let source = this.head;
+				for (let index = 0; index < this.count; index += 1) {
+					next[index] = this.buffer[source];
+					source += 1;
+					if (source === this.buffer.length) source = 0;
+				}
+				this.buffer = next;
+				this.head = 0;
+			}
+		};
 		//#endregion
 		//#region ../../util/crypto/lib/index.js
 		/**
@@ -153,28 +302,6 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/stream-client.js
 		/** Browser owner for the Gateway multiplexed Remote stream socket. */
-		const INTERNAL_BASE = "http://dsh.internal";
-		const RECONNECT_BASE_MS = 500;
-		const RECONNECT_FACTOR = 2;
-		const RECONNECT_MAX_MS = 1e4;
-		/** One Host-reported Remote stream failure. */
-		var RemoteStreamError = class extends Error {
-			/** Stable carrier or Gateway error category. */
-			code;
-			/** Host-provided structured failure context. */
-			details;
-			/**
-			* @param code - stable Gateway or business error category.
-			* @param message - Host-provided failure description.
-			* @param details - Host-provided structured failure context.
-			*/
-			constructor(code, message, details) {
-				super(message);
-				this.name = "RemoteStreamError";
-				this.code = code;
-				this.details = details;
-			}
-		};
 		/** Physical Remote stream socket failure that may be retried by a domain transport. */
 		var RemoteStreamCarrierError = class extends Error {
 			/**
@@ -186,34 +313,72 @@ window.__ModuleLoader__.load({
 				this.name = "RemoteStreamCarrierError";
 			}
 		};
-		/** Keep one physical WebSocket and share it among independently cancellable Remote streams. */
+		const UPLINK_DONE = {
+			value: void 0,
+			done: true
+		};
+		/**
+		* Keep one physical WebSocket and share it among independently cancellable
+		* Remote streams. A carrier that supplies an in-process stream opener never
+		* starts one.
+		*/
 		var RemoteStreamMuxClient = class {
 			socket;
 			cancelCandidate;
 			keepAlive;
-			keepAliveAbort;
+			revision = 0;
 			streams = /* @__PURE__ */ new Map();
 			waiters = /* @__PURE__ */ new Set();
 			running = false;
 			disposed = false;
-			/** Start the persistent physical connection; repeated calls are inert. */
+			/** Ensure a physical attempt exists, following the current attempt once if needed. */
 			start() {
-				if (this.running || this.disposed) return;
+				if (this.disposed) return;
 				this.running = true;
-				this.maintain();
+				if (this.socket?.readyState === WebSocket.OPEN) return;
+				const pending = this.keepAlive;
+				if (pending === void 0) this.maintain();
+				else pending.then(() => {
+					this.maintain();
+				});
+			}
+			/** Cancel the current socket or retry wait and start a fresh attempt immediately. */
+			reconnect() {
+				if (!this.running || this.disposed) return;
+				const failure = new RemoteStreamCarrierError("api gateway: Remote stream reconnect requested");
+				const pending = this.keepAlive;
+				this.revision++;
+				this.cancelCandidate?.(failure);
+				const socket = this.socket;
+				if (socket !== void 0) {
+					this.socket = void 0;
+					this.failAll(failure);
+					socket.close(4e3, "reconnect requested");
+				}
+				if (pending === void 0) this.maintain();
+				else pending.then(() => {
+					this.maintain();
+				});
 			}
 			/**
 			* Open one logical stream on the persistent physical connection.
+			* If no physical attempt is active, opening waits for Connection to request
+			* one or for the signal to abort.
 			* @param endpoint - Typert Remote stream endpoint.
 			* @param payload - endpoint request encoded on the wire.
 			* @param signal - cancellation for this logical stream.
+			* @param uplink - the Client's items: each is sent as an `item` frame, its end as `end`; its `return()`
+			* runs when the stream finishes, and its failure cancels the stream and fails the downlink.
 			* @returns Host items until completion, cancellation, or failure.
 			*/
-			async *open(endpoint, payload, signal) {
-				this.start();
+			async *open(endpoint, payload, signal, uplink) {
 				signal.throwIfAborted();
 				const streamId = randomUUID();
 				const inbox = new StreamInbox();
+				const stream = {
+					inbox,
+					pump: void 0
+				};
 				let carrier;
 				let opened = false;
 				let terminal = false;
@@ -225,7 +390,7 @@ window.__ModuleLoader__.load({
 					const socket = await this.waitForSocket(signal);
 					signal.throwIfAborted();
 					carrier = socket;
-					this.streams.set(streamId, inbox);
+					this.streams.set(streamId, stream);
 					this.send(socket, {
 						type: "open",
 						streamId,
@@ -233,6 +398,7 @@ window.__ModuleLoader__.load({
 						payload
 					});
 					opened = true;
+					if (uplink !== void 0) stream.pump = this.pumpUplink(socket, streamId, uplink, signal, inbox);
 					while (true) {
 						const frame = await inbox.next();
 						signal.throwIfAborted();
@@ -241,29 +407,93 @@ window.__ModuleLoader__.load({
 							continue;
 						}
 						terminal = true;
-						if (frame.type === "error") throw new RemoteStreamError(frame.error.code, frame.error.message, frame.error.details);
+						if (frame.type === "error") throw new RemoteError(frame.error.code, frame.error.message, frame.error.details);
 						return;
 					}
 				} finally {
 					signal.removeEventListener("abort", abort);
 					this.streams.delete(streamId);
+					stream.pump?.stop();
 					if (opened && !terminal && carrier?.readyState === WebSocket.OPEN) this.send(carrier, {
 						type: "cancel",
 						streamId
 					});
+					if (stream.pump !== void 0) await stream.pump.done;
 				}
 			}
 			/**
-			* Permanently stop reconnecting, close the physical socket, and fail every active logical stream.
-			* @returns once the background connection loop has stopped.
+			* Send the caller's uplink items on this generation's socket. `stop()`
+			* interrupts a pump blocked on `uplink.next()` and releases the iterator: a
+			* handle's queue closes at once, so `send()` throws from then on, and any
+			* other iterator's `return()` is invoked without being awaited because a
+			* generator blocked in `next()` only completes it once it yields.
+			*/
+			pumpUplink(socket, streamId, uplink, signal, inbox) {
+				let stopped;
+				const interruption = {
+					value: void 0,
+					done: true
+				};
+				const uplinkIterator = uplink[Symbol.asyncIterator]();
+				const state = {
+					stopping: false,
+					exhausted: false,
+					released: false
+				};
+				const release = () => {
+					if (state.released || state.exhausted) return;
+					state.released = true;
+					if (uplink instanceof ClientUplinkQueue) uplink.close();
+					Promise.resolve().then(() => uplinkIterator.return?.()).catch(() => void 0);
+				};
+				return {
+					done: (async () => {
+						try {
+							while (true) {
+								if (state.stopping) return;
+								stopped = Promise.withResolvers();
+								const next = await Promise.race([uplinkIterator.next(), stopped.promise]);
+								stopped = void 0;
+								if (state.stopping || next === interruption || signal.aborted || this.socket !== socket) return;
+								if (next.done === true) {
+									state.exhausted = true;
+									break;
+								}
+								this.send(socket, {
+									type: "item",
+									streamId,
+									value: next.value
+								});
+							}
+							this.send(socket, {
+								type: "end",
+								streamId
+							});
+						} catch (error) {
+							inbox.fail(error);
+						} finally {
+							stopped = void 0;
+							release();
+						}
+					})(),
+					stop: () => {
+						if (state.stopping) return;
+						state.stopping = true;
+						stopped?.resolve(interruption);
+						release();
+					}
+				};
+			}
+			/**
+			* Permanently stop the carrier, close the physical socket, and fail every
+			* active logical stream.
+			* @returns once the active connection attempt has stopped.
 			*/
 			async close() {
 				if (!this.disposed) {
 					this.disposed = true;
 					this.running = false;
 					const error = /* @__PURE__ */ new Error("api gateway: Remote stream client disposed");
-					this.keepAliveAbort?.abort(error);
-					this.keepAliveAbort = void 0;
 					this.failAll(error);
 					for (const waiter of [...this.waiters]) waiter.reject(error);
 					this.cancelCandidate?.(error);
@@ -324,7 +554,7 @@ window.__ModuleLoader__.load({
 				signal.throwIfAborted();
 				if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve(this.socket);
 				if (this.disposed) return Promise.reject(/* @__PURE__ */ new Error("api gateway: Remote stream client disposed"));
-				this.start();
+				if (!this.running) return Promise.reject(/* @__PURE__ */ new Error("api gateway: Remote stream client not started"));
 				return new Promise((resolve, reject) => {
 					const aborted = () => {
 						waiter.reject(signal.reason);
@@ -334,6 +564,7 @@ window.__ModuleLoader__.load({
 						signal.removeEventListener("abort", aborted);
 					};
 					const waiter = {
+						revision: this.revision,
 						resolve: (socket) => {
 							cleanup();
 							resolve(socket);
@@ -352,7 +583,10 @@ window.__ModuleLoader__.load({
 				try {
 					if (typeof data !== "string") throw new Error("api gateway: Remote stream WebSocket requires text messages");
 					const frame = parseRemoteStreamServerMessage(data);
-					this.streams.get(frame.streamId)?.push(frame);
+					const stream = this.streams.get(frame.streamId);
+					if (stream === void 0) return;
+					stream.inbox.push(frame);
+					if (frame.type !== "item") stream.pump?.stop();
 				} catch (error) {
 					const failure = new RemoteStreamCarrierError("api gateway: invalid Remote stream frame", { cause: error });
 					this.failAll(failure);
@@ -364,100 +598,136 @@ window.__ModuleLoader__.load({
 				if (this.socket !== socket) return;
 				this.socket = void 0;
 				this.failAll(error);
-				this.maintain(error);
 			}
-			maintain(previousFailure) {
-				if (!this.running) return;
-				if (this.keepAlive !== void 0) {
-					this.keepAlive.then(() => {
-						this.maintain(previousFailure);
-					});
-					return;
-				}
-				const abort = new AbortController();
-				this.keepAliveAbort = abort;
-				const task = this.reconnect(abort.signal, previousFailure);
+			maintain() {
+				if (!this.running || this.disposed) return;
+				if (this.socket?.readyState === WebSocket.OPEN || this.keepAlive !== void 0) return;
+				const revision = this.revision;
+				const task = this.connect().then(() => void 0, (error) => {
+					if (!this.running) return;
+					for (const waiter of [...this.waiters]) if (waiter.revision <= revision) waiter.reject(error);
+				});
 				this.keepAlive = task;
 				task.then(() => {
 					this.keepAlive = void 0;
-					this.keepAliveAbort = void 0;
 				});
 			}
-			async reconnect(signal, previousFailure) {
-				let attempt = 0;
-				let failure = previousFailure;
-				while (this.isRunning(signal) && this.socket?.readyState !== WebSocket.OPEN) {
-					if (failure !== void 0) {
-						attempt += 1;
-						console.warn(`[api-gateway] Remote stream connection unavailable, retry #${String(attempt)}`, failure);
-						await sleep(backoffDelay(attempt), signal);
-						if (!this.isRunning(signal)) return;
-					}
-					try {
-						await this.connect();
-						return;
-					} catch (error) {
-						if (!this.isRunning(signal)) return;
-						failure = error;
-					}
-				}
-			}
-			isRunning(signal) {
-				return this.running && !signal.aborted;
-			}
 			failAll(error) {
-				for (const stream of this.streams.values()) stream.fail(error);
+				for (const stream of this.streams.values()) {
+					stream.inbox.fail(error);
+					stream.pump?.stop();
+				}
 			}
 			send(socket, message) {
 				socket.send(JSON.stringify(message));
 			}
 		};
-		function backoffDelay(attempt) {
-			const cap = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * RECONNECT_FACTOR ** Math.max(0, attempt - 1));
-			return cap / 2 + Math.random() * (cap / 2);
-		}
-		function sleep(ms, signal) {
-			return new Promise((resolve) => {
-				const timer = setTimeout(done, ms);
-				signal.addEventListener("abort", done, { once: true });
-				function done() {
-					clearTimeout(timer);
-					signal.removeEventListener("abort", done);
-					resolve();
-				}
-			});
-		}
 		var StreamInbox = class {
-			frames = [];
+			frames = new Deque();
 			wake;
 			failure;
 			push(frame) {
 				if (this.failure !== void 0) return;
-				this.frames.push(frame);
+				this.frames.pushBack(frame);
 				this.wake?.();
 				this.wake = void 0;
 			}
 			fail(error) {
 				if (this.failure !== void 0) return;
 				this.failure = error instanceof Error ? error : new Error(String(error), { cause: error });
-				this.frames.length = 0;
+				this.frames.clear();
 				this.wake?.();
 				this.wake = void 0;
 			}
 			async next() {
-				while (this.frames.length === 0) {
+				while (this.frames.size === 0) {
 					if (this.failure !== void 0) throw this.failure;
 					await new Promise((resolve) => {
 						this.wake = resolve;
 					});
 				}
-				return this.frames.shift();
+				return this.frames.popFront();
+			}
+		};
+		/**
+		* Uplink items a stream handle queues for its carrier: the mux pump or the
+		* in-process Host decoder iterates it as the stream's uplink. `end()` is the
+		* Client half-close; `close()` marks the stream terminated, after which
+		* `push()` throws. One consumer reads it, one read at a time.
+		*/
+		var ClientUplinkQueue = class {
+			endpoint;
+			items = new Deque();
+			ended = false;
+			closed = false;
+			wake;
+			/** @param endpoint - canonical Remote endpoint named by failures. */
+			constructor(endpoint) {
+				this.endpoint = endpoint;
+			}
+			/**
+			* Queue one item for the carrier.
+			* @param item - item the Host validates against the method's uplink codec.
+			* @throws {Error} after `end()` or once the stream has terminated.
+			*/
+			push(item) {
+				if (this.closed) throw new Error(`client api: ${this.endpoint} stream has terminated`);
+				if (this.ended) throw new Error(`client api: ${this.endpoint} uplink was ended`);
+				this.items.pushBack(item);
+				this.signal();
+			}
+			/** Half-close: the carrier reads the queued items, then `end`. Idempotent; ignored after termination. */
+			end() {
+				if (this.ended || this.closed) return;
+				this.ended = true;
+				this.signal();
+			}
+			/** The carrier stopped reading: the logical stream terminated or was disposed. Idempotent. */
+			close() {
+				if (this.closed) return;
+				this.closed = true;
+				this.items.clear();
+				this.signal();
+			}
+			[Symbol.asyncIterator]() {
+				return this;
+			}
+			/**
+			* Take the next queued item, waiting for one; ends after `end()` or `close()`.
+			* @returns the next item, or the end of the uplink.
+			* @throws {Error} when a read is already pending.
+			*/
+			async next() {
+				while (true) {
+					if (this.closed) return UPLINK_DONE;
+					if (this.items.size > 0) return {
+						value: this.items.popFront(),
+						done: false
+					};
+					if (this.ended) return UPLINK_DONE;
+					if (this.wake !== void 0) throw new Error(`client api: ${this.endpoint} uplink has one pending read`);
+					await new Promise((resolve) => {
+						this.wake = resolve;
+					});
+				}
+			}
+			/**
+			* The carrier is done with the uplink: close it.
+			* @returns the end of the uplink.
+			*/
+			return() {
+				this.close();
+				return Promise.resolve(UPLINK_DONE);
+			}
+			signal() {
+				const wake = this.wake;
+				this.wake = void 0;
+				wake?.();
 			}
 		};
 		function remoteStreamUrl() {
-			const location = globalThis.location;
-			const base = location?.origin !== void 0 && location.origin !== "null" ? location.origin : INTERNAL_BASE;
-			const url = new URL(REMOTE_STREAM_MUX_PATH, base);
+			const globals = globalThis;
+			const url = new URL(REMOTE_STREAM_MUX_PATH.slice(1), globals.__DSH_TRANSPORT__?.streamBaseUrl ?? document.baseURI);
 			url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 			return url.href;
 		}
@@ -569,30 +839,36 @@ window.__ModuleLoader__.load({
 			}
 			async answer(frame, clientId, signal) {
 				const adapter = this.ownerCtx.typert.contexts.getClient("agent");
-				let target;
+				let resolved;
 				try {
-					target = adapter?.resolve(frame.agentId);
+					resolved = adapter?.resolve(frame.agentId);
 				} catch (error) {
 					this.reportError(frame.event, error);
 				}
-				let outcome = { kind: "next" };
-				if (target !== void 0) try {
-					outcome = await this.dispatchWaterfall(target, frame, signal);
-				} catch (error) {
+				const owned = isTypertOwnedValue(resolved) ? resolved : void 0;
+				try {
+					const target = isTypertOwnedValue(resolved) ? resolved.value : resolved;
+					let outcome = { kind: "next" };
+					if (target !== void 0) try {
+						outcome = await this.dispatchWaterfall(target, frame, signal);
+					} catch (error) {
+						if (signal.aborted) return;
+						outcome = {
+							kind: "rejected",
+							error: projectRemoteEventRejection(error)
+						};
+					}
 					if (signal.aborted) return;
-					outcome = {
-						kind: "rejected",
-						error: projectRemoteEventRejection(error)
+					const result = {
+						clientId,
+						eventId: frame.eventId,
+						outcome: outcome.kind === "result" && outcome.value === void 0 ? { kind: "result" } : outcome
 					};
+					const response = await this.connection.rpc.call("/api", REMOTE_EVENT_RESULT_ENDPOINT, { args: result }, signal);
+					if (!response.ok) throw new Error(response.error.message);
+				} finally {
+					owned?.[Symbol.dispose]();
 				}
-				if (signal.aborted) return;
-				const result = {
-					clientId,
-					eventId: frame.eventId,
-					outcome: outcome.kind === "result" && outcome.value === void 0 ? { kind: "result" } : outcome
-				};
-				const response = await this.connection.rpc.call("/api", REMOTE_EVENT_RESULT_ENDPOINT, { args: result }, signal);
-				if (!response.ok) throw new Error(response.error.message);
 			}
 			async dispatchWaterfall(target, frame, signal) {
 				const request = {
@@ -600,7 +876,7 @@ window.__ModuleLoader__.load({
 					agent: target,
 					signal
 				};
-				const value = await abortable(Promise.resolve(privateEvents(target).waterfall(target, this.eventKey(frame.event), request, () => Promise.resolve(REMOTE_EVENT_NEXT))), signal);
+				const value = await privateEvents(target).waterfall(target, this.eventKey(frame.event), request, () => Promise.resolve(REMOTE_EVENT_NEXT));
 				if (value !== REMOTE_EVENT_NEXT && value !== void 0 && !isRemoteJsonValue(value)) throw new TypeError("Remote event listener result is not lossless JSON data");
 				return value === REMOTE_EVENT_NEXT ? { kind: "next" } : {
 					kind: "result",
@@ -671,23 +947,6 @@ window.__ModuleLoader__.load({
 		function invalidRemoteEventFrame() {
 			throw new TypeError("client api: invalid forwarded Remote event frame");
 		}
-		/** Race listener completion against its delivery lifetime. */
-		async function abortable(value, signal) {
-			signal.throwIfAborted();
-			let rejectAbort;
-			const aborted = new Promise((_resolve, reject) => {
-				rejectAbort = reject;
-			});
-			const onAbort = () => {
-				rejectAbort?.(signal.reason);
-			};
-			signal.addEventListener("abort", onAbort, { once: true });
-			try {
-				return await Promise.race([Promise.resolve(value), aborted]);
-			} finally {
-				signal.removeEventListener("abort", onAbort);
-			}
-		}
 		function privateEvents(ctx) {
 			return ctx;
 		}
@@ -700,10 +959,10 @@ window.__ModuleLoader__.load({
 		/**
 		* Reopens one logical Remote stream across carrier generations.
 		*
-		* The Gateway owns physical retry timing, cancellation, and replacement. The
-		* domain consumer owns its opening item and every later item, and calls
-		* {@link RemoteStreamItem.accept} only after validating the opening
-		* baseline or cursor.
+		* Connection owns physical retry timing; Gateway performs each requested
+		* replacement. The domain consumer owns its opening item and every later
+		* item, and calls {@link RemoteStreamItem.accept} only after validating the
+		* opening baseline or cursor.
 		*/
 		var RemoteStream = class {
 			connection;
@@ -794,7 +1053,7 @@ window.__ModuleLoader__.load({
 						} catch (error) {
 							if (isAborted(this.lifetime.signal)) return;
 							if (revision !== this.revision) continue;
-							if (!(error instanceof RemoteStreamCarrierError)) throw error;
+							if (!(error instanceof RemoteStreamCarrierError)) throw terminalStreamFailure(error);
 							this.options.carrierFailed?.(error);
 							if (revision !== this.revision) continue;
 							attempt++;
@@ -803,7 +1062,7 @@ window.__ModuleLoader__.load({
 							} catch (retryError) {
 								if (isAborted(this.lifetime.signal)) return;
 								if (revision !== this.revision) continue;
-								throw retryError;
+								throw terminalStreamFailure(retryError);
 							}
 						} finally {
 							this.generationAbort = void 0;
@@ -847,6 +1106,16 @@ window.__ModuleLoader__.load({
 				else inspect();
 			});
 		}
+		/**
+		* Mark a terminal escape before it crosses the stream boundary: consumers
+		* discriminate failures by code, so an unmarked throw reads as a local bug.
+		* Marked failures pass through verbatim. The carrier class never escapes as a
+		* terminal outcome — it stays the retry-internal signal fed to `carrierFailed`
+		* and the `ended(true)` retry trigger.
+		*/
+		function terminalStreamFailure(error) {
+			return remoteErrorOf(error) ?? new RemoteError("gateway/internal", error instanceof Error ? error.message : String(error), {}, { cause: error });
+		}
 		function isAborted(signal) {
 			return signal.aborted;
 		}
@@ -858,11 +1127,16 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/journal-stream.js
 		/** Cursor, page, and live-tail coordination over a reconnecting Remote stream. */
+		/** Host-side stream protocol violation, marked so consumers surface it as an error state. */
+		function protocolViolation$1(message) {
+			return new RemoteError("gateway/internal", message, {});
+		}
 		/**
 		* Owns snapshot-first opening, ordered live delivery, pagination, and repair.
 		*
 		* The domain retains its published window during reconnection. A replacement is
 		* published only after the opening page reaches the generation's cursor.
+		* Notifications never change a cursor and wait behind an in-flight gap repair.
 		*/
 		var RemoteJournalStream = class {
 			options;
@@ -888,7 +1162,7 @@ window.__ModuleLoader__.load({
 				this.stream = remote.$stream({
 					name: options.name,
 					open: (signal) => this.follow(this.initialRequest, signal),
-					ended: (accepted) => accepted ? new RemoteStreamCarrierError(`${options.name} ended without a terminal result`) : /* @__PURE__ */ new Error(`${this.hasResumeCursor ? "resumed " : ""}${options.name} ended before its opening cursor`),
+					ended: (accepted) => accepted ? new RemoteStreamCarrierError(`${options.name} ended without a terminal result`) : protocolViolation$1(`${this.hasResumeCursor ? "resumed " : ""}${options.name} ended before its opening cursor`),
 					...options.carrierFailed === void 0 ? {} : { carrierFailed: options.carrierFailed }
 				});
 			}
@@ -908,7 +1182,7 @@ window.__ModuleLoader__.load({
 				const iterator = this.stream[Symbol.asyncIterator]();
 				try {
 					const first = await this.takeNext(iterator);
-					if (first.done) throw new Error(`${this.options.name} ended before its opening cursor`);
+					if (first.done) throw protocolViolation$1(`${this.options.name} ended before its opening cursor`);
 					this.replaceGeneration(first.value, false);
 					this.opened = true;
 					this.done = this.consume(iterator);
@@ -938,7 +1212,7 @@ window.__ModuleLoader__.load({
 						entries: [],
 						hasMore: false
 					});
-					throw new Error(`${this.options.name} history page is discontinuous`);
+					throw protocolViolation$1(`${this.options.name} history page is discontinuous`);
 				}
 				const first = accepted[0];
 				if (first !== void 0) this.firstCursor = this.options.first(first);
@@ -978,7 +1252,11 @@ window.__ModuleLoader__.load({
 							this.replaceGeneration(item, true);
 							continue;
 						}
-						if (item.value.type === "opened") throw new Error(`${this.options.name} emitted more than one opening cursor`);
+						if (item.value.type === "opened") throw protocolViolation$1(`${this.options.name} emitted more than one opening cursor`);
+						if (item.value.type === "notification") {
+							this.publishNotification(item.value.notification);
+							continue;
+						}
 						await this.acceptEntry(item.value.entry, item, iterator);
 					}
 				} catch (error) {
@@ -990,9 +1268,9 @@ window.__ModuleLoader__.load({
 				this.replaceFromOpening(opening.page, opening.cursor);
 			}
 			opening(item, resumed) {
-				if (item.value.type !== "opened") throw new Error(`${resumed ? "resumed " : ""}${this.options.name} emitted an entry before its opening cursor`);
+				if (item.value.type !== "opened") throw protocolViolation$1(`${resumed ? "resumed " : ""}${this.options.name} emitted an entry before its opening cursor`);
 				const cursor = item.value.cursor;
-				if (resumed && this.lastCursor !== void 0 && this.options.compare(cursor, this.lastCursor) < 0) throw new Error(`${this.options.name} resumed at a cursor behind the last applied entry`);
+				if (resumed && this.lastCursor !== void 0 && this.options.compare(cursor, this.lastCursor) < 0) throw protocolViolation$1(`${this.options.name} resumed at a cursor behind the last applied entry`);
 				this.generation = item.generation;
 				item.accept();
 				return {
@@ -1020,10 +1298,10 @@ window.__ModuleLoader__.load({
 				const { first, last: cursor } = this.entryRange(entry);
 				const last = this.lastCursor;
 				if (this.options.compare(cursor, last) <= 0) return;
-				if (this.options.compare(first, last) <= 0) throw new Error(`${this.options.name} emitted a partially overlapping entry`);
+				if (this.options.compare(first, last) <= 0) throw protocolViolation$1(`${this.options.name} emitted a partially overlapping entry`);
 				if (!this.options.follows(last, first)) {
 					const request = this.repairPageRequest();
-					const superseded = await this.replaceThrough(request, cursor, item.generation, item.signal, iterator, [entry]);
+					const superseded = await this.replaceThrough(request, cursor, item.generation, item.signal, iterator, [entry], []);
 					if (superseded !== void 0) this.replaceGeneration(superseded, true);
 					return;
 				}
@@ -1035,22 +1313,22 @@ window.__ModuleLoader__.load({
 					entry
 				});
 			}
-			async replaceThrough(request, requiredCursor, generation, signal, iterator, queued) {
-				let read = await this.readPageWhileFollowing(request, requiredCursor, generation, signal, iterator, queued);
+			async replaceThrough(request, requiredCursor, generation, signal, iterator, queued, notifications) {
+				let read = await this.readPageWhileFollowing(request, requiredCursor, generation, signal, iterator, queued, notifications);
 				if (read.type === "superseded") return read.item;
 				let page = read.page;
 				this.assertPageThrough(page, requiredCursor);
 				let entries = this.mergeReplacement(page, queued);
 				let target = this.maxCursor(requiredCursor, queued);
 				if (entries === void 0 || this.options.compare(this.tailCursor(entries), target) < 0) {
-					read = await this.readPageWhileFollowing(this.repairPageRequest(), target, generation, signal, iterator, queued);
+					read = await this.readPageWhileFollowing(this.repairPageRequest(), target, generation, signal, iterator, queued, notifications);
 					if (read.type === "superseded") return read.item;
 					page = read.page;
 					this.assertPageThrough(page, target);
 					entries = this.mergeReplacement(page, queued);
 					target = this.maxCursor(requiredCursor, queued);
 				}
-				if (entries === void 0 || this.options.compare(this.tailCursor(entries), target) < 0) throw new Error(`${this.options.name} page did not reach its opening cursor`);
+				if (entries === void 0 || this.options.compare(this.tailCursor(entries), target) < 0) throw protocolViolation$1(`${this.options.name} page did not reach its opening cursor`);
 				const first = entries[0];
 				/* v8 ignore next -- a successful positive-cursor replacement page cannot be empty. */
 				this.firstCursor = first === void 0 ? void 0 : this.options.first(first);
@@ -1062,8 +1340,9 @@ window.__ModuleLoader__.load({
 					entries,
 					hasMore: this.options.hasMore(page)
 				});
+				for (const notification of notifications) this.publishNotification(notification);
 			}
-			async readPageWhileFollowing(request, through, generation, signal, iterator, queued) {
+			async readPageWhileFollowing(request, through, generation, signal, iterator, queued, notifications) {
 				const page = this.readPage(request, through, signal).then((value) => ({
 					type: "page",
 					value
@@ -1096,14 +1375,18 @@ window.__ModuleLoader__.load({
 					if (result.type === "next-error") throw result.error;
 					if (result.value.done) {
 						signal.throwIfAborted();
-						throw new Error(`${this.options.name} ended while reading its replacement page`);
+						throw protocolViolation$1(`${this.options.name} ended while reading its replacement page`);
 					}
 					const item = result.value.value;
 					if (item.generation !== generation) return {
 						type: "superseded",
 						item
 					};
-					if (item.value.type === "opened") throw new Error(`${this.options.name} emitted more than one opening cursor`);
+					if (item.value.type === "opened") throw protocolViolation$1(`${this.options.name} emitted more than one opening cursor`);
+					if (item.value.type === "notification") {
+						notifications.push(item.value.notification);
+						continue;
+					}
 					queued.push(item.value.entry);
 				}
 			}
@@ -1118,14 +1401,14 @@ window.__ModuleLoader__.load({
 					}
 					if (next.done) {
 						this.stream.signal.throwIfAborted();
-						throw new Error(`${this.options.name} ended while replacing an aborted page generation`);
+						throw protocolViolation$1(`${this.options.name} ended while replacing an aborted page generation`);
 					}
 					const item = next.value;
 					if (item.generation !== generation) return {
 						type: "superseded",
 						item
 					};
-					if (item.value.type === "opened") throw new Error(`${this.options.name} emitted more than one opening cursor`);
+					if (item.value.type === "opened") throw protocolViolation$1(`${this.options.name} emitted more than one opening cursor`);
 					pending = this.nextResult(iterator);
 				}
 			}
@@ -1139,7 +1422,7 @@ window.__ModuleLoader__.load({
 					const first = this.options.first(entry);
 					const last = this.options.last(entry);
 					if (this.options.compare(last, tail) <= 0) continue;
-					if (this.options.compare(first, tail) <= 0) throw new Error(`${this.options.name} replacement contains a partially overlapping entry`);
+					if (this.options.compare(first, tail) <= 0) throw protocolViolation$1(`${this.options.name} replacement contains a partially overlapping entry`);
 					if (!this.options.follows(tail, first)) return void 0;
 					entries.push(entry);
 					tail = last;
@@ -1169,6 +1452,12 @@ window.__ModuleLoader__.load({
 			releaseNext() {
 				this.pendingNext = void 0;
 			}
+			publishNotification(notification) {
+				this.options.publish({
+					type: "notification",
+					notification
+				});
+			}
 			repairPageRequest() {
 				return this.repairRequest(this.initialRequest);
 			}
@@ -1190,14 +1479,14 @@ window.__ModuleLoader__.load({
 				let previousRange = this.entryRange(first.value);
 				for (const entry of iterator) {
 					const range = this.entryRange(entry);
-					if (!this.options.follows(previousRange.last, range.first)) throw new Error(`${this.options.name} page contains discontinuous entries`);
+					if (!this.options.follows(previousRange.last, range.first)) throw protocolViolation$1(`${this.options.name} page contains discontinuous entries`);
 					previousRange = range;
 				}
 			}
 			entryRange(entry) {
 				const first = this.options.first(entry);
 				const last = this.options.last(entry);
-				if (this.options.compare(first, last) > 0) throw new Error(`${this.options.name} entry has an inverted cursor range`);
+				if (this.options.compare(first, last) > 0) throw protocolViolation$1(`${this.options.name} entry has an inverted cursor range`);
 				return {
 					first,
 					last
@@ -1205,12 +1494,16 @@ window.__ModuleLoader__.load({
 			}
 			assertPageThrough(page, through) {
 				const tail = this.tailCursor(this.options.entries(page));
-				if (this.options.compare(tail, through) !== 0) throw new Error(`${this.options.name} page did not end at its requested cursor`);
+				if (this.options.compare(tail, through) !== 0) throw protocolViolation$1(`${this.options.name} page did not end at its requested cursor`);
 			}
 		};
 		//#endregion
 		//#region lib/types/client/snapshot-stream.js
 		/** Baseline-and-delta protocol layered over a reconnecting Remote stream. */
+		/** Host-side stream protocol violation, marked so consumers surface it as an error state. */
+		function protocolViolation(message) {
+			return new RemoteError("gateway/internal", message, {});
+		}
 		/**
 		* Consumes generations that each contain exactly one opening snapshot followed by deltas.
 		*
@@ -1260,13 +1553,13 @@ window.__ModuleLoader__.load({
 							snapshotSeen = false;
 						}
 						if (this.options.isSnapshot(item.value)) {
-							if (snapshotSeen) throw new Error(`${this.options.name} emitted more than one opening snapshot`);
+							if (snapshotSeen) throw protocolViolation(`${this.options.name} emitted more than one opening snapshot`);
 							this.options.replace(item.value);
 							snapshotSeen = true;
 							item.accept();
 							continue;
 						}
-						if (!snapshotSeen) throw new Error(`${this.options.name} emitted an update before its opening snapshot`);
+						if (!snapshotSeen) throw protocolViolation(`${this.options.name} emitted an update before its opening snapshot`);
 						this.options.update(item.value);
 					}
 				} catch (error) {
@@ -1294,6 +1587,7 @@ window.__ModuleLoader__.load({
 			ownerCtx;
 			connection;
 			namespaces = /* @__PURE__ */ new Map();
+			hostFacts;
 			streams = new RemoteStreamMuxClient();
 			events;
 			mutations = Promise.resolve();
@@ -1308,9 +1602,15 @@ window.__ModuleLoader__.load({
 				let loop;
 				const start = () => {
 					if (disposed) return;
-					loop = connection.start({ onConnected: () => {
-						this.ownerCtx.emit("connection/reset");
-					} });
+					if (connection.rpc.open === void 0) this.streams.start();
+					loop = connection.start({
+						onConnected: () => {
+							this.ownerCtx.emit("connection/reset");
+						},
+						onReconnectRequested: () => {
+							if (connection.rpc.open === void 0) this.streams.reconnect();
+						}
+					});
 				};
 				const loader = ctx.get("loader");
 				if (loader === void 0) start();
@@ -1324,6 +1624,14 @@ window.__ModuleLoader__.load({
 			}
 			$stream(options) {
 				return new RemoteStream(this.connection, options);
+			}
+			get $host() {
+				const home = this.connection.generation.getSnapshot()?.host.home;
+				if (this.hostFacts === void 0 || this.hostFacts.home !== home) this.hostFacts = {
+					home,
+					isLoopback: this.connection.isLoopback
+				};
+				return this.hostFacts;
 			}
 			async $mount(contribution) {
 				const callerCtx = this.ctx;
@@ -1340,11 +1648,11 @@ window.__ModuleLoader__.load({
 				return this.events.subscribe(this.ctx, event, listener);
 			}
 			/** Open one Remote stream and normalize a worker-local carrier's structural failures. */
-			openRemoteStream(endpoint, payload, signal, noConnection = `client api: ${endpoint} has no active Connection`) {
+			openRemoteStream(endpoint, payload, signal, uplink, noConnection = `client api: ${endpoint} has no active Connection`) {
 				const connection = this.ownerCtx.get("connection");
 				if (connection === void 0) throw new Error(noConnection);
-				const local = connection.rpc.open?.("/api", endpoint, payload, signal);
-				return local === void 0 ? this.streams.open(endpoint, payload, signal) : normalizeConnectionStream(local);
+				const local = connection.rpc.open?.("/api", endpoint, payload, signal, uplink);
+				return local === void 0 ? this.streams.open(endpoint, payload, signal, uplink) : normalizeConnectionStream(local);
 			}
 			enqueue(operation) {
 				const result = this.mutations.then(operation, operation);
@@ -1384,7 +1692,7 @@ window.__ModuleLoader__.load({
 					if ((this.namespaces.get(descriptor.namespace)?.service)?.has(kind, descriptor.method) === true) throw new Error(`client api: ${kind} method ${endpointOf(descriptor)} is already mounted`);
 				};
 				for (const descriptor of contribution.descriptors) {
-					requireStrictDescriptor(descriptor);
+					requireStrictInputs(descriptor);
 					if (descriptor.invocation.kind === "direct") add(direct, descriptor, "direct");
 					if (scopedProjection(descriptor) !== void 0) add(scoped, descriptor, "scoped");
 				}
@@ -1471,7 +1779,7 @@ window.__ModuleLoader__.load({
 				throw new Error("client api: Remote method is no longer mounted");
 			}
 			invokeSelected(descriptor, projection, token, callerCtx, values, boundIdentity) {
-				if (descriptor.mode === "stream") return this.invokeStream(descriptor, projection, token, callerCtx, values, boundIdentity);
+				if (descriptor.mode !== void 0) return this.invokeStream(descriptor, projection, token, callerCtx, values, boundIdentity);
 				return this.invoke(descriptor, projection, token, callerCtx, values, boundIdentity);
 			}
 			async invoke(descriptor, projection, token, callerCtx, values, boundIdentity) {
@@ -1483,27 +1791,28 @@ window.__ModuleLoader__.load({
 				try {
 					const result = await connection.rpc.call("/api", endpoint, { args: prepared.args }, prepared.signal);
 					if (!mountActive(token)) return withdrawn(endpoint);
+					prepared.signal.throwIfAborted();
 					if (!result.ok) return {
 						ok: false,
-						error: result.error
+						error: rebuiltFailure(result.error)
 					};
 					return {
 						ok: true,
-						value: result.value
+						value: descriptor.result.mode === "strict" && descriptor.result.decode !== void 0 ? descriptor.result.decode(result.value) : result.value
 					};
 				} catch (error) {
+					if (prepared.signal.aborted) return cancelledFailure(endpoint, error);
 					return carrierFailure(endpoint, error);
 				}
 			}
-			async *invokeStream(descriptor, projection, token, callerCtx, values, boundIdentity) {
+			/** Open the logical stream now and hand back its handle; `send()` before the first read queues behind the `open` frame. */
+			invokeStream(descriptor, projection, token, callerCtx, values, boundIdentity) {
 				const endpoint = endpointOf(descriptor);
 				if (!token.active) throw new Error(withdrawn(endpoint).error.message);
 				const prepared = this.prepareInvocation(descriptor, projection, token, callerCtx, values, boundIdentity);
-				const stream = this.openRemoteStream(endpoint, { args: prepared.args }, prepared.signal);
-				for await (const value of stream) {
-					if (!mountActive(token)) throw new Error(withdrawn(endpoint).error.message);
-					yield value;
-				}
+				const generation = new AbortController();
+				const uplink = new ClientUplinkQueue(endpoint);
+				return new ClientStreamHandle(endpoint, this.openRemoteStream(endpoint, { args: prepared.args }, AbortSignal.any([prepared.signal, generation.signal]), uplink), uplink, generation, token);
 			}
 			prepareInvocation(descriptor, projection, token, callerCtx, values, boundIdentity) {
 				const endpoint = endpointOf(descriptor);
@@ -1519,12 +1828,12 @@ window.__ModuleLoader__.load({
 					if (boundIdentity === void 0 && adapter === void 0) throw new Error(`client api: ${endpoint} has no Client Context adapter for ${JSON.stringify(projection.context)}`);
 					const identity = boundIdentity === void 0 ? adapter?.identity(callerCtx) : boundIdentity.value;
 					if (identity === void 0) throw new Error(`client api: ${endpoint} requires a ${JSON.stringify(projection.context)} Context`);
-					args[projection.wire] = parseInput(projection.codec, identity, endpoint, projection.wire);
+					args[projection.wire] = identity;
 				}
 				let valueIndex = 0;
 				descriptor.parameters.forEach((parameter, parameterIndex) => {
 					if (parameterIndex === projection?.parameterIndex) return;
-					const value = parseInput(parameter.codec, values[valueIndex], endpoint, parameter.wire);
+					const value = values[valueIndex];
 					if (value !== void 0) args[parameter.wire] = value;
 					valueIndex += 1;
 				});
@@ -1534,6 +1843,77 @@ window.__ModuleLoader__.load({
 					args,
 					signal: callerSignal === void 0 ? token.abort.signal : AbortSignal.any([token.abort.signal, callerSignal])
 				};
+			}
+		};
+		/**
+		* The handle a generated stream method returns: one generation of one logical
+		* stream. The downlink is iterated once; `send`/`end` feed the uplink queue the
+		* carrier pump drains; `dispose` aborts the generation and returns the carrier
+		* iterator, which sends `cancel` unless a terminal frame arrived, drops what was
+		* buffered, and ends the iteration quietly.
+		*/
+		var ClientStreamHandle = class {
+			endpoint;
+			uplink;
+			generation;
+			token;
+			downlink;
+			primed;
+			consumed = false;
+			disposed = false;
+			constructor(endpoint, downlink, uplink, generation, token) {
+				this.endpoint = endpoint;
+				this.uplink = uplink;
+				this.generation = generation;
+				this.token = token;
+				this.downlink = downlink[Symbol.asyncIterator]();
+				this.primed = this.downlink.next();
+				this.primed.catch(() => {
+					this.uplink.close();
+				});
+			}
+			send(item) {
+				if (!isRemoteUplinkItem(item)) throw new Error(`client api: ${this.endpoint} uplink item is not a lossless JSON value`);
+				this.uplink.push(item);
+			}
+			end() {
+				this.uplink.end();
+			}
+			dispose() {
+				if (this.disposed) return;
+				this.disposed = true;
+				this.uplink.close();
+				this.generation.abort(/* @__PURE__ */ new Error(`client api: ${this.endpoint} stream disposed`));
+				Promise.resolve(this.downlink.return?.()).catch(() => void 0);
+			}
+			[Symbol.asyncIterator]() {
+				if (this.consumed) throw new Error(`client api: ${this.endpoint} stream has one consumer`);
+				this.consumed = true;
+				const iteration = this.iterate();
+				return {
+					next: () => iteration.next(),
+					return: (value) => {
+						this.dispose();
+						return iteration.return(value);
+					}
+				};
+			}
+			async *iterate() {
+				try {
+					while (true) {
+						const next = await (this.primed ?? this.downlink.next());
+						this.primed = void 0;
+						if (this.disposed || next.done === true) return;
+						if (!mountActive(this.token)) throw new Error(withdrawn(this.endpoint).error.message);
+						yield next.value;
+					}
+				} catch (error) {
+					if (this.disposed) return;
+					throw error;
+				} finally {
+					this.dispose();
+					await this.downlink.return?.();
+				}
 			}
 		};
 		var RemoteNamespaceService = class RemoteNamespaceService extends _deepseek_ai_cordis.Service {
@@ -1669,8 +2049,7 @@ window.__ModuleLoader__.load({
 		function scopedProjection(descriptor) {
 			if (descriptor.invocation.kind === "context") return {
 				context: descriptor.invocation.context,
-				wire: descriptor.invocation.wire,
-				codec: descriptor.invocation.codec
+				wire: descriptor.invocation.wire
 			};
 			if (descriptor.scope === void 0) return void 0;
 			const lookupParameters = descriptor.parameters.map((parameter, index) => ({
@@ -1682,42 +2061,68 @@ window.__ModuleLoader__.load({
 			return {
 				context: descriptor.scope.context,
 				wire: descriptor.scope.wire,
-				codec: selected.parameter.codec,
 				parameterIndex: selected.index
 			};
 		}
-		function requireStrictDescriptor(descriptor) {
+		function requireStrictInputs(descriptor) {
 			const endpoint = endpointOf(descriptor);
 			for (const parameter of descriptor.parameters) requireStrictCodec(parameter.codec, endpoint, parameter.wire);
+			if (descriptor.uplink !== void 0) requireStrictCodec(descriptor.uplink.codec, endpoint, "uplink");
 			if (descriptor.invocation.kind === "context") requireStrictCodec(descriptor.invocation.codec, endpoint, descriptor.invocation.wire);
 		}
 		function requireStrictCodec(codec, endpoint, field) {
 			if (codec.mode !== "strict") throw new Error(`client api: generated Remote ${endpoint} field ${JSON.stringify(field)} has no strict codec`);
 		}
-		function parseInput(codec, value, endpoint, field) {
-			if (codec.mode !== "strict") throw new Error(`client api: generated Remote ${endpoint} field ${JSON.stringify(field)} has no strict codec`);
-			try {
-				return codec.schema.parse(value);
-			} catch (cause) {
-				throw new Error(`client api: ${endpoint} rejected ${JSON.stringify(field)}`, { cause });
-			}
-		}
 		/** The namespace retired before or during the call, so no request outcome exists. */
 		function withdrawn(endpoint) {
 			return internalFailure(`client api: Remote method ${endpoint} is no longer mounted`);
 		}
+		/**
+		* The error branch a carrier throw (offline, transport fault) folds into: `gateway/internal` naming the endpoint and
+		* the thrown message. Exported so a stand-in for this face folds identically.
+		* @param endpoint - `<namespace>/<method>` that was called.
+		* @param error - what the carrier threw.
+		* @returns the failed result.
+		*/
 		function carrierFailure(endpoint, error) {
 			return internalFailure(`client api: ${endpoint} failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		/**
+		* The error branch a call aborted by its caller folds into: `gateway/cancelled` with the carrier's throw as `cause`.
+		* @param endpoint - `<namespace>/<method>` that was called.
+		* @param cause - what the carrier threw when the signal aborted.
+		* @returns the failed result.
+		*/
+		function cancelledFailure(endpoint, cause) {
+			return {
+				ok: false,
+				error: new RemoteError("gateway/cancelled", `client api: Remote invocation "${endpoint}" was aborted`, {}, { cause })
+			};
 		}
 		function internalFailure(message) {
 			return {
 				ok: false,
-				error: {
-					code: "internal",
-					message,
-					details: {}
-				}
+				error: new RemoteError("gateway/internal", message, {})
 			};
+		}
+		/**
+		* Whether a caught value is a Remote failure this face delivered or threw.
+		* The one consumer-facing discrimination point: marked instances carry their
+		* Host code; anything else is a local fault the caller should let crash.
+		* @param error - a caught value.
+		* @returns true when the value narrows to RemoteFailure.
+		*/
+		function isRemoteFailure(error) {
+			return remoteErrorOf(error) !== void 0;
+		}
+		/**
+		* Rebuild the wire failure as a local RemoteError instance so the error branch
+		* carries a real Error and `throw result.error` keeps throw semantics. The code
+		* is passed through verbatim without runtime validation: a code outside this
+		* Client's merged map still surfaces as-is, so a newer Host stays readable.
+		*/
+		function rebuiltFailure(error) {
+			return new RemoteError(error.code, error.message, error.details);
 		}
 		/** Preserve Gateway error classes across a worker transport's separately bundled page half. */
 		async function* normalizeConnectionStream(source) {
@@ -1726,7 +2131,7 @@ window.__ModuleLoader__.load({
 			} catch (error) {
 				if (!(error instanceof Error)) throw error;
 				const marker = error.dshRemoteStreamFailure;
-				if (marker?.kind === "remote") throw new RemoteStreamError(marker.code, error.message, marker.details);
+				if (marker?.kind === "remote") throw new RemoteError(marker.code, error.message, marker.details);
 				if (marker?.kind === "carrier") throw new RemoteStreamCarrierError(error.message, { cause: error });
 				throw error;
 			}
@@ -1736,9 +2141,11 @@ window.__ModuleLoader__.load({
 		exports.RemoteSnapshotStream = RemoteSnapshotStream;
 		exports.RemoteStream = RemoteStream;
 		exports.RemoteStreamCarrierError = RemoteStreamCarrierError;
-		exports.RemoteStreamError = RemoteStreamError;
 		exports.apply = apply;
+		exports.cancelledFailure = cancelledFailure;
+		exports.carrierFailure = carrierFailure;
 		exports.inject = inject;
+		exports.isRemoteFailure = isRemoteFailure;
 		return module.exports;
 	}
 });

@@ -95,12 +95,11 @@ function parseCodexConfig(raw) {
 * matchers, snake_case payloads without a trailing newline, no hook environment
 * or command substitution, and no pre-tool approval or rewrite path; only
 * blocking decisions are honored. Shared execution and parsing live in
-* `dsh-hook-protocol`; see the
-* [hook-bridges Agent Note](../../../../.agents/notes/implemented/feature/2026-06-30-hook-bridges.md).
+* `dsh-hook-protocol`.
 * @module @deepseek-ai/dsh-hooks-codex
 */
 const name = "hooks-codex";
-const inject = ["shell"];
+const inject = ["shell", "sessionProjections"];
 const Config = z.object({
 	configPath: z.string().required(),
 	model: z.string().default(""),
@@ -111,10 +110,7 @@ let handlerCounter = 0;
 function nextHandlerId(point) {
 	return `codex:${point}:${++handlerCounter}`;
 }
-const PLUGIN_SOURCE = {
-	kind: "plugin",
-	plugin: "hooks-codex"
-};
+const CONTEXT_SOURCE = { kind: "hooks-codex" };
 /** The summary cap bounds a persisted event field — a positive integer or the slice misbehaves silently. */
 function assertPositiveInteger(name, value) {
 	if (!Number.isInteger(value) || value < 1) throw new Error(`hooks-codex: ${name} must be a positive integer`);
@@ -187,32 +183,35 @@ function apply(ctx, config) {
 				type: "text",
 				text
 			})),
-			source: PLUGIN_SOURCE
+			source: CONTEXT_SOURCE
 		});
 	}
 	/** Prepend one context without flattening source fields or other downstream metadata. */
 	function prependContext(ours, theirs) {
 		return [ours, ...theirs ?? []];
 	}
-	ctx.on("agent/session-start", ({ agent, source }) => {
-		detached.track(runPoint("SessionStart", source, {
-			...base(ctx, agent, "SessionStart", model),
+	ctx.on("agent/created", async ({ agent, source, signal }) => {
+		const ownerSignal = signal === void 0 ? detached.signal : AbortSignal.any([signal, detached.signal]);
+		const run = runPoint("SessionStart", source, {
+			...base(agent, "SessionStart", model),
 			source
 		}, {
 			agent,
 			plainStdoutAsContext: true,
-			signal: detached.signal
+			signal: ownerSignal
 		}).then((merged) => {
 			const context = contextFrom(merged);
 			if (context) agent.inject(context);
 		}).catch((error) => {
 			ctx.logger.warn(`hooks-codex: SessionStart hook failed: ${String(error)}`);
-		}));
+		});
+		detached.track(run);
+		await run;
 	});
 	ctx.on("agent/pre-step", async ({ agent, messages, turn, signal }, next) => {
 		if (messages.length === 0) return next();
 		const merged = await runPoint("UserPromptSubmit", "", {
-			...base(ctx, agent, "UserPromptSubmit", model),
+			...base(agent, "UserPromptSubmit", model),
 			turn_id: String(turn),
 			prompt: blocksToText(messages.flatMap((message) => message.content))
 		}, {
@@ -231,7 +230,7 @@ function apply(ctx, config) {
 		};
 	});
 	ctx.on("tools/pre-execute", async (exec, next) => {
-		const turn = lastTurn(exec.agent);
+		const turn = lastTurn(ctx, exec.agent);
 		const merged = await runPoint("PreToolUse", exec.name, preToolPayload(ctx, exec, model), {
 			...exec.agent ? { agent: exec.agent } : {},
 			turn,
@@ -244,7 +243,7 @@ function apply(ctx, config) {
 		return next();
 	});
 	ctx.on("tools/post-execute", async (exec, result, next) => {
-		const turn = lastTurn(exec.agent);
+		const turn = lastTurn(ctx, exec.agent);
 		const merged = await runPoint("PostToolUse", exec.name, postToolPayload(ctx, exec, result, model), {
 			...exec.agent ? { agent: exec.agent } : {},
 			turn,
@@ -287,25 +286,24 @@ function apply(ctx, config) {
 					type: "text",
 					text
 				}],
-				source: PLUGIN_SOURCE
+				source: CONTEXT_SOURCE
 			}));
 		}
 	});
 }
-function lastTurn(agent) {
+function lastTurn(ctx, agent) {
 	if (!agent) return 0;
-	const last = [...agent.session.events].findLast((e) => e.type === "turn/start");
-	/* v8 ignore next -- agent-present turnBase callers are tool/stop extension points inside an open turn. */
-	return last?.type === "turn/start" ? last.data.turn : 0;
+	/* v8 ignore next -- agent-present hook points run inside AgentLoop, which owns this projection. */
+	return ctx.sessionProjections.stateOf(agent.session, "turnBoundary")?.lastTurn ?? 0;
 }
 function blocksToText(content) {
 	return content.filter((b) => b.type === "text").map((b) => b.text).join("");
 }
 /** Base fields on every Codex payload (no turn_id). */
-function base(ctx, agent, event, model) {
+function base(agent, event, model) {
 	return {
 		session_id: agent?.session.header.id ?? "",
-		transcript_path: agent === void 0 ? null : ctx.get("sessionPersistence")?.locate(agent.session.header)?.path ?? null,
+		transcript_path: null,
 		cwd: agent?.session.header.cwd ?? process.cwd(),
 		hook_event_name: event,
 		model,
@@ -315,8 +313,8 @@ function base(ctx, agent, event, model) {
 /** Base + turn_id, for the turn-scoped events (PreToolUse/PostToolUse/UserPromptSubmit/Stop). */
 function turnBase(ctx, agent, event, model) {
 	return {
-		...base(ctx, agent, event, model),
-		turn_id: String(lastTurn(agent))
+		...base(agent, event, model),
+		turn_id: String(lastTurn(ctx, agent))
 	};
 }
 /** Extract a `command` string from a tool call's parsed arguments, else ''. */

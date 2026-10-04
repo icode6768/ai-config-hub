@@ -9,7 +9,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * new-session screen ({@link AgentPresetSeat}).
  */
 import { useEffect } from 'react';
-import { IconAgentPresetOutline16 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconAgentPresetOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { presetDisplayText } from "./locales.js";
 import css from './AgentPresetLabel.module.css';
 /**
@@ -33,6 +33,6 @@ export function AgentPresetLabel({ sessionId, useSessions, useAgentPresets, load
         return null;
     const option = options.find(entry => entry.id === preset);
     const text = option === undefined ? undefined : presetDisplayText(option, t);
-    return (_jsxs("span", { className: css.label, title: text?.description ?? t('headerHint'), children: [_jsx(IconAgentPresetOutline16, { size: 14, className: css.icon }), text?.name ?? preset] }));
+    return (_jsxs("span", { className: css.label, title: text?.description ?? t('headerHint'), children: [_jsx(IconAgentPresetOutlineRegular, { size: 14, className: css.icon }), text?.name ?? preset] }));
 }
 //# sourceMappingURL=AgentPresetLabel.js.map

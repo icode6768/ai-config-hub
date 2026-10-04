@@ -5,8 +5,8 @@ import { resolveInspectorOptions } from "./host/bridge/controller.js";
 export { resolveInspectorOptions, startInspector } from "./host/plugin.js";
 /** Cordis plugin name shared with the Client face. */
 export const name = 'experimental-inspector';
-/** Host service required to inject the Client connection bootstrap into index.html. */
-export const inject = ['webServer'];
+/** Web Host and authenticated browser bootstrap transport. */
+export const inject = ['webServer', 'connection'];
 const libraryDefaults = resolveInspectorOptions();
 /** Runtime validation for {@link Config}. */
 export const Config = z.object({
@@ -36,7 +36,7 @@ export const Config = z.object({
     maxDisconnectedCordisTrees: z.natural().default(libraryDefaults.maxDisconnectedCordisTrees),
 });
 /**
- * Apply the Host implementation from the repository-standard package entry.
+ * Start inspection when enabled; the hidden --inspect flag also opens the Host debugging window.
  * @param ctx - Host Cordis plugin context.
  * @param config - Validated Inspector configuration.
  */

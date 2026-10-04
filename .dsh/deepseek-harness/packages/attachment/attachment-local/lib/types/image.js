@@ -1,6 +1,6 @@
 /** Raster inspection: full decode at admission, header-only probe on verified reads. */
-import sharp from 'sharp';
 import { AttachmentError } from '@deepseek-ai/dsh-attachment';
+import { requireSharp } from "./sharp.js";
 /**
  * Check alpha metadata for bytes produced by this package's encoders.
  * Sharp/libvips may omit an all-opaque alpha plane from WebP output; every
@@ -60,6 +60,7 @@ async function imageMetadata(image) {
  * @returns verified format and dimensions.
  */
 export async function probeImage(data) {
+    const sharp = requireSharp();
     try {
         return await imageMetadata(sharp(data, { failOn: 'error', limitInputPixels: false }));
     }
@@ -76,6 +77,7 @@ export async function probeImage(data) {
  * @returns verified format and dimensions.
  */
 export async function detectImage(data, limits) {
+    const sharp = requireSharp();
     try {
         const image = sharp(data, { failOn: 'error', limitInputPixels: false });
         const detected = await imageMetadata(image);

@@ -1,3 +1,3 @@
-/** Client-safe Agent Teams request, result, and view vocabulary. */
-export type { CreateTeamTaskRequest, TeamMemberView, TeamTaskAction, TeamTaskId, TeamTaskMutationResult, TeamTaskStatus, TeamTaskView, TeamView, UpdateTeamTaskRequest, } from './types.ts';
+/** Client-safe Agent Teams roster and task views plus the `agentTeam` projection vocabulary. */
+export type { TeamMemberPhase, TeamMemberProjection, TeamMemberView, TeamProjection, TeamTaskId, TeamTaskStatus, TeamTaskView, } from './types.ts';
 //# sourceMappingURL=client.d.ts.map

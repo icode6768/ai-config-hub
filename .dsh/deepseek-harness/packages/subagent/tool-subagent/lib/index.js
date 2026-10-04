@@ -1,9 +1,10 @@
 import z from "@deepseek-ai/schemastery";
 import { scopeChainOf, scopeOf } from "@deepseek-ai/dsh-scope";
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import { SessionSeq } from "@deepseek-ai/dsh-session";
 import { assertSubagentMaxDepth, parentAgentOptionsForDelegation, settleRun } from "@deepseek-ai/dsh-subagent";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { ReasoningEffortId } from "@deepseek-ai/dsh-llm";
+import { z as z$1 } from "zod";
 z.object({
 	provider: z.string().min(1).required(),
 	model: z.string().min(1).required()
@@ -194,30 +195,40 @@ function registerListSubagentModels(ctx, policy) {
 		}
 	}));
 }
-//#endregion
-//#region lib/types/model-selection-state.js
-/** Durable per-session state for the user-controlled model-selection opt-in. */
+/** Host-only projection of the durable model-selection policy. */
+const subagentModelSelectionProjectionDefinition = {
+	key: "subagentModelSelectionPolicy",
+	stateVersion: 1,
+	stateSchema: z$1.array(z$1.object({
+		provider: z$1.string().min(1),
+		model: z$1.string().min(1)
+	}).strict()).min(1).nullable(),
+	init: () => null,
+	apply: (policy, event) => {
+		if (policy !== null || event.type !== "subagent/model-selection-policy") return policy;
+		const { allowedModels } = event.data;
+		assertAllowedModelRoutes(allowedModels);
+		if (allowedModels.length === 0) throw new Error("subagent/model-selection-policy requires at least one route");
+		return allowedModels;
+	}
+};
 /**
 * Read the exact route list captured for a model-selectable definition.
+* @param projections - registry that owns the policy projection.
 * @param session - session whose durable decision is read.
 * @returns a detached route list, or undefined for the fixed-route definition.
 */
-function subagentModelSelectionPolicy(session) {
-	const event = session.events.find((candidate) => candidate.type === "subagent/model-selection-policy");
-	if (event?.type !== "subagent/model-selection-policy") return void 0;
-	const { allowedModels } = event.data;
-	assertAllowedModelRoutes(allowedModels);
-	const routes = allowedModels.map((route) => ({ ...route }));
-	if (routes.length === 0) throw new Error("subagent/model-selection-policy requires at least one route");
-	return routes;
+function subagentModelSelectionPolicy(projections, session) {
+	return projections.stateOf(session, "subagentModelSelectionPolicy")?.map((route) => ({ ...route }));
 }
 /**
 * Append the route policy once, before its definition can reach a model request.
+* @param projections - registry that owns the policy projection.
 * @param session - session receiving the model-selectable definition.
 * @param allowedModels - exact routes the definition may select explicitly.
 */
-function recordSubagentModelSelection(session, allowedModels) {
-	if (subagentModelSelectionPolicy(session) !== void 0) return;
+function recordSubagentModelSelection(projections, session, allowedModels) {
+	if (subagentModelSelectionPolicy(projections, session) !== void 0) return;
 	session.append("subagent/model-selection-policy", { allowedModels: allowedModels.map((route) => ({ ...route })) });
 }
 //#endregion
@@ -235,10 +246,9 @@ const name = "tool-subagent";
 const inject = [
 	"tools",
 	"subagents",
-	"systemPrompt"
+	"systemPrompt",
+	"sessionProjections"
 ];
-/** Prompt order after bounded delegation policy and before child reporting. */
-const SUBAGENT_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.TOOL_SUBAGENT;
 const Config = z.object({
 	provider: z.string().required(),
 	toolName: z.string().default("subagent"),
@@ -256,7 +266,7 @@ const Config = z.object({
 		allow: z.array(z.string()).default(void 0),
 		deny: z.array(z.string()).default(void 0)
 	}).default(void 0),
-	maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const("provider-managed")]).default(3)
+	maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const("provider-managed")])
 });
 /** Render text blocks from the canonical JSON block array without trusting arbitrary values. */
 function outputValueText(values) {
@@ -337,7 +347,7 @@ function providerWording(inheritsConversation) {
 		promptDescription: "The task for the subagent. It already sees this conversation's completed turns, so build on them freely and state only what is new."
 	};
 	return {
-		description: "Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation.",
+		description: "Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps.",
 		promptDescription: "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs."
 	};
 }
@@ -349,15 +359,22 @@ function resolveDelegationRun(request, options) {
 	}
 	return { runInBackground: request.run_in_background ?? options.continuable };
 }
-function apply(ctx, config) {
+/**
+* Install one delegation-tool composition.
+* @param ctx - Context that owns the registrations.
+* @param config - delegation-tool configuration.
+* @param session - unpublished Session supplied by a direct Agent setup; omit for a standing composition.
+*/
+function apply(ctx, config, session) {
 	if (config.maxDepth !== "provider-managed") assertSubagentMaxDepth(config.maxDepth);
 	if (config.toolFilter !== void 0 && config.toolFilter.allow === void 0 && config.toolFilter.deny === void 0) throw new Error("tool-subagent: `toolFilter` is configured but names neither `allow` nor `deny` — remove the key or fill the filter");
 	const backgroundEnabled = config.enableRunInBackground !== false;
 	const continuable = (config.backgroundMode ?? "one-shot") === "continuable";
 	const toolName = config.toolName ?? "subagent";
 	const modelSelectionCapable = config.modelSelectionSettings === true;
+	ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition);
 	const assertSubagentProviderConfiguration = (subagentProvider) => {
-		if (typeof config.maxDepth === "number" && !subagentProvider.capabilities.depthLimit) throw new Error(`tool-subagent: provider "${subagentProvider.name}" cannot enforce maxDepth (no depthLimit capability) — set maxDepth: 'provider-managed' to leave the recursion budget to the provider`);
+		if (ctx.subagents.resolveMaxDepth(config.maxDepth) !== void 0 && !subagentProvider.capabilities.depthLimit) throw new Error(`tool-subagent: provider "${subagentProvider.name}" cannot enforce maxDepth (no depthLimit capability) — set maxDepth: 'provider-managed' to leave the recursion budget to the provider`);
 		if (config.agentOptions !== void 0 && !subagentProvider.capabilities.agentOptions) throw new Error(`tool-subagent: provider "${subagentProvider.name}" does not support child agentOptions`);
 		if (modelSelectionCapable && !subagentProvider.capabilities.agentOptions) throw new Error(`tool-subagent: provider "${subagentProvider.name}" does not support child model selection`);
 		if (continuable && subagentProvider.prepareContinuable === void 0) throw new Error(`tool-subagent: provider "${subagentProvider.name}" does not support \`backgroundMode: continuable\``);
@@ -380,7 +397,7 @@ function apply(ctx, config) {
 				subagentProvider,
 				disposeTool: runtimeCtx.tools.register(defineTool({
 					name: toolName,
-					description: wording.description + (backgroundEnabled ? continuable ? " This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` starts a later turn in the same child conversation. Set `run_in_background: false` only when your next action depends on receiving the result." : " This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`." : " This call waits for the subagent and returns its result.") + choiceDescription,
+					description: wording.description + (backgroundEnabled ? continuable ? " It runs in the background by default and returns a subagent id you can continue with `send_message`; you are notified when the run settles." : " This call waits for the result by default." : " This call waits for the subagent and returns its result.") + choiceDescription,
 					parameters: {
 						description: {
 							type: "string",
@@ -408,7 +425,7 @@ function apply(ctx, config) {
 						} : {},
 						...backgroundEnabled ? { run_in_background: {
 							type: "boolean",
-							description: continuable ? "Whether to run in the background and return a durable subagent id immediately. Defaults to true. Set false to wait for the result when your next action depends on it." : "Whether to run as a background job and return its id. Defaults to false; collect with job_output or stop with job_kill."
+							description: continuable ? "Defaults to true. Set false only when your next action depends on the result." : "Run as a background job and return its id (collect with job_output, stop with job_kill). Defaults to false."
 						} } : {}
 					},
 					output: {
@@ -488,7 +505,7 @@ function apply(ctx, config) {
 							if (runtimeCtx.subagents.getProvider(config.provider) !== subagentProvider) throw new Error(`subagent provider "${config.provider}" changed while resolving the child LLM route; retry the delegation`);
 						}
 						exec.signal.throwIfAborted();
-						const maxDepth = typeof config.maxDepth === "number" ? config.maxDepth : void 0;
+						const maxDepth = runtimeCtx.subagents.resolveMaxDepth(config.maxDepth);
 						const request = {
 							label: args.description,
 							prompt: [{
@@ -521,7 +538,7 @@ function apply(ctx, config) {
 								jobId: jobs.start({
 									kind: "subagent",
 									label: args.description,
-									owner: parent,
+									owner: parent.id,
 									run: () => {
 										const controller = new AbortController();
 										return {
@@ -558,8 +575,8 @@ function apply(ctx, config) {
 		else runtimeCtx.logger.info(`subagent provider "${config.provider}" not registered yet; the "${config.toolName ?? "subagent"}" tool will register when it appears`);
 		if (backgroundEnabled && continuable) runtimeCtx.systemPrompt.section({
 			name: `tool:${toolName}`,
-			order: SUBAGENT_SECTION_ORDER,
-			text: (context) => mounted === void 0 || runtimeCtx.tools.get(toolName, context.scope) === void 0 ? "" : `Use ${toolName} in the background by default. Start independent delegations together in one assistant message and continue useful work while they run. Set \`run_in_background: false\` only when your next action depends on that subagent's result. When a background run settles, the runtime sends you a notice containing its outcome and any final assistant message.`
+			order: runtimeCtx.systemPrompt.getSectionOrder("TOOL_SUBAGENT"),
+			text: (context) => mounted === void 0 || runtimeCtx.tools.get(toolName, context.scope) === void 0 ? "" : `Start independent ${toolName} delegations together in one assistant message and continue useful work while they run.`
 		});
 	};
 	if (config.modelSelectionSettings !== true) {
@@ -568,40 +585,44 @@ function apply(ctx, config) {
 	}
 	const settings = ctx.get("subagentModelSelection");
 	if (settings === void 0) throw new Error("tool-subagent: `modelSelectionSettings` requires @deepseek-ai/dsh-tool-subagent/model-selection-settings in the Host scope");
-	const compositionScope = scopeOf(ctx);
-	if (compositionScope === void 0) throw new Error("tool-subagent: `modelSelectionSettings` requires an Agent or preset scope");
-	const selectForAgent = (agent) => {
-		let allowedModels = subagentModelSelectionPolicy(agent.session);
+	const selectForSession = (target) => {
+		const freshSession = target.firstLiveSeq === 0 && target.eventAt(SessionSeq(0))?.type !== "session/end-seed";
+		let allowedModels = subagentModelSelectionPolicy(ctx.sessionProjections, target);
 		if (allowedModels === void 0) {
-			const parentId = agent.session.header.origin === "subagent" ? agent.session.header.parentSession : void 0;
+			const parentId = target.header.origin === "subagent" ? target.header.parentSession : void 0;
 			if (parentId !== void 0) {
-				const parent = ctx.get("agents")?.get(parentId);
-				allowedModels = parent === void 0 ? void 0 : subagentModelSelectionPolicy(parent.session);
-			} else if (agent.session.firstLiveSeq === 0) {
+				const sessions = ctx.get("sessions");
+				if (sessions === void 0) throw new Error("tool-subagent: child model-selection inheritance requires the Session registry");
+				const parent = sessions.get(parentId);
+				allowedModels = parent === void 0 ? void 0 : subagentModelSelectionPolicy(ctx.sessionProjections, parent);
+			} else if (freshSession) {
 				const current = settings.current();
 				allowedModels = current.enabled ? current.allowedModels : void 0;
 			}
 		}
-		if (allowedModels !== void 0) recordSubagentModelSelection(agent.session, allowedModels);
+		if (allowedModels !== void 0) recordSubagentModelSelection(ctx.sessionProjections, target, allowedModels);
 		return allowedModels === void 0 ? void 0 : { routes: allowedModels };
 	};
-	const agent = ctx.agent;
-	if (agent !== void 0) {
-		install(ctx, selectForAgent(agent));
+	if (session !== void 0) {
+		install(ctx, selectForSession(session));
 		return;
 	}
+	const compositionScope = scopeOf(ctx);
+	if (compositionScope === void 0) throw new Error("tool-subagent: standing `modelSelectionSettings` requires a scoped preset Context");
 	const agents = ctx.get("agents");
-	/* v8 ignore next -- Agent and preset scopes are minted only by the Agent registry. */
-	if (agents === void 0) throw new Error("tool-subagent: scoped model-selection settings require the Agent registry");
+	/* v8 ignore next -- shipped preset compositions always include the Agent registry. */
+	if (agents === void 0) throw new Error("tool-subagent: standing `modelSelectionSettings` requires the Agent registry");
 	const scopedInstalls = /* @__PURE__ */ new WeakMap();
 	const installing = /* @__PURE__ */ new WeakSet();
 	const belongsToComposition = (candidate) => scopeChainOf(scopeOf(candidate.ctx)).includes(compositionScope);
 	const installScoped = (candidate) => {
-		if (scopedInstalls.has(candidate) || installing.has(candidate)) return;
+		const existing = scopedInstalls.get(candidate);
+		if (existing !== void 0) return existing;
+		if (installing.has(candidate)) return;
 		installing.add(candidate);
 		let fiber;
 		try {
-			const policy = selectForAgent(candidate);
+			const policy = selectForSession(candidate.session);
 			fiber = candidate.ctx.inject([
 				"tools",
 				"subagents",
@@ -613,6 +634,7 @@ function apply(ctx, config) {
 			installing.delete(candidate);
 		}
 		scopedInstalls.set(candidate, fiber);
+		return fiber;
 	};
 	const removeScoped = (candidate) => {
 		const fiber = scopedInstalls.get(candidate);
@@ -627,13 +649,14 @@ function apply(ctx, config) {
 		for (const candidate of agents.list()) if (belongsToComposition(candidate)) installScoped(candidate);
 		else removeScoped(candidate);
 	};
-	ctx.on("agent/created", ({ agent: created }) => {
-		installScoped(created);
+	ctx.on("agent/created", async ({ agent: created }) => {
+		await installScoped(created);
 	});
 	ctx.on("agent/disposed", ({ agent: disposed }) => {
 		removeScoped(disposed);
 	});
 	ctx.on("tools/change", reconcileComposedAgents);
+	reconcileComposedAgents();
 }
 //#endregion
 export { Config, apply, inject, name };

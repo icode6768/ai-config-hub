@@ -1,7 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
 /**
- * Modal shared by the Session Header button and this browser's `/export` command.
+ * Modal shared by the Session Header download menu item and this browser's `/export` command.
  * @param props - Session runtime, bound controller state, actions, and localized copy.
  * @returns the modal portal contribution.
  */

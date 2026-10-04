@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
+import { truncateWithoutSplittingSurrogatePair } from "@deepseek-ai/dsh-output-retention";
 import { deadline, timeoutOf } from "@deepseek-ai/dsh-timeout";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 //#region lib/types/index.js
@@ -68,13 +69,14 @@ var __disposeResources = (function(SuppressedError) {
 const TRUNCATED_MESSAGE = "<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>";
 const LOST_PREFIX_MESSAGE = "<response clipped><NOTE>The beginning of this command output was dropped by the terminal scrollback limit. The following text is the earliest retained output.</NOTE>\n";
 const SHELL_RESET_MESSAGE = "The persistent bash shell was reset; the next bash call starts from the workspace with a fresh current directory and environment.";
+const TIMEOUT_STATUS_MARKER = "[Command timed out or OOM]";
 const TIMEOUT_CODE = "PERSISTENT_BASH_TIMEOUT";
 const SCROLLBACK_PAGE_LINES = 1e3;
 const POLL_INTERVAL_MS = 25;
 const DEFAULT_DESCRIPTION = "Run commands in a persistent bash shell. State, including the current directory and exported environment variables, persists across calls for this agent.";
 function maybeTruncate(content, maxOutputChars, incomplete = false) {
 	if (content.length <= maxOutputChars && !incomplete) return content;
-	return content.length <= maxOutputChars ? content + TRUNCATED_MESSAGE : content.slice(0, maxOutputChars) + TRUNCATED_MESSAGE;
+	return content.length <= maxOutputChars ? content + TRUNCATED_MESSAGE : truncateWithoutSplittingSurrogatePair(content, maxOutputChars) + TRUNCATED_MESSAGE;
 }
 function markers() {
 	const nonce = randomUUID();
@@ -90,7 +92,7 @@ function wrapCommand(command, marker) {
 	return `printf '%s\\n' ${quoteForBash(marker.start)}; eval -- ${quoteForBash(command)}; __dsh_persistent_bash_status=$?; printf '%s%s\\n' ${quoteForBash(marker.end)} "$__dsh_persistent_bash_status"`;
 }
 function trimTrailingNewline(text) {
-	return text.replace(/\r?\n$/, "");
+	return text.replace(/(?:\r?\n)+$/, "");
 }
 function commandOutput(snapshot, marker) {
 	const text = snapshot.text;
@@ -152,7 +154,7 @@ function retainedScrollback(ctx, owner, id, latest = ctx.terminals.read(owner, i
 }
 function renderCaptured(output, maxOutputChars) {
 	const rendered = maybeTruncate(output.text, maxOutputChars, output.incomplete);
-	return appendStatusMarker(output.incomplete && output.text.length > 0 ? LOST_PREFIX_MESSAGE + rendered : rendered, output.exitCode !== void 0 && output.exitCode !== 0 ? `[exit code: ${output.exitCode}]` : void 0);
+	return appendStatusMarker(output.incomplete && output.text.length > 0 ? LOST_PREFIX_MESSAGE + rendered : rendered, output.exitCode !== void 0 ? `[Command finished with exit code ${output.exitCode}]` : void 0);
 }
 function appendStatusMarker(content, marker) {
 	if (marker === void 0) return content;
@@ -248,7 +250,13 @@ async function executeCommand(ctx, shells, owner, command, config, upstream) {
 	};
 	try {
 		const commandDeadline = __addDisposableResource(env_1, deadline(upstream, config.timeoutMs, TIMEOUT_CODE), false);
-		const id = await shells.get(owner, commandDeadline.signal);
+		let id;
+		try {
+			id = await shells.get(owner, commandDeadline.signal);
+		} catch (error) {
+			if (upstream.aborted && error === upstream.reason) return "";
+			throw error;
+		}
 		const marker = markers();
 		const wrapped = wrapCommand(command, marker);
 		let first = true;
@@ -284,13 +292,13 @@ async function executeCommand(ctx, shells, owner, command, config, upstream) {
 				await shells.reset(owner, "persistent bash command timed out");
 				return [
 					`Your command timed out after ${Math.round(timedOut.timeoutMs / 1e3)} seconds or experienced an OOM error. Below is partial output:`,
-					partial,
+					appendStatusMarker(partial, TIMEOUT_STATUS_MARKER),
 					SHELL_RESET_MESSAGE
 				].join("\n");
 			}
 			if (commandDeadline.signal.aborted) {
 				await shells.reset(owner, "persistent bash command aborted");
-				commandDeadline.signal.throwIfAborted();
+				return "";
 			}
 			if (latest.text.includes(marker.end)) {
 				const complete = commandOutput(retainedScrollback(ctx, owner, id, latest), marker);
@@ -345,7 +353,7 @@ function registerPersistentBash(ctx, config) {
 			const owner = exec.agent;
 			if (owner === void 0) throw new Error("bash requires an owning agent session");
 			return serialized(owner, async () => {
-				exec.signal.throwIfAborted();
+				if (exec.signal.aborted) return "";
 				return executeCommand(ctx, shells, owner, args.command, config, exec.signal);
 			});
 		},

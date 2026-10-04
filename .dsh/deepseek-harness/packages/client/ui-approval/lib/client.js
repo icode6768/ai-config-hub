@@ -7,8 +7,8 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\client\ui-approval\src\client\ApprovalPanel.module.css.mjs
-		const css = ".NJ00Rq_root{padding:8px calc(var(--dsh-composer-side-clearance) + 16px) 12px;flex-direction:column;align-items:center;display:flex}.NJ00Rq_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-state-warn-secondary);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:20px;overflow:hidden}.NJ00Rq_strip{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);align-items:center;gap:8px;padding:10px 16px;font-size:13px;line-height:18px;display:flex}.NJ00Rq_dot{background:var(--dsw-alias-state-warn-primary);border-radius:50%;width:8px;height:8px}.NJ00Rq_body{box-sizing:border-box;max-height:var(--dsh-composer-text-max-height);flex-direction:column;gap:6px;padding:12px 16px 0;display:flex;overflow-y:auto}.NJ00Rq_headline{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px}.NJ00Rq_command{color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);word-break:break-all;font-size:13px;line-height:20px}.NJ00Rq_actionRow{justify-content:flex-end;gap:8px;padding:14px 16px;display:flex}.NJ00Rq_reject:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-color:#0000}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-approval\src\client\ApprovalPanel.module.css.mjs
+		const css = ".MUBFvq_root{padding:8px calc(var(--dsh-composer-side-clearance) + 16px) 12px;flex-direction:column;align-items:center;display:flex}.MUBFvq_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);overflow:hidden}.MUBFvq_strip{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);align-items:center;gap:8px;padding:10px 16px;font-size:13px;line-height:18px;display:flex}.MUBFvq_body{box-sizing:border-box;max-height:var(--dsh-composer-text-max-height);flex-direction:column;gap:6px;padding:12px 16px 0;display:flex;overflow-y:auto}.MUBFvq_headline{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px}.MUBFvq_command{color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);word-break:break-all;font-size:13px;line-height:20px}.MUBFvq_actionRow{justify-content:flex-end;gap:8px;padding:14px 16px;display:flex}.MUBFvq_reject:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-color:#0000}";
 		const tagId = "@deepseek-ai/dsh-client-ui-approval/ApprovalPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -18,15 +18,14 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ApprovalPanel_module_css_default = {
-			"actionRow": "NJ00Rq_actionRow",
-			"body": "NJ00Rq_body",
-			"card": "NJ00Rq_card",
-			"command": "NJ00Rq_command",
-			"dot": "NJ00Rq_dot",
-			"headline": "NJ00Rq_headline",
-			"reject": "NJ00Rq_reject",
-			"root": "NJ00Rq_root",
-			"strip": "NJ00Rq_strip"
+			"actionRow": "MUBFvq_actionRow",
+			"body": "MUBFvq_body",
+			"card": "MUBFvq_card",
+			"command": "MUBFvq_command",
+			"headline": "MUBFvq_headline",
+			"reject": "MUBFvq_reject",
+			"root": "MUBFvq_root",
+			"strip": "MUBFvq_strip"
 		};
 		//#endregion
 		//#region lib/types/client/ApprovalPanel.js
@@ -38,29 +37,68 @@ window.__ModuleLoader__.load({
 		*/
 		function ApprovalPanel(props) {
 			const approval = props.matched;
+			const detail = approval.callId === void 0 ? null : props.renderSlot("conversation.approval.detail", { callId: approval.callId });
 			return (0, react_jsx_runtime.jsx)(ApprovalFlow, {
 				pending: approval,
-				detail: approval.callId === void 0 ? null : props.renderSlot("conversation.approval.detail", { callId: approval.callId }),
+				reason: approval.displayReason === void 0 ? approval.reason : props.resolveReason(approval.displayReason),
+				detail,
 				t: props.t
 			}, approval.key);
 		}
-		function ApprovalFlow({ pending, detail, t }) {
+		function ApprovalFlow({ pending, reason, detail, t }) {
 			const [answered, setAnswered] = (0, react.useState)(false);
+			const waiting = (0, react.useRef)(false);
+			const active = (0, react.useRef)(true);
+			const composing = (0, react.useRef)(false);
+			const compositionEnded = (0, react.useRef)(false);
+			(0, react.useEffect)(() => {
+				active.current = true;
+				return () => {
+					active.current = false;
+				};
+			}, []);
 			const answer = (outcome) => {
+				if (waiting.current || !pending.answerable) return;
+				waiting.current = true;
 				setAnswered(true);
 				pending.answer(outcome).catch(() => {
+					if (!active.current || !pending.answerable) return;
+					waiting.current = false;
 					setAnswered(false);
 				});
+			};
+			const keydown = (event) => {
+				const element = event.target;
+				if (event.defaultPrevented || !event.currentTarget.contains(document.activeElement) || element.closest("input, textarea, select, [contenteditable=\"true\"], [contenteditable=\"\"]") !== null) return;
+				if (event.key !== "Enter" && event.key !== "Escape") return;
+				if (event.key === "Enter" && element.closest("button, a[href], [role=\"button\"]") !== null) return;
+				if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+				event.preventDefault();
+				event.stopPropagation();
+				if (event.repeat || composing.current || compositionEnded.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
+				answer(event.key === "Enter" ? "allowed-once" : "rejected");
 			};
 			return (0, react_jsx_runtime.jsx)("div", {
 				className: ApprovalPanel_module_css_default.root,
 				"data-approval-key": pending.key,
+				"aria-busy": answered,
+				onKeyDown: keydown,
+				onKeyUpCapture: () => {
+					compositionEnded.current = false;
+				},
+				onCompositionStartCapture: () => {
+					composing.current = true;
+				},
+				onCompositionEndCapture: () => {
+					composing.current = false;
+					compositionEnded.current = true;
+				},
 				children: (0, react_jsx_runtime.jsxs)("div", {
 					className: ApprovalPanel_module_css_default.card,
 					children: [
 						(0, react_jsx_runtime.jsxs)("div", {
 							className: ApprovalPanel_module_css_default.strip,
-							children: [(0, react_jsx_runtime.jsx)("span", { className: ApprovalPanel_module_css_default.dot }), t("waiting")]
+							children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: answered ? "ongoing" : "warning" }), t("waiting")]
 						}),
 						(0, react_jsx_runtime.jsxs)("div", {
 							className: ApprovalPanel_module_css_default.body,
@@ -70,7 +108,7 @@ window.__ModuleLoader__.load({
 							"aria-label": t("detail.aria"),
 							children: [(0, react_jsx_runtime.jsx)("div", {
 								className: ApprovalPanel_module_css_default.headline,
-								children: pending.reason ?? t("escalation", { toolName: pending.toolName })
+								children: reason ?? t("escalation", { toolName: pending.toolName })
 							}), detail !== null && (0, react_jsx_runtime.jsx)("div", {
 								className: ApprovalPanel_module_css_default.command,
 								children: detail
@@ -114,7 +152,7 @@ window.__ModuleLoader__.load({
 		var PendingApproval = class {
 			sessionId;
 			/** Domain discriminator used by Session pending-interaction consumers. */
-			kind = "approval";
+			kind;
 			/** Opaque render identity and one-shot remount axis. */
 			key;
 			/** Tool requesting the decision. */
@@ -123,6 +161,8 @@ window.__ModuleLoader__.load({
 			callId;
 			/** Human-readable reason supplied by the asker. */
 			reason;
+			/** Localized presentation copy, when supplied by the asker. */
+			displayReason;
 			/** Result returned by the Remote Event listener to the Host waterfall. */
 			result;
 			#resolve;
@@ -137,11 +177,13 @@ window.__ModuleLoader__.load({
 			*/
 			constructor(sessionId, request) {
 				this.sessionId = sessionId;
+				this.kind = "approval";
 				nextApprovalKey += 1;
 				this.key = `approval:${String(nextApprovalKey)}`;
 				this.toolName = request.toolName;
 				this.callId = request.callId;
 				this.reason = request.reason;
+				this.displayReason = request.displayReason;
 				const completion = Promise.withResolvers();
 				this.result = completion.promise;
 				this.#resolve = completion.resolve;
@@ -157,6 +199,13 @@ window.__ModuleLoader__.load({
 				this.#onAbort = onAbort;
 				request.signal.addEventListener("abort", onAbort, { once: true });
 				if (request.signal.aborted) onAbort();
+			}
+			/**
+			* Availability of this pending request after answer or withdrawal.
+			* @returns whether this request can still accept a decision.
+			*/
+			get answerable() {
+				return !this.#settled;
 			}
 			/**
 			* Resolve the Host waterfall with the user's decision.
@@ -239,6 +288,7 @@ window.__ModuleLoader__.load({
 				toolName: request.toolName,
 				...request.callId === void 0 ? {} : { callId: request.callId },
 				...request.reason === void 0 ? {} : { reason: request.reason },
+				...request.displayReason === void 0 ? {} : { displayReason: request.displayReason },
 				...request.signal === void 0 ? {} : { signal: request.signal }
 			});
 			const completed = Promise.withResolvers();
@@ -267,12 +317,36 @@ window.__ModuleLoader__.load({
 				zh,
 				en
 			}), "ui-approval: dictionaries");
+			ctx.inject(["shortcuts"], (scope) => {
+				const t = ctx.locale.bind(NS);
+				scope.effect(() => scope.shortcuts.registerFixed({
+					id: "approval.allow",
+					label: () => t("allowOnce"),
+					keys: ["Enter"],
+					bindings: [{
+						code: "Enter",
+						modifiers: []
+					}],
+					group: "approval"
+				}), "ui-approval: fixed allow reference");
+				scope.effect(() => scope.shortcuts.registerFixed({
+					id: "approval.reject",
+					label: () => t("reject"),
+					keys: ["Esc"],
+					bindings: [{
+						code: "Escape",
+						modifiers: []
+					}],
+					group: "approval"
+				}), "ui-approval: fixed reject reference");
+			});
 			const registerPendingInteraction = ctx.uiSession.registerPendingInteraction(() => 0);
 			ctx.slots.inject("conversation.composer", () => ctx.slots.register({
 				name: "conversation.composer",
 				priority: 1,
 				select: ({ pendingInteraction }) => pendingInteraction instanceof PendingApproval ? pendingInteraction : null,
 				locale: NS,
+				inject: () => ({ resolveReason: (reason) => ctx.locale.resolveText(reason) }),
 				children: { "conversation.approval.detail": {
 					kind: "single",
 					scope: "session"

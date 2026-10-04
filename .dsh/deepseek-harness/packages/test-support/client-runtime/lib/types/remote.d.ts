@@ -1,5 +1,6 @@
 /** Test-owned Remote face: `$on` subscriptions with an explicit test event driver. */
 import type { Context } from '@deepseek-ai/cordis';
+export { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 /**
  * Remote service test double for the forwarded-event path. Feature specs need
  * `ctx.remote.$on` to exist (their plugins inject `remote`) and need forwarded
@@ -18,7 +19,16 @@ import type { Context } from '@deepseek-ai/cordis';
  * against the real service.
  */
 export declare class TestRemote {
+    private readonly ctx;
     private readonly subscriptions;
+    /**
+     * Fixed Host facts mirrored from the production `ctx.remote.$host`. Plain
+     * mutable field: a spec assigns it to script a non-loopback or homed Host.
+     */
+    $host: {
+        home: string | undefined;
+        isLoopback: boolean;
+    };
     /**
      * Register the double as `ctx.remote`, plus one service per scripted
      * namespace so a plugin injecting `remote.<name>` also unparks.
@@ -26,6 +36,13 @@ export declare class TestRemote {
      * @param namespaces - scripted namespace faces reached as `ctx.remote.<name>`.
      */
     constructor(ctx: Context, namespaces?: Readonly<Record<string, object>>);
+    /**
+     * Add scripted namespace faces to this Remote service.
+     * @param namespaces - scripted namespace faces reached as `ctx.remote.<name>`.
+     */
+    provideNamespaces(namespaces: Readonly<Record<string, object>>): void;
+    private validateNamespaces;
+    private installNamespaces;
     /**
      * Deliver one forwarded host event to its subscribers, standing in for the
      * carrier that owns the frame sink.

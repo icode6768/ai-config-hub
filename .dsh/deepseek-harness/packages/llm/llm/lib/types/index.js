@@ -39,25 +39,26 @@ var __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, 
     if (target) Object.defineProperty(target, contextIn.name, descriptor);
     done = true;
 };
-import { Remote, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { freezeMessage } from "./message.js";
 import { resolveRetryPolicy } from "./retry-policy.js";
-import { callConfigEquals, deepFreeze } from "./call-config.js";
+import { callConfigEquals } from "./call-config.js";
 import { HarnessError, INVALID_CREDENTIAL_CODE } from "./error.js";
 import { normalizeLlmFailure } from "./adapter-failure.js";
 import { normalizeApiKey } from "./api-key.js";
-import { contentHasImage, projectImagesForTextModel } from "./content.js";
+import { contentHasFile, contentHasImage, fileHandleText, projectFilesToText, projectImagesForTextModel, projectToolUpdates, } from "./content.js";
 export * from "./attribution.js";
 export * from "./brand.js";
-export * from "./never.js";
 export * from "./error.js";
 export * from "./api-key.js";
 export * from "./types.js";
 export * from "./content.js";
+export * from "./assistant-stream.js";
 export * from "./message.js";
 export * from "./retry-policy.js";
 export { BlockAssembler } from "./assembler.js";
-export { callConfigEquals, deepFreeze, isAgentLoopRequest, markAgentLoopRequest } from "./call-config.js";
+export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from "./call-config.js";
 /**
  * Typed error for LLM-related failures. Extends {@link HarnessError}, so the
  * `code` string (e.g. `AUTH`, `RATE_LIMIT`, `NO_ADAPTER`) is shared taxonomy.
@@ -95,6 +96,7 @@ export class LlmError extends HarnessError {
             ...options?.status === undefined ? {} : { status: options.status },
             ...options?.providerRetryAfterMs === undefined ? {} : { providerRetryAfterMs: options.providerRetryAfterMs },
             ...options?.requestId === undefined ? {} : { requestId: options.requestId },
+            ...options?.offloadImages === undefined ? {} : { offloadImages: options.offloadImages },
         });
     }
 }
@@ -167,8 +169,9 @@ export class LlmAdapter {
     }
     /**
      * List models this adapter can currently advertise for one owned provider.
-     * The result is advisory: an adapter may accept unlisted model ids, and
-     * consumers must not turn absence into request rejection.
+     * Core routing accepts unlisted model ids; catalog-driven entry points such
+     * as the GUI may require membership. Adapters used there must advertise
+     * their available models; the base empty catalog offers no GUI selection.
      * @param _provider - one provider route owned by this adapter.
      * @returns discoverable models in adapter-preferred order.
      */
@@ -234,30 +237,22 @@ let LlmRuntime = (() => {
         emitAdaptersUpdated() {
             // Cordis emit uses Array.map: one synchronous throw starves later
             // listeners. Registry notifications are non-vetoing, so contain each
-            // callback independently; INVARIANT-coded failures still surface.
-            let invariantFailure;
+            // callback independently.
             for (const listener of this.ctx.events.dispatch('emit', ['llm/adapters-updated'])) {
                 try {
                     const returned = listener();
                     if (returned != null && typeof returned.then === 'function') {
                         // An emit listener may still be an async function; its rejection
-                        // cannot reach the synchronous INVARIANT rethrow below, so it is
-                        // contained here instead of becoming an unhandled rejection.
+                        // is contained here instead of becoming an unhandled rejection.
                         void Promise.resolve(returned).then(undefined, (error) => {
                             this.warnAdaptersListenerFailure(error);
                         });
                     }
                 }
                 catch (error) {
-                    if (error?.code === 'INVARIANT') {
-                        invariantFailure ??= error;
-                        continue;
-                    }
                     this.warnAdaptersListenerFailure(error);
                 }
             }
-            if (invariantFailure !== undefined)
-                throw invariantFailure;
         }
         /** Contained-listener diagnostic shared by the sync and async failure paths. */
         warnAdaptersListenerFailure(error) {
@@ -486,6 +481,7 @@ let LlmRuntime = (() => {
                     ...model.name === undefined ? {} : { name: model.name },
                     ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
                     ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+                    ...model.inputModalities === undefined ? {} : { inputModalities: [...model.inputModalities] },
                 });
             }
             return models;
@@ -496,21 +492,17 @@ let LlmRuntime = (() => {
          * @param request - endpoint, protocol, and one-shot credential to use.
          * @param signal - caller cancellation supplied by the Remote carrier.
          * @returns advertised models in endpoint order.
-         * @throws TypertRemoteFailure with `model-discovery-failed` when discovery refuses or fails.
+         * @throws RemoteError with `llm/model-discovery-rejected` when discovery refuses or fails.
          */
         async remoteDiscoverModels(settingsNs, request, signal) {
             try {
                 return await this.discoverModels(settingsNs, request, signal);
             }
             catch (error) {
-                throw new TypertRemoteFailure({
-                    code: 'model-discovery-failed',
-                    message: error instanceof Error ? error.message : String(error),
-                    details: {
-                        settingsNs,
-                        ...request.baseURL === undefined ? {} : { baseURL: request.baseURL },
-                    },
-                });
+                throw new RemoteError('llm/model-discovery-rejected', error instanceof Error ? error.message : String(error), {
+                    settingsNs,
+                    ...request.baseURL === undefined ? {} : { baseURL: request.baseURL },
+                }, { cause: error });
             }
         }
         /**
@@ -533,13 +525,23 @@ let LlmRuntime = (() => {
         imageRequestPricing(provider, model) {
             return this.adapters.get(provider)?.adapter.imageRequestPricing(provider, model);
         }
+        /**
+         * Resolve the exact text one durable file occurrence contributes to every
+         * provider request in the current execution environment.
+         * @param ref - durable verbatim file reference from model history.
+         * @returns the same deterministic handle text used at adapter dispatch.
+         */
+        fileRequestText(ref) {
+            return fileHandleText(ref, this.fileReadPath(ref));
+        }
         /** Detach typed adapter-owned modality metadata. */
         detachedModalities(modalities) {
             return modalities === undefined ? undefined : [...modalities];
         }
         /**
          * Discover models advertised by one registered provider. Catalog membership
-         * is advisory and never changes routing or request validation.
+         * does not constrain core routing. Catalog-driven entry points may restrict
+         * selection and submission to the advertised models.
          * @param provider - registered provider route to inspect.
          * @returns detached model metadata in adapter-preferred order.
          */
@@ -604,6 +606,16 @@ let LlmRuntime = (() => {
             // Capability metadata rides through: an explicit modality omission is
             // negative capability downstream preflights act on (image admission).
             const inputModalities = this.detachedModalities(resolved.inputModalities);
+            // Widened: adapters derive this mode from catalog config, so the value is checked as a string.
+            const systemPromptUpdate = resolved.systemPromptUpdate;
+            if (systemPromptUpdate !== undefined && systemPromptUpdate !== 'in-history') {
+                throw new LlmError(`adapter returned invalid system prompt update mode for provider "${provider}" model "${model}"`, 'INVALID_MODEL_INFO');
+            }
+            // Widened for the same reason: catalog config supplies the tool update mode as text.
+            const toolUpdate = resolved.toolUpdate;
+            if (toolUpdate !== undefined && toolUpdate !== 'in-history' && toolUpdate !== 'addition-only') {
+                throw new LlmError(`adapter returned invalid tool update mode for provider "${provider}" model "${model}"`, 'INVALID_MODEL_INFO');
+            }
             const defaultMaxTokens = resolved.defaultMaxTokens;
             if (defaultMaxTokens !== undefined
                 && (!Number.isSafeInteger(defaultMaxTokens) || defaultMaxTokens <= 0)) {
@@ -617,6 +629,8 @@ let LlmRuntime = (() => {
                 ...inputModalities === undefined ? {} : { inputModalities },
                 ...context === undefined ? {} : { context: { contextWindow: context.contextWindow } },
                 ...defaultMaxTokens === undefined ? {} : { defaultMaxTokens },
+                ...resolved.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: resolved.systemPromptUpdate },
+                ...resolved.toolUpdate === undefined ? {} : { toolUpdate: resolved.toolUpdate },
             };
             const reasoning = resolved.reasoning;
             if (reasoning === undefined)
@@ -732,6 +746,8 @@ let LlmRuntime = (() => {
                 ...modelInfo.inputModalities === undefined
                     ? {}
                     : { inputModalities: Object.freeze([...modelInfo.inputModalities]) },
+                ...modelInfo.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: modelInfo.systemPromptUpdate },
+                ...modelInfo.toolUpdate === undefined ? {} : { toolUpdate: modelInfo.toolUpdate },
                 stream: (options) => {
                     if (dispatched) {
                         throw new LlmError('a prepared LLM call can only be dispatched once', 'INVALID_PREPARED_CALL');
@@ -758,8 +774,10 @@ let LlmRuntime = (() => {
         /** Remove replay state whose historical route is owned by another adapter. */
         forAdapter(options, adapter) {
             const messages = options.messages.map((message) => {
+                if (message.role !== 'assistant')
+                    return message;
                 const source = message.source;
-                if (message.role !== 'assistant' || source.kind !== 'model' || source.replayState === undefined)
+                if (source.replayState === undefined)
                     return message;
                 if (this.adapters.get(source.provider)?.adapter === adapter)
                     return message;
@@ -772,6 +790,27 @@ let LlmRuntime = (() => {
                 return options;
             const filtered = { ...options, messages };
             return Object.isFrozen(options) ? deepFreeze(filtered) : filtered;
+        }
+        /**
+         * Resolve the current execution-world read path of one durable file
+         * reference through the mounted attachment and filesystem providers.
+         */
+        fileReadPath(ref) {
+            let hostPath;
+            try {
+                hostPath = this.ctx.get('attachments')?.fileHostPath(ref);
+            }
+            catch {
+                // A malformed durable reference degrades this occurrence to the no-path
+                // handle instead of failing every later request over the same log.
+                return undefined;
+            }
+            if (hostPath === undefined)
+                return undefined;
+            // Structural face: dsh-llm cannot depend on the filesystem package, and
+            // only this one mapping method is consumed.
+            const fs = this.ctx.get('fs');
+            return fs?.processPathFromHostPath(hostPath);
         }
         /**
          * Final adapter boundary. Adapter selection, dispatch, iterator construction,
@@ -805,13 +844,29 @@ let LlmRuntime = (() => {
                     : Object.isFrozen(options)
                         ? deepFreeze({ ...options, ...resolvedConfig })
                         : { ...options, ...resolvedConfig };
-                const projectedOptions = modelInfo.inputModalities !== undefined
+                // Files are never dispatched natively: every route receives handle text.
+                let projectedMessages = resolvedOptions.messages;
+                if (projectedMessages.some(message => contentHasFile(message.content))) {
+                    projectedMessages = projectFilesToText(projectedMessages, ref => this.fileReadPath(ref));
+                }
+                if (modelInfo.inputModalities !== undefined
                     && !modelInfo.inputModalities.includes('image')
-                    && resolvedOptions.messages.some(message => contentHasImage(message.content))
-                    ? Object.isFrozen(resolvedOptions)
-                        ? deepFreeze({ ...resolvedOptions, messages: projectImagesForTextModel(resolvedOptions.messages) })
-                        : { ...resolvedOptions, messages: projectImagesForTextModel(resolvedOptions.messages) }
-                    : resolvedOptions;
+                    && projectedMessages.some(message => contentHasImage(message.content))) {
+                    projectedMessages = projectImagesForTextModel(projectedMessages);
+                }
+                // Tool changes are logged on every route; the route's declared mode selects what it receives.
+                const projectedTools = projectToolUpdates(projectedMessages, resolvedOptions.tools, modelInfo.toolUpdate, resolvedOptions.toolHistory);
+                projectedMessages = projectedTools.messages;
+                let projectedOptions = resolvedOptions;
+                if (projectedMessages !== resolvedOptions.messages || projectedTools.tools !== resolvedOptions.tools) {
+                    projectedOptions = {
+                        ...resolvedOptions,
+                        messages: projectedMessages,
+                        ...projectedTools.tools === undefined ? {} : { tools: projectedTools.tools },
+                    };
+                    if (Object.isFrozen(resolvedOptions))
+                        deepFreeze(projectedOptions);
+                }
                 const stream = dispatch(this.forAdapter(projectedOptions, adapter));
                 iterator = stream[Symbol.asyncIterator]();
             }

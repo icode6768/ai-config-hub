@@ -9,8 +9,9 @@ export function imageSizeText(bytes) {
     return `${Number.isInteger(mb) ? String(mb) : mb.toFixed(1)}MB`;
 }
 /**
- * Product copy for a host attachment rejection (the `attachment-error`
- * `details.reason`). User-solvable reasons name the limit and the way out;
+ * Product copy for a host attachment rejection (the `details.reason` of
+ * `session/attachment-invalid` or `subagent/attachment-invalid`).
+ * User-solvable reasons name the limit and the way out;
  * reasons the user cannot act on fold into one send-failed line carrying the
  * reason code for a bug report.
  * @param t - the conversation-namespace translate.
@@ -21,7 +22,9 @@ export function imageSizeText(bytes) {
 export function attachmentErrorText(t, reason, limits) {
     switch (reason) {
         case 'MODEL_DOES_NOT_SUPPORT_IMAGES': return t('image.modelUnsupported');
-        case 'SUBAGENT_IMAGE_UNSUPPORTED': return t('image.subagentUnsupported');
+        // A prompt cited a file the Host has no staged upload for (expired
+        // process, foreign id): solvable by re-adding the file.
+        case 'FILE_NOT_STAGED': return t('file.notStaged');
         case 'IMAGE_TOO_MANY_PIXELS': return t('image.tooManyPixels');
         case 'IMAGE_DIMENSION_TOO_LARGE':
             if (limits !== undefined)

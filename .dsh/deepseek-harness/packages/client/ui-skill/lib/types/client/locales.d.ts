@@ -5,6 +5,7 @@ export declare const NS = "skill";
 export declare const zh: {
     'row.title': string;
     'row.running': string;
+    'row.preparing': string;
     'row.failed': string;
     'row.stopped': string;
     'row.instructions': string;
@@ -17,6 +18,7 @@ export type SkillKey = keyof typeof zh;
 export declare const en: {
     'row.title': string;
     'row.running': string;
+    'row.preparing': string;
     'row.failed': string;
     'row.stopped': string;
     'row.instructions': string;

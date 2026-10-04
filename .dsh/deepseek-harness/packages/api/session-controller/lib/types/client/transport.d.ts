@@ -1,8 +1,8 @@
 /** Session-specific adapters for Gateway-owned Remote stream lifecycles. */
-import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol';
 import { RemoteJournalStream, RemoteSnapshotStream, RemoteStreamCarrierError, type ClientRemote, type RemoteJournalFrame } from '@deepseek-ai/dsh-api-gateway/client';
-import type { SessionAddress, SessionControlFrame, SessionHistoryRecord, SessionPage, SessionPageRequest, SessionProjectionBaseline } from '../types.ts';
+import type { SessionAddress, SessionAssistantStreamBaseline, SessionAssistantStreamFrame, SessionControlFrame, SessionHistoryRecord, SessionPage, SessionPageRequest, SessionProjectionBaseline } from '../types.ts';
 import type { SessionEventLikeEntry, SessionLiveEventEntry } from './contract/events.ts';
+import type { SessionRemotes } from './sessions/remotes.ts';
 export { SESSION_SEARCH_RESULT_LIMIT, SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS, } from '../types.ts';
 /** Pagination fields bound to an already-addressed Session journal. */
 export type ClientSessionPageRequest = Omit<SessionPageRequest, 'address' | 'throughSeq'>;
@@ -11,6 +11,7 @@ export type SessionRemote = ClientRemote['session'];
 /** Opening metadata carried only by a follow snapshot, never by loadOlder pages. */
 interface SessionJournalPage extends SessionPage {
     readonly projections?: SessionProjectionBaseline;
+    readonly assistantStream?: SessionAssistantStreamBaseline;
 }
 /** One complete publication from the Session journal stream. */
 export type SessionJournalChange = {
@@ -21,6 +22,9 @@ export type SessionJournalChange = {
 } | {
     readonly type: 'append';
     readonly entry: SessionLiveEventEntry;
+} | {
+    readonly type: 'assistant-stream';
+    readonly frame: SessionAssistantStreamFrame;
 };
 type SessionControlBaselineFrame = Extract<SessionControlFrame, {
     type: 'baseline';
@@ -28,7 +32,6 @@ type SessionControlBaselineFrame = Extract<SessionControlFrame, {
 type SessionControlDeltaFrame = Exclude<SessionControlFrame, SessionControlBaselineFrame>;
 /** Gateway-owned control snapshot stream configured for Session frames. */
 export type SessionControlStream = RemoteSnapshotStream<SessionControlBaselineFrame, SessionControlDeltaFrame>;
-type SessionStreamRemote = Pick<ClientRemote, '$stream' | 'session'>;
 /** Domain sinks used by the Host-wide Session control stream. */
 export interface SessionControlStreamOptions {
     /** Apply a complete baseline or one later update. */
@@ -53,9 +56,9 @@ export interface SessionEventStreamOptions {
  * @param options - Session state destinations.
  * @returns an unstarted stream owned by the Client Session runtime.
  */
-export declare function createSessionControlStream(remote: SessionStreamRemote, options: SessionControlStreamOptions): SessionControlStream;
+export declare function createSessionControlStream(remote: SessionRemotes, options: SessionControlStreamOptions): SessionControlStream;
 /** Gateway-owned event journal bound to one ordinary or direct-subagent Session address. */
-export declare class SessionEventStream extends RemoteJournalStream<SessionJournalPage, SessionHistoryRecord, number, ClientSessionPageRequest> {
+export declare class SessionEventStream extends RemoteJournalStream<SessionJournalPage, SessionHistoryRecord, number, ClientSessionPageRequest, SessionAssistantStreamFrame> {
     private readonly remote;
     private readonly address;
     /**
@@ -63,18 +66,12 @@ export declare class SessionEventStream extends RemoteJournalStream<SessionJourn
      * @param address - durable ordinary-Session or direct-subagent address.
      * @param options - Session event-window destinations.
      */
-    constructor(remote: SessionStreamRemote, address: SessionAddress, options: SessionEventStreamOptions);
+    constructor(remote: SessionRemotes, address: SessionAddress, options: SessionEventStreamOptions);
     /** @inheritdoc */
-    protected follow(request: ClientSessionPageRequest, signal: AbortSignal): AsyncIterable<RemoteJournalFrame<SessionHistoryRecord, number, SessionJournalPage>>;
+    protected follow(request: ClientSessionPageRequest, signal: AbortSignal): AsyncIterable<RemoteJournalFrame<SessionHistoryRecord, number, SessionJournalPage, SessionAssistantStreamFrame>>;
     /** @inheritdoc */
     protected readPage(request: ClientSessionPageRequest, throughSeq: number, signal: AbortSignal): Promise<SessionJournalPage>;
     /** @inheritdoc */
     protected repairRequest(request: ClientSessionPageRequest): ClientSessionPageRequest;
 }
-/**
- * Recover a Host Session failure from a Remote stream terminal error.
- * @param error - value thrown while opening or consuming a Session stream.
- * @returns the Host failure, or `undefined` for carrier and local failures.
- */
-export declare function sessionStreamFailure(error: unknown): RemoteFailure | undefined;
 //# sourceMappingURL=transport.d.ts.map

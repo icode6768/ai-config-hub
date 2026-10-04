@@ -1,10 +1,12 @@
 /** Read-only Host plugin inventory registered into Web Settings. */
+// Inline-safe shared fold: shipped ids map to dictionary keys in one home.
+import { presetDisplayText } from '@deepseek-ai/dsh-agent-preset-registry/display';
 import { PluginInventorySettingsTab } from "./PluginInventorySettingsTab.js";
 import { en, zh } from "./locales.js";
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'settings.pluginInventory';
 /** Services required by the Settings registration and generated Remote face. */
-export const inject = ['slots', 'locale', 'remote', 'remote.pluginInventory'];
+export const inject = ['slots', 'locale', 'remote', 'remote.pluginInventory', 'modules'];
 /** Contribute the lazy inventory tab to the Plugins settings section. */
 export function apply(ctx) {
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-plugin-inventory: dictionaries');
@@ -16,7 +18,16 @@ export function apply(ctx) {
         }
         return result.value;
     };
-    const injected = () => ({ list });
+    // Resolved per call over ui-agent-preset's dictionaries, so a language
+    // switch re-resolves shipped names; user-authored metadata passes through.
+    const agentPresetCopy = ctx.locale.bind('settings.agentPreset');
+    const presetName = preset => presetDisplayText(preset, agentPresetCopy).name;
+    const injected = () => ({
+        list, presetName,
+        resolveText: text => ctx.locale.resolveText(text),
+        hooks: { clientSync: ctx.modules.entries.state },
+        retryClient: () => { void ctx.modules.entries.retry().catch((error) => { ctx.logger.error(error); }); },
+    });
     ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
         name: 'settings.plugins.tab',
         id: 'all',

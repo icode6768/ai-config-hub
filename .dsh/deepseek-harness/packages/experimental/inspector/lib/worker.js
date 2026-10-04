@@ -1,3 +1,4 @@
+import "@deepseek-ai/dsh-app-boot/worker/profile-resolution-bootstrap";
 import { MessagePort, parentPort, workerData } from "node:worker_threads";
 import { Buffer as Buffer$1 } from "node:buffer";
 import "@deepseek-ai/dsh-util-crypto";
@@ -862,8 +863,9 @@ function cdpNumericId(value, label) {
 //#region lib/types/worker/cdp/domains/dom/model.js
 /** Worker projection from Cordis snapshots to a connection-neutral semantic DOM. */
 /** Assigns durable backend ids and projects the latest source snapshots. */
-var CordisDomBackend = class {
+var CordisDomBackend = class CordisDomBackend {
 	trees;
+	clientSourceId;
 	backendIdByKey = /* @__PURE__ */ new Map();
 	listeners = /* @__PURE__ */ new Set();
 	documentValue;
@@ -871,13 +873,18 @@ var CordisDomBackend = class {
 	nextRevision = 1;
 	unsubscribe;
 	nodeByObject = /* @__PURE__ */ new Map();
-	constructor(trees) {
+	/**
+	* @param trees - Shared store; this backend owns only its subscription and projection.
+	* @param clientSourceId - Restrict Clients to this source; omission includes every retained Client.
+	*/
+	constructor(trees, clientSourceId) {
 		this.trees = trees;
+		this.clientSourceId = clientSourceId;
 		this.documentValue = this.build();
 		this.unsubscribe = trees.subscribe((event) => {
 			const previous = this.documentValue;
 			this.documentValue = this.build();
-			if (event.type === "source-disconnected") this.emit({
+			if (event.type === "source-disconnected" && this.includesSource(event.source)) this.emit({
 				type: "source-disconnected",
 				source: event.source
 			});
@@ -887,6 +894,14 @@ var CordisDomBackend = class {
 				mutations
 			});
 		});
+	}
+	/**
+	* Create an independent Host-and-Client projection over the same retained snapshots.
+	* @param sourceId - Client source to include across its reconnect generations.
+	* @returns A new backend whose caller must close; closing it leaves this backend and the store intact.
+	*/
+	forClient(sourceId) {
+		return new CordisDomBackend(this.trees, sourceId);
 	}
 	/**
 	* Read the latest connection-neutral semantic document.
@@ -906,7 +921,7 @@ var CordisDomBackend = class {
 			this.listeners.delete(listener);
 		};
 	}
-	/** Release repository subscriptions at Worker shutdown. */
+	/** Release only this backend's store subscription and listeners. */
 	close() {
 		this.unsubscribe();
 		this.listeners.clear();
@@ -927,8 +942,15 @@ var CordisDomBackend = class {
 	* @returns The current projected node, when present.
 	*/
 	nodeForObjectKind(kind, reference) {
+		if (kind === "client" && this.clientSourceId !== void 0) {
+			const tree = this.trees.tree().clients.find((tree) => tree.source.sourceId === this.clientSourceId);
+			return tree === void 0 ? void 0 : this.nodeForObject(tree.source, reference);
+		}
 		const route = this.trees.resolveObjectInKind(kind, reference);
 		return route === void 0 ? void 0 : this.nodeForObject(route.source, reference);
+	}
+	includesSource(source) {
+		return this.clientSourceId === void 0 || source.kind === "host" || source.sourceId === this.clientSourceId;
 	}
 	/**
 	* Resolve one realm-neutral Runtime reference to its current projected node.
@@ -951,7 +973,9 @@ var CordisDomBackend = class {
 		if (tree.host !== null) host.children.push(this.entity(tree.host, tree.host.snapshot.root));
 		const clients = this.node("clients", "clients", [], "<clients>");
 		for (const clientTree of tree.clients) {
-			const client = this.node(`client:${clientTree.source.sourceId}`, "client", [], "<client>");
+			if (!this.includesSource(clientTree.source)) continue;
+			const attributes = clientTree.connection.state === "disconnected" ? [["disconnected", ""]] : [];
+			const client = this.node(`client:${clientTree.source.sourceId}`, "client", attributes, elementDescription("client", attributes));
 			client.children.push(this.entity(clientTree, clientTree.snapshot.root));
 			clients.children.push(client);
 		}
@@ -1191,6 +1215,7 @@ var CordisDomSession = class {
 	runtime;
 	nodeIdByBackend = /* @__PURE__ */ new Map();
 	backendByNodeId = /* @__PURE__ */ new Map();
+	nodesSent = /* @__PURE__ */ new Set();
 	childrenSent = /* @__PURE__ */ new Set();
 	backendByObjectId = /* @__PURE__ */ new Map();
 	objectIdsByGroup = /* @__PURE__ */ new Map();
@@ -1266,20 +1291,17 @@ var CordisDomSession = class {
 				this.enabled = false;
 				this.resetDocument();
 				return {};
-			case "DOM.getDocument":
+			case "DOM.getDocument": {
+				const depth = depthParam(params.depth, DEFAULT_DOCUMENT_DEPTH);
 				this.enabled = true;
-				return { root: this.serialize(this.backend.document().root, 0, depthParam(params.depth, DEFAULT_DOCUMENT_DEPTH), true) };
+				this.nodesSent.clear();
+				this.childrenSent.clear();
+				return { root: this.serialize(this.backend.document().root, 0, depth, true) };
+			}
 			case "DOM.requestChildNodes": {
 				const node = this.fromNodeId(params.nodeId);
 				const depth = depthParam(params.depth, 1);
-				this.childrenSent.add(node.backendNodeId);
-				this.transport.send({
-					method: "DOM.setChildNodes",
-					params: {
-						parentId: numberParam(params.nodeId, "nodeId"),
-						nodes: node.children.map((child) => this.serialize(child, this.nodeId(node), depth - 1, true))
-					}
-				});
+				this.pushChildNodes(node, depth);
 				return {};
 			}
 			case "DOM.describeNode": {
@@ -1392,7 +1414,10 @@ var CordisDomSession = class {
 		const nodeId = this.nodeId(node);
 		const document = node.name === "#document";
 		const withChildren = remaining > 0;
-		if (delivery && withChildren) this.childrenSent.add(node.backendNodeId);
+		if (delivery) {
+			this.nodesSent.add(node.backendNodeId);
+			if (withChildren) this.childrenSent.add(node.backendNodeId);
+		}
 		return {
 			nodeId,
 			backendNodeId: node.backendNodeId,
@@ -1410,6 +1435,23 @@ var CordisDomSession = class {
 			attributes: node.attributes.flat()
 		};
 	}
+	/** Preserve frontend DOMNode identities by delivering each child list only once. */
+	pushChildNodes(node, depth) {
+		if (depth <= 0) return;
+		if (this.childrenSent.has(node.backendNodeId)) {
+			for (const child of node.children) this.pushChildNodes(child, depth - 1);
+			return;
+		}
+		const parentId = this.nodeId(node);
+		this.childrenSent.add(node.backendNodeId);
+		this.transport.send({
+			method: "DOM.setChildNodes",
+			params: {
+				parentId,
+				nodes: node.children.map((child) => this.serialize(child, parentId, depth - 1, true))
+			}
+		});
+	}
 	/** Deliver the not-yet-sent ancestor levels of one node so its NodeId attaches to the frontend tree. */
 	pushNodePath(node) {
 		const document = this.backend.document();
@@ -1421,20 +1463,10 @@ var CordisDomSession = class {
 			chain.unshift(parent);
 			backendId = document.parentByBackendId.get(parent.backendNodeId);
 		}
-		for (const ancestor of chain) {
-			if (this.childrenSent.has(ancestor.backendNodeId)) continue;
-			const parentId = this.nodeId(ancestor);
-			this.childrenSent.add(ancestor.backendNodeId);
-			this.transport.send({
-				method: "DOM.setChildNodes",
-				params: {
-					parentId,
-					nodes: ancestor.children.map((child) => this.serialize(child, parentId, 0, true))
-				}
-			});
-		}
+		for (const ancestor of chain) this.pushChildNodes(ancestor, 1);
 	}
 	forgetSubtree(node) {
+		this.nodesSent.delete(node.backendNodeId);
 		this.childrenSent.delete(node.backendNodeId);
 		for (const child of node.children) this.forgetSubtree(child);
 	}
@@ -1459,6 +1491,7 @@ var CordisDomSession = class {
 		this.backendByObjectId.clear();
 		this.objectIdsByGroup.clear();
 		this.searches.clear();
+		this.nodesSent.clear();
 		this.childrenSent.clear();
 	}
 	updateDocument(event) {
@@ -1466,8 +1499,27 @@ var CordisDomSession = class {
 			this.releaseSourceObjects(event.source);
 			return;
 		}
-		if (this.enabled) for (const mutation of event.mutations) this.sendMutation(mutation);
+		if (this.enabled) {
+			const changedCounts = /* @__PURE__ */ new Set();
+			for (const mutation of event.mutations) if ("parentBackendNodeId" in mutation && !this.childrenSent.has(mutation.parentBackendNodeId)) changedCounts.add(mutation.parentBackendNodeId);
+			else this.sendMutation(mutation);
+			for (const backendNodeId of changedCounts) {
+				const nodeId = this.sentNodeId(backendNodeId);
+				const node = this.backend.document().byBackendId.get(backendNodeId);
+				if (nodeId === void 0 || node === void 0) continue;
+				this.transport.send({
+					method: "DOM.childNodeCountUpdated",
+					params: {
+						nodeId,
+						childNodeCount: node.children.length
+					}
+				});
+			}
+		}
 		this.pruneDocumentState();
+	}
+	sentNodeId(backendNodeId) {
+		return this.nodesSent.has(backendNodeId) ? this.nodeIdByBackend.get(backendNodeId) : void 0;
 	}
 	sendMutation(mutation) {
 		switch (mutation.type) {
@@ -1479,9 +1531,9 @@ var CordisDomSession = class {
 				});
 				return;
 			case "child-inserted": {
-				const parentNodeId = this.nodeIdByBackend.get(mutation.parentBackendNodeId);
+				const parentNodeId = this.sentNodeId(mutation.parentBackendNodeId);
 				if (parentNodeId === void 0) return;
-				const previousNodeId = mutation.previousBackendNodeId === 0 ? 0 : this.nodeIdByBackend.get(mutation.previousBackendNodeId);
+				const previousNodeId = mutation.previousBackendNodeId === 0 ? 0 : this.sentNodeId(mutation.previousBackendNodeId);
 				if (previousNodeId === void 0) return;
 				this.forgetSubtree(mutation.node);
 				this.transport.send({
@@ -1495,8 +1547,8 @@ var CordisDomSession = class {
 				return;
 			}
 			case "child-removed": {
-				const parentNodeId = this.nodeIdByBackend.get(mutation.parentBackendNodeId);
-				const nodeId = this.nodeIdByBackend.get(mutation.node.backendNodeId);
+				const parentNodeId = this.sentNodeId(mutation.parentBackendNodeId);
+				const nodeId = this.sentNodeId(mutation.node.backendNodeId);
 				this.forgetSubtree(mutation.node);
 				if (parentNodeId === void 0 || nodeId === void 0) return;
 				this.transport.send({
@@ -1509,7 +1561,7 @@ var CordisDomSession = class {
 				return;
 			}
 			case "children-replaced": {
-				const parentNodeId = this.nodeIdByBackend.get(mutation.parentBackendNodeId);
+				const parentNodeId = this.sentNodeId(mutation.parentBackendNodeId);
 				if (parentNodeId === void 0) return;
 				for (const child of mutation.children) this.forgetSubtree(child);
 				this.childrenSent.add(mutation.parentBackendNodeId);
@@ -1523,7 +1575,7 @@ var CordisDomSession = class {
 				return;
 			}
 			case "attribute-modified": {
-				const nodeId = this.nodeIdByBackend.get(mutation.backendNodeId);
+				const nodeId = this.sentNodeId(mutation.backendNodeId);
 				if (nodeId !== void 0) this.transport.send({
 					method: "DOM.attributeModified",
 					params: {
@@ -1535,7 +1587,7 @@ var CordisDomSession = class {
 				return;
 			}
 			case "attribute-removed": {
-				const nodeId = this.nodeIdByBackend.get(mutation.backendNodeId);
+				const nodeId = this.sentNodeId(mutation.backendNodeId);
 				if (nodeId !== void 0) this.transport.send({
 					method: "DOM.attributeRemoved",
 					params: {
@@ -1554,6 +1606,7 @@ var CordisDomSession = class {
 			if (document.byBackendId.has(backendNodeId)) continue;
 			this.nodeIdByBackend.delete(backendNodeId);
 			this.backendByNodeId.delete(nodeId);
+			this.nodesSent.delete(backendNodeId);
 		}
 		for (const backendNodeId of this.childrenSent) if (!document.byBackendId.has(backendNodeId)) this.childrenSent.delete(backendNodeId);
 		for (const [objectId, binding] of this.backendByObjectId) {
@@ -3204,6 +3257,22 @@ function treeNodes(root) {
 	}
 	return nodes;
 }
+"/api/experimental-inspector/bootstrap".slice(1);
+/** Query parameter selecting the Client visible beside Host in one DevTools connection. */
+const INSPECTOR_CLIENT_QUERY = "clientSourceId";
+/**
+* Read an optional Client selection from a DevTools WebSocket URL.
+* @param url - Untrusted upgrade URL.
+* @returns The selected logical Client id, or undefined for all Clients.
+* @throws If the selection is repeated or is not a valid source id.
+*/
+function readInspectorClientSelection(url) {
+	const values = url.searchParams.getAll(INSPECTOR_CLIENT_QUERY);
+	const selected = values[0];
+	if (selected === void 0) return void 0;
+	if (values.length !== 1) throw new Error("Inspector Client selection must occur once");
+	return inspectorId(selected, INSPECTOR_CLIENT_QUERY);
+}
 //#endregion
 //#region lib/types/worker/cdp/target.js
 /** Minimal page-target CDP methods required to expose Network, Console, and Sources together. */
@@ -4047,6 +4116,7 @@ var RuntimeDomainSession = class {
 	receiveRealm(event) {
 		if (event.type === "opened") {
 			if (this.enabled) runtimeBackend(event.session).enable().then(() => {
+				if (this.closed || !this.enabled || !this.realms.all().includes(event.session)) return;
 				this.attachConsole(event.session);
 				this.announce(event.session);
 			}, () => {
@@ -4571,6 +4641,7 @@ var DebuggerDomainSession = class {
 		for (const script of scripts) this.publishScript(realm, realm.sources.backend, script);
 	}
 	publishScript(realm, source, script) {
+		if (this.closed || !this.enabled || !this.realms.all().includes(realm)) return;
 		if (this.scripts.register({
 			realm,
 			source,
@@ -4632,6 +4703,12 @@ var HostNativeDomainSession = class {
 		this.target = target;
 		this.unsubscribe = target.subscribe((message) => {
 			if (!this.owns(message.method) || message.method === "Runtime.consoleAPICalled" || message.method === "Runtime.exceptionThrown") return;
+			if (message.method === "Runtime.executionContextCreated") {
+				const context = message.params?.context;
+				if (typeof context !== "object" || context === null || !("auxData" in context)) return;
+				const auxData = context.auxData;
+				if (typeof auxData !== "object" || auxData === null || !("isDefault" in auxData) || auxData.isDefault !== true) return;
+			}
 			this.transport.send(message);
 		});
 	}
@@ -4667,25 +4744,27 @@ const NATIVE_DOMAINS = new Set([
 //#endregion
 //#region lib/types/worker/cdp/realm-sessions.js
 /** Per-DevTools-connection sessions opened from the shared realm registry. */
-/** Owns exactly one backend session per active realm for one DevTools connection. */
+/** Owns one backend session per visible realm for one DevTools connection. */
 var InspectorRealmSessionSet = class {
 	realms;
+	clientSourceId;
 	/** Opaque identity shared by every domain and object table on this DevTools connection. */
 	connectionId = inspectorId(randomUUID(), "connectionId");
 	sessions = /* @__PURE__ */ new Map();
 	listeners = /* @__PURE__ */ new Set();
 	unsubscribeRealms;
 	closed = false;
-	constructor(realms) {
+	constructor(realms, clientSourceId) {
 		this.realms = realms;
-		for (const realm of realms.realms()) this.open(realm);
+		this.clientSourceId = clientSourceId;
+		for (const realm of realms.realms()) if (this.includes(realm)) this.open(realm);
 		this.unsubscribeRealms = realms.subscribe((event) => {
 			this.receiveRealm(event);
 		});
 	}
 	/**
 	* Return active sessions in the registry's deterministic order.
-	* @returns Host followed by connected Clients.
+	* @returns Host followed by connected Clients included in this connection.
 	*/
 	all() {
 		return this.realms.realms().map((realm) => this.sessions.get(realm.descriptor.realmId)).filter((session) => session !== void 0);
@@ -4747,6 +4826,7 @@ var InspectorRealmSessionSet = class {
 		this.listeners.clear();
 	}
 	receiveRealm(event) {
+		if (!this.includes(event.realm)) return;
 		if (event.type === "opened") {
 			const session = this.open(event.realm);
 			this.emit({
@@ -4764,6 +4844,9 @@ var InspectorRealmSessionSet = class {
 			session
 		});
 	}
+	includes(realm) {
+		return this.clientSourceId === void 0 || realm.descriptor.kind === "host" || realm.descriptor.sourceId === this.clientSourceId;
+	}
 	open(realm) {
 		const session = realm.openSession();
 		this.sessions.set(realm.descriptor.realmId, session);
@@ -4778,36 +4861,40 @@ var InspectorRealmSessionSet = class {
 //#endregion
 //#region lib/types/worker/cdp/session.js
 /** One DevTools connection: explicit local-domain routing plus a private Host V8 session. */
-/** Per-connection CDP dispatcher. */
+/** Per-connection CDP dispatcher with optional Client selection; Host remains visible. */
 var CdpSession = class {
 	transport;
 	target;
 	sources;
 	network;
 	cordisTrees;
+	clientSourceId;
 	realms;
 	nativeDomains;
 	runtime;
 	debugger;
 	dom;
+	scopedDom;
 	diagnosticsEnabled = false;
 	unsubscribeSources;
-	constructor(transport, target, sources, network, realmRegistry, domBackend, cordisTrees) {
+	constructor(transport, target, sources, network, realmRegistry, domBackend, cordisTrees, clientSourceId) {
 		this.transport = transport;
 		this.target = target;
 		this.sources = sources;
 		this.network = network;
 		this.cordisTrees = cordisTrees;
-		this.realms = new InspectorRealmSessionSet(realmRegistry);
+		this.clientSourceId = clientSourceId;
+		this.realms = new InspectorRealmSessionSet(realmRegistry, clientSourceId);
 		const native = this.realms.host().nativeDomains;
 		if (native.state === "unsupported") throw new Error(native.reason);
 		this.nativeDomains = new HostNativeDomainSession(transport, native.backend);
 		this.runtime = new RuntimeDomainSession(transport, this.realms);
 		this.debugger = new DebuggerDomainSession(transport, this.realms, this.runtime);
-		this.dom = new CordisDomSession(transport, domBackend, this.runtime);
+		this.scopedDom = clientSourceId === void 0 ? void 0 : domBackend.forClient(clientSourceId);
+		this.dom = new CordisDomSession(transport, this.scopedDom ?? domBackend, this.runtime);
 		this.runtime.setObjectObserver((objectId, realm, reference, group) => this.dom.bindObject(objectId, realm, reference, group));
 		this.unsubscribeSources = sources.subscribeStatus(() => {
-			if (this.diagnosticsEnabled) this.sendEvent("DSHInspector.sourcesChanged", { sources: this.sources.describe() });
+			if (this.diagnosticsEnabled) this.sendEvent("DSHInspector.sourcesChanged", { sources: this.visibleSources() });
 		});
 	}
 	/**
@@ -4839,16 +4926,16 @@ var CdpSession = class {
 			if (request.method.startsWith("Network.")) result = this.network.handle(request.method, request.params, this);
 			else if (request.method === "DSHInspector.enable") {
 				this.diagnosticsEnabled = true;
-				result = { sources: this.sources.describe() };
+				result = { sources: this.visibleSources() };
 			} else if (request.method === "DSHInspector.disable") {
 				this.diagnosticsEnabled = false;
 				result = {};
-			} else if (request.method === "DSHInspector.getSources") result = { sources: this.sources.describe() };
+			} else if (request.method === "DSHInspector.getSources") result = { sources: this.visibleSources() };
 			else if (request.method === "DSHInspector.getCordisTree") {
 				this.cordisTrees.getTree().then((tree) => {
 					this.transport.send({
 						id: request.id,
-						result: { tree }
+						result: { tree: this.visibleTree(tree) }
 					});
 				}, (error) => {
 					this.transport.send(cdpError(request.id, -32e3, error instanceof Error ? error.message : String(error)));
@@ -4869,6 +4956,17 @@ var CdpSession = class {
 			this.transport.send(cdpError(request.id, -32e3, error instanceof Error ? error.message : String(error)));
 		}
 	}
+	visibleSources() {
+		return this.sources.describe().filter((source) => this.clientSourceId === void 0 || source.kind === "host" || source.sourceId === this.clientSourceId);
+	}
+	visibleTree(tree) {
+		if (this.clientSourceId === void 0) return tree;
+		const sourceId = cordisRuntimeSourceId(this.clientSourceId);
+		return {
+			...tree,
+			clients: tree.clients.filter((client) => client.source.sourceId === sourceId)
+		};
+	}
 	/** Push one CDP event. */
 	sendEvent(method, params) {
 		this.transport.send({
@@ -4881,6 +4979,7 @@ var CdpSession = class {
 		this.unsubscribeSources();
 		this.network.detach(this);
 		this.dom.close();
+		this.scopedDom?.close();
 		this.runtime.close();
 		this.debugger.close();
 		this.nativeDomains.close();
@@ -4988,20 +5087,27 @@ var InspectorEndpoint = class {
 		response.end("not found");
 	}
 	handleUpgrade(request, socket, head) {
-		let pathname;
+		let url;
 		try {
-			pathname = new URL(request.url ?? "/", "http://inspector.invalid").pathname;
+			url = new URL(request.url ?? "/", "http://inspector.invalid");
 		} catch {
 			socket.destroy();
 			return;
 		}
-		if (pathname === `/devtools/page/${this.config.targetId}`) {
+		if (url.pathname === `/devtools/page/${this.config.targetId}`) {
+			let clientSourceId;
+			try {
+				clientSourceId = readInspectorClientSelection(url);
+			} catch (error) {
+				socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+				return;
+			}
 			this.cdpServer.handleUpgrade(request, socket, head, (ws) => {
-				this.acceptCdp(ws);
+				this.acceptCdp(ws, clientSourceId);
 			});
 			return;
 		}
-		if (pathname === "/ingest") {
+		if (url.pathname === "/ingest") {
 			if (!this.authorizedClient(request)) {
 				socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
 				return;
@@ -5013,7 +5119,7 @@ var InspectorEndpoint = class {
 		}
 		socket.destroy();
 	}
-	acceptCdp(socket) {
+	acceptCdp(socket, clientSourceId) {
 		const session = new CdpSession({
 			send: (payload) => {
 				if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(payload));
@@ -5024,7 +5130,7 @@ var InspectorEndpoint = class {
 		}, {
 			targetId: this.config.targetId,
 			title: "DeepSeek Harness Host"
-		}, this.sources, this.network, this.realms, this.cordisDom, this.cordisTrees);
+		}, this.sources, this.network, this.realms, this.cordisDom, this.cordisTrees, clientSourceId);
 		this.cdpSessions.set(socket, session);
 		socket.on("message", (data) => {
 			try {

@@ -118,6 +118,15 @@ export declare function lstat(path: PathArg, optionsOrCallback: VfsStatOptions |
  */
 export declare function realpathSync(path: PathArg): string;
 /**
+ * Resolve a UTF-8 path through Node's callback form and its native alias.
+ * @param path - Path in the symlink-free VFS.
+ * @param callback - Asynchronous completion with the canonical path or filesystem error.
+ */
+export declare function realpath(path: PathArg, callback: (error: NodeJS.ErrnoException | null, path?: string) => void): void;
+export declare namespace realpath {
+    var native: typeof realpath;
+}
+/**
  * List a directory.
  * @param path - directory path.
  * @param options - `withFileTypes` selects Dirent objects.
@@ -220,7 +229,8 @@ export interface FileHandle {
         bytesRead: number;
         buffer: Uint8Array;
     }>;
-    stat(): Promise<VfsStats>;
+    chmod(mode: number | string): Promise<void>;
+    stat(options?: VfsStatOptions): Promise<VfsStats | VfsBigIntStats>;
     truncate(length?: number): Promise<void>;
     sync(): Promise<void>;
     datasync(): Promise<void>;
@@ -466,6 +476,7 @@ declare const _default: {
     lstatSync: typeof lstatSync;
     lstat: typeof lstat;
     realpathSync: typeof realpathSync;
+    realpath: typeof realpath;
     chmodSync: typeof chmodSync;
     readdirSync: typeof readdirSync;
     mkdirSync: typeof mkdirSync;

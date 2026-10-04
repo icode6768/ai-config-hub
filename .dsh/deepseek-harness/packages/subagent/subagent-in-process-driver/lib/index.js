@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { foldConsumedWork } from "@deepseek-ai/dsh-agent";
-import { SessionId } from "@deepseek-ai/dsh-session";
+import { SessionLogOffset } from "@deepseek-ai/dsh-session";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { appendDelegatedPolicyOverrides, applyChildComposition, assertSubagentMaxDepth, captureDelegatedPolicyOverrides, childSessionMeta, finalAssistantOutput, resolveChildAgentOptions, resolveChildDepth } from "@deepseek-ai/dsh-subagent";
-import { FIRST_PARTY_SECTION_ORDER } from "@deepseek-ai/dsh-system-prompt";
 import { ToolArgsError, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
 //#region lib/types/structured.js
 /**
@@ -79,7 +79,7 @@ function attachStructuredRuntime(childCtx, schema) {
 	});
 	childCtx.systemPrompt.section({
 		name: `tool:${STRUCTURED_OUTPUT_TOOL}`,
-		order: FIRST_PARTY_SECTION_ORDER.STRUCTURED_OUTPUT,
+		order: childCtx.systemPrompt.getSectionOrder("STRUCTURED_OUTPUT"),
 		text: STRUCTURED_OUTPUT_INSTRUCTION
 	});
 	childCtx.tools.guard((exec) => captured === void 0 && pending === void 0 ? void 0 : `structured output already recorded: the run is complete, so \`${exec.name}\` is not executed`);
@@ -163,13 +163,13 @@ async function startInProcessRun(request, options) {
 	if (request.signal.aborted) throw prePublicationAbort();
 	const parent = request.parent;
 	const childDepth = resolveChildDepth(parent, request.maxDepth);
-	const childId = SessionId(randomUUID());
+	const childId = brandString(randomUUID());
 	const seed = options.seed;
-	const activationBoundary = seed?.length ?? 0;
+	const activationBoundary = SessionLogOffset(seed?.length ?? 0);
 	const inherited = captureDelegatedPolicyOverrides(parent);
 	let structured;
-	const setup = (childCtx) => {
-		appendDelegatedPolicyOverrides(childCtx.agent.session, inherited);
+	const setup = (childCtx, child) => {
+		appendDelegatedPolicyOverrides(child.session, inherited);
 		applyChildComposition(childCtx, parent, {
 			persona: request.persona,
 			toolFilter: request.toolFilter
@@ -179,8 +179,10 @@ async function startInProcessRun(request, options) {
 	};
 	return drivePublishedRun(await parent.ctx.agents.create({
 		sessionId: childId,
-		meta: childSessionMeta(parent, childDepth, activationBoundary),
+		parentAgent: parent,
+		meta: childSessionMeta(parent, childDepth, seed !== void 0),
 		...seed !== void 0 ? { seed } : {},
+		...seed === void 0 ? {} : { inheritedEventCount: activationBoundary },
 		agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
 		signal: request.signal,
 		setup
@@ -227,7 +229,7 @@ function drivePublishedRun(handle, signal, prompt, childId, boundary, structured
 }
 /** Read one settled child's result from events after its activation boundary. */
 function readResult(child, boundary, cancelled, structured) {
-	const own = child.session.events.slice(boundary);
+	const own = child.session.snapshotEvents(boundary);
 	const lastEnd = foldConsumedWork(own).end;
 	const output = finalAssistantOutput(own) ?? [];
 	const recorded = toStopReason(lastEnd?.data.reason);

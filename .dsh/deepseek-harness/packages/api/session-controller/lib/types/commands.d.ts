@@ -20,9 +20,9 @@ export declare class SessionCommandController {
      */
     create(request: SessionCreateRequest): Promise<SessionCreateValue>;
     /**
-     * Validate and install one Session-local model selection.
+     * Validate and install one Session-local model selection; save the default in the background.
      * @param request - Session identity and requested model selection.
-     * @returns the normalized selection installed for the Session.
+     * @returns the normalized selection installed for the Session, without waiting for default persistence.
      */
     selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>;
     /**
@@ -32,17 +32,20 @@ export declare class SessionCommandController {
      */
     rename(request: SessionRenameRequest): Promise<SessionRenameValue>;
     /**
-     * Create a new ordinary Session from one completed-turn prefix.
-     * @param request - source Session and optional event anchor.
+     * Create a new ordinary Session from an exact event prefix. An explicit
+     * `atSeq` is the inclusive cut; an omitted value selects the latest
+     * completed-turn prefix. An open cut receives synthetic fork closers.
+     * @param request - source Session and optional exact event boundary.
      * @returns the new Session identity.
      */
     fork(request: SessionForkRequest): Promise<SessionForkValue>;
     /**
-     * Admit one browser prompt after explicit Agent resume and image validation.
+     * Reject empty content, then admit one prompt after Agent and attachment validation.
      * @param request - Session identity, prompt content, source metadata, and delivery mode.
      * @returns acknowledgement that the Agent accepted the prompt.
      */
     prompt(request: SessionPromptRequest): Promise<SessionPromptValue>;
+    private requireModel;
     /**
      * Read one durable image after proving the Session log references it.
      * @param request - Session and attachment identities used for authorization.
@@ -50,11 +53,11 @@ export declare class SessionCommandController {
      */
     attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>;
     /**
-     * Mutate one still-pending queue occurrence without resuming a cold Agent.
+     * Mutate one pending Inbox occurrence, restoring an ordinary cold Agent when needed.
      * @param request - Session, queue item, and requested mutation.
      * @returns acknowledgement that the queue mutation was applied.
      */
-    updateQueue(request: SessionUpdateQueueRequest): SessionUpdateQueueValue;
+    updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue>;
     /**
      * Cancel one live ordinary Agent while retaining pending inbox work.
      * @param request - Session whose active Agent turn is cancelled.

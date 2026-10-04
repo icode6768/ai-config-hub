@@ -3,20 +3,21 @@
  *
  * A portaled panel is positioned from its anchor's viewport rect, which stops
  * being true the moment anything scrolls or the window resizes. This owns that
- * one concern: measure the anchor, offset the panel below it, clamp the result
- * inside the viewport, and re-run on scroll (capture phase, so scrollers nested
- * inside the page are caught too), on resize, and on the panel's own size
- * changes while the element is open.
+ * one concern: measure the anchor, offset the panel below or above it, clamp
+ * the result inside the viewport, and re-run on scroll (capture phase, so
+ * scrollers nested inside the page are caught too), on resize, and on the
+ * panel's own size changes while the element is open.
  * @module @deepseek-ai/dsh-client-ui-primitives/useAnchoredPosition
  */
 import { useLayoutEffect, useState } from 'react';
+import { overlayTopMargin } from "./overlay-top-margin.js";
 /**
  * Track an anchor and return the panel's fixed coordinates.
- * @param options - the open state, the two refs, and the gap/margin distances.
+ * @param options - the open state, the two refs, the placement side and alignment, and the gap/margin distances.
  * @returns `left`/`top` for the panel, or `null` before the first measurement.
  */
 export function useAnchoredPosition(options) {
-    const { open, anchorRef, panelRef, gap, margin } = options;
+    const { open, anchorRef, panelRef, side = 'bottom', align = 'start', gap, margin } = options;
     const [position, setPosition] = useState(null);
     useLayoutEffect(() => {
         if (!open) {
@@ -33,12 +34,12 @@ export function useAnchoredPosition(options) {
             const panel = panelRef.current;
             const width = panel?.offsetWidth ?? 0;
             const height = panel?.offsetHeight ?? 0;
-            let left = rect.left;
-            let top = rect.bottom + gap;
+            let left = align === 'end' ? rect.right - width : rect.left;
+            let top = side === 'top' ? rect.top - gap - height : rect.bottom + gap;
             if (width > 0)
                 left = Math.min(Math.max(left, margin), window.innerWidth - width - margin);
             if (height > 0)
-                top = Math.min(Math.max(top, margin), window.innerHeight - height - margin);
+                top = Math.min(Math.max(top, overlayTopMargin(margin)), window.innerHeight - height - margin);
             /* v8 ignore stop */
             setPosition({ left, top });
         };
@@ -63,7 +64,7 @@ export function useAnchoredPosition(options) {
             window.removeEventListener('scroll', place, true);
             window.removeEventListener('resize', place);
         };
-    }, [open, anchorRef, panelRef, gap, margin]);
+    }, [open, anchorRef, panelRef, side, align, gap, margin]);
     return position;
 }
 //# sourceMappingURL=useAnchoredPosition.js.map

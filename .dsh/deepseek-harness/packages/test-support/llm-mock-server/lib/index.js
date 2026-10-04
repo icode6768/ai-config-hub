@@ -4,8 +4,8 @@ import { isIP } from "node:net";
 import { setTimeout } from "node:timers/promises";
 //#region lib/types/index.js
 /**
-* Scriptable OpenAI-compatible HTTP/SSE server for transport, protocol, and
-* semantic-empty LLM recovery tests. Each accepted chat-completions request
+* Scriptable Messages HTTP/SSE server for transport, protocol, and
+* semantic-empty LLM recovery tests. Each accepted Messages request
 * consumes one behavior; the server never retries or interprets harness policy.
 *
 * @module @deepseek-ai/dsh-llm-mock-server
@@ -153,7 +153,7 @@ function writeSse(record, response, payload) {
 	record.chunksSent += 1;
 }
 function writeDone(record, response) {
-	writeSse(record, response, "[DONE]");
+	writeSse(record, response, { type: "message_stop" });
 }
 function finishRecord(options, record, outcome) {
 	if (record.outcome !== void 0) return;
@@ -179,17 +179,40 @@ function httpError(options, record, response, status, message, code, type = "moc
 	} }));
 	finishRecord(options, record, "completed");
 }
+function startMessage(record, response) {
+	writeSse(record, response, {
+		type: "message_start",
+		message: {
+			id: "mock-message",
+			type: "message",
+			role: "assistant",
+			model: "mock-model",
+			content: [],
+			usage: {
+				input_tokens: 3,
+				output_tokens: 0
+			}
+		}
+	});
+}
+function startText(record, response, index) {
+	writeSse(record, response, {
+		type: "content_block_start",
+		index,
+		content_block: {
+			type: "text",
+			text: ""
+		}
+	});
+}
 function terminalChunk(reason, outputTokens) {
 	return {
-		choices: [{
-			index: 0,
-			delta: { content: "" },
-			finish_reason: reason
-		}],
-		usage: {
-			prompt_tokens: 3,
-			completion_tokens: outputTokens
-		}
+		type: "message_delta",
+		delta: {
+			stop_reason: reason,
+			stop_sequence: null
+		},
+		usage: { output_tokens: outputTokens }
 	};
 }
 async function pause(milliseconds, response) {
@@ -208,22 +231,30 @@ async function pause(milliseconds, response) {
 		response.off("close", stop);
 	}
 }
-async function streamText(options, record, response, text, delayMs) {
+async function streamText(options, record, response, text, delayMs, index = 0) {
 	for (const chunk of splitText(text, options.chunkSize)) {
-		writeSse(record, response, { choices: [{
-			index: 0,
-			delta: { content: chunk },
-			finish_reason: null
-		}] });
+		writeSse(record, response, {
+			type: "content_block_delta",
+			index,
+			delta: {
+				type: "text_delta",
+				text: chunk
+			}
+		});
 		if (!await pause(delayMs, response)) return false;
 	}
 	return true;
 }
-async function completeText(options, record, response, reason, delayMs) {
-	if (!await streamText(options, record, response, options.successText, delayMs)) {
+async function completeText(options, record, response, reason, delayMs, index = 0) {
+	startText(record, response, index);
+	if (!await streamText(options, record, response, options.successText, delayMs, index)) {
 		finishRecord(options, record, "client_closed");
 		return;
 	}
+	writeSse(record, response, {
+		type: "content_block_stop",
+		index
+	});
 	writeSse(record, response, terminalChunk(reason, Array.from(options.successText).length));
 	writeDone(record, response);
 	response.end();
@@ -239,26 +270,30 @@ async function disconnect(options, record, response) {
 }
 function toolCallChunks(options) {
 	const midpoint = Math.max(1, Math.floor(options.toolArguments.length / 2));
-	return [{ choices: [{
-		index: 0,
-		delta: { tool_calls: [{
+	return [
+		{
+			type: "content_block_start",
 			index: 0,
-			id: "mock-call-1",
-			type: "function",
-			function: {
+			content_block: {
+				type: "tool_use",
+				id: "mock-call-1",
 				name: options.toolName,
-				arguments: options.toolArguments.slice(0, midpoint)
+				input: {}
 			}
-		}] },
-		finish_reason: null
-	}] }, { choices: [{
-		index: 0,
-		delta: { tool_calls: [{
+		},
+		...[options.toolArguments.slice(0, midpoint), options.toolArguments.slice(midpoint)].map((partial) => ({
+			type: "content_block_delta",
 			index: 0,
-			function: { arguments: options.toolArguments.slice(midpoint) }
-		}] },
-		finish_reason: null
-	}] }];
+			delta: {
+				type: "input_json_delta",
+				partial_json: partial
+			}
+		})),
+		{
+			type: "content_block_stop",
+			index: 0
+		}
+	];
 }
 async function runBehavior(options, record, request, response) {
 	switch (record.behavior) {
@@ -275,7 +310,8 @@ async function runBehavior(options, record, request, response) {
 			return;
 		case "empty":
 			openSse(response);
-			writeSse(record, response, terminalChunk("stop", 0));
+			startMessage(record, response);
+			writeSse(record, response, terminalChunk("end_turn", 0));
 			writeDone(record, response);
 			response.end();
 			finishRecord(options, record, "completed");
@@ -287,22 +323,22 @@ async function runBehavior(options, record, request, response) {
 			return;
 		case "stream_eof":
 			openSse(response);
-			writeSse(record, response, { choices: [{
-				index: 0,
-				delta: { role: "assistant" },
-				finish_reason: null
-			}] });
+			startMessage(record, response);
 			response.end();
 			finishRecord(options, record, "completed");
 			return;
 		case "partial_eof":
 			openSse(response);
+			startMessage(record, response);
+			startText(record, response, 0);
 			await streamText(options, record, response, options.partialText, 0);
 			response.end();
 			finishRecord(options, record, "completed");
 			return;
 		case "partial_disconnect":
 			openSse(response);
+			startMessage(record, response);
+			startText(record, response, 0);
 			if (!await streamText(options, record, response, options.partialText, options.chunkDelayMs)) return;
 			await disconnect(options, record, response);
 			return;
@@ -319,14 +355,19 @@ async function runBehavior(options, record, request, response) {
 			return;
 		case "malformed_event":
 			openSse(response);
-			writeSse(record, response, { choices: [null] });
+			writeSse(record, response, {
+				type: "content_block_start",
+				index: 0,
+				content_block: null
+			});
 			writeDone(record, response);
 			response.end();
 			finishRecord(options, record, "completed");
 			return;
 		case "wrong_content_type":
 			openSse(response, "application/json");
-			await completeText(options, record, response, "stop", 0);
+			startMessage(record, response);
+			await completeText(options, record, response, "end_turn", 0);
 			return;
 		case "rate_limit":
 			httpError(options, record, response, 429, "mock rate limit", "rate_limit");
@@ -351,32 +392,52 @@ async function runBehavior(options, record, request, response) {
 			return;
 		case "success":
 			openSse(response);
-			await completeText(options, record, response, "stop", 0);
+			startMessage(record, response);
+			await completeText(options, record, response, "end_turn", 0);
 			return;
 		case "reasoning_success":
 			openSse(response);
-			for (const chunk of splitText(options.reasoningText, options.chunkSize)) writeSse(record, response, { choices: [{
+			startMessage(record, response);
+			writeSse(record, response, {
+				type: "content_block_start",
 				index: 0,
-				delta: { reasoning_content: chunk },
-				finish_reason: null
-			}] });
-			await completeText(options, record, response, "stop", 0);
+				content_block: {
+					type: "thinking",
+					thinking: ""
+				}
+			});
+			for (const chunk of splitText(options.reasoningText, options.chunkSize)) writeSse(record, response, {
+				type: "content_block_delta",
+				index: 0,
+				delta: {
+					type: "thinking_delta",
+					thinking: chunk
+				}
+			});
+			writeSse(record, response, {
+				type: "content_block_stop",
+				index: 0
+			});
+			await completeText(options, record, response, "end_turn", 0, 1);
 			return;
 		case "tool_call_success":
 			openSse(response);
+			startMessage(record, response);
 			for (const chunk of toolCallChunks(options)) writeSse(record, response, chunk);
-			writeSse(record, response, terminalChunk("tool_calls", 2));
+			writeSse(record, response, terminalChunk("tool_use", 2));
 			writeDone(record, response);
 			response.end();
 			finishRecord(options, record, "completed");
 			return;
 		case "max_tokens":
 			openSse(response);
-			await completeText(options, record, response, "length", 0);
+			startMessage(record, response);
+			await completeText(options, record, response, "max_tokens", 0);
 			return;
 		case "slow_success":
 			openSse(response);
-			await completeText(options, record, response, "stop", options.chunkDelayMs);
+			startMessage(record, response);
+			await completeText(options, record, response, "end_turn", options.chunkDelayMs);
 			return;
 	}
 }
@@ -401,9 +462,9 @@ function chooseRandomBehavior(weights, random) {
 	return weights.at(-1)[0];
 }
 /**
-* Start a local chat-completions server that consumes one configured behavior
-* per accepted request. Only a `POST` path ending in `/chat/completions` consumes the script;
-* invalid routes, methods, authorization, and JSON receive ordinary 4xx
+* Start a local Messages server that consumes one configured behavior
+* per accepted request. Only a `POST` path ending in `/v1/messages` consumes the script;
+* invalid routes, methods, API keys, and JSON receive ordinary 4xx
 * responses. Closing the handle terminates stalled connections.
 *
 * @param options - listener, script, response content, timing, and telemetry options.
@@ -430,14 +491,14 @@ async function startMockLlmServer(options) {
 			response.writeHead(405, { allow: "POST" }).end();
 			return;
 		}
-		if (!path.endsWith("/chat/completions")) {
+		if (!path.endsWith("/v1/messages")) {
 			response.writeHead(404).end();
 			return;
 		}
-		if (resolved.apiKey !== void 0 && request.headers.authorization !== `Bearer ${resolved.apiKey}`) {
+		if (resolved.apiKey !== void 0 && request.headers["x-api-key"] !== resolved.apiKey) {
 			response.writeHead(401, { "content-type": "application/json" });
 			response.end(JSON.stringify({ error: {
-				message: "invalid mock bearer token",
+				message: "invalid mock API key",
 				code: "invalid_api_key"
 			} }));
 			return;

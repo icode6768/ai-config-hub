@@ -14,6 +14,10 @@ function argsAfter(draft, token) {
     }
     return '';
 }
+/** A claimed name may stand alone; arguments require the token's separator. */
+function retainsClaim(draft, token) {
+    return draft.startsWith(token) || draft === token.trimEnd();
+}
 /** Pure phase, claim, and attempt owner for one Session input. */
 export class SubmitMachine {
     phase = 'plain';
@@ -30,9 +34,10 @@ export class SubmitMachine {
             ...(c
                 ? {
                     claim: {
+                        name: c.name,
                         token: c.token,
                         ...(c.hint !== undefined ? { hint: c.hint } : {}),
-                        ...(c.images === true ? { images: true } : {}),
+                        ...(c.attachments === true ? { attachments: true } : {}),
                     },
                 }
                 : {}),
@@ -47,7 +52,7 @@ export class SubmitMachine {
         switch (ev.type) {
             case 'draft-changed': return this.onDraftChanged(ev.draft);
             case 'claim': return this.onClaim(ev.claim);
-            case 'enter': return this.onEnter(ev.mode, ev.draft);
+            case 'enter': return this.onEnter(ev.mode, ev.draft, ev.submission);
             case 'adjudicated': return this.onAdjudicated(ev.attempt, ev.outcome);
             case 'adjudication-failed': return this.onAdjudicationFailed(ev.attempt, ev.message);
             case 'submit-settled': return this.onSubmitSettled(ev);
@@ -57,9 +62,9 @@ export class SubmitMachine {
             default: return unreachable(ev);
         }
     }
-    /** Claimed integrity watch: a draft that breaks the token prefix releases the claim. */
+    /** The complete command name retains its claim with or without the argument separator. */
     onDraftChanged(draft) {
-        if (this.phase === 'claimed' && this.claim !== undefined && !draft.startsWith(this.claim.token)) {
+        if (this.phase === 'claimed' && this.claim !== undefined && !retainsClaim(draft, this.claim.token)) {
             this.phase = 'plain';
             this.claim = undefined;
         }
@@ -74,23 +79,23 @@ export class SubmitMachine {
         return [];
     }
     /** Mint an attempt and controller without assigning its lifecycle owner. */
-    mintAttempt(mode, draft) {
+    mintAttempt(mode, draft, submission) {
         const controller = new AbortController();
         this.seq += 1;
         return {
-            attempt: { seq: this.seq, signal: controller.signal, draftSnapshot: draft, mode },
+            attempt: { seq: this.seq, signal: controller.signal, draftSnapshot: draft, mode, ...submission === undefined ? {} : { submission } },
             controller,
         };
     }
     /** Mint the frozen command/adjudication attempt. */
-    beginAttempt(mode, draft) {
-        const flight = this.mintAttempt(mode, draft);
+    beginAttempt(mode, draft, submission) {
+        const flight = this.mintAttempt(mode, draft, submission);
         this.inflight = flight;
         return flight.attempt;
     }
     /** Mint an ordinary send that leaves the phase plain. */
-    beginDetached(mode, draft) {
-        const flight = this.mintAttempt(mode, draft);
+    beginDetached(mode, draft, submission) {
+        const flight = this.mintAttempt(mode, draft, submission);
         this.detached.set(flight.attempt.seq, flight.controller);
         this.claim = undefined;
         this.phase = 'plain';
@@ -103,11 +108,11 @@ export class SubmitMachine {
             { type: 'commit-draft', retainSuffixOf: attempt.draftSnapshot },
         ];
     }
-    onEnter(mode, draft) {
+    onEnter(mode, draft, submission) {
         if (this.phase === 'adjudicating' || this.phase === 'submitting')
             return [];
         if (this.phase === 'claimed' && this.claim !== undefined) {
-            const attempt = this.beginAttempt(mode, draft);
+            const attempt = this.beginAttempt(mode, draft, submission);
             this.phase = 'submitting';
             return [{ type: 'begin-submit', attempt, claim: this.claim, args: argsAfter(draft, this.claim.token) }];
         }
@@ -115,11 +120,11 @@ export class SubmitMachine {
         if (trimmed === '')
             return [];
         if (trimmed.startsWith('/')) {
-            const attempt = this.beginAttempt(mode, draft);
+            const attempt = this.beginAttempt(mode, draft, submission);
             this.phase = 'adjudicating';
             return [{ type: 'adjudicate', attempt, draft }];
         }
-        return this.detachedEffects(this.beginDetached(mode, draft));
+        return this.detachedEffects(this.beginDetached(mode, draft, submission));
     }
     onAdjudicated(attempt, outcome) {
         const flight = this.inflight;
@@ -166,7 +171,7 @@ export class SubmitMachine {
         }
         const text = ev.message ?? ev.outcome?.text;
         if (ev.draft === flight.attempt.draftSnapshot
-            && this.claim !== undefined && ev.draft.startsWith(this.claim.token)) {
+            && this.claim !== undefined && retainsClaim(ev.draft, this.claim.token)) {
             this.phase = 'claimed';
             return text === undefined ? [] : [{ type: 'notice', level: 'error', text }];
         }
@@ -183,7 +188,7 @@ export class SubmitMachine {
             return [];
         return [{ type: 'notice', level: ev.ok && ev.outcome?.kind !== 'error' ? 'info' : 'error', text }];
     }
-    /** Clear after an accepted image-only send; it has no text suffix to retain. */
+    /** Clear after an accepted attachment-only send; it has no text suffix to retain. */
     onSendCommitted() {
         if (this.phase !== 'plain')
             return [];

@@ -15,7 +15,7 @@
  *
  * @module dsh-sandbox/escalation
  */
-import { assertNever } from '@deepseek-ai/dsh-llm';
+import { assertNever } from '@deepseek-ai/dsh-util-values';
 /**
  * The strictly-wider table: what a call whose effective mode is the key may
  * escalate TO. Checked at EXECUTION, never baked into a tool schema — the
@@ -78,21 +78,29 @@ export function escalationHintMarker(subject) {
     return `[sandbox: escalation available — retry this exact ${subject} once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]`;
 }
 /**
- * Resolve a sandbox-escalation request BEFORE anything executes: check strict
- * widening against the call's effective mode, then resolve the approval
- * channel, then map every outcome — the ordered fail-closed sequence both
- * enforcing families share. Returns the granted mode to stamp onto exactly
- * this call; throws the distinct verbatim text for every other path (a
- * non-widening request, a missing approval service, an agent-less execution,
- * a rejection, a cancellation, an unanswerable ask) — the tool registry turns
- * the throw into the call's isError result, and nothing has run. A
- * non-widening request never prompts a human.
+ * The model-facing `sandbox_permissions` parameter description, which carries
+ * the escalation rules for every enforcing family.
+ * @param subject - the family's noun for the denied action (`command` for
+ *   bash, `operation` for a filesystem mutation).
+ * @returns the parameter description, exactly as the model sees it.
+ */
+export function sandboxPermissionsDescription(subject) {
+    return `The narrowest wider sandbox mode for a one-shot retry of the exact ${subject} the sandbox just denied; the retry asks the user for approval.`;
+}
+/**
+ * Resolve a sandbox permission request before execution. Repeating the call's
+ * effective mode returns it without approval. A strictly wider mode requires
+ * approval and applies only to this call. Narrower or unsupported targets,
+ * missing approval services or agents for widening, and non-grant outcomes
+ * throw before execution.
  * @param request - the escalation to judge (see {@link EscalationRequest}).
  * @param approval - the approval ingredients the tool holds (see {@link EscalationApproval}).
  * @returns the granted mode, consumed by the one call that asked.
  */
 export async function approveEscalation(request, approval) {
     const { requestedMode: mode, effectiveMode, justification, subject } = request;
+    if (mode === effectiveMode)
+        return effectiveMode;
     // Strict widening is an EXECUTION check against the call's effective mode —
     // deliberately not a schema constraint (the enum is the closed target
     // vocabulary; the effective mode is per-call truth).
@@ -112,13 +120,17 @@ export async function approveEscalation(request, approval) {
         toolName: approval.toolName,
         callId: approval.callId,
         reason: `escalate sandbox to ${mode}: ${justification}`,
+        displayReason: {
+            en: `Allow this operation with ${mode} permissions: ${justification}`,
+            zh: `允许本次操作使用 ${mode} 权限：${justification}`,
+        },
         ...approval.signal ? { signal: approval.signal } : {},
     });
     switch (outcome) {
         // The schema enum already pinned `mode` to the closed target vocabulary;
         // the check above proved it is strictly wider.
         case 'allowed-once': return mode;
-        case 'rejected': throw new Error(`the user rejected escalating this ${subject} to "${mode}"`);
+        case 'rejected': throw new Error(`the user rejected escalating this ${subject} to "${mode}"; it stays denied, so stop and explain instead of working around it`);
         case 'cancelled': throw new Error(`approval for escalating to "${mode}" was cancelled`);
         case 'unavailable': throw new Error(`sandbox escalation to "${mode}" requires approval, but no approval channel is available`);
         default: return assertNever(outcome, 'EscalationOutcome');

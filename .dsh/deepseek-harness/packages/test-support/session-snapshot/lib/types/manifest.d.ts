@@ -19,6 +19,8 @@ export interface SnapshotHeaderManifest {
     childToolSchemas?: number[];
     /** Legitimate changed-header count after the initial request header. */
     changes?: number;
+    /** Legitimate later `system/message` count (replacements or in-history appends) after the initial system prompt. */
+    promptChanges?: number;
 }
 /** Replay facts that cannot be reconstructed from successful model chunks. */
 export interface SnapshotReplayManifest {
@@ -35,8 +37,8 @@ export interface SnapshotWorkspaceManifest {
     setup?: string;
     /** Whether `workspace.expected/` owns the complete final world state. */
     final?: true;
-    /** Place the generated cwd under the user's home instead of a temporary root. */
-    parent?: 'home';
+    /** Place the generated cwd outside automatically writable temporary roots. */
+    parent?: 'outside-temp';
 }
 /** Controller input that cannot enter a session because admission rejects it. */
 export interface SnapshotInputAttachment {
@@ -56,8 +58,17 @@ export interface SnapshotInputManifest {
 }
 /** Optional reference to another scenario's canonical session. */
 export interface SnapshotSessionReference {
-    /** Repository-relative POSIX path from this scenario directory to the owning `session.jsonl`. */
+    /** Repository-relative POSIX path to the owning scenario's selected parent Session fixture. */
     source: string;
+}
+/** Historical format or retired capability one retained scenario permanently exercises. */
+export type SnapshotSessionFormatCoverage = 'multi-hop' | 'packed-row' | 'retry-failure' | 'shipped-profile' | 'adjacent-migration' | 'retired-tools';
+/** Explicit historical generation retained by an owning scenario. */
+export interface SnapshotSessionFormatManifest {
+    /** Selected fixture generation; absent manifest metadata tracks the current writer. */
+    readonly version: number;
+    /** Migration or retired-tool behavior that requires this immutable fixture. */
+    readonly coverage: readonly SnapshotSessionFormatCoverage[];
 }
 /** Declarative ownership metadata stored beside a recorded session. */
 export interface SnapshotManifest {
@@ -85,9 +96,23 @@ export interface SnapshotManifest {
     workspace?: SnapshotWorkspaceManifest;
     /** Exceptional controller input absent for ordinary log-driven scenarios. */
     input?: SnapshotInputManifest;
-    /** Absent when this directory owns `session.jsonl`; present for a read-only borrower. */
+    /** Absent when this directory owns its selected parent fixture; present for a read-only borrower. */
     session?: SnapshotSessionReference;
+    /** Historical generation retained by an owner instead of tracking the current writer. */
+    sessionFormat?: SnapshotSessionFormatManifest;
 }
+/** Snapshot execution modes that may read or replace committed fixture generations. */
+export type SnapshotSessionWriteMode = 'replay' | 'record' | 'refresh';
+/**
+ * Whether one run writes current-writer Session fixtures for this scenario.
+ * Explicit historical generations remain immutable replay inputs; record and
+ * refresh may still update their non-Session expected outputs.
+ *
+ * @param manifest - Parsed scenario ownership and retained-generation metadata.
+ * @param mode - Snapshot execution mode.
+ * @returns True only when a write-capable mode tracks the current writer.
+ */
+export declare function writesCurrentSessionFixtures(manifest: SnapshotManifest, mode: SnapshotSessionWriteMode): boolean;
 /**
  * Parse one `snapshot.yml` without admitting JavaScript YAML tags or unknown fields.
  * @param source - complete manifest text.

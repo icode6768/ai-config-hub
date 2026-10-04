@@ -7,22 +7,23 @@
  */
 import { Context } from '@deepseek-ai/cordis';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { GenerateOptions, LlmConfigurableProvider, LlmDiscoveredModel, LlmFailure, LlmImageRequestPricing, LlmModelContext, LlmModelDiscoveryRequest, LlmModelInfo, LlmResolvedModelInfo, LlmProviderInfo, ModelModality, StreamChunk } from './types.ts';
+import type { GenerateOptions, LlmConfigurableProvider, LlmDiscoveredModel, LlmFailure, LlmImageRequestPricing, LlmModelContext, LlmModelDiscoveryRequest, LlmModelInfo, LlmResolvedModelInfo, LlmProviderInfo, ModelModality, StreamChunk, SystemPromptUpdate, ToolUpdate } from './types.ts';
 import type { ResolvedRetryPolicy } from './retry-policy.ts';
 import type { ProviderRequestId } from './brand.ts';
 import type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts';
 import { HarnessError } from './error.ts';
+import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment';
 export * from './attribution.ts';
 export * from './brand.ts';
-export * from './never.ts';
 export * from './error.ts';
 export * from './api-key.ts';
 export * from './types.ts';
 export * from './content.ts';
+export * from './assistant-stream.ts';
 export * from './message.ts';
 export * from './retry-policy.ts';
 export { BlockAssembler } from './assembler.ts';
-export { callConfigEquals, deepFreeze, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts';
+export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts';
 export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -37,8 +38,8 @@ declare module '@deepseek-ai/cordis' {
          *   process-local {@link markAgentLoopRequest} identity and arrives deep-frozen
          *   (mutation throws): its content is a pure function of the session log (the
          *   reconstructability Agent Note), so listeners read it, never rewrite it.
-         *   Hand-built calls do not carry that marker; their messages already obey
-         *   the immutable creation contract.
+         *   Hand-built calls do not carry that marker; callers own their request
+         *   inputs and must keep them unchanged until the stream settles.
          * @mode waterfall
          */
         'llm/stream'(this: LlmRuntime, options: GenerateOptions, next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk>;
@@ -52,6 +53,8 @@ export interface LlmErrorOptions extends ErrorOptions {
     providerRetryAfterMs?: number;
     /** Non-empty opaque provider request id. */
     requestId?: ProviderRequestId;
+    /** Positive count of additional oldest retained image occurrences to offload; only with `IMAGE_OFFLOAD_REQUIRED`. */
+    offloadImages?: number;
 }
 /**
  * Typed error for LLM-related failures. Extends {@link HarnessError}, so the
@@ -96,6 +99,10 @@ export interface PreparedLlmCall {
     readonly context?: LlmModelContext;
     /** Exact model modalities captured with the adapter dispatch generation. */
     readonly inputModalities?: readonly ModelModality[];
+    /** Exact model system prompt update mode captured with the adapter dispatch generation. */
+    readonly systemPromptUpdate?: SystemPromptUpdate;
+    /** Exact model tool update mode captured with the adapter dispatch generation. */
+    readonly toolUpdate?: ToolUpdate;
     /** Config fields materialized by the captured adapter rather than proposed by the caller. */
     readonly adapterDefaults: LlmCallConfigAdapterDefaults;
     /**
@@ -145,8 +152,9 @@ export declare abstract class LlmAdapter {
     imageRequestPricing(_provider: string, _model: string): LlmImageRequestPricing | undefined;
     /**
      * List models this adapter can currently advertise for one owned provider.
-     * The result is advisory: an adapter may accept unlisted model ids, and
-     * consumers must not turn absence into request rejection.
+     * Core routing accepts unlisted model ids; catalog-driven entry points such
+     * as the GUI may require membership. Adapters used there must advertise
+     * their available models; the base empty catalog offers no GUI selection.
      * @param _provider - one provider route owned by this adapter.
      * @returns discoverable models in adapter-preferred order.
      */
@@ -304,7 +312,7 @@ export declare class LlmRuntime extends TypertRemoteService {
      * @param request - endpoint, protocol, and one-shot credential to use.
      * @param signal - caller cancellation supplied by the Remote carrier.
      * @returns advertised models in endpoint order.
-     * @throws TypertRemoteFailure with `model-discovery-failed` when discovery refuses or fails.
+     * @throws RemoteError with `llm/model-discovery-rejected` when discovery refuses or fails.
      */
     remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;
     /**
@@ -323,11 +331,19 @@ export declare class LlmRuntime extends TypertRemoteService {
      * @returns the owning adapter's image pricing for the route, when declared.
      */
     imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;
+    /**
+     * Resolve the exact text one durable file occurrence contributes to every
+     * provider request in the current execution environment.
+     * @param ref - durable verbatim file reference from model history.
+     * @returns the same deterministic handle text used at adapter dispatch.
+     */
+    fileRequestText(ref: FileAttachmentRef): string;
     /** Detach typed adapter-owned modality metadata. */
     private detachedModalities;
     /**
      * Discover models advertised by one registered provider. Catalog membership
-     * is advisory and never changes routing or request validation.
+     * does not constrain core routing. Catalog-driven entry points may restrict
+     * selection and submission to the advertised models.
      * @param provider - registered provider route to inspect.
      * @returns detached model metadata in adapter-preferred order.
      */
@@ -371,6 +387,11 @@ export declare class LlmRuntime extends TypertRemoteService {
     private registration;
     /** Remove replay state whose historical route is owned by another adapter. */
     private forAdapter;
+    /**
+     * Resolve the current execution-world read path of one durable file
+     * reference through the mounted attachment and filesystem providers.
+     */
+    private fileReadPath;
     /**
      * Final adapter boundary. Adapter selection, dispatch, iterator construction,
      * and iteration failures become one terminal failure chunk. Middleware and

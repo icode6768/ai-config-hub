@@ -1,4 +1,5 @@
 /** Lossless range encoding for JSONL `sourceEventSeqs` arrays. */
+import { SessionSeq } from "./types.js";
 function isStrictlyIncreasing(values) {
     return values.every((value, index) => index === 0 || value > values[index - 1]);
 }
@@ -40,7 +41,7 @@ export function decodeSeqRanges(value, maxEntries = Number.MAX_SAFE_INTEGER) {
             assertSeq(entry);
             if (decoded.length >= maxEntries)
                 throw new TypeError('sourceEventSeqs exceeds its event sequence');
-            decoded.push(entry);
+            decoded.push(SessionSeq(entry));
             continue;
         }
         if (!Array.isArray(entry) || entry.length !== 2) {
@@ -57,7 +58,7 @@ export function decodeSeqRanges(value, maxEntries = Number.MAX_SAFE_INTEGER) {
             throw new TypeError('sourceEventSeqs range exceeds its event sequence');
         }
         for (let seq = start; seq <= end; seq += 1)
-            decoded.push(seq);
+            decoded.push(SessionSeq(seq));
         hasRange = true;
     }
     if (hasRange && !isStrictlyIncreasing(decoded)) {

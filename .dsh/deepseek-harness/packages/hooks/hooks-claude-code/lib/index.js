@@ -107,12 +107,11 @@ function parseClaudeCodeConfig(raw, vars = {}) {
 * start/stop. It owns Claude payloads, environment, substitution, and decision
 * mapping; shared execution and parsing live in `dsh-hook-protocol`.
 * `updatedInput` is logged and warned but not honored. Bespoke behavior should
-* use typed native plugins on the same extension points; see the
-* [hook-bridges Agent Note](../../../../.agents/notes/implemented/feature/2026-06-30-hook-bridges.md).
+* use typed native plugins on the same extension points.
 * @module @deepseek-ai/dsh-hooks-claude-code
 */
 const name = "hooks-claude-code";
-const inject = ["shell"];
+const inject = ["shell", "sessionProjections"];
 const Config = z.object({
 	configPath: z.string().required(),
 	pluginRoot: z.string(),
@@ -125,11 +124,8 @@ let handlerCounter = 0;
 function nextHandlerId(point) {
 	return `claude-code:${point}:${++handlerCounter}`;
 }
-/** The `{kind:'plugin'}` source stamped on every context this bridge injects. */
-const PLUGIN_SOURCE = {
-	kind: "plugin",
-	plugin: "hooks-claude-code"
-};
+/** The `{kind:'hooks-claude-code'}` producer source stamped on every context this bridge injects. */
+const CONTEXT_SOURCE = { kind: "hooks-claude-code" };
 /** The summary cap bounds a persisted event field — a positive integer or the slice misbehaves silently. */
 function assertPositiveInteger(name, value) {
 	if (!Number.isInteger(value) || value < 1) throw new Error(`hooks-claude-code: ${name} must be a positive integer`);
@@ -212,27 +208,30 @@ function apply(ctx, config) {
 				type: "text",
 				text
 			})),
-			source: PLUGIN_SOURCE
+			source: CONTEXT_SOURCE
 		});
 	}
 	/** Prepend one context without flattening source fields or other downstream metadata. */
 	function prependContext(ours, theirs) {
 		return [ours, ...theirs ?? []];
 	}
-	ctx.on("agent/session-start", ({ agent, source }) => {
-		detached.track(runPoint("SessionStart", source, sessionStartPayload(ctx, agent, source), {
+	ctx.on("agent/created", async ({ agent, source, signal }) => {
+		const ownerSignal = signal === void 0 ? detached.signal : AbortSignal.any([signal, detached.signal]);
+		const run = runPoint("SessionStart", source, sessionStartPayload(agent, source), {
 			agent,
-			signal: detached.signal
+			signal: ownerSignal
 		}).then((merged) => {
 			const context = contextFrom(merged);
 			if (context) agent.inject(context);
 		}).catch((error) => {
 			ctx.logger.warn(`hooks-claude-code: SessionStart hook failed: ${String(error)}`);
-		}));
+		});
+		detached.track(run);
+		await run;
 	});
 	ctx.on("agent/pre-step", async ({ agent, messages, turn, signal }, next) => {
 		if (messages.length === 0) return next();
-		const merged = await runPoint("UserPromptSubmit", "", promptPayload(ctx, agent, messages.flatMap((message) => message.content)), {
+		const merged = await runPoint("UserPromptSubmit", "", promptPayload(agent, messages.flatMap((message) => message.content)), {
 			agent,
 			turn,
 			signal
@@ -247,8 +246,8 @@ function apply(ctx, config) {
 		};
 	});
 	ctx.on("tools/pre-execute", async (exec, next) => {
-		const turn = lastTurn(exec.agent);
-		const merged = await runPoint("PreToolUse", exec.name, preToolPayload(ctx, exec), {
+		const turn = lastTurn(ctx, exec.agent);
+		const merged = await runPoint("PreToolUse", exec.name, preToolPayload(exec), {
 			...exec.agent ? { agent: exec.agent } : {},
 			turn,
 			signal: exec.signal
@@ -264,8 +263,8 @@ function apply(ctx, config) {
 		return next();
 	});
 	ctx.on("tools/post-execute", async (exec, result, next) => {
-		const turn = lastTurn(exec.agent);
-		const merged = await runPoint("PostToolUse", exec.name, postToolPayload(ctx, exec, result), {
+		const turn = lastTurn(ctx, exec.agent);
+		const merged = await runPoint("PostToolUse", exec.name, postToolPayload(exec, result), {
 			...exec.agent ? { agent: exec.agent } : {},
 			turn,
 			signal: exec.signal
@@ -291,7 +290,7 @@ function apply(ctx, config) {
 		};
 	});
 	ctx.on("agent/turn-stopping", async ({ agent, turn, signal }) => {
-		const merged = await runPoint("Stop", "", stopPayload(ctx, agent), {
+		const merged = await runPoint("Stop", "", stopPayload(agent), {
 			agent,
 			turn,
 			signal
@@ -303,14 +302,14 @@ function apply(ctx, config) {
 					type: "text",
 					text
 				}],
-				source: PLUGIN_SOURCE
+				source: CONTEXT_SOURCE
 			}));
 		}
 	});
 	ctx.on("subagent/start", (info) => {
 		const child = ctx.get("agents")?.get(info.id);
 		if (child !== void 0) subagentChildren.set(info.runId, child);
-		detached.track(runPoint("SubagentStart", SUBAGENT_TYPE, subagentPayload(ctx, "SubagentStart", info, child), {
+		detached.track(runPoint("SubagentStart", SUBAGENT_TYPE, subagentPayload("SubagentStart", info, child), {
 			...child ? { agent: child } : {},
 			signal: detached.signal
 		}).then((merged) => {
@@ -323,7 +322,7 @@ function apply(ctx, config) {
 	ctx.on("subagent/end", (info) => {
 		const child = subagentChildren.get(info.runId) ?? ctx.get("agents")?.get(info.id);
 		subagentChildren.delete(info.runId);
-		detached.track(runPoint("SubagentStop", SUBAGENT_TYPE, subagentPayload(ctx, "SubagentStop", info, child), {
+		detached.track(runPoint("SubagentStop", SUBAGENT_TYPE, subagentPayload("SubagentStop", info, child), {
 			...child ? { agent: child } : {},
 			signal: detached.signal
 		}));
@@ -337,56 +336,54 @@ function apply(ctx, config) {
 */
 const SUBAGENT_TYPE = "general-purpose";
 /** The last open turn number in the agent's log, or 0 without an agent. */
-function lastTurn(agent) {
+function lastTurn(ctx, agent) {
 	if (!agent) return 0;
-	const last = [...agent.session.events].findLast((e) => e.type === "turn/start");
-	/* v8 ignore next -- agent-present callers are tool/stop extension points inside an open turn. */
-	return last?.type === "turn/start" ? last.data.turn : 0;
+	return ctx.sessionProjections.stateOf(agent.session, "turnBoundary").lastTurn;
 }
 /** Flatten content blocks to the text a hook payload carries (the common case). */
 function blocksToText(content) {
 	return content.filter((b) => b.type === "text").map((b) => b.text).join("");
 }
-function base(ctx, agent, event) {
+function base(agent, event) {
 	return {
 		session_id: agent?.session.header.id ?? "",
-		transcript_path: agent === void 0 ? "" : ctx.get("sessionPersistence")?.locate(agent.session.header)?.path ?? "",
+		transcript_path: "",
 		cwd: agent?.session.header.cwd ?? process.cwd(),
 		hook_event_name: event
 	};
 }
-function sessionStartPayload(ctx, agent, source) {
+function sessionStartPayload(agent, source) {
 	return {
-		...base(ctx, agent, "SessionStart"),
+		...base(agent, "SessionStart"),
 		source
 	};
 }
-function promptPayload(ctx, agent, content) {
+function promptPayload(agent, content) {
 	return {
-		...base(ctx, agent, "UserPromptSubmit"),
+		...base(agent, "UserPromptSubmit"),
 		prompt: blocksToText(content)
 	};
 }
-function preToolPayload(ctx, exec) {
+function preToolPayload(exec) {
 	return {
-		...base(ctx, exec.agent, "PreToolUse"),
+		...base(exec.agent, "PreToolUse"),
 		tool_name: exec.name,
 		tool_input: exec.arguments,
 		tool_use_id: exec.callId
 	};
 }
-function postToolPayload(ctx, exec, result) {
+function postToolPayload(exec, result) {
 	return {
-		...base(ctx, exec.agent, "PostToolUse"),
+		...base(exec.agent, "PostToolUse"),
 		tool_name: exec.name,
 		tool_input: exec.arguments,
 		tool_use_id: exec.callId,
 		tool_response: blocksToText(result.content)
 	};
 }
-function stopPayload(ctx, agent) {
+function stopPayload(agent) {
 	return {
-		...base(ctx, agent, "Stop"),
+		...base(agent, "Stop"),
 		stop_hook_active: false
 	};
 }
@@ -396,9 +393,9 @@ function stopPayload(ctx, agent) {
 * fields. `agent_type` is the CC-default {@link SUBAGENT_TYPE}; `stop_hook_active`
 * is present on SubagentStop only (the loop-guard flag, always false).
 */
-function subagentPayload(ctx, event, info, child) {
+function subagentPayload(event, info, child) {
 	return {
-		...base(ctx, child, event),
+		...base(child, event),
 		agent_id: info.id,
 		agent_type: SUBAGENT_TYPE,
 		...event === "SubagentStop" ? { stop_hook_active: false } : {}

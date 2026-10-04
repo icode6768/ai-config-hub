@@ -1,7 +1,9 @@
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path';
+import { rankByName } from '@deepseek-ai/dsh-client-ui-primitives';
 import { SkillRow } from "./SkillRow.js";
 import { en, NS, zh } from "./locales.js";
 /** Required services: reference source faces plus the tool-row and locale registries. */
-export const inject = ['inputTriggers', 'connection', 'sessions', 'slots', 'locale', 'remote', 'remote.skills'];
+export const inject = ['inputTriggers', 'sessions', 'slots', 'locale', 'remote', 'remote.skills', 'sidebarRight'];
 /**
  * Client plugin body: register the '/' source, dictionaries, and keyed tool row.
  * @param ctx - client root context.
@@ -30,17 +32,26 @@ export function apply(ctx) {
         }
     };
     const fetchCatalog = (sessionId) => {
-        if (sessions.subagentAddress(sessionId) !== undefined)
-            return Promise.resolve([]);
         const existing = fetches.get(sessionId);
         if (existing !== undefined)
-            return existing.promise;
+            return existing;
         const abort = new AbortController();
         const promise = (async () => {
-            const result = await skills.list({ sessionId }, abort.signal);
-            if (!result.ok)
-                throw new Error(`skills/list failed: ${result.error.code}: ${result.error.message}`);
-            return result.value.skills;
+            if (sessions.binding(sessionId) === undefined) {
+                throw new Error(`skill catalog requires a retained session "${sessionId}"`);
+            }
+            return sessions.using(sessionId, { source: 'skillCatalog', signal: abort.signal }, async (reference) => {
+                abort.signal.throwIfAborted();
+                const state = reference.binding.session.getSnapshot();
+                if (state.openState !== 'open') {
+                    throw state.openError ?? new Error(`session "${sessionId}" is not open`);
+                }
+                const result = await skills.list({ sessionId }, abort.signal);
+                abort.signal.throwIfAborted();
+                if (!result.ok)
+                    throw new Error(`skills/list failed: ${result.error.code}: ${result.error.message}`);
+                return result.value.skills;
+            });
         })();
         const entry = { promise, abort };
         fetches.set(sessionId, entry);
@@ -55,7 +66,7 @@ export function apply(ctx) {
             if (fetches.get(sessionId) === entry)
                 fetches.delete(sessionId);
         });
-        return promise;
+        return entry;
     };
     const invalidate = (key) => {
         const entry = fetches.get(key);
@@ -77,12 +88,15 @@ export function apply(ctx) {
         name: 'skill',
         order: 2,
         async candidates(session, { query, signal }) {
-            const skills = await fetchCatalog(session.sessionId);
+            if (sessions.subagentAddress(session.sessionId) !== undefined)
+                return [];
+            const skills = await fetchCatalog(session.sessionId).promise;
             // Superseded keystroke: the shared fetch stays warm, this caller yields.
             if (signal.aborted)
                 return [];
-            return skills
-                .filter(skill => skill.name.startsWith(query))
+            // The same ranking as the command group of this menu: case-insensitive
+            // ordered subsequence, prefix hits first.
+            return rankByName(skills, query)
                 .map(skill => ({
                 name: skill.name,
                 // The user-only marker rides the description (the menu's only
@@ -93,7 +107,9 @@ export function apply(ctx) {
         warm(session) {
             // Fire-and-forget scope-birth prewarm; the shared fetch reports
             // through candidates.
-            fetchCatalog(session.sessionId).catch(() => { });
+            if (sessions.subagentAddress(session.sessionId) !== undefined)
+                return;
+            fetchCatalog(session.sessionId).promise.catch(() => { });
         },
         lexicon(session) {
             return fetches.get(session.sessionId)?.settled?.map(skill => skill.name);
@@ -108,6 +124,30 @@ export function apply(ctx) {
                 if (listeners.size === 0)
                     lexiconListeners.delete(key);
             };
+        },
+        openReference(session, { ref }) {
+            if (sessions.subagentAddress(session.sessionId) !== undefined)
+                return false;
+            const cwd = sessions.list.getSnapshot().byId[session.sessionId]?.cwd;
+            const open = (catalog) => {
+                const path = catalog.find(skill => `/${skill.name}` === ref)?.path;
+                if (path === undefined)
+                    return false;
+                ctx.sidebarRight.openResource(fileAddressFor(session.sessionId, cwd, path));
+                return true;
+            };
+            const settled = fetches.get(session.sessionId)?.settled;
+            if (settled !== undefined)
+                return open(settled);
+            const entry = fetchCatalog(session.sessionId);
+            void entry.promise.then((catalog) => {
+                if (!entry.abort.signal.aborted)
+                    open(catalog);
+            }).catch((error) => {
+                if (!entry.abort.signal.aborted)
+                    console.error('[ui-skill] reference preview failed:', error);
+            });
+            return true;
         },
         onPick({ candidate }) {
             // Plain-text-reference decision (web-input-machine note): the pick

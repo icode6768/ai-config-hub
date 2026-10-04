@@ -1,7 +1,7 @@
 /** Fire-and-forget webhook rule registry and Workspace-backed Session runtime. */
 import { Service } from '@deepseek-ai/cordis';
-import { deepFreeze, errorChain } from '@deepseek-ai/dsh-llm';
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session';
+import { errorChain } from '@deepseek-ai/dsh-llm';
+import { deepFreeze, snapshotJsonValue } from '@deepseek-ai/dsh-util-values';
 import { createWebhookSession } from "./session.js";
 export * from "./brand.js";
 /** Validate and detach one delivery before sharing it across arbitrary rules. */

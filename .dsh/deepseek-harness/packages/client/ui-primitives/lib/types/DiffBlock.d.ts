@@ -1,3 +1,4 @@
+import { type CodeToolbarLabels } from './CodeToolbar.tsx';
 /** Output lines shown before the height cap collapses the middle. */
 export declare const DEFAULT_DIFF_MAX_LINES = 16;
 /**
@@ -7,9 +8,9 @@ export declare const DEFAULT_DIFF_MAX_LINES = 16;
 export interface DiffHunk {
     /** The changed file's path, drawn verbatim as the hunk's header (the tool's model-facing path). */
     path: string;
-    /** Prior content, or `null` for a new file / an overwrite (nothing on the removed side). */
+    /** Prior content including context, or `null` when no prior content is available. */
     oldText: string | null;
-    /** Content after the change (the added side). */
+    /** Content after the change, including any shared context. */
     newText: string;
 }
 export interface DiffBlockProps {
@@ -23,15 +24,25 @@ export interface DiffBlockProps {
     className?: string | undefined;
 }
 /** Localized chrome for {@link DiffBlock}. */
-export interface DiffBlockLabels {
+export interface DiffBlockLabels extends CodeToolbarLabels {
     copy: string;
     copied: string;
     collapseAria: string;
     expandAria: (hidden: number) => string;
     collapse: string;
     expand: (hidden: number) => string;
-    files: (count: number) => string;
 }
+/**
+ * Count displayed additions and deletions. Exact patches exclude shared context;
+ * comparisons exceeding the edit limit count both complete fragments as replaced.
+ * Text follows {@link contentLines}'s terminator rule.
+ * @param diffs - the hunks to count.
+ * @returns the +/- totals for tool summaries.
+ */
+export declare function diffTotals(diffs: DiffHunk[]): {
+    added: number;
+    removed: number;
+};
 /**
  * Render a file mutation as an inline diff surface.
  * @param props - see {@link DiffBlockProps}.

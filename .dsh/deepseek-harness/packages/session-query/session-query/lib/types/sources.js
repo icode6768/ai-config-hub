@@ -6,12 +6,11 @@ import { SessionQueryError } from "./config.js";
  * @param b - second header observation expected to identify the same source.
  */
 export function assertSessionHeadersCompatible(a, b) {
-    if (a.version !== b.version
-        || a.id !== b.id
+    if (a.id !== b.id
         || a.createdAt !== b.createdAt
         || a.cwd !== b.cwd
         || a.parentSession !== b.parentSession
-        || a.seedLength !== b.seedLength
+        || a.isSeeded !== b.isSeeded
         || (a.delegationDepth ?? 0) !== (b.delegationDepth ?? 0)) {
         throw new SessionQueryError(`session source headers conflict for session "${a.id}"`, 'SESSION_QUERY_SOURCE_CONFLICT');
     }

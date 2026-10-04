@@ -9,8 +9,7 @@ const NS = 'command';
 /** Required services: the '/' source registry, session scopes, commands Remote, and locale registry. */
 export const inject = ['inputTriggers', 'sessions', 'remote', 'remote.commands', 'locale'];
 /**
- * Client plugin body: mount the service, then register the popupSelect shell
- * into the input overlay once its declarer is up.
+ * Mount the command service and its per-session popupSelect overlay.
  * @param ctx - client root context.
  */
 export function apply(ctx) {

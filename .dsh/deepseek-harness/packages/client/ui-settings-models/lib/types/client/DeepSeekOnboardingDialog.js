@@ -1,12 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-/**
- * Official-DeepSeek first-run step. Readiness comes from the same
- * provider/settings/credential join as the Models page: any provider the user
- * can already talk to ends the step, and only a user with none is offered the
- * official DeepSeek route. The step reuses that page's credential editor in
- * the onboarding plugin's shared modal, so the key is entered once.
- */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { onboardingReadiness } from "./store.js";
 import { ProviderEditor } from "./ProviderEditor.js";
 import { OnboardingModal } from "./OnboardingModal.js";
@@ -22,25 +15,32 @@ function assertNever(_value) {
  * @returns the onboarding modal or null when onboarding needs no intervention.
  */
 export function DeepSeekOnboardingDialog(props) {
-    const { complete, controller, useModels, api, schema, t } = props;
+    const { complete, controller, useModels, operations, schema, t, renderSlot, automatic, explicit = false } = props;
+    const [apiKey, setApiKey] = useState(explicit);
     const state = useModels(snapshot => snapshot);
     const readiness = onboardingReadiness(state);
     useEffect(() => {
-        if (state.status === 'idle')
+        if ((automatic || explicit) && state.status === 'idle')
             void controller.load();
-    }, [controller, state.status]);
+    }, [controller, state.status, automatic, explicit]);
     useEffect(() => {
-        if (readiness.kind === 'adapter-absent'
-            || readiness.kind === 'provider-ready'
+        if ((!automatic && !explicit)
+            || readiness.kind === 'adapter-absent'
+            || (!explicit && readiness.kind === 'provider-ready')
             || readiness.kind === 'unavailable')
             complete();
-    }, [complete, readiness.kind]);
+    }, [complete, readiness.kind, explicit, automatic]);
+    if (!automatic && !explicit)
+        return null;
     switch (readiness.kind) {
         case 'loading':
         case 'adapter-absent':
-        case 'provider-ready':
         case 'unavailable':
             return null;
+        case 'provider-ready':
+            if (!explicit)
+                return null;
+            break;
         case 'credential-missing':
             break;
         /* v8 ignore next -- every current readiness variant is handled above */
@@ -61,6 +61,7 @@ export function DeepSeekOnboardingDialog(props) {
         }
         void controller.load();
     };
-    return (_jsxs(OnboardingModal, { title: t('onboardingTitle'), children: [_jsx("p", { className: styles.description, children: t('onboardingDescription') }), _jsx("div", { className: styles.editor, children: _jsx(ProviderEditor, { provider: row.entry.provider, displayName: row.entry.displayName, namespace: namespace, schema: schema, settingsPath: row.entry.settingsPath, api: api, t: t, readOnly: false, hideTitle: true, credentialOnly: true, credentialRequired: true, autoFocusCredential: true, cancelLabelKey: "onboardingLater", submitLabelKey: "onboardingSave", submitBusyLabelKey: "onboardingSaving", onClose: finishCredential }) })] }));
+    const editor = (_jsxs(OnboardingModal, { title: t('onboardingTitle'), children: [_jsx("p", { className: styles.description, children: t('onboardingDescription') }), _jsx("div", { className: styles.editor, children: _jsx(ProviderEditor, { provider: row.entry.provider, displayName: row.entry.displayName, namespace: namespace, schema: schema, settingsPath: row.entry.settingsPath, operations: operations, t: t, readOnly: false, hideTitle: true, credentialOnly: true, onSubmitCredential: () => { props.track?.('api_key_save_click', {}); }, credentialRequired: true, autoFocusCredential: true, cancelLabelKey: "onboardingLater", submitLabelKey: "onboardingSave", submitBusyLabelKey: "onboardingSaving", onClose: finishCredential }) })] }));
+    return apiKey ? editor : renderSlot('settings.models.sign-in', { complete, useApiKey: () => { setApiKey(true); } }, { fallback: editor });
 }
 //# sourceMappingURL=DeepSeekOnboardingDialog.js.map

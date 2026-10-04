@@ -4,19 +4,23 @@
  * Re-parsing the whole accumulated document on every streaming chunk is
  * quadratic in the final reply length. CommonMark block parsing is line-based
  * and appended text can only reshape the parse frontier — the last top-level
- * block (a paragraph becoming a setext heading or a table, a list continuing
- * after a blank line, an unclosed fence swallowing lines) — so earlier blocks
- * are final. This parser therefore freezes all but the trailing
- * {@link UNSTABLE_TAIL_BLOCKS} blocks and re-parses only the source tail
- * behind them: each source region is parsed O(1) times over the stream
- * instead of once per chunk.
+ * block (a paragraph becoming a setext heading or a table, or a list
+ * continuing after a blank line) — so earlier blocks are final. This parser
+ * therefore freezes all but the trailing {@link UNSTABLE_TAIL_BLOCKS} blocks
+ * and re-parses only the source tail behind them. A final unclosed top-level
+ * fence cannot freeze as a block, so its completed content lines use a second
+ * frontier: only the last completed line and current partial line return
+ * through the caller's grammar. Each source region is therefore parsed a
+ * bounded number of times over the stream instead of once per chunk.
  *
- * The freeze boundary comes from the parser's own `position` offsets, never
- * from custom source scanning. The cut sits at the *end offset* of the last
- * frozen block (not the next block's start): a following block's start offset
- * excludes up to three spaces of insignificant leading indentation, which is
- * harmless to drop, but cutting at the previous end also keeps the
- * inter-block blank lines in the tail so the sliced source stays verbatim.
+ * The block freeze boundary comes from the parser's own `position` offsets.
+ * The cut sits at the *end offset* of the last frozen block (not the next
+ * block's start): a following block's start offset excludes up to three spaces
+ * of insignificant leading indentation, which is harmless to drop, but
+ * cutting at the previous end also keeps the inter-block blank lines in the
+ * tail so the sliced source stays verbatim. Fence scanning only recognizes a
+ * parser-confirmed code node and closing delimiter; ambiguous input returns to
+ * the normal tail parse.
  *
  * Known deviation, shared with any prefix-freeze scheme: micromark resolves
  * reference-style links and footnotes document-wide at parse time, so a
@@ -55,8 +59,15 @@ export declare class IncrementalMarkdownParser {
     private frozen;
     private generation;
     private cached;
+    private openFence;
     /** @param parse - Grammar shared with whatever renders the blocks, so boundaries agree. */
     constructor(parse: (text: string) => Root);
+    /** Parse one unclosed-fence content slice through the caller's grammar. */
+    private fenceValue;
+    /** Recognize the parsed tail's final unclosed fence and prepare its incremental content frontier. */
+    private openFenceState;
+    /** Extend a recognized unclosed fence without parsing its completed content prefix again. */
+    private updateOpenFence;
     /**
      * Fold the current accumulated text and return the frozen/tail split.
      * Idempotent for identical input (the previous result is returned as-is),

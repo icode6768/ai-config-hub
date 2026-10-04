@@ -5,6 +5,7 @@ import { clientRequestSchema } from "./rpc-schema.js";
 import { bridge } from "./http-bridge.js";
 import { isTrustedApiRequest } from "./api-request-trust.js";
 import { API_PATH } from "./api-path.js";
+import { OperatorPeer } from "./operator-peer.js";
 const INVALID_REQUEST_RPC_ID = RpcId('invalid-request');
 const CHANNEL_PATTERN = /^\/[A-Za-z0-9._~-]+$/;
 const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/;
@@ -12,6 +13,8 @@ const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/;
 export class HostConnectionService extends Service {
     trustedHosts;
     browserAuth;
+    /** The operator Peer every admitted request speaks for. */
+    operator;
     interceptors = new Map();
     fetchRoutes = new Map();
     /**
@@ -24,6 +27,8 @@ export class HostConnectionService extends Service {
         super(ctx, 'connection');
         this.trustedHosts = trustedHosts;
         this.browserAuth = browserAuth;
+        this.operator = new OperatorPeer(ctx);
+        ctx.effect(() => () => this.operator.dispose(), 'client-connection: operator Peer');
     }
     /** Generic channel registry scoped to the Context reading this service. */
     get rpc() {
@@ -46,6 +51,11 @@ export class HostConnectionService extends Service {
             return 403;
         return this.browserAuth.isAuthenticated(request) ? undefined : 401;
     }
+    /** A request that passes the fence and authentication speaks for the operator. */
+    admit(request) {
+        const rejection = this.requestRejection(request);
+        return rejection === undefined ? { peer: this.operator } : { rejection };
+    }
     /** Authenticate an index request through the process-token exchange or cookie. */
     authorizeIndex(request, response) {
         return this.browserAuth.authorizeIndex(request, response);
@@ -61,6 +71,10 @@ export class HostConnectionService extends Service {
      */
     createSharedFetchHandler(channel) {
         return {
+            requestBodyMode: ({ method, url }) => {
+                const route = this.fetchRoutes.get(url.pathname);
+                return route?.methods.has(method) === true ? route.requestBody : 'buffered';
+            },
             fetch: (request) => {
                 const pathname = new URL(request.url).pathname;
                 const route = this.fetchRoutes.get(pathname);
@@ -79,6 +93,7 @@ export class HostConnectionService extends Service {
         assertFetchRoute(route);
         const registered = {
             methods: new Set(route.methods),
+            requestBody: route.requestBody,
             fetch: route.fetch,
         };
         return owner.effect(() => {
@@ -91,15 +106,15 @@ export class HostConnectionService extends Service {
     }
     register(owner, channel, handler) {
         assertChannel(channel);
-        const fetchHandler = rpcFetchHandler(channel, handler);
+        const fetchHandler = rpcFetchHandler(channel, handler, this.operator);
         const route = {
             kind: 'prefix',
             path: channel,
             handler: async (req, res) => {
-                const rejection = this.requestRejection(req);
-                if (rejection !== undefined) {
-                    res.writeHead(rejection);
-                    res.end(rejection === 401 ? 'unauthorized' : 'forbidden');
+                const admission = this.admit(req);
+                if ('rejection' in admission) {
+                    res.writeHead(admission.rejection);
+                    res.end(admission.rejection === 401 ? 'unauthorized' : 'forbidden');
                     return;
                 }
                 await bridge(req, res, fetchHandler);
@@ -113,7 +128,7 @@ export class HostConnectionService extends Service {
         }
         const interceptor = {
             matches,
-            fetchHandler: rpcFetchHandler(channel, handler),
+            fetchHandler: rpcFetchHandler(channel, handler, this.operator),
         };
         return owner.effect(() => {
             if (this.interceptors.has(channel)) {
@@ -126,8 +141,9 @@ export class HostConnectionService extends Service {
         }, `client-connection: ${channel} rpc interceptor`);
     }
 }
-function rpcFetchHandler(channel, handler) {
+function rpcFetchHandler(channel, handler, peer) {
     return {
+        requestBodyMode: () => 'buffered',
         async fetch(request) {
             const endpoint = endpointFromPath(channel, new URL(request.url).pathname);
             if (request.method !== 'POST' || endpoint === undefined) {
@@ -151,13 +167,13 @@ function rpcFetchHandler(channel, handler) {
             const message = envelope.data;
             if (message.method !== endpoint) {
                 return errorResponse(message.rpcId, {
-                    code: 'bad-request',
+                    code: 'gateway/bad-request',
                     message: `method ${JSON.stringify(message.method)} does not match endpoint ${JSON.stringify(endpoint)}`,
                     details: { issues: [] },
                 });
             }
             try {
-                const result = await handler(endpoint, message.payload, request.signal);
+                const result = await handler(endpoint, message.payload, request.signal, peer);
                 return fullResponse(message.rpcId, result);
             }
             catch (error) {
@@ -170,7 +186,7 @@ function invalidEnvelopeResponse(body, issues) {
     const rawId = body?.rpcId;
     const rpcId = typeof rawId === 'string' ? RpcId(rawId) : INVALID_REQUEST_RPC_ID;
     return errorResponse(rpcId, {
-        code: 'bad-request',
+        code: 'gateway/bad-request',
         message: 'invalid client-request message',
         details: { issues },
     });
@@ -189,8 +205,23 @@ function errorResponse(rpcId, error) {
     return fullResponse(rpcId, { ok: false, error });
 }
 function fullResponse(rpcId, result) {
-    const body = { type: 'server-response', rpcId, result };
-    return Response.json(body);
+    if (!result.ok) {
+        const body = { type: 'server-response', rpcId, result };
+        return Response.json(body);
+    }
+    const { attachments, ...success } = result;
+    const body = { type: 'server-response', rpcId, result: success };
+    if (attachments === undefined || attachments.length === 0)
+        return Response.json(body);
+    const parts = new FormData();
+    const attachmentMetadata = attachments.map((attachment, index) => {
+        const part = `bytes-${index}`;
+        // FileSystem bytes may have SharedArrayBuffer backing, which BlobPart excludes.
+        parts.set(part, new Blob([new Uint8Array(attachment.bytes)]));
+        return { path: [...attachment.path], codec: 'bytes', part };
+    });
+    parts.set('metadata', JSON.stringify({ ...body, attachments: attachmentMetadata }));
+    return new Response(parts);
 }
 function assertChannel(channel) {
     if (!CHANNEL_PATTERN.test(channel) || channel === '/api') {

@@ -1,9 +1,11 @@
-/** Browser entry binding the generated Team Remote artifact to its Client UI. */
-import agentTeamsRemote from '@deepseek-ai/dsh-experimental-agent-team/remote';
-import { mountAgentTeamUi } from "./mount.js";
+/** Browser entry registering the Agent Teams conversation-header action. */
+import { registerAgentTeamUi } from "./mount.js";
 export { inject } from "./mount.js";
-/** Mount the generated Team Remote contribution and its browser UI. */
-export async function apply(ctx) {
-    return await mountAgentTeamUi(ctx, agentTeamsRemote);
+/**
+ * Register the Team locale dictionaries and header action on the Client Context.
+ * @param ctx - Client Context with the declared `inject` services available.
+ */
+export function apply(ctx) {
+    registerAgentTeamUi(ctx);
 }
 //# sourceMappingURL=index.js.map

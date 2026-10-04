@@ -3,7 +3,7 @@ import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
 import { NO_START_CAPABILITIES, assertPositiveFinite, resolveChildCwd, settleRunResult, subprocessRunHandle } from "@deepseek-ai/dsh-subagent";
 import { randomUUID } from "node:crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { SessionId } from "@deepseek-ai/dsh-session";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { scrubbedParentEnv } from "@deepseek-ai/dsh-subprocess";
 import { EventEmitter } from "node:events";
 //#region lib/types/process.js
@@ -30,7 +30,7 @@ function sdkEnvironmentOverlay(env) {
 /**
 * Translate one official SDK spawn request to the shared process owner.
 * @param options - command, arguments, workspace, environment, and forwarded signal from the SDK.
-* @param graceMs - process-tree termination grace.
+* @param graceMs - managed-range termination grace.
 * @returns the fully explicit shared subprocess request.
 */
 function claudeSpawnSpec(options, graceMs) {
@@ -61,7 +61,7 @@ var ManagedClaudeCodeProcess = class {
 	killRequested = false;
 	/**
 	* Project a managed process with piped stdin and stdout.
-	* @param child - shared handle that remains the process-tree authority.
+	* @param child - shared handle that remains the managed-range authority.
 	*/
 	constructor(child) {
 		this.child = child;
@@ -75,7 +75,7 @@ var ManagedClaudeCodeProcess = class {
 			this.events.emit("error", thrown$1(error));
 		});
 	}
-	/** Whether the SDK has requested managed tree termination. */
+	/** Whether the SDK has requested managed-range termination. */
 	get killed() {
 		return this.killRequested;
 	}
@@ -92,7 +92,7 @@ var ManagedClaudeCodeProcess = class {
 		return this.outcomeValue;
 	}
 	/**
-	* Route the SDK's termination request to the tree-scoped process owner.
+	* Route the SDK's termination request to the managed-range process owner.
 	* @param _signal - SDK-selected signal; the shared seam owns its escalation ladder.
 	* @returns false only after exit or a previous termination request.
 	*/
@@ -120,7 +120,7 @@ var ManagedClaudeCodeProcess = class {
 /**
 * One-shot Claude Code lifecycle: invoke the official Agent SDK, place its
 * real CLI process under the shared subprocess owner, map only strict SDK
-* success to completion, and dispose to whole-tree quiescence.
+* success to completion, and dispose to whole-range quiescence.
 *
 * @module @deepseek-ai/dsh-subagent-claude-code/run
 */
@@ -255,14 +255,18 @@ async function consumeClaudeQuery(query, onPermissionDenied, onResult) {
 	};
 }
 /**
-* Close the official query, terminate the managed process tree, and wait for
-* the subprocess owner to prove it is gone.
+* Close the official query, terminate the managed range, and wait for the
+* subprocess owner to prove it is quiescent.
 * @param query - official SDK query, when creation reached that point.
-* @param child - live shared-service handle that owns the CLI process tree;
-* spawn-failed handles settle at the startup boundary instead.
+* @param child - shared-service handle that owns the CLI managed range, including
+* a published handle whose direct result later rejects.
 */
 async function disposeClaudeCodeChild(query, child) {
 	const failures = [];
+	let outcome;
+	child.done.then((value) => {
+		outcome = value;
+	}, () => {});
 	try {
 		query?.close();
 	} catch (error) {
@@ -274,13 +278,13 @@ async function disposeClaudeCodeChild(query, child) {
 	} catch (error) {
 		failures.push(thrown(error));
 	}
-	const outcome = await child.done;
 	const firstFailure = failures[0];
 	if (firstFailure !== void 0) throw new ClaudeCodeFailure({
 		stage: "teardown",
 		category: "unknown",
 		outcome
 	}, failures.length === 1 ? firstFailure : new AggregateError(failures, "Claude Code teardown failures"));
+	await child.done.catch(() => {});
 }
 /**
 * Build the fixed official SDK options for one one-shot provider run.
@@ -330,7 +334,7 @@ function claudeQueryOptions(spec, controller, capture, captureDiagnostic) {
 * Start one official Claude Agent SDK query and publish its one-shot run.
 * @param request - resolved shared subagent request.
 * @param spec - Workspace, environment, process service, and diagnostic policy.
-* @returns the published run after both Query and real CLI handle exist.
+* @returns the published run after both Query and the real CLI handle exist.
 */
 async function startClaudeCodeRun(request, spec) {
 	const prompt = textTask(request.prompt);
@@ -349,6 +353,8 @@ async function startClaudeCodeRun(request, spec) {
 		} catch {}
 	};
 	let child;
+	let childFailure;
+	let childProcessFailure;
 	let query$1;
 	let managedProcess;
 	let diagnostic;
@@ -362,14 +368,19 @@ async function startClaudeCodeRun(request, spec) {
 	const captureChild = (captured, process) => {
 		child = captured;
 		managedProcess = process;
+		childProcessFailure = captured.done.then(() => new Promise(() => {}), (error) => {
+			childFailure = thrown(error);
+			throw childFailure;
+		});
+		childProcessFailure.catch(() => {});
 	};
 	try {
 		query$1 = query({
 			prompt,
 			options: claudeQueryOptions(spec, controller, captureChild, capturePermissionDiagnostic)
 		});
-		if (child === void 0 || child.pid <= 0) throw new Error("subagent-claude-code: official SDK did not publish a controllable Claude Code process");
-		if (controller.signal.aborted) throw new Error("subagent-claude-code: request was aborted before SDK startup");
+		if (child === void 0 || childProcessFailure === void 0) throw new Error("subagent-claude-code: official SDK did not publish a controllable Claude Code process");
+		if (isAborted(controller.signal)) throw new Error("subagent-claude-code: request was aborted before SDK startup");
 	} catch (error) {
 		request.signal.removeEventListener("abort", onAbort);
 		const cancelledBeforeCleanup = controller.signal.aborted;
@@ -379,46 +390,23 @@ async function startClaudeCodeRun(request, spec) {
 			category: "unknown",
 			outcome: managedProcess?.outcome
 		};
-		const startupFailure = (cause = error) => new ClaudeCodeFailure(startupFacts, thrown(cause));
+		const startupFailure = (cause = childFailure ?? error) => new ClaudeCodeFailure(startupFacts, thrown(cause));
 		requestCancel();
-		if (child !== void 0 && child.pid <= 0) {
-			let closeError;
+		if (child !== void 0) {
 			try {
-				query$1?.close();
+				await disposeClaudeCodeChild(query$1, child);
 			} catch (disposeError) {
-				closeError = thrown(disposeError);
-			}
-			let spawnError = thrown(error);
-			try {
-				await child.done;
-			} catch (childError) {
-				spawnError = thrown(childError);
-			}
-			if (closeError !== void 0) {
-				const failure = startupFailure(spawnError);
-				const cleanupFailure = new ClaudeCodeFailure({
-					stage: "teardown",
-					category: "unknown"
-				}, closeError);
+				const failure = startupFailure();
+				const cleanupFailure = thrown(disposeError);
 				const aggregate = new AggregateError([failure, cleanupFailure], `${failure.message}; ${cleanupFailure.message}`);
 				reportFailure(aggregate);
 				throw aggregate;
 			}
 			if (cancelledBeforeCleanup || isAborted(request.signal)) throw new Error("subagent-claude-code: request was aborted before SDK startup");
-			const failure = startupFailure(spawnError);
+			const failure = startupFailure();
 			reportFailure(failure);
 			throw failure;
-		}
-		if (child !== void 0) try {
-			await disposeClaudeCodeChild(query$1, child);
-		} catch (disposeError) {
-			const failure = startupFailure();
-			const cleanupFailure = thrown(disposeError);
-			const aggregate = new AggregateError([failure, cleanupFailure], `${failure.message}; ${cleanupFailure.message}`);
-			reportFailure(aggregate);
-			throw aggregate;
-		}
-		else if (query$1 !== void 0) try {
+		} else if (query$1 !== void 0) try {
 			query$1.close();
 		} catch (disposeError) {
 			const failure = startupFailure();
@@ -437,15 +425,16 @@ async function startClaudeCodeRun(request, spec) {
 	}
 	const publishedQuery = query$1;
 	const publishedChild = child;
+	const publishedProcessFailure = childProcessFailure;
 	let receivedResult = false;
 	const result = settleRunResult({
 		attempt: async () => {
 			try {
-				return await consumeClaudeQuery(publishedQuery, () => {
+				return await Promise.race([consumeClaudeQuery(publishedQuery, () => {
 					capturePermissionDiagnostic(unattendedDiagnostic(spec.permissionMode, "tool permission", "denied", "Claude Code denied the request before an interactive prompt"));
 				}, () => {
 					receivedResult = true;
-				});
+				}), publishedProcessFailure]);
 			} catch (error) {
 				const processOutcome = managedProcess?.outcome;
 				let facts;
@@ -475,7 +464,7 @@ async function startClaudeCodeRun(request, spec) {
 		onAbort
 	});
 	return subprocessRunHandle({
-		id: SessionId(randomUUID()),
+		id: brandString(randomUUID()),
 		result,
 		signal: request.signal,
 		onAbort,

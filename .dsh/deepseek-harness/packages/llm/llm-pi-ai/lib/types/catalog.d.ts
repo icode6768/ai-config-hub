@@ -3,15 +3,15 @@
  * catalog supplies defaults keyed by model id, and a profile's own model
  * entries override them field by field, so a route naming a catalog provider
  * stays configuration-free while a route pi-ai has never heard of is fully
- * describable from `settings.yaml`.
+ * describable from `cordis.patch.yml`.
  *
- * Every pi-ai `Model` field the harness cannot default is required here rather
- * than at request time: an unserviceable route fails while its configuration is
- * being resolved, which is the earliest point that can name the offending key.
+ * Strict resolution rejects unserviceable models before settings writes.
+ * Deferred resolution retains their diagnostics so stored catalog drift does
+ * not prevent inspection, repair, or requests to independently valid models.
  *
  * @module dsh-llm-pi-ai/catalog
  */
-import type { AnthropicMessagesCompat, Api, BedrockCompat, ChatTemplateKwargValue, Model, ModelThinkingLevel, OpenAICompletionsCompat, OpenAIResponsesCompat, Provider } from '@earendil-works/pi-ai';
+import type { AnthropicMessagesCompat, Api, BedrockCompat, ChatTemplateKwargValue, MistralConversationsCompat, Model, ModelThinkingLevel, OpenAICompletionsCompat, OpenAIResponsesCompat, Provider } from '@earendil-works/pi-ai';
 /** One request modality a pi-ai model may accept. */
 export type PiAiModality = Model<Api>['input'][number];
 /** Every request modality a profile may declare. */
@@ -26,6 +26,10 @@ export declare const SUPPORTED_THINKING_FORMATS: readonly PiAiThinkingFormat[];
 export type PiAiMaxTokensField = NonNullable<OpenAICompletionsCompat['maxTokensField']>;
 /** The output-cap field spellings a profile may name. */
 export declare const MAX_TOKENS_FIELDS: readonly PiAiMaxTokensField[];
+/** The reasoning-budget field spellings pi-ai accepts. */
+export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['thinkingTokenBudgetField']>;
+/** The reasoning-budget field spellings a profile may name. */
+export declare const THINKING_TOKEN_BUDGET_FIELDS: readonly PiAiThinkingTokenBudgetField[];
 /** The prompt-cache marker conventions pi-ai accepts. */
 export type PiAiCacheControlFormat = NonNullable<OpenAICompletionsCompat['cacheControlFormat']>;
 /** The prompt-cache marker conventions a profile may name. */
@@ -82,6 +86,8 @@ declare const COMPLETIONS_COMPAT_GATE: {
     readonly chatTemplateKwargs: "offer";
     readonly chatTemplateArgs: "offer";
     readonly supportsThinkingTokenBudget: "offer";
+    readonly thinkingTokenBudgetField: "offer";
+    readonly vllmPriority: "offer";
     readonly supportsStrictMode: "offer";
     readonly cacheControlFormat: "offer";
     readonly supportsLongCacheRetention: "offer";
@@ -90,12 +96,14 @@ declare const COMPLETIONS_COMPAT_GATE: {
     readonly zaiToolStream: "withhold";
     readonly supportsOpenAIGrammarTools: "withhold";
     readonly sendSessionAffinityHeaders: "withhold";
-    readonly deferredToolsMode: "withhold";
+    readonly supportsMidConvoSystemMessages: "withhold";
+    readonly supportsMidConvoToolAdditions: "withhold";
     readonly sessionAffinityFormat: "withhold";
 };
 /** Disposition of every `OpenAIResponsesCompat` field; a drift gate like the one above. */
 declare const RESPONSES_COMPAT_GATE: {
     readonly supportsDeveloperRole: "offer";
+    readonly supportsMaxOutputTokens: "offer";
     readonly supportsStrictMode: "offer";
     readonly supportsLongCacheRetention: "offer";
     readonly sessionAffinityFormat: "withhold";
@@ -103,6 +111,7 @@ declare const RESPONSES_COMPAT_GATE: {
     readonly supportsAdditionalTools: "withhold";
     readonly supportsToolSearch: "withhold";
     readonly supportsExplicitPromptCacheMode: "withhold";
+    readonly supportsMidConvoSystemMessages: "withhold";
 };
 /** Disposition of every `AnthropicMessagesCompat` field; a drift gate like the one above. */
 declare const ANTHROPIC_COMPAT_GATE: {
@@ -114,18 +123,26 @@ declare const ANTHROPIC_COMPAT_GATE: {
     readonly allowEmptySignature: "offer";
     readonly supportsStrictTools: "offer";
     readonly sendSessionAffinityHeaders: "withhold";
-    readonly supportsToolReferences: "withhold";
+    readonly sessionAffinityFormat: "withhold";
+    readonly supportsMidConvoSystemMessages: "withhold";
+    readonly supportsMidConvoToolChanges: "withhold";
+    readonly supportsMidConvoEffort: "withhold";
+    readonly allowedFallbackModels: "withhold";
 };
 /** Disposition of every `BedrockCompat` field; a drift gate like the one above. */
 declare const BEDROCK_COMPAT_GATE: {
     readonly supportsStrictMode: "offer";
+};
+/** Disposition of every `MistralConversationsCompat` field. */
+declare const MISTRAL_COMPAT_GATE: {
+    readonly supportsMidConvoSystemMessages: "withhold";
 };
 /** The field names one gate offers. */
 type OfferedIn<G> = {
     [K in keyof G]: G[K] extends 'offer' ? K : never;
 }[keyof G];
 /** Every compat field name a profile may set, on whichever protocol takes it. */
-type OfferedCompatField = OfferedIn<typeof COMPLETIONS_COMPAT_GATE> | OfferedIn<typeof RESPONSES_COMPAT_GATE> | OfferedIn<typeof ANTHROPIC_COMPAT_GATE> | OfferedIn<typeof BEDROCK_COMPAT_GATE>;
+type OfferedCompatField = OfferedIn<typeof COMPLETIONS_COMPAT_GATE> | OfferedIn<typeof RESPONSES_COMPAT_GATE> | OfferedIn<typeof ANTHROPIC_COMPAT_GATE> | OfferedIn<typeof BEDROCK_COMPAT_GATE> | OfferedIn<typeof MISTRAL_COMPAT_GATE>;
 /**
  * pi-ai wire-compatibility switches, set on the route (its models' default) or
  * per model (winning over the route, field by field).
@@ -184,8 +201,14 @@ export interface PiAiCompatProfile {
     chatTemplateKwargs?: NonNullable<OpenAICompletionsCompat['chatTemplateKwargs']>;
     /** Arguments sent as `chat_template_args` under the `baseten` thinking format; `openai-completions`. */
     chatTemplateArgs?: NonNullable<OpenAICompletionsCompat['chatTemplateArgs']>;
-    /** Whether the endpoint accepts `thinking_token_budget` to cap vLLM reasoning; `openai-completions`. */
+    /** Alias for `thinkingTokenBudgetField: "thinking_token_budget"`; an explicit field wins. `openai-completions`. */
     supportsThinkingTokenBudget?: boolean;
+    /** Request field carrying the reasoning budget from `thinkingBudgets`; omitted unless configured. `openai-completions`. */
+    thinkingTokenBudgetField?: PiAiThinkingTokenBudgetField;
+    /** vLLM scheduler `priority`; lower runs earlier, and the server must enable priority scheduling. Omitted unless configured. */
+    vllmPriority?: number;
+    /** Whether `openai-responses` accepts `max_output_tokens`; `false` omits it. Azure and Codex ignore this shared compat field. */
+    supportsMaxOutputTokens?: boolean;
     /**
      * Whether the endpoint accepts `strict` in tool definitions;
      * `openai-completions`, the three Responses protocols, `bedrock-converse-stream`.
@@ -227,7 +250,7 @@ export type EveryOfferedFieldIsDocumented = AssertNever<Exclude<OfferedCompatFie
 /** Compile-time constraint that `T` is `true`. */
 type AssertTrue<T extends true> = T;
 /** Every compat type a gate classifies, merged so one `Pick` reaches all offered fields. */
-type UpstreamCompat = OpenAICompletionsCompat & OpenAIResponsesCompat & AnthropicMessagesCompat & BedrockCompat;
+type UpstreamCompat = OpenAICompletionsCompat & OpenAIResponsesCompat & AnthropicMessagesCompat & BedrockCompat & MistralConversationsCompat;
 /**
  * Proof that each documented field carries its upstream type, not a hand-copied
  * restatement of it. The name gates above pin *which* fields exist; this pins
@@ -305,10 +328,15 @@ export interface RouteCatalogRequest {
     /** Modalities for a model neither the entry nor the catalog declares. */
     defaultInput: Model<Api>['input'];
 }
+/** An expected configuration failure that stored-catalog reads may retain for repair. */
+export declare class PiAiCatalogError extends Error {
+}
 /** One route's materialized catalog, plus the request caps its profile chose. */
 export interface RouteCatalog {
     /** The materialized models in configuration order. */
     models: readonly Model<Api>[];
+    /** Models that cannot be resolved, retained as diagnostics during stored-config reads. */
+    modelErrors: ReadonlyMap<string, string>;
     /**
      * Per-request output caps this profile explicitly configured, by model id.
      *
@@ -327,8 +355,9 @@ export interface RouteCatalog {
  * installed catalog unchanged, which is what keeps an existing
  * `providers: { deepseek: { apiKeyEnv: … } }` profile working untouched.
  * @param request - the route-level catalog facts.
+ * @param validation - strict writes reject every error; deferred reads retain model diagnostics.
  * @returns the materialized models and the explicitly configured request caps.
  */
-export declare function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog;
+export declare function resolveRouteModels(request: RouteCatalogRequest, validation?: 'strict' | 'deferred'): RouteCatalog;
 export {};
 //# sourceMappingURL=catalog.d.ts.map

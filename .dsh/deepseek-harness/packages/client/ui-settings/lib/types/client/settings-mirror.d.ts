@@ -1,27 +1,15 @@
 /**
  * Client mirror of the Host settings document: the one `settings.describe`
  * reader in the browser. Every settings consumer derives from this store —
- * per-namespace scopes through `SettingsScopeBinder.bind`, cross-namespace
- * surfaces through the binder's shared describe face — so startup cost and
+ * shared entry forms through `ConfigForms.get`, cross-namespace
+ * surfaces through the provider's shared describe face — so startup cost and
  * freshness are properties of this class, not of how many features own a
  * preference. The Host stays the fact source: the mirror re-reads on the
  * invalidations its owning plugin subscribes to and folds write answers in
  * through {@link SettingsDescribeMirror.acceptView}.
  */
-import type { ClientRemote, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client';
-/**
- * The settings Remote methods browser configuration surfaces may reach: the
- * redacted read plus merge, replacement, and path-addressed writes.
- * Named once here so the consumers share one face instead of each re-deriving
- * it from the namespace.
- */
-export type SettingsRemote = Pick<ClientRemote['settings'], 'describe' | 'update' | 'replace' | 'mutate'>;
-/** Wire face carrying the settings Remote namespace. */
-export interface SettingsWireFace {
-    /** The settings Remote namespace. */
-    settings: SettingsRemote;
-}
-type SettingsFace = SettingsWireFace;
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
+import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client';
 /** The full `settings.describe` answer the mirror serves. */
 export interface SettingsDescribeView {
     /** Every namespace a live Host plugin registered, as the Host reported it. */
@@ -77,17 +65,18 @@ export interface SettingsDescribeFace {
  * so an invalidation arriving mid-read is never lost and never duplicated.
  */
 export declare class SettingsDescribeMirror implements SettingsDescribeFace {
-    private readonly api;
+    private readonly ctx;
     private readonly persistence;
     private readonly store;
     private inFlight;
     private rerun;
     private generation;
     /**
-     * @param api - settings wire face.
+     * @param ctx - the providing plugin's context, whose `remote.settings`
+     * namespace answers the describe read.
      * @param persistence - client-selected Host persistence; non-loopback pages may remain process-local.
      */
-    constructor(api: SettingsFace, persistence?: 'host' | 'memory');
+    constructor(ctx: ClientContext, persistence?: 'host' | 'memory');
     /** @returns the current sync snapshot (stable reference until the next change). */
     getSnapshot(): SettingsMirrorSnapshot;
     /**
@@ -126,5 +115,4 @@ export declare class SettingsDescribeMirror implements SettingsDescribeFace {
     private run;
     private shouldRerun;
 }
-export {};
 //# sourceMappingURL=settings-mirror.d.ts.map

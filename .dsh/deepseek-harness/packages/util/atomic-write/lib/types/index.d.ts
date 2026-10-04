@@ -6,7 +6,8 @@
  * up with exactly the stated mode. `withFileLock` serializes cross-process
  * writers of one file through a `wx`-created `<file>.lock` sibling, so a
  * read-modify-write cycle can never resurrect a state another writer just
- * replaced; readers stay lock-free because the rename commit is atomic.
+ * replaced; readers stay lock-free because the rename commit is atomic. A lock
+ * whose recorded holder process no longer exists is taken over.
  * @module @deepseek-ai/dsh-atomic-write
  */
 /**
@@ -34,8 +35,10 @@ export interface WriteFileAtomicOptions {
  * rename, so replacing a wider-permission file narrows it without a chmod
  * race. The rename also replaces a symlinked target itself instead of writing
  * through to its referent, and the same-directory sibling keeps the rename on
- * one filesystem. On any failure the temp file is removed and the failure
- * rethrown. Crash durability (fsync) is out of scope.
+ * one filesystem. Windows replacement retries transient `EACCES`, `EBUSY`,
+ * and `EPERM` failures for a bounded interval while the complete temp file
+ * remains the rename source. On any remaining failure the temp file is
+ * removed and the failure rethrown. Crash durability (fsync) is out of scope.
  * @param filename - final path receiving the content.
  * @param content - complete next file content.
  * @param options - permission bits for the replacement inode.
@@ -59,11 +62,19 @@ export interface FileLockOptions {
  * rename-based commit of {@link writeFileAtomic}, readers stay lock-free and
  * only writers contend. `EEXIST` is contention directly; an `EPERM` is
  * contention only when a fresh `lstat` confirms the lock path exists, covering
- * Windows exclusive-create behavior without hiding an unrelated permission
- * failure. Contention backs off exponentially and fails with a timed-out error
- * after the deadline. The contender never removes an existing lock because
- * file age cannot prove that its owner stopped; orphan recovery is an operator
- * action. The parent directory must exist.
+ * Windows exclusive-create behavior. Windows retries one unconfirmed EPERM
+ * because the holder can release before the probe; a repeated unconfirmed
+ * permission error is rethrown. The lock records its holder's PID. A contender
+ * removes the lock and retries at once when no process with that PID exists
+ * (`ESRCH`); any other lock, including one whose holder exists under another
+ * user (`EPERM`) or whose record is incomplete, is waited for. Contention backs
+ * off exponentially and times out after the deadline. A holder whose PID a
+ * live process reused keeps its lock until an operator removes it. Takeover
+ * proves only that the recorded process exited: an operation that starts other
+ * writers must stop them with it or leave its successor a way to find them.
+ * PIDs are compared on the contender's host, so writers on other hosts or in
+ * other PID namespaces sharing the file are unsupported and could both hold
+ * the lock. The parent directory must exist.
  * @param filename - the file whose writers this lock serializes.
  * @param operation - the read-render-commit cycle to run while holding the lock.
  * @param options - acquisition options; omitted waits {@link DEFAULT_LOCK_WAIT_MS}.

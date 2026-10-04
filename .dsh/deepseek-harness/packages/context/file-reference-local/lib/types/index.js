@@ -5,7 +5,6 @@
  */
 import z from '@deepseek-ai/schemastery';
 import FileReferenceService, { FILE_REFERENCE_PROMPT, } from '@deepseek-ai/dsh-file-reference';
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt';
 import { DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES, DEFAULT_FILE_SEARCH_MAX_ENTRIES, DEFAULT_FILE_SEARCH_MAX_RESULTS, WorkspaceFileSearch, } from "./search.js";
 export { DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES, DEFAULT_FILE_SEARCH_MAX_ENTRIES, DEFAULT_FILE_SEARCH_MAX_RESULTS, WorkspaceFileSearch, } from "./search.js";
 export { FILE_REFERENCE_PROMPT } from '@deepseek-ai/dsh-file-reference';
@@ -31,16 +30,18 @@ export class LocalFileReferenceService extends FileReferenceService {
         };
         validateConfig(this.config);
         const installPrompt = (agent) => {
-            if (this.promptFibers.has(agent))
-                return;
+            const existing = this.promptFibers.get(agent);
+            if (existing !== undefined)
+                return existing;
             const fiber = agent.ctx.inject(['systemPrompt', 'tools'], (scope) => {
                 scope.systemPrompt.section({
                     name: 'context:file-reference',
-                    order: FIRST_PARTY_SECTION_ORDER.FILE_REFERENCE,
+                    order: scope.systemPrompt.getSectionOrder('FILE_REFERENCE'),
                     text: () => agent.ctx.tools.get('read', agent) === undefined ? '' : FILE_REFERENCE_PROMPT,
                 });
             });
             this.promptFibers.set(agent, fiber);
+            return fiber;
         };
         const disposePrompt = (agent) => {
             const fiber = this.promptFibers.get(agent);
@@ -57,7 +58,7 @@ export class LocalFileReferenceService extends FileReferenceService {
         };
         for (const agent of ctx.agents.list())
             installPrompt(agent);
-        ctx.on('agent/created', ({ agent }) => { installPrompt(agent); });
+        ctx.on('agent/created', async ({ agent }) => { await installPrompt(agent); });
         ctx.on('agent/disposed', ({ agent }) => {
             this.searches.get(agent)?.dispose();
             this.searches.delete(agent);

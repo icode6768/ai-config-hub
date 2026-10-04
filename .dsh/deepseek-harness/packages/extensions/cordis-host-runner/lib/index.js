@@ -4,7 +4,7 @@ import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import { Context, Service } from "@deepseek-ai/cordis";
 import { scopeOf } from "@deepseek-ai/dsh-scope";
 import { assertSupportedJsonSchema, defineTool, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
-import { snapshotJsonValue } from "@deepseek-ai/dsh-session";
+import { snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
 import { Script, createContext, runInContext } from "node:vm";
 //#region lib/types/guard.js
 /**
@@ -714,13 +714,26 @@ function pluginName(plugin) {
 /** Host registry for model-visible, read-only Cordis capability queries. */
 /** Registry and cross-page router behind the two model-facing inspect tools. */
 var CordisInspectRegistryService = class extends Service {
+	clientQueryTimeoutMs;
 	providers = /* @__PURE__ */ new Map();
 	pending = /* @__PURE__ */ new Map();
 	clientManifest;
 	nextRequest = 1;
-	/** Register the process-global Host registry. */
-	constructor(ctx) {
+	/**
+	* Register the process-global Host registry.
+	* @param ctx - owning Host context.
+	* @param clientQueryTimeoutMs - maximum wait for a valid Client response, in milliseconds.
+	*/
+	constructor(ctx, clientQueryTimeoutMs) {
 		super(ctx, "cordisInspect");
+		this.clientQueryTimeoutMs = clientQueryTimeoutMs;
+		ctx.effect(() => () => {
+			for (const pending of this.pending.values()) pending.settle({
+				ok: false,
+				reason: "cancelled",
+				message: "Client inspect registry was disposed"
+			});
+		}, "cordis-inspect: pending queries");
 	}
 	/**
 	* Register one Host provider.
@@ -768,7 +781,8 @@ var CordisInspectRegistryService = class extends Service {
 	* @param input - optional lossless JSON input.
 	* @param agent - requesting Agent and scope.
 	* @param signal - tool-call cancellation.
-	* @returns provider JSON data.
+	* @returns provider JSON data; Client queries fail fast when Gateway has no live Client
+	* and retain only the first observed failure diagnostic for timeout reporting.
 	*/
 	async query(platform, providerId, methodName, input, agent, signal) {
 		if (platform === "host") {
@@ -791,23 +805,25 @@ var CordisInspectRegistryService = class extends Service {
 	* @param agent - Agent whose Session owns the query.
 	* @param requestId - Pending Client query identity.
 	* @param resolution - Client provider result or failure.
-	* @returns whether this response settled the still-pending query.
+	* @returns acknowledgement with accepted true only for a success that settles the query; only the first failure diagnostic is retained.
 	*/
 	resolveClientQuery(agent, requestId, resolution) {
 		const pending = this.pending.get(requestId);
 		if (pending === void 0 || pending.request.agentId !== agent.id) return { accepted: false };
-		if (!resolution.ok) return { accepted: false };
+		if (!resolution.ok) {
+			pending.failure ??= `${resolution.reason}: ${resolution.message}`;
+			return { accepted: false };
+		}
 		try {
 			resolution = {
 				ok: true,
 				data: validateOutput("Client", pending.request.provider, pending.method, resolution.data)
 			};
-		} catch {
+		} catch (error) {
+			pending.failure ??= error instanceof Error ? error.message : String(error);
 			return { accepted: false };
 		}
-		this.pending.delete(requestId);
 		pending.settle(resolution);
-		this.ctx.emit("cordis/inspect-query-resolved", { requestId });
 		return { accepted: true };
 	}
 	async queryClient(providerId, methodName, input, agent, signal) {
@@ -816,6 +832,8 @@ var CordisInspectRegistryService = class extends Service {
 		const method = findMethod(provider, methodName);
 		validateInput("Client", providerId, method, input);
 		signal.throwIfAborted();
+		const gateway = this.ctx.get("typertGateway");
+		if (gateway !== void 0 && !gateway.hasLiveClient()) throw new Error(`Client inspect query ${providerId}.${methodName} has no connected Harness page. Open or reconnect the Harness page, then retry.`);
 		const requestId = `inspect-${this.nextRequest++}`;
 		const request = {
 			requestId,
@@ -828,29 +846,45 @@ var CordisInspectRegistryService = class extends Service {
 			this.pending.set(requestId, {
 				request,
 				method,
-				settle: resolve
+				settle: (resolution) => {
+					this.pending.delete(requestId);
+					resolve(resolution);
+					try {
+						this.ctx.emit("cordis/inspect-query-resolved", { requestId });
+					} catch (error) {
+						console.error("[cordis-host-runner] notifying Client inspect completion failed:", error);
+					}
+				}
 			});
 		});
 		const onAbort = () => {
-			const pending = this.pending.get(requestId);
-			if (pending === void 0) return;
-			this.pending.delete(requestId);
-			pending.settle({
+			this.pending.get(requestId)?.settle({
 				ok: false,
 				reason: "cancelled",
 				message: `Client inspect query ${providerId}.${methodName} was cancelled`
 			});
-			this.ctx.emit("cordis/inspect-query-resolved", { requestId });
 		};
+		const timer = setTimeout(() => {
+			const pending = this.pending.get(requestId);
+			if (pending === void 0) return;
+			const detail = pending.failure === void 0 ? "Open or reconnect the Harness page, then retry." : `Client failure: ${pending.failure}`;
+			pending.settle({
+				ok: false,
+				reason: "provider-error",
+				message: `Client inspect query ${providerId}.${methodName} timed out after ${this.clientQueryTimeoutMs}ms. ${detail}`
+			});
+		}, this.clientQueryTimeoutMs);
 		signal.addEventListener("abort", onAbort, { once: true });
-		if (signal.aborted) onAbort();
-		else this.ctx.emit("cordis/inspect-query", request);
 		try {
+			if (signal.aborted) onAbort();
+			else this.ctx.emit("cordis/inspect-query", request);
 			const resolution = await result;
 			if (!resolution.ok) throw new Error(`${providerId}.${methodName}: ${resolution.message}`);
 			return resolution.data;
 		} finally {
+			clearTimeout(timer);
 			signal.removeEventListener("abort", onAbort);
+			this.pending.delete(requestId);
 		}
 	}
 };
@@ -922,7 +956,7 @@ async function startHostHalf(group, plugin, reportGuardFailure) {
 	} catch (error) {
 		await fiber.dispose();
 		const message = error instanceof Error ? error.message : String(error);
-		if (message.includes("already registered")) throw new Error(`${message} — to REPLACE something an earlier dynamic package registered, first cordis_stop that package's id (find it with cordis_runtime_inspect what:"temporary"), then run the new version.`);
+		if (message.includes("already registered")) throw new Error(`${message} — to REPLACE something an earlier dynamic package registered, first stop that package through its runner or the Cordis panel before running the new version.`);
 		throw error instanceof Error ? error : new Error(message);
 	}
 	return fiber;
@@ -1079,53 +1113,6 @@ var DynamicCordisRegistry = class {
 * closure, with its own facade.
 * @module @deepseek-ai/dsh-cordis-host-runner/sandbox
 */
-/** Exact Host closure symbols exposed by the sandbox and guarded Context. */
-const HOST_BUILTIN_INSPECTION = [
-	{
-		name: "ctx",
-		description: "Restricted Cordis Context. Prefer ctx.get(name) with an undefined check; use inject for hard dependencies.",
-		signatures: [
-			"ctx.get(name: string): unknown | undefined",
-			"ctx.on(name: string, listener: Function): () => void",
-			"ctx.provide(name: string, value: unknown): () => void",
-			"ctx.effect(callback: Function, label?: string): () => void"
-		]
-	},
-	{
-		name: "harness",
-		description: "Host helpers for Package-private Client RPC and model-visible dynamic Tools.",
-		signatures: [
-			"harness.handle(method: string, handler: (args: JsonValue) => JsonValue | Promise<JsonValue>): () => void",
-			"harness.defineTool(definition: ToolDefinition): ToolDefinition",
-			"harness.registerTool(ctx: Context, tool: ToolDefinition): () => void"
-		]
-	},
-	{
-		name: "console",
-		description: "Package-tagged Host logging.",
-		signatures: ["console.log(...values): void", "console.error(...values): void"]
-	},
-	{
-		name: "btoa",
-		description: "Encode UTF-8 text as base64.",
-		signatures: ["btoa(value: string): string"]
-	},
-	{
-		name: "atob",
-		description: "Decode base64 as UTF-8 text.",
-		signatures: ["atob(value: string): string"]
-	},
-	{
-		name: "TextEncoder",
-		description: "Standard UTF-8 encoder constructor.",
-		signatures: ["new TextEncoder()"]
-	},
-	{
-		name: "TextDecoder",
-		description: "Standard text decoder constructor.",
-		signatures: ["new TextDecoder(label?: string)"]
-	}
-];
 /**
 * A write-through console for one package, tagging every line with the package
 * id. Write-through (host stdout/stderr), NOT buffered into the tool result:
@@ -1583,7 +1570,10 @@ let DynamicCordisRunnerService = (() => {
 			});
 		}
 		static inject = ["tools"];
-		static Config = z.object({ vmTimeoutMs: z.number().min(1).default(5e3) });
+		static Config = z.object({
+			vmTimeoutMs: z.number().min(1).default(5e3),
+			clientInspectTimeoutMs: z.number().step(1).min(1).max(2147483647).default(1e4)
+		});
 		rootCtx = __runInitializers(this, _instanceExtraInitializers);
 		registry = new DynamicCordisRegistry();
 		inspectRegistry;
@@ -1595,7 +1585,7 @@ let DynamicCordisRunnerService = (() => {
 			super(ctx, "dynamicCordisRunner");
 			this.rootCtx = ctx;
 			this.resolved = config;
-			this.inspectRegistry = new CordisInspectRegistryService(ctx);
+			this.inspectRegistry = new CordisInspectRegistryService(ctx, this.resolved.clientInspectTimeoutMs);
 		}
 		/**
 		* Define a new Plugin's first Package or append a Package to an existing Plugin.
@@ -1923,11 +1913,12 @@ let DynamicCordisRunnerService = (() => {
 			return null;
 		}
 		/**
-		* Claim one pending Client inspect query with its live result.
+		* Submit a Client inspect result or failure for a pending query.
 		* @param agent - Session that owns the query.
 		* @param requestId - exact pending query identity.
 		* @param resolution - provider result or structured refusal.
-		* @returns whether this answer won the query.
+		* @returns acknowledgement with accepted true only for a valid success that settles the query;
+		* pending-query failures return { accepted: false } and retain only the first diagnostic.
 		*/
 		resolveInspectQuery(agent, requestId, resolution) {
 			return this.inspectRegistry.resolveClientQuery(agent, requestId, resolution);
@@ -2392,29 +2383,23 @@ let DynamicCordisRunnerService = (() => {
 			else if (settled.reason === "rejected") text = `The user rejected Cordis ${pending.mode} ${identity}. Do not request the same activation again unless the user asks.`;
 			else {
 				const returnedStatus = pending.requiresApproval ? "awaiting-approval" : "starting";
-				text = `Cordis ${pending.mode} ${identity} failed after cordis_run returned ${returnedStatus}: ${settled.reason}\n${formatErrorDetails(settled)}\ncurrentPackageId: ${plugin?.currentPackageId ?? "none"}\nnextPackageId: ${plugin?.nextPackageId ?? pending.packageId}\nInspect the failed Package, correct it on the same Plugin when needed, and retry the activation autonomously.`;
+				text = `Cordis ${pending.mode} ${identity} failed after the runner returned ${returnedStatus}: ${settled.reason}\n${formatErrorDetails(settled)}\ncurrentPackageId: ${plugin?.currentPackageId ?? "none"}\nnextPackageId: ${plugin?.nextPackageId ?? pending.packageId}\nReport the failure to the user; the definition can be managed through the Cordis panel.`;
 			}
 			agent.steer(createUserMessage({
 				content: [{
 					type: "text",
 					text
 				}],
-				source: {
-					kind: "plugin",
-					plugin: "cordis-host-runner"
-				}
+				source: { kind: "cordis-host-runner" }
 			}));
 		}
 		steerRenderFailure(agent, plugin, definition, pluginRunId, failure) {
 			agent.steer(createUserMessage({
 				content: [{
 					type: "text",
-					text: `Cordis Client UI ${plugin.pluginId}/${definition.packageId} (${pluginRunId}) failed while rendering Slot "${failure.slot}" after activation.\n${formatErrorDetails(failure)}\nentryAbdicated: ${failure.abdicated}\nInspect the failed Package, fix the Client code by defining a new Package on the same Plugin, and activate that Package autonomously with cordis_run mode:"update".`
+					text: `Cordis Client UI ${plugin.pluginId}/${definition.packageId} (${pluginRunId}) failed while rendering Slot "${failure.slot}" after activation.\n${formatErrorDetails(failure)}\nentryAbdicated: ${failure.abdicated}\nReport the Client render failure to the user; the definition can be stopped through the Cordis panel.`
 				}],
-				source: {
-					kind: "plugin",
-					plugin: "cordis-host-runner"
-				}
+				source: { kind: "cordis-host-runner" }
 			}));
 		}
 		steerHostHandlerFailure(plugin, run, method, failure) {
@@ -2425,12 +2410,9 @@ let DynamicCordisRunnerService = (() => {
 			agent.steer(createUserMessage({
 				content: [{
 					type: "text",
-					text: `Cordis Host handler ${plugin.pluginId}/${run.packageId} (${run.pluginRunId}) failed when the Client called host.call(${JSON.stringify(method)}).\n${formatErrorDetails(failure)}\nThe Plugin remains running. Inspect this Package, correct the Host code on the same Plugin, and activate the new Package autonomously with cordis_run mode:"update". If the handler needs a Service, either declare that Service in the returned Plugin inject list or read it with ctx.get(name) and handle undefined.`
+					text: `Cordis Host handler ${plugin.pluginId}/${run.packageId} (${run.pluginRunId}) failed when the Client called host.call(${JSON.stringify(method)}).\n${formatErrorDetails(failure)}\nThe Plugin remains running. Report the Host handler failure to the user. If the handler needs a Service, either declare that Service in the returned Plugin inject list or read it with ctx.get(name) and handle undefined.`
 				}],
-				source: {
-					kind: "plugin",
-					plugin: "cordis-host-runner"
-				}
+				source: { kind: "cordis-host-runner" }
 			}));
 		}
 		steerGuardFailure(plugin, run, platform, failure) {
@@ -2441,12 +2423,9 @@ let DynamicCordisRunnerService = (() => {
 			agent.steer(createUserMessage({
 				content: [{
 					type: "text",
-					text: `Cordis ${platform} guard rejected runtime code in ${plugin.pluginId}/${run.packageId} (${run.pluginRunId}) after activation.\n${formatErrorDetails(failure)}\nThe Plugin remains running. Inspect this Package, define a corrected Package on the same Plugin, and activate it autonomously with cordis_run mode:"update".`
+					text: `Cordis ${platform} guard rejected runtime code in ${plugin.pluginId}/${run.packageId} (${run.pluginRunId}) after activation.\n${formatErrorDetails(failure)}\nThe Plugin remains running. Report the guard rejection to the user; it can be stopped through the Cordis panel.`
 				}],
-				source: {
-					kind: "plugin",
-					plugin: "cordis-host-runner"
-				}
+				source: { kind: "cordis-host-runner" }
 			}));
 		}
 		claimRuntimeFailure(plugin, run, key) {
@@ -2473,10 +2452,7 @@ let DynamicCordisRunnerService = (() => {
 					type: "text",
 					text
 				}],
-				source: {
-					kind: "plugin",
-					plugin: "cordis-host-runner"
-				}
+				source: { kind: "cordis-host-runner" }
 			}));
 		}
 		cancelPending(pluginId, message) {
@@ -2593,4 +2569,4 @@ function cloneAttempt(attempt) {
 	};
 }
 //#endregion
-export { ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, CordisInspectRegistryService, DynamicCordisRunnerService, DynamicCordisRunnerService as default, HOST_BUILTIN_INSPECTION };
+export { ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, CordisInspectRegistryService, DynamicCordisRunnerService, DynamicCordisRunnerService as default };

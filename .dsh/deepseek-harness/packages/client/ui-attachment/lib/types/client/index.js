@@ -16,5 +16,11 @@ export function apply(ctx) {
         name: 'conversation.trajectory.images',
         locale: 'conversation',
     }, MessageImages));
+    // The tool image gallery reuses the message gallery renderer: its owner
+    // carries the same images/loadImage/align share the message arm does.
+    ctx.slots.inject('tool.call.images', () => ctx.slots.register({
+        name: 'tool.call.images',
+        locale: 'conversation',
+    }, MessageImages));
 }
 //# sourceMappingURL=index.js.map

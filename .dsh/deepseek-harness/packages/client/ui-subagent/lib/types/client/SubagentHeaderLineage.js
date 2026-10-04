@@ -1,16 +1,8 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useEffect, useMemo, useRef, useState, } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IconChevronDownOutline14, IconChevronRightOutline14, IconRefreshOutline14, StateDot, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconRefreshOutlineRegular, StateDot, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './SubagentHeaderLineage.module.css';
-import { indexSubagentDescendants } from "./subagent-lineage.js";
-function diagnosticReason(entry, t) {
-    switch (entry.reason) {
-        case 'corrupt': return t('diagnostic.corrupt');
-        case 'unsupported': return t('diagnostic.unsupported');
-        case 'unavailable': return t('diagnostic.unavailable');
-    }
-}
 function treeItems(root) {
     return root === null
         ? []
@@ -110,36 +102,47 @@ function formatExactDuration(ms, t) {
             seconds: String(seconds).padStart(2, '0'),
         });
 }
-const NO_DESCENDANTS = { count: 0, runningCount: 0 };
 function SubagentSwitcherIcon() {
     return (_jsxs("svg", { width: "16", height: "16", viewBox: "0 0 20 20", fill: "none", "aria-hidden": "true", children: [_jsx("path", { d: "M5.99951 12.7L8.95546 14.9478C9.40011 15.2859 9.62244 15.455 9.87526 15.488C9.95774 15.4988 10.0413 15.4988 10.1238 15.488C10.3766 15.455 10.5989 15.2859 11.0436 14.9478L13.9995 12.7", stroke: "currentColor", strokeWidth: "1.5" }), _jsx("path", { d: "M13.9995 7.7417L11.0436 5.49387C10.5989 5.15574 10.3766 4.98668 10.1238 4.95362C10.0413 4.94283 9.95775 4.94283 9.87527 4.95362C9.62245 4.98668 9.40012 5.15574 8.95547 5.49387L5.99952 7.7417", stroke: "currentColor", strokeWidth: "1.5" })] }));
 }
-/** Render the known direct-child shape while its authoritative catalog hydrates. */
-function CatalogLoadingRows({ parentSessionId, summaries, level, t, }) {
-    const children = Object.values(summaries).filter(summary => (summary.origin === 'subagent' && summary.parentId === parentSessionId));
-    if (children.length === 0)
-        return _jsx("div", { className: css.notice, children: t('loading.label') });
-    return children.map(summary => (_jsx("div", { className: css.node, children: _jsxs("div", { role: "treeitem", "aria-disabled": "true", "aria-level": level, "aria-label": t('loading.aria'), className: `${css.row} ${css.disabled} ${css.loadingRow}`, children: [_jsx("span", { className: css.disclosureSpace }), _jsx(StateDot, { state: summary.running ? 'ongoing' : 'done' }), _jsx("span", { className: css.content, children: _jsx("span", { className: css.label, children: t('loading.label') }) })] }) }, summary.id)));
+/** Render catalog loading without inventing child membership. */
+function CatalogLoadingRows({ t }) {
+    return _jsx("div", { className: css.notice, children: t('loading.label') });
+}
+/** A child becomes a known leaf only after its own authoritative catalog loads empty. */
+function isKnownLeaf(catalog) {
+    return catalog?.state === 'ready' && catalog.entries.length === 0;
 }
 /** Render one catalog level and recurse only through explicitly expanded rows. */
-function CatalogRows({ parentSessionId, currentSessionId, catalog, catalogs, summaries, expanded, level, now, openChild, refresh, toggleBranch, closeCatalog, t, }) {
+function CatalogRows({ parentSessionId, currentSessionId, catalog, catalogs, summaries, expanded, level, openChild, openChildAside, refreshProjection, toggleBranch, closeCatalog, t, }) {
+    const [now, setNow] = useState(() => Date.now());
+    const running = catalog.entries.some(entry => entry.activity === 'running');
+    useEffect(() => {
+        if (!running)
+            return;
+        const timer = setInterval(() => { setNow(Date.now()); }, 1_000);
+        return () => { clearInterval(timer); };
+    }, [running]);
     const emptyLoading = catalog.state === 'loading' && catalog.entries.length === 0;
-    const reserveDisclosure = catalog.entries.some(entry => entry.kind === 'child' && entry.hasChildren);
-    return (_jsxs(_Fragment, { children: [emptyLoading && (_jsx(CatalogLoadingRows, { parentSessionId: parentSessionId, summaries: summaries, level: level, t: t })), catalog.state === 'error' && (_jsxs("div", { className: css.error, children: [_jsx("span", { children: catalog.error?.message ?? t('load.error') }), _jsxs("button", { type: "button", className: css.refresh, onClick: () => { refresh(parentSessionId); }, children: [_jsx(IconRefreshOutline14, {}), t('retry')] })] })), catalog.entries.map((entry) => {
-                if (entry.kind === 'diagnostic') {
-                    const reason = diagnosticReason(entry, t);
-                    return (_jsx("div", { className: css.node, children: _jsxs("div", { role: "treeitem", "aria-disabled": "true", "aria-level": level, "aria-label": `${entry.id} ${reason}`, className: `${css.row} ${css.disabled}`, title: reason, children: [reserveDisclosure && _jsx("span", { className: css.disclosureSpace }), _jsx(StateDot, { state: "error" }), _jsxs("span", { className: css.content, children: [_jsx("span", { className: css.label, children: entry.id }), _jsx("span", { className: css.summary, children: reason })] })] }) }, entry.id));
-                }
+    const reserveDisclosure = catalog.entries.some(entry => !isKnownLeaf(catalogs[entry.id]));
+    return (_jsxs(_Fragment, { children: [emptyLoading && (_jsx(CatalogLoadingRows, { t: t })), catalog.state === 'error' && (_jsxs("div", { className: css.error, children: [_jsx("span", { children: catalog.error?.message ?? t('load.error') }), _jsxs("button", { type: "button", className: css.refresh, onClick: () => { refreshProjection(parentSessionId); }, children: [_jsx(IconRefreshOutlineRegular, { size: 14 }), t('retry')] })] })), catalog.entries.map((entry) => {
                 const childCatalog = catalogs[entry.id];
                 const isCurrent = entry.id === currentSessionId;
                 const isExpanded = expanded.has(entry.id);
-                const knownLeaf = !entry.hasChildren;
+                const knownLeaf = isKnownLeaf(childCatalog);
                 const childLoading = childCatalog === undefined
                     || (childCatalog.state === 'loading' && childCatalog.entries.length === 0);
                 const summary = summaries[entry.id];
                 const label = entry.label ?? entry.id;
-                const mode = entry.mode === 'one-shot' ? t('mode.oneShot') : t('mode.continuable');
-                const activity = entry.activity === 'running' ? t('activity.running') : t('activity.inactive');
+                const mode = entry.mode === 'unknown' ? t('mode.unknown')
+                    : entry.mode === 'one-shot' ? t('mode.oneShot') : t('mode.continuable');
+                const completed = entry.activity === 'inactive'
+                    && summary?.projectionValues?.subagentTiming?.lastTurnCompleted === true;
+                const activity = entry.activity === 'running'
+                    ? t('activity.running')
+                    : completed
+                        ? t('activity.completed')
+                        : t('activity.inactive');
                 const secondary = [summary?.title, mode, activity]
                     .filter(value => value !== undefined)
                     .join(' · ');
@@ -158,7 +161,17 @@ function CatalogRows({ parentSessionId, currentSessionId, catalog, catalogs, sum
                     .filter(value => value !== undefined)
                     .join(' · ');
                 const open = () => {
-                    openChild({ parentSessionId, childSessionId: entry.id, mode: entry.mode });
+                    openChild({
+                        parentSessionId,
+                        childSessionId: entry.id,
+                        mode: entry.mode,
+                    });
+                    closeCatalog();
+                };
+                const openAside = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openChildAside({ parentSessionId, childSessionId: entry.id, mode: entry.mode });
                     closeCatalog();
                 };
                 const handleKey = (event) => {
@@ -181,9 +194,9 @@ function CatalogRows({ parentSessionId, currentSessionId, catalog, catalogs, sum
                 };
                 return (_jsxs("div", { className: css.node, children: [_jsxs("div", { role: "treeitem", tabIndex: 0, "aria-level": level, "aria-current": isCurrent || undefined, "aria-label": [label, secondary, metrics].filter(value => value !== '').join(' '), ...knownLeaf ? {} : { 'aria-expanded': isExpanded }, className: css.row, onClick: open, onKeyDown: handleKey, children: [knownLeaf
                                     ? reserveDisclosure && _jsx("span", { className: css.disclosureSpace })
-                                    : (_jsx("button", { type: "button", tabIndex: -1, className: `${css.disclosure} ${isExpanded ? css.disclosureOpen : ''}`, "aria-label": t(isExpanded ? 'branch.collapse' : 'branch.expand', { label }), onClick: toggle, children: _jsx(IconChevronRightOutline14, {}) })), _jsxs("div", { className: css.clickarea, children: [_jsx(StateDot, { state: entry.activity === 'running' ? 'ongoing' : 'done' }), _jsxs("span", { className: css.content, children: [_jsx("span", { className: `${css.label} ${isCurrent ? css.currentLabel : ''}`, children: label }), _jsx("span", { className: css.summary, children: secondary })] }), metrics !== '' && (_jsxs("span", { className: css.metrics, children: [tokenMetric !== undefined && _jsx("span", { className: css.metricToken, children: tokenMetric }), durationMetric !== undefined && (_jsx("span", { className: css.metricDuration, title: t('duration.exactTitle', { duration: durationMetric.exact }), children: durationMetric.compact }))] }))] })] }), isExpanded && !knownLeaf && (_jsx("div", { role: "group", className: css.children, "aria-busy": childLoading || undefined, children: childCatalog === undefined
-                                ? (_jsx(CatalogLoadingRows, { parentSessionId: entry.id, summaries: summaries, level: level + 1, t: t }))
-                                : (_jsx(CatalogRows, { parentSessionId: entry.id, currentSessionId: currentSessionId, catalog: childCatalog, catalogs: catalogs, summaries: summaries, expanded: expanded, level: level + 1, now: now, openChild: openChild, refresh: refresh, toggleBranch: toggleBranch, closeCatalog: closeCatalog, t: t })) }))] }, entry.id));
+                                    : (_jsx("button", { type: "button", tabIndex: -1, className: `${css.disclosure} ${isExpanded ? css.disclosureOpen : ''}`, "aria-label": t(isExpanded ? 'branch.collapse' : 'branch.expand', { label }), onClick: toggle, children: _jsx(IconChevronRightOutlineRegular, {}) })), _jsxs("div", { className: css.clickarea, children: [_jsx("span", { className: css.rowActivitySlot, children: _jsx(StateDot, { state: entry.activity === 'running' ? 'ongoing' : completed ? 'done' : 'idle' }) }), _jsxs("span", { className: css.content, children: [_jsx("span", { className: `${css.label} ${isCurrent ? css.currentLabel : ''}`, children: label }), _jsx("span", { className: css.summary, children: secondary })] }), metrics !== '' && (_jsxs("span", { className: css.metrics, children: [tokenMetric !== undefined && _jsx("span", { className: css.metricToken, children: tokenMetric }), durationMetric !== undefined && (_jsx("span", { className: css.metricDuration, title: t('duration.exactTitle', { duration: durationMetric.exact }), children: durationMetric.compact }))] })), !isCurrent && (_jsx(Tooltip, { label: t('open.sidebar'), side: "bottom", align: "end", children: _jsx("button", { type: "button", className: css.sidebarButton, "aria-label": t('open.sidebar.aria', { label }), onClick: openAside, onKeyDown: (event) => { event.stopPropagation(); }, children: _jsx(IconChevronRightOutlineRegular, {}) }) }))] })] }), isExpanded && !knownLeaf && (_jsx("div", { role: "group", className: css.children, "aria-busy": childLoading || undefined, children: childCatalog === undefined
+                                ? _jsx(CatalogLoadingRows, { t: t })
+                                : (_jsx(CatalogRows, { parentSessionId: entry.id, currentSessionId: currentSessionId, catalog: childCatalog, catalogs: catalogs, summaries: summaries, expanded: expanded, level: level + 1, openChild: openChild, openChildAside: openChildAside, refreshProjection: refreshProjection, toggleBranch: toggleBranch, closeCatalog: closeCatalog, t: t })) }))] }, entry.id));
             })] }));
 }
 const MENU_VIEWPORT_MARGIN = 16;
@@ -197,62 +210,45 @@ function catalogMenuPosition(trigger) {
     };
 }
 /** One trigger-plus-tree dropdown over the catalog rooted at `rootSessionId`. */
-function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTitle, variant, separator = false, useSessions, openChild, refresh, setCatalogOpen, t, }) {
+function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTitle, variant, useSessions, useSessionStatus, openChild, openChildAside, refreshProjection, t, }) {
     const ancestorSwitcher = variant === 'switcher' && openTitle !== undefined;
-    const catalogs = useSessions(state => state.subagentsByParent);
+    const projections = useSessions(state => state.projectionsBySession);
     const summaries = useSessions(state => state.byId);
+    const statuses = useSessionStatus(value => value);
+    const catalogs = useMemo(() => Object.fromEntries(Object.entries(projections).map(([id, snapshot]) => [id, {
+            state: snapshot.state === 'idle'
+                ? snapshot.values.subagentCatalog === undefined ? 'loading' : 'ready'
+                : snapshot.state,
+            error: snapshot.error,
+            entries: (snapshot.values.subagentCatalog ?? []).map(entry => ({
+                ...entry, activity: (statuses.get(entry.id)?.running ?? summaries[entry.id]?.running) === true ? 'running' : 'inactive',
+            })),
+        }])), [projections, summaries, statuses]);
     const catalog = catalogs[rootSessionId];
     const [open, setOpen] = useState(false);
     const [menuPosition, setMenuPosition] = useState();
-    const [now, setNow] = useState(() => Date.now());
     const [expanded, setExpanded] = useState(() => new Set());
     const rootRef = useRef(null);
     const triggerRef = useRef(null);
     const menuRef = useRef(null);
     const hoverOpenTimer = useRef(undefined);
     const hoverCloseTimer = useRef(undefined);
-    const observedCatalogs = useRef(new Set());
-    const setCatalogOpenRef = useRef(setCatalogOpen);
-    setCatalogOpenRef.current = setCatalogOpen;
+    // A click-opened (pinned) menu ignores hover-out; only explicit dismissal closes it.
+    const pinnedRef = useRef(false);
     const currentEntry = currentSessionId === undefined
         ? undefined
-        : catalog?.entries.find(entry => entry.kind === 'child' && entry.id === currentSessionId);
-    const switcherDisplayTitle = currentEntry?.kind === 'child'
+        : catalog?.entries.find(entry => entry.id === currentSessionId);
+    const switcherDisplayTitle = currentEntry !== undefined
         ? currentEntry.label ?? currentEntry.id
         : displayTitle;
-    const healthy = catalog?.entries.filter(entry => entry.kind === 'child') ?? [];
-    const descendants = useMemo(() => indexSubagentDescendants(summaries).get(rootSessionId) ?? NO_DESCENDANTS, [rootSessionId, summaries]);
-    // The catalog can arrive before the session-list baseline; never undercount
-    // the already-visible direct rows during that short bootstrap window.
-    const descendantCount = Math.max(healthy.length, descendants.count);
-    const totalCountKey = descendantCount === 1 ? 'count.total.one' : 'count.total.other';
-    const runningCountKey = descendants.runningCount === 1 ? 'count.running.one' : 'count.running.other';
-    // Session summaries can announce membership before the descriptor-backed catalog catches up.
-    // Keep that entry point visible through disabled loading rows; only catalog rows are navigable.
-    const summaryBackedLoading = (descendants.count > 0 || variant === 'switcher')
-        && (catalog === undefined || (catalog.state === 'ready' && catalog.entries.length === 0));
-    const presentedCatalog = summaryBackedLoading
-        ? {
-            entries: [],
-            parentAvailable: catalog?.parentAvailable ?? false,
-            state: 'loading',
-            error: null,
-        }
-        : catalog;
-    const observeCatalog = (parentSessionId, next) => {
-        if (next)
-            observedCatalogs.current.add(parentSessionId);
-        else
-            observedCatalogs.current.delete(parentSessionId);
-        setCatalogOpen(parentSessionId, next);
-    };
-    const closeAllCatalogs = () => {
-        for (const parentSessionId of observedCatalogs.current) {
-            setCatalogOpen(parentSessionId, false);
-        }
-        observedCatalogs.current.clear();
-        setExpanded(new Set());
-    };
+    const directChildren = catalog?.entries ?? [];
+    const directCount = directChildren.length;
+    const runningCount = directChildren.filter(entry => entry.activity === 'running').length;
+    const totalCountKey = directCount === 1 ? 'count.total.one' : 'count.total.other';
+    const runningCountKey = runningCount === 1 ? 'count.running.one' : 'count.running.other';
+    const presentedCatalog = catalog ?? (variant === 'switcher'
+        ? { entries: [], state: 'loading', error: null }
+        : undefined);
     const cancelHoverClose = () => {
         if (hoverCloseTimer.current === undefined)
             return;
@@ -275,13 +271,12 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
                 return;
             setOpen(true);
             setMenuPosition(catalogMenuPosition(trigger));
-            setNow(Date.now());
-            observeCatalog(rootSessionId, true);
         }
         else {
+            pinnedRef.current = false;
             setOpen(false);
             setMenuPosition(undefined);
-            closeAllCatalogs();
+            setExpanded(new Set());
         }
         if (restoreFocus)
             queueMicrotask(() => { triggerRef.current?.focus(); });
@@ -299,6 +294,8 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
     const scheduleHoverClose = () => {
         cancelHoverOpen();
         cancelHoverClose();
+        if (pinnedRef.current)
+            return;
         hoverCloseTimer.current = setTimeout(() => {
             hoverCloseTimer.current = undefined;
             changeOpen(false);
@@ -312,13 +309,10 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
             closing.add(parentSessionId);
             const branch = catalogs[parentSessionId];
             for (const entry of branch?.entries ?? []) {
-                if (entry.kind === 'child')
-                    visit(entry.id);
+                visit(entry.id);
             }
         };
         visit(root);
-        for (const parentSessionId of closing)
-            observeCatalog(parentSessionId, false);
         setExpanded(current => new Set([...current].filter(id => !closing.has(id))));
     };
     const toggleBranch = (childSessionId) => {
@@ -327,7 +321,7 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
             return;
         }
         setExpanded(current => new Set(current).add(childSessionId));
-        observeCatalog(childSessionId, true);
+        refreshProjection(childSessionId);
     };
     useEffect(() => {
         if (!open)
@@ -359,29 +353,16 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
             document.removeEventListener('scroll', placeMenu, true);
         };
     }, [open]);
-    useEffect(() => {
-        if (!open || descendants.runningCount === 0)
-            return;
-        const timer = setInterval(() => { setNow(Date.now()); }, 1_000);
-        return () => { clearInterval(timer); };
-    }, [open, descendants.runningCount]);
     useEffect(() => () => {
         cancelHoverOpen();
         cancelHoverClose();
-        for (const parentSessionId of observedCatalogs.current) {
-            setCatalogOpenRef.current(parentSessionId, false);
-        }
-        observedCatalogs.current.clear();
     }, []);
-    // Visibility needs evidence of children (entries, summary-known descendants,
-    // or a failed load worth retrying). A bare loading catalog is not evidence:
-    // selecting any session schedules a refresh whose loading snapshot would
-    // otherwise flash the action in and out on childless sessions.
+    // Visibility needs catalog evidence of children or a failed load worth retrying.
+    // An empty loading catalog is not evidence of children.
     const visible = presentedCatalog !== undefined
         && (variant === 'switcher'
             || presentedCatalog.state === 'error'
-            || presentedCatalog.entries.length > 0
-            || descendantCount > 0);
+            || presentedCatalog.entries.length > 0);
     useEffect(() => {
         if (visible)
             return;
@@ -389,8 +370,9 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
         cancelHoverClose();
         if (!open)
             return;
+        pinnedRef.current = false;
         setOpen(false);
-        closeAllCatalogs();
+        setExpanded(new Set());
     }, [visible, open]);
     if (!visible)
         return null;
@@ -424,12 +406,18 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
             focusAt(index < 0 ? items.length - 1 : index - 1);
         }
     };
-    return (_jsxs("div", { className: `${css.root} ${variant === 'switcher' ? css.switcherRoot : ''}`, ref: rootRef, onKeyDown: navigate, onMouseEnter: scheduleHoverOpen, onMouseLeave: scheduleHoverClose, children: [separator && _jsx("span", { className: css.separator, children: "/" }), _jsxs("button", { ref: triggerRef, type: "button", className: variant === 'switcher'
+    return (_jsxs("div", { className: `${css.root} ${variant === 'switcher' ? css.switcherRoot : ''}`, ref: rootRef, onKeyDown: navigate, onMouseLeave: scheduleHoverClose, children: [_jsxs("button", { ref: triggerRef, onMouseEnter: scheduleHoverOpen, type: "button", className: variant === 'switcher'
                     ? `${css.switcherTrigger} ${ancestorSwitcher ? css.ancestorSwitcherTrigger : ''}`
                     : css.trigger, "aria-haspopup": "tree", "aria-expanded": open, "aria-label": variant === 'switcher'
                     ? t('switcher.aria', { title: switcherDisplayTitle })
-                    : t(descendants.runningCount > 0 ? runningCountKey : totalCountKey, { count: descendants.runningCount > 0 ? descendants.runningCount : descendantCount }), onClick: openTitle === undefined
-                    ? undefined
+                    : t(runningCount > 0 ? runningCountKey : totalCountKey, { count: runningCount > 0 ? runningCount : directCount }), onClick: openTitle === undefined
+                    ? () => {
+                        cancelHoverOpen();
+                        cancelHoverClose();
+                        pinnedRef.current = true;
+                        if (!open)
+                            changeOpen(true);
+                    }
                     : () => {
                         cancelHoverOpen();
                         if (open)
@@ -444,24 +432,45 @@ function CatalogDropdown({ rootSessionId, currentSessionId, displayTitle, openTi
                     queueMicrotask(() => { focusAt(0); });
                 }, children: [variant === 'switcher'
                         ? _jsx("span", { className: css.switcherTitle, children: switcherDisplayTitle })
-                        : (_jsxs(_Fragment, { children: [descendants.runningCount > 0 && (_jsx("span", { className: css.activitySlot, children: _jsx(StateDot, { state: "ongoing" }) })), _jsx("span", { className: css.count, children: t(totalCountKey, { count: descendantCount }) })] })), variant === 'switcher'
+                        : (_jsxs(_Fragment, { children: [runningCount > 0 && (_jsx("span", { className: css.activitySlot, children: _jsx(StateDot, { state: "ongoing" }) })), _jsx("span", { className: css.count, children: t(totalCountKey, { count: directCount }) })] })), variant === 'switcher'
                         ? _jsx(SubagentSwitcherIcon, {})
-                        : _jsx(IconChevronDownOutline14, { className: open ? css.triggerOpen : undefined })] }), open && createPortal((_jsx("div", { ref: menuRef, className: css.menu, style: menuPosition, role: "tree", "aria-label": t('tree.aria'), onMouseEnter: cancelHoverClose, onMouseLeave: scheduleHoverClose, children: _jsx(CatalogRows, { parentSessionId: rootSessionId, currentSessionId: currentSessionId, catalog: presentedCatalog, catalogs: catalogs, summaries: summaries, expanded: expanded, level: 1, now: now, openChild: openChild, refresh: refresh, toggleBranch: toggleBranch, closeCatalog: () => { changeOpen(false); }, t: t }) })), document.body)] }));
+                        : _jsx(IconChevronDownOutlineRegular, { className: open ? css.triggerOpen : undefined })] }), open && createPortal((_jsx("div", { ref: menuRef, className: css.menu, style: menuPosition, onMouseEnter: cancelHoverClose, onMouseLeave: scheduleHoverClose, children: _jsx("div", { className: css.menuBody, role: "tree", "aria-label": t('tree.aria'), children: _jsx(CatalogRows, { parentSessionId: rootSessionId, currentSessionId: currentSessionId, catalog: presentedCatalog, catalogs: catalogs, summaries: summaries, expanded: expanded, level: 1, openChild: openChild, openChildAside: openChildAside, refreshProjection: refreshProjection, toggleBranch: toggleBranch, closeCatalog: () => { changeOpen(false); }, t: t }) }) })), document.body)] }));
+}
+/**
+ * Session-header catalog action for root sessions: the descendant count and
+ * its dropdown at the start of the header actions band. Child sessions render nothing
+ * here — their breadcrumb switcher in the lineage slot owns the same
+ * navigation.
+ * @param props - Session standard props plus the catalog actions and translator.
+ * @returns The count dropdown, or null on a child session.
+ */
+export function SubagentCatalogAction({ sessionId, useSessions, useSessionStatus, openChild, openChildAside, refreshProjection, t, }) {
+    const isChild = useSessions(state => state.byId[sessionId]?.origin === 'subagent');
+    if (isChild)
+        return null;
+    return (_jsx(CatalogDropdown, { rootSessionId: sessionId, variant: "count", useSessions: useSessions, useSessionStatus: useSessionStatus, openChild: openChild, openChildAside: openChildAside, refreshProjection: refreshProjection, t: t }, sessionId));
 }
 /**
  * Render one breadcrumb title together with its subagent navigation.
  * @param props - Breadcrumb title, session standard props, and catalog actions.
- * @returns An ordinary-title descendant count, or a title-and-chevron sibling switcher.
+ * @returns A title-and-chevron sibling switcher, or nothing on a root session.
  */
-export function SubagentHeaderLineage({ lineageSessionId, displayTitle, openTitle, useSessions, openChild, refresh, setCatalogOpen, t, }) {
+export function SubagentHeaderLineage({ lineageSessionId, displayTitle, openTitle, useSessions, useSession, useSessionStatus, openChild, openChildAside, refreshProjection, t, }) {
+    const address = useSession(session => session.subagent?.address);
     const parentId = useSessions((state) => {
-        const summary = state.byId[lineageSessionId];
-        return summary?.origin === 'subagent' ? summary.parentId : undefined;
+        if (address?.childSessionId === lineageSessionId)
+            return address.parentSessionId;
+        for (const [parentId, snapshot] of Object.entries(state.projectionsBySession)) {
+            if (snapshot.values.subagentCatalog?.some(entry => entry.id === lineageSessionId))
+                return parentId;
+        }
+        return undefined;
     });
-    const shared = { useSessions, openChild, refresh, setCatalogOpen, t };
-    if (parentId === undefined) {
-        return (_jsx(CatalogDropdown, { rootSessionId: lineageSessionId, variant: "count", separator: true, ...shared }, lineageSessionId));
-    }
+    const shared = { useSessions, useSessionStatus, openChild, openChildAside, refreshProjection, t };
+    // Root sessions carry no breadcrumb; their descendant count lives in the
+    // header actions band (SubagentCatalogAction).
+    if (parentId === undefined)
+        return null;
     return (_jsxs(_Fragment, { children: [_jsx(CatalogDropdown, { rootSessionId: parentId, currentSessionId: lineageSessionId, variant: "switcher", displayTitle: displayTitle, ...openTitle === undefined ? {} : { openTitle }, ...shared }, lineageSessionId), openTitle === undefined && (_jsx(CatalogDropdown, { rootSessionId: lineageSessionId, variant: "count", ...shared }, lineageSessionId))] }));
 }
 //# sourceMappingURL=SubagentHeaderLineage.js.map

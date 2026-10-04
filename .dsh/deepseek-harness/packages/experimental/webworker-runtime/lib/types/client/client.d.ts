@@ -3,6 +3,7 @@
  * turns fetch-shaped calls into `req` frames and rebuilds Responses from the
  * worker's `res` / `res-head`+`res-chunk`+`res-end` frames, so every consumer
  * (boot payload, bundle transport, ApiClient, Typert RPC) speaks plain HTTP.
+ * The worker's unsolicited `view-text` frame opens the page's text viewer.
  */
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver';
 /** Boot payload of the tunnel bootstrap route. */
@@ -48,9 +49,24 @@ export declare class WorkerTunnel {
      * @param endpoint - canonical Gateway Remote endpoint.
      * @param payload - decoded endpoint payload.
      * @param signal - logical-stream cancellation.
+     * @param uplink - the stream's uplink, posted as `stream-uplink-item` frames and closed with `stream-uplink-end`.
      * @returns decoded stream values from the worker Host.
      */
-    open(endpoint: string, payload: unknown, signal: AbortSignal): AsyncGenerator;
+    open(endpoint: string, payload: unknown, signal: AbortSignal, uplink?: AsyncIterable<unknown>): AsyncGenerator;
+    /**
+     * Post the caller's uplink items for one logical stream. A failing uplink
+     * fails the downlink, and the enclosing `open` then aborts the worker side.
+     * `stop()` interrupts a pump blocked on `uplink.next()` and returns the
+     * caller's iterator at once, so a handle's queue closes and `send()` throws
+     * from then on; a generator blocked in `next()` completes that return only
+     * once it yields, so it is not awaited.
+     */
+    private pumpUplink;
+    /**
+     * Post items until the caller's iterator ends, the pump is stopped, or the page aborts the stream.
+     * @returns whether the caller's iterator was exhausted and the uplink end posted.
+     */
+    private forwardUplink;
     /**
      * Read the pre-cordis boot payload (the injection table).
      * @returns The payload the page applies before the client tree loads.
@@ -62,7 +78,8 @@ export declare class WorkerTunnel {
      * The image packs each bundle with a trailing `sourceURL` naming its image
      * path, so the blob shows under that name in the debugger instead of as an
      * anonymous blob entry.
-     * @param url - Graph combo URL (`/plugins/??<id>/client.js&rev=...`).
+     * @param url - Graph combo reference (`plugins/??<id>/client.js&rev=...`), which
+     * this tunnel resolves against the page origin it maps from.
      */
     loadBundle(url: string): Promise<void>;
     private rejectOnAbort;

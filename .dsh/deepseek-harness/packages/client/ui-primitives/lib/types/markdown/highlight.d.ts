@@ -6,18 +6,30 @@
  * dark blocks), never here — the repo's tokens-only styling rule.
  *
  * Only the three markdown-fence and `run_code` grammars (TypeScript, shell,
- * JSON) load into the singleton at boot — the set every session renders. The
- * read card's wider extension set (the file-extension language hints the read
- * tool's `langFromPath` emits — `packages/fs/tool-fs`: python, rust, yaml,
- * markup, …) is imported lazily and registered the first time such a language
- * is requested, so a session that never opens a read card in one of those
- * languages pays neither the ~1.6 MB of grammar modules nor their synchronous
- * init. The first render of a lazy language falls back to plain text while its
- * grammar loads, then {@link onGrammarLoaded} notifies subscribers to re-render
- * with highlighting. An unknown or absent language falls back to plain text (no
- * highlighting, still monospace) — never an error.
+ * JSON) load into the singleton at boot — the set every session renders. Every
+ * other language in the shared extension table
+ * (`@deepseek-ai/dsh-util-code-language`: python, rust, yaml, markup, …) is
+ * imported lazily and registered the first time such a language is requested,
+ * so a session that never opens a code surface in one of those languages pays
+ * neither the grammar modules nor their synchronous init. The first render of a
+ * lazy language falls back to plain text while its grammar loads, then
+ * {@link onGrammarLoaded} notifies subscribers to re-render with highlighting.
+ * An unknown or absent language falls back to plain text (no highlighting, still
+ * monospace) — never an error.
  */
 import type { CSSProperties } from 'react';
+/**
+ * Resolve a language hint to the grammar id {@link LANG_ALIASES} selects.
+ * @param lang - Language hint from a code surface: a canonical grammar id or the read card's persisted short id.
+ * @returns The resolved grammar id, or `undefined` when the table aliases no grammar.
+ */
+export declare function grammarForHint(lang: string | undefined): string | undefined;
+/**
+ * Whether a language hint can use the shared syntax highlighter.
+ * @param lang - Language hint from a code surface.
+ * @returns Whether the hint resolves to a supported grammar.
+ */
+export declare function supportsHighlighting(lang: string | undefined): boolean;
 /**
  * Subscribe to lazy-grammar load completions; `listener` fires after a
  * {@link LAZY_GRAMMARS} grammar finishes registering on the singleton, so a
@@ -61,10 +73,11 @@ export interface HighlightSpan {
  * tokenization is line-based and forward-only — a line's tokens depend only on
  * its own text and the grammar state entering it — so appended text never
  * changes a completed line's tokens. The session caches the spans of every
- * completed line together with the grammar state after them; each
- * {@link update} tokenizes newly completed text from that state, plus the
- * still-growing last line. Per-call cost therefore excludes the completed
- * prefix, and the result equals a from-scratch tokenization of the same code.
+ * completed line together with the grammar state after them;
+ * {@link updateFrame} reports only newly completed lines plus the still-growing
+ * last line, while {@link update} materializes the complete compatibility
+ * result. Per-call tokenization cost therefore excludes the completed prefix,
+ * and the result equals a from-scratch tokenization of the same code.
  * Non-append input and a change of resolved grammar reset the cache and
  * re-tokenize fully, so any input stays correct.
  */
@@ -80,9 +93,18 @@ export declare class StreamingHighlightSession {
     private lastCode;
     private lastLang;
     private lastResult;
+    private generation;
+    private lastFrame;
     private reset;
     /** Tokenize `text` with `resolved`, resuming from the cached grammar state when one exists. */
     private tokenize;
+    /**
+     * Tokenize one update as a delta for a retained renderer.
+     * @param code - the fence text accumulated so far.
+     * @param lang - the language hint.
+     * @returns Newly completed lines plus the current tail, or `undefined` for the plain arm.
+     */
+    updateFrame(code: string, lang: string | undefined): StreamingHighlightFrame | undefined;
     /**
      * Tokenize the fence's current text into per-line highlighted runs;
      * `undefined` means the caller renders its plain fallback. Idempotent per
@@ -96,6 +118,15 @@ export declare class StreamingHighlightSession {
      * @returns one entry per line of `code` (each an array of runs), or `undefined` for unknown or not-yet-loaded languages.
      */
     update(code: string, lang: string | undefined): readonly HighlightSpan[][] | undefined;
+}
+/** One retained-renderer update from {@link StreamingHighlightSession.updateFrame}. */
+export interface StreamingHighlightFrame {
+    /** Changes whenever prior completed lines must be discarded. */
+    readonly generation: number;
+    /** Completed lines added since the preceding frame in this generation. */
+    readonly appended: readonly HighlightSpan[][];
+    /** The still-growing final line or lines, replaced by the next frame. */
+    readonly tail: readonly HighlightSpan[][];
 }
 /**
  * Tokenize `code` into per-line highlighted runs when `lang` maps to a

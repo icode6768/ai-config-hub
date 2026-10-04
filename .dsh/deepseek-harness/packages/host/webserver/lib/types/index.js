@@ -27,6 +27,8 @@ function createGzipMiddleware(config) {
             const contentType = response.getHeader('content-type');
             if (typeof contentType === 'string' && contentType.toLowerCase().startsWith('text/event-stream'))
                 return false;
+            if (typeof contentType === 'string' && /^multipart\/form-data(?:;|$)/i.test(contentType))
+                return true;
             return compressionMiddleware.filter(request, response);
         },
     });

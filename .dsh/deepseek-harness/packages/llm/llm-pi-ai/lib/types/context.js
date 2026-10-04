@@ -3,8 +3,10 @@
  *
  * @module dsh-llm-pi-ai/context
  */
-import { ToolCallId, contentHasImage, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, requestImageHandleText } from '@deepseek-ai/dsh-llm';
+import { brandString } from '@deepseek-ai/dsh-brand';
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm';
 import { toPiAssistant } from "./replay.js";
+import { requestImageDimensions } from '@deepseek-ai/dsh-attachment';
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from "./config.js";
 /** Join the text blocks of a harness message. */
 function flattenText(message) {
@@ -13,21 +15,34 @@ function flattenText(message) {
         .map(block => block.text)
         .join('');
 }
-/** Flatten text recursively inside one tool result. */
-function toolResultText(blocks) {
-    return blocks.map(block => block.type === 'text'
-        ? block.text
-        : block.type === 'tool-result' ? toolResultText(block.content) : '').join('');
+/** Recover the pi-ai toolResult message for one harness tool-role message. */
+function toolResultOf(message, toolNames, content) {
+    return {
+        role: 'toolResult',
+        toolCallId: message.toolCallId,
+        toolName: toolNames.get(message.toolCallId) ?? 'unknown',
+        content: typeof content === 'string'
+            ? [{ type: 'text', text: content || '(no output)' }]
+            : content,
+        isError: message.isError ?? false,
+        timestamp: 0,
+    };
 }
-/** Reject image roles that pi-ai cannot replay before request-size offloading can replace them. */
-function assertSupportedImageRoles(messages) {
+/** Reject unsupported roles, tool-change blocks, and image roles before replay or image offloading. */
+function assertSupportedHistory(messages) {
     for (const message of messages) {
-        if (message.role !== 'user' && contentHasImage(message.content)) {
+        // Developer history is persisted for V4; provider serialization is intentionally deferred.
+        if (message.role === 'developer')
+            throw new LlmError('Developer messages are not supported yet', 'UNSUPPORTED_CONTENT');
+        if (message.content.some(block => block.type === 'tool-addition' || block.type === 'tool-removal')) {
+            throw new LlmError('Tool-change blocks require developer role', 'UNSUPPORTED_CONTENT');
+        }
+        if (message.role !== 'user' && message.role !== 'tool' && contentHasImage(message.content)) {
             throw new LlmError(`pi-ai cannot represent an image in an in-history ${message.role} message`, 'UNSUPPORTED_CONTENT');
         }
     }
 }
-async function userContent(blocks, requestImages, resolveImageAccess) {
+function userContent(blocks, requestImages, resolveImageAccess) {
     const content = [];
     for (const block of blocks) {
         switch (block.type) {
@@ -48,18 +63,6 @@ async function userContent(blocks, requestImages, resolveImageAccess) {
                 });
                 break;
             }
-            case 'tool-result':
-                {
-                    const nested = await userContent(block.content, requestImages, resolveImageAccess);
-                    if (typeof nested === 'string') {
-                        if (nested.length > 0)
-                            content.push({ type: 'text', text: nested });
-                    }
-                    else {
-                        content.push(...nested);
-                    }
-                }
-                break;
             default:
                 // Other merge-extensible blocks are not user-input vocabulary for pi-ai.
                 break;
@@ -71,18 +74,18 @@ async function userContent(blocks, requestImages, resolveImageAccess) {
 }
 function collectImageRefs(blocks, refs) {
     for (const block of blocks) {
-        if (block.type === 'image')
-            refs.set(block.attachment.attachmentId, block.attachment);
-        else if (block.type === 'tool-result')
-            collectImageRefs(block.content, refs);
+        if (block.type === 'image') {
+            if (block.offloaded !== true)
+                refs.set(block.attachment.attachmentId, block.attachment);
+        }
     }
 }
-async function prepareRequestImages(messages, attachments, policy, signal) {
+async function prepareRequestImages(messages, attachments, budget, signal) {
     const refs = new Map();
     for (const message of messages)
         collectImageRefs(message.content, refs);
     const orderedRefs = [...refs.values()];
-    const prepared = await Promise.all(orderedRefs.map(ref => attachments.readImageRequest(ref, policy, signal)));
+    const prepared = await Promise.all(orderedRefs.map(ref => attachments.readImageRequest(ref, requestImageTarget(ref, budget), signal)));
     const versions = new Map();
     for (const [index, ref] of orderedRefs.entries()) {
         versions.set(ref.attachmentId, prepared[index]);
@@ -90,6 +93,10 @@ async function prepareRequestImages(messages, attachments, policy, signal) {
     return versions;
 }
 function toolsOf(options) {
+    // Deferred definitions are persisted for V4; provider loading is intentionally deferred.
+    if (options.tools?.some(tool => tool.deferLoading === true)) {
+        throw new LlmError('Deferred tool loading is not supported yet', 'UNSUPPORTED_CONTENT');
+    }
     return options.tools?.map(tool => ({
         name: tool.name,
         description: tool.description,
@@ -98,53 +105,75 @@ function toolsOf(options) {
         parameters: tool.parameters,
     }));
 }
+/**
+ * Select the pi-ai `systemPrompt` source shared by both conversion paths.
+ * `options.system` wins when defined and every history message converts,
+ * including a leading `system` message, which then folds into a `user`
+ * message. Otherwise a leading `system` history message supplies the prompt
+ * and leaves the converted history; empty leading text sends no prompt.
+ */
+function splitSystemPrompt(options) {
+    if (options.system !== undefined)
+        return { systemPrompt: options.system, messages: options.messages };
+    const [first, ...rest] = options.messages;
+    if (first?.role !== 'system')
+        return { systemPrompt: undefined, messages: options.messages };
+    const text = flattenText(first);
+    return { systemPrompt: text.length > 0 ? text : undefined, messages: rest };
+}
 /** Assemble the request-level pi-ai context envelope shared by both conversion paths. */
-function piContext(options, messages) {
+function piContext(systemPrompt, options, messages) {
     const tools = toolsOf(options);
     return {
-        ...options.system !== undefined ? { systemPrompt: options.system } : {},
+        ...systemPrompt !== undefined ? { systemPrompt } : {},
         messages,
         ...tools !== undefined && tools.length > 0 ? { tools } : {},
     };
 }
+function appendAssistant(message, messages, toolNames, onReplayDegrade) {
+    const assistant = toPiAssistant(message, onReplayDegrade);
+    for (const block of assistant.content) {
+        if (block.type === 'toolCall')
+            toolNames.set(brandString(block.id), block.name);
+    }
+    messages.push(assistant);
+}
+/** Append the system and assistant roles both context builders treat identically; true when consumed. */
+function appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade) {
+    if (message.role === 'system') {
+        // pi-ai has a single systemPrompt slot; a system message that did not
+        // supply it folds into a user message to preserve order.
+        messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
+        return true;
+    }
+    if (message.role === 'assistant') {
+        appendAssistant(message, messages, toolNames, onReplayDegrade);
+        return true;
+    }
+    return false;
+}
 function textOnlyContext(options, onReplayDegrade) {
+    assertSupportedHistory(options.messages);
+    const split = splitSystemPrompt(options);
     const toolNames = new Map();
     const messages = [];
-    for (const message of options.messages) {
+    for (const message of split.messages) {
         if (contentHasImage(message.content)) {
             throw new LlmError('pi-ai image conversion requires the durable attachment service', 'UNSUPPORTED_CONTENT');
         }
-        if (message.role === 'system') {
-            messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
+        if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade))
+            continue;
+        if (message.role === 'tool') {
+            messages.push(toolResultOf(message, toolNames, flattenText(message)));
             continue;
         }
-        if (message.role === 'assistant') {
-            const assistant = toPiAssistant(message, onReplayDegrade);
-            for (const block of assistant.content)
-                if (block.type === 'toolCall')
-                    toolNames.set(ToolCallId(block.id), block.name);
-            messages.push(assistant);
-            continue;
-        }
-        const text = flattenText(message);
-        const results = message.content.filter(block => block.type === 'tool-result');
-        if (text.length > 0 || results.length === 0)
-            messages.push({ role: 'user', content: text, timestamp: 0 });
-        for (const result of results) {
-            messages.push({
-                role: 'toolResult',
-                toolCallId: result.toolCallId,
-                toolName: toolNames.get(result.toolCallId) ?? 'unknown',
-                content: [{
-                        type: 'text',
-                        text: toolResultText(result.content) || '(no output)',
-                    }],
-                isError: result.isError ?? false,
-                timestamp: 0,
-            });
-        }
+        messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
     }
-    return piContext(options, messages);
+    return piContext(split.systemPrompt, options, messages);
+}
+/** Deterministic request target for one source under the route budgets. */
+function requestImageTarget(ref, budget) {
+    return { ...requestImageDimensions(ref.width, ref.height, budget.maxPixels), maxBytes: budget.maxBytes };
 }
 export function toPiContext(options, images, onReplayDegrade) {
     return images === undefined
@@ -157,62 +186,28 @@ async function toPiContextWithImages(options, images, onReplayDegrade) {
         maxPixels: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
         maxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
     };
-    assertSupportedImageRoles(options.messages);
-    const requestMessages = offloadRequestImagesWithPolicy(options.messages, {
-        representation: 'base64',
-        ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-        byteQuantum: 1,
-        byteLength: ref => Math.min(ref.bytes, requestImagePolicy.maxBytes),
-        placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),
-    });
-    const requestImages = await prepareRequestImages(requestMessages, attachments, requestImagePolicy, options.signal);
-    const exactMessages = offloadRequestImagesWithPolicy(requestMessages, {
-        representation: 'base64',
-        ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-        byteQuantum: 1,
-        byteLength: ref => requestImages.get(ref.attachmentId).bytes,
-        placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),
-    });
+    assertSupportedHistory(options.messages);
+    const split = splitSystemPrompt(options);
+    const requestImages = await prepareRequestImages(split.messages, attachments, requestImagePolicy, options.signal);
+    if (maxRequestImageBytes !== undefined) {
+        const offloadImages = requiredImageOffload(split.messages, { representation: 'base64', maxBytes: maxRequestImageBytes }, block => requestImages.get(block.attachment.attachmentId).bytes);
+        if (offloadImages > 0) {
+            throw new LlmError(`pi-ai request images exceed the ${maxRequestImageBytes}-byte base64 bound; ${offloadImages} more oldest occurrence(s) must be offloaded.`, IMAGE_OFFLOAD_REQUIRED_CODE, { offloadImages });
+        }
+    }
+    const exactMessages = projectOffloadedImages(split.messages, ref => offloadedImageText(ref, resolveImageAccess(ref)));
     const toolNames = new Map();
     const messages = [];
     for (const message of exactMessages) {
-        if (message.role === 'system') {
-            // pi-ai has a single systemPrompt slot; in-history system messages are
-            // folded into user messages to preserve order (rare in practice — the
-            // harness sends the system prompt via options.system).
-            messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
+        if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade))
+            continue;
+        if (message.role === 'tool') {
+            messages.push(toolResultOf(message, toolNames, userContent(message.content, requestImages, resolveImageAccess)));
             continue;
         }
-        if (message.role === 'assistant') {
-            const assistant = toPiAssistant(message, onReplayDegrade);
-            for (const block of assistant.content) {
-                if (block.type === 'toolCall')
-                    toolNames.set(ToolCallId(block.id), block.name);
-            }
-            messages.push(assistant);
-            continue;
-        }
-        // user role: text + tool results (each result becomes its own message).
-        const regular = message.content.filter(block => block.type !== 'tool-result');
-        const content = await userContent(regular, requestImages, resolveImageAccess);
-        const results = message.content.filter((block) => (block.type === 'tool-result'));
-        if (content.length > 0 || results.length === 0) {
-            messages.push({ role: 'user', content, timestamp: 0 });
-        }
-        for (const result of results) {
-            const resultContent = await userContent(result.content, requestImages, resolveImageAccess);
-            messages.push({
-                role: 'toolResult',
-                toolCallId: result.toolCallId,
-                toolName: toolNames.get(result.toolCallId) ?? 'unknown',
-                content: typeof resultContent === 'string'
-                    ? [{ type: 'text', text: resultContent || '(no output)' }]
-                    : resultContent,
-                isError: result.isError ?? false,
-                timestamp: 0,
-            });
-        }
+        const content = userContent(message.content, requestImages, resolveImageAccess);
+        messages.push({ role: 'user', content, timestamp: 0 });
     }
-    return piContext(options, messages);
+    return piContext(split.systemPrompt, options, messages);
 }
 //# sourceMappingURL=context.js.map

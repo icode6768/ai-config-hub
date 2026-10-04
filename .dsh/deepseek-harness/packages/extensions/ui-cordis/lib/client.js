@@ -112,8 +112,8 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\extensions\ui-cordis\src\client\CordisRunRow.module.css.mjs
-		const css$2 = ".mzyrga_card{flex-direction:column;gap:8px;display:flex}.mzyrga_row{align-items:center;min-height:32px;display:flex}.mzyrga_icon{color:var(--dsw-alias-state-business-primary);flex:none;margin-right:8px;display:inline-flex}.mzyrga_title{color:var(--dsw-alias-state-business-primary);flex:none;font-size:14px;font-weight:500;line-height:24px}.mzyrga_separator{background:var(--dsw-alias-state-business-primary);border-radius:50%;flex:none;width:2px;height:2px;margin:0 8px}.mzyrga_summary,.mzyrga_error{min-width:0;color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:13px;line-height:24px;overflow:hidden}.mzyrga_error{color:var(--dsw-alias-state-error-primary)}.mzyrga_status{color:var(--dsw-alias-label-caption);flex:none;margin-left:8px;font-size:12px;line-height:24px}.mzyrga_card[data-cordis-status=awaiting-approval] .mzyrga_status,.mzyrga_card[data-cordis-status=client-pending] .mzyrga_status{color:var(--dsw-alias-state-warn-label)}.mzyrga_card[data-cordis-status=running] .mzyrga_status{color:var(--dsw-alias-state-success-primary)}.mzyrga_card[data-cordis-status=failed] .mzyrga_status{color:var(--dsw-alias-state-error-primary)}.mzyrga_inspect{width:24px;height:24px;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:0;background:0 0;border:none;border-radius:999px;justify-content:center;align-items:center;margin-left:4px;padding:0;display:inline-flex}.mzyrga_card:hover .mzyrga_inspect,.mzyrga_inspect:focus-visible{opacity:1}.mzyrga_inspect:hover{background:var(--dsw-alias-interactive-bg-hover)}.mzyrga_message{background:var(--dsw-alias-button-ghost-active-fill);color:var(--dsw-alias-label-tertiary);border-radius:8px;padding:8px 12px;font-size:12px;line-height:18px}.mzyrga_business{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);border-radius:12px;min-width:0;overflow:hidden}.mzyrga_output{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-secondary);font:var(--dsw-font-markdown-code-block-small);white-space:pre-wrap;overflow-wrap:anywhere;border-radius:8px;margin:0;padding:10px 12px;overflow:auto}.mzyrga_business .mzyrga_output{border:none;border-radius:0}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\extensions\ui-cordis\src\client\CordisRunRow.module.css.mjs
+		const css$2 = ".NCypxq_card{flex-direction:column;gap:8px;display:flex}.NCypxq_row{align-items:center;min-height:32px;display:flex}.NCypxq_icon{color:var(--dsw-alias-state-business-primary);flex:none;margin-right:8px;display:inline-flex}.NCypxq_title{color:var(--dsw-alias-state-business-primary);flex:none;font-size:14px;font-weight:500;line-height:24px}.NCypxq_separator{corner-shape:round;background:var(--dsw-alias-state-business-primary);border-radius:50%;flex:none;width:2px;height:2px;margin:0 8px}.NCypxq_summary,.NCypxq_error{min-width:0;color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:13px;line-height:24px;overflow:hidden}.NCypxq_error{color:var(--dsw-alias-state-error-primary)}.NCypxq_status{color:var(--dsw-alias-label-caption);flex:none;margin-left:8px;font-size:12px;line-height:24px}.NCypxq_card[data-cordis-status=awaiting-approval] .NCypxq_status,.NCypxq_card[data-cordis-status=client-pending] .NCypxq_status{color:var(--dsw-alias-state-warn-label)}.NCypxq_card[data-cordis-status=running] .NCypxq_status{color:var(--dsw-alias-state-success-primary)}.NCypxq_card[data-cordis-status=failed] .NCypxq_status{color:var(--dsw-alias-state-error-primary)}.NCypxq_inspect{corner-shape:round;width:24px;height:24px;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:0;background:0 0;border:none;border-radius:999px;justify-content:center;align-items:center;margin-left:4px;padding:0;display:inline-flex}.NCypxq_card:hover .NCypxq_inspect,.NCypxq_inspect:focus-visible{opacity:1}.NCypxq_inspect:hover{background:var(--dsw-alias-interactive-bg-hover)}.NCypxq_message{background:var(--dsw-alias-button-ghost-active-fill);color:var(--dsw-alias-label-tertiary);border-radius:8px;padding:8px 12px;font-size:12px;line-height:18px}.NCypxq_business{border:.5px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-bg-base);border-radius:12px;min-width:0;overflow:hidden}.NCypxq_output{border:.5px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-secondary);font:var(--dsw-font-markdown-code-block-small);white-space:pre-wrap;overflow-wrap:anywhere;border-radius:8px;margin:0;padding:10px 12px;overflow:auto}.NCypxq_business .NCypxq_output{border:none;border-radius:0}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-cordis/CordisRunRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -123,24 +123,65 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var CordisRunRow_module_css_default = {
-			"business": "mzyrga_business",
-			"card": "mzyrga_card",
-			"error": "mzyrga_error",
-			"icon": "mzyrga_icon",
-			"inspect": "mzyrga_inspect",
-			"message": "mzyrga_message",
-			"output": "mzyrga_output",
-			"row": "mzyrga_row",
-			"separator": "mzyrga_separator",
-			"status": "mzyrga_status",
-			"summary": "mzyrga_summary",
-			"title": "mzyrga_title"
+			"business": "NCypxq_business",
+			"card": "NCypxq_card",
+			"error": "NCypxq_error",
+			"icon": "NCypxq_icon",
+			"inspect": "NCypxq_inspect",
+			"message": "NCypxq_message",
+			"output": "NCypxq_output",
+			"row": "NCypxq_row",
+			"separator": "NCypxq_separator",
+			"status": "NCypxq_status",
+			"summary": "NCypxq_summary",
+			"title": "NCypxq_title"
 		};
+		//#endregion
+		//#region lib/types/client/CordisPreparingRow.js
+		/* v8 ignore next -- Non-expandable rows never invoke DisclosureRow's required toggle callback. */
+		const noop = () => void 0;
+		/**
+		* Render a Cordis-owned prefix without disclosure.
+		* @param props - Cordis prefix, styling, and locale.
+		* @returns the preparation row.
+		*/
+		function CordisPreparingRow({ toolName, t, icon, title, className, rowClassName, titleClassName }) {
+			return (0, react_jsx_runtime.jsx)("div", {
+				"data-tool": toolName,
+				"data-state": "preparing",
+				"aria-label": t("a11y.preparing"),
+				children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.DisclosureRow, {
+					icon,
+					title,
+					className,
+					rowClassName,
+					titleClassName,
+					open: false,
+					expandable: false,
+					onToggle: noop,
+					running: true
+				})
+			});
+		}
 		//#endregion
 		//#region lib/types/client/CordisActionRow.js
 		/** Localized cards for `cordis_stop` and `cordis_undefine`. */
 		/** Render one Stop or Remove call with Cordis-owned localized copy. */
-		function CordisActionRow({ callId, toolName, block, inspect, t }) {
+		function CordisActionRow(props) {
+			if (props.phase === "preparing") {
+				const remove = props.toolName === "cordis_undefine";
+				return (0, react_jsx_runtime.jsx)(CordisPreparingRow, {
+					...props,
+					icon: remove ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 }) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconStopFillRegular, { size: 14 }),
+					title: props.t(remove ? "row.removeTitle" : "row.stopTitle"),
+					className: CordisRunRow_module_css_default.card,
+					rowClassName: CordisRunRow_module_css_default.row,
+					titleClassName: CordisRunRow_module_css_default.title
+				});
+			}
+			return (0, react_jsx_runtime.jsx)(StartedCordisActionRow, { ...props });
+		}
+		function StartedCordisActionRow({ callId, toolName, block, inspect, t }) {
 			const card = cordisActionCard(block);
 			const remove = toolName === "cordis_undefine";
 			const summary = card.errorSummary ?? card.pluginId ?? callId;
@@ -153,7 +194,7 @@ window.__ModuleLoader__.load({
 					children: [
 						(0, react_jsx_runtime.jsx)("span", {
 							className: CordisRunRow_module_css_default.icon,
-							children: card.state === "error" ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "error" }) : card.state === "stopped" ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "warning" }) : remove ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, { size: 14 }) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconStopFill16, { size: 14 })
+							children: remove ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 }) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconStopFillRegular, { size: 14 })
 						}),
 						(0, react_jsx_runtime.jsx)("span", {
 							className: CordisRunRow_module_css_default.title,
@@ -172,7 +213,7 @@ window.__ModuleLoader__.load({
 							className: CordisRunRow_module_css_default.inspect,
 							"aria-label": t("action.inspect"),
 							onClick: inspect,
-							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {})
+							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutlineRegular, {})
 						})
 					]
 				}), card.output !== null && (0, react_jsx_runtime.jsx)("pre", {
@@ -207,8 +248,8 @@ window.__ModuleLoader__.load({
 			return loaded.some((live) => live.pluginId === row.pluginId && live.packageId === packageId && live.pluginRunId === run.pluginRunId) ? "running" : "client-pending";
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\extensions\ui-cordis\src\client\CordisDefineRow.module.css.mjs
-		const css$1 = ".VfAfiG_card{flex-direction:column;display:flex}.VfAfiG_card .VfAfiG_title,.VfAfiG_card .VfAfiG_chevron{color:var(--dsw-alias-state-business-primary)}.VfAfiG_title{flex:none;font-size:14px;font-weight:500;line-height:24px}.VfAfiG_row{gap:0}.VfAfiG_separator{background:var(--dsw-alias-state-business-primary);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.VfAfiG_name{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-label-secondary);flex:none;font-size:14px;line-height:24px;overflow:hidden}.VfAfiG_purpose{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;margin-left:8px;font-size:13px;line-height:24px;overflow:hidden}.VfAfiG_errorSummary{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-state-error-primary);flex:auto;font-size:14px;line-height:24px;overflow:hidden}.VfAfiG_requestError{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-state-error-primary);flex:none;margin-left:8px;font-size:12px;line-height:24px;overflow:hidden}.VfAfiG_readout{flex:none;align-items:center;margin-left:8px;display:inline-flex}.VfAfiG_panelHint{color:var(--dsw-alias-label-caption);margin:4px 0 2px 4px;font-size:11px;line-height:16px}.VfAfiG_statusLabel{color:var(--dsw-alias-label-caption);font-size:12px;line-height:24px}.VfAfiG_approvalPrompt{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-label-secondary);flex:none;margin-left:8px;font-size:12px;line-height:24px;overflow:hidden}.VfAfiG_notice{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-label-caption);flex:none;margin-left:8px;font-size:12px;line-height:24px;overflow:hidden}.VfAfiG_switch{height:22px;padding:0 8px;font-size:12px}.VfAfiG_card[data-terminal] .VfAfiG_title,.VfAfiG_card[data-terminal] .VfAfiG_name,.VfAfiG_card[data-terminal] .VfAfiG_purpose,.VfAfiG_card[data-terminal] .VfAfiG_statusLabel{color:var(--dsw-alias-label-caption)}.VfAfiG_card[data-terminal] .VfAfiG_separator{background:var(--dsw-alias-label-caption)}.VfAfiG_bodyWrap{flex-direction:column;display:flex}.VfAfiG_sourceCard{flex-direction:column;margin:4px 0 4px 4px;display:flex}.VfAfiG_sourceTabs{border-bottom:1px solid var(--dsw-alias-border-l2);height:32px;display:flex}.VfAfiG_sourceTab{color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xs-13);background:0 0;border:0;padding:0 10px;position:relative}.VfAfiG_sourceTab:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.VfAfiG_sourceTab:disabled{cursor:default;opacity:.4}.VfAfiG_sourceTabActive{color:var(--dsw-alias-state-business-primary)}.VfAfiG_sourceTabActive:after{background:var(--dsw-alias-state-business-primary);content:\"\";border-radius:1px 1px 0 0;height:2px;position:absolute;bottom:0;left:10px;right:10px}.VfAfiG_sourceTab:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}.VfAfiG_sourcePanel{max-height:260px;overflow:auto}.VfAfiG_sourceCode{margin:0}.VfAfiG_codeSection{flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:auto}.VfAfiG_sectionLabel{color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:2px 0;font-size:11px;font-weight:500;line-height:16px}.VfAfiG_output{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);border-radius:8px;margin:0;padding:8px 10px}.VfAfiG_output[data-error]{color:var(--dsw-alias-state-error-primary)}.VfAfiG_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.VfAfiG_card:hover .VfAfiG_inspectButton,.VfAfiG_inspectButton:focus-visible{opacity:1}.VfAfiG_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.VfAfiG_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.VfAfiG_inspectButton{transition:none}}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\extensions\ui-cordis\src\client\CordisDefineRow.module.css.mjs
+		const css$1 = ".IMrsvG_card{flex-direction:column;display:flex}.IMrsvG_card .IMrsvG_title,.IMrsvG_card .IMrsvG_chevron{color:var(--dsw-alias-state-business-primary)}.IMrsvG_title{flex:none;font-size:14px;font-weight:500;line-height:24px}.IMrsvG_row{gap:0}.IMrsvG_separator{background:var(--dsw-alias-state-business-primary);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.IMrsvG_name{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-label-secondary);flex:none;font-size:14px;line-height:24px;overflow:hidden}.IMrsvG_purpose{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;margin-left:8px;font-size:13px;line-height:24px;overflow:hidden}.IMrsvG_errorSummary{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-state-error-primary);flex:auto;font-size:14px;line-height:24px;overflow:hidden}.IMrsvG_requestError{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-state-error-primary);flex:none;margin-left:8px;font-size:12px;line-height:24px;overflow:hidden}.IMrsvG_readout{flex:none;align-items:center;margin-left:8px;display:inline-flex}.IMrsvG_panelHint{color:var(--dsw-alias-label-caption);margin:4px 0 2px 4px;font-size:11px;line-height:16px}.IMrsvG_statusLabel{color:var(--dsw-alias-label-caption);font-size:12px;line-height:24px}.IMrsvG_approvalPrompt{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-label-secondary);flex:none;margin-left:8px;font-size:12px;line-height:24px;overflow:hidden}.IMrsvG_notice{text-overflow:ellipsis;white-space:nowrap;max-width:40%;color:var(--dsw-alias-label-caption);flex:none;margin-left:8px;font-size:12px;line-height:24px;overflow:hidden}.IMrsvG_switch{height:22px;padding:0 8px;font-size:12px}.IMrsvG_card[data-terminal] .IMrsvG_title,.IMrsvG_card[data-terminal] .IMrsvG_name,.IMrsvG_card[data-terminal] .IMrsvG_purpose,.IMrsvG_card[data-terminal] .IMrsvG_statusLabel{color:var(--dsw-alias-label-caption)}.IMrsvG_card[data-terminal] .IMrsvG_separator{background:var(--dsw-alias-label-caption)}.IMrsvG_bodyWrap{flex-direction:column;display:flex}.IMrsvG_sourceCard{flex-direction:column;margin:4px 0 4px 4px;display:flex}.IMrsvG_sourceTabs{border-bottom:.5px solid var(--dsw-alias-border-l2);height:32px;display:flex}.IMrsvG_sourceTab{color:var(--dsw-alias-label-tertiary);cursor:pointer;font:var(--dsw-font-xs-13);background:0 0;border:0;padding:0 10px;position:relative}.IMrsvG_sourceTab:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.IMrsvG_sourceTab:disabled{cursor:default;opacity:.4}.IMrsvG_sourceTabActive{color:var(--dsw-alias-state-business-primary)}.IMrsvG_sourceTabActive:after{background:var(--dsw-alias-state-business-primary);content:\"\";border-radius:1px 1px 0 0;height:2px;position:absolute;bottom:0;left:10px;right:10px}.IMrsvG_sourceTab:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}.IMrsvG_sourcePanel{max-height:260px;overflow:auto}.IMrsvG_sourceCode{margin:0}.IMrsvG_codeSection{flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:auto}.IMrsvG_sectionLabel{color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:2px 0;font-size:11px;font-weight:500;line-height:16px}.IMrsvG_output{border:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);border-radius:8px;margin:0;padding:8px 10px}.IMrsvG_output[data-error]{color:var(--dsw-alias-state-error-primary)}.IMrsvG_inspectButton{border:.5px solid var(--dsw-alias-border-l4);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.IMrsvG_card:hover .IMrsvG_inspectButton,.IMrsvG_inspectButton:focus-visible{opacity:1}.IMrsvG_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.IMrsvG_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.IMrsvG_inspectButton{transition:none}}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-cordis/CordisDefineRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -218,33 +259,33 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var CordisDefineRow_module_css_default = {
-			"approvalPrompt": "VfAfiG_approvalPrompt",
-			"bodyWrap": "VfAfiG_bodyWrap",
-			"card": "VfAfiG_card",
-			"chevron": "VfAfiG_chevron",
-			"codeSection": "VfAfiG_codeSection",
-			"errorSummary": "VfAfiG_errorSummary",
-			"inspectButton": "VfAfiG_inspectButton",
-			"name": "VfAfiG_name",
-			"notice": "VfAfiG_notice",
-			"output": "VfAfiG_output",
-			"panelHint": "VfAfiG_panelHint",
-			"purpose": "VfAfiG_purpose",
-			"readout": "VfAfiG_readout",
-			"requestError": "VfAfiG_requestError",
-			"row": "VfAfiG_row",
-			"sectionLabel": "VfAfiG_sectionLabel",
-			"separator": "VfAfiG_separator",
-			"sourceCard": "VfAfiG_sourceCard",
-			"sourceCode": "VfAfiG_sourceCode",
-			"sourcePanel": "VfAfiG_sourcePanel",
-			"sourceTab": "VfAfiG_sourceTab",
-			"sourceTabActive": "VfAfiG_sourceTabActive",
-			"sourceTabs": "VfAfiG_sourceTabs",
-			"statusLabel": "VfAfiG_statusLabel",
-			"switch": "VfAfiG_switch",
-			"title": "VfAfiG_title",
-			"visuallyHidden": "VfAfiG_visuallyHidden"
+			"approvalPrompt": "IMrsvG_approvalPrompt",
+			"bodyWrap": "IMrsvG_bodyWrap",
+			"card": "IMrsvG_card",
+			"chevron": "IMrsvG_chevron",
+			"codeSection": "IMrsvG_codeSection",
+			"errorSummary": "IMrsvG_errorSummary",
+			"inspectButton": "IMrsvG_inspectButton",
+			"name": "IMrsvG_name",
+			"notice": "IMrsvG_notice",
+			"output": "IMrsvG_output",
+			"panelHint": "IMrsvG_panelHint",
+			"purpose": "IMrsvG_purpose",
+			"readout": "IMrsvG_readout",
+			"requestError": "IMrsvG_requestError",
+			"row": "IMrsvG_row",
+			"sectionLabel": "IMrsvG_sectionLabel",
+			"separator": "IMrsvG_separator",
+			"sourceCard": "IMrsvG_sourceCard",
+			"sourceCode": "IMrsvG_sourceCode",
+			"sourcePanel": "IMrsvG_sourcePanel",
+			"sourceTab": "IMrsvG_sourceTab",
+			"sourceTabActive": "IMrsvG_sourceTabActive",
+			"sourceTabs": "IMrsvG_sourceTabs",
+			"statusLabel": "IMrsvG_statusLabel",
+			"switch": "IMrsvG_switch",
+			"title": "IMrsvG_title",
+			"visuallyHidden": "IMrsvG_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/CordisDefineRow.js
@@ -263,15 +304,19 @@ window.__ModuleLoader__.load({
 				default: return null;
 			}
 		}
-		function leadingFor(state) {
-			switch (state) {
-				case "error": return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "error" });
-				case "stopped": return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "warning" });
-				default: return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutline16, { size: 14 });
-			}
-		}
 		/** Render one immutable Package definition. */
-		function CordisDefineRow({ callId, block, inspect, useInventory, useLoaded, t }) {
+		function CordisDefineRow(props) {
+			if (props.phase === "preparing") return (0, react_jsx_runtime.jsx)(CordisPreparingRow, {
+				...props,
+				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 }),
+				title: props.t("row.defineTitle"),
+				className: CordisDefineRow_module_css_default.card,
+				rowClassName: CordisDefineRow_module_css_default.row,
+				titleClassName: CordisDefineRow_module_css_default.title
+			});
+			return (0, react_jsx_runtime.jsx)(StartedCordisDefineRow, { ...props });
+		}
+		function StartedCordisDefineRow({ callId, block, inspect, useInventory, useLoaded, t }) {
 			const card = cordisDefineCard(block);
 			const inventory = useInventory((snapshot) => snapshot);
 			const loaded = useLoaded((snapshot) => snapshot);
@@ -302,7 +347,7 @@ window.__ModuleLoader__.load({
 					rowClassName: CordisDefineRow_module_css_default.row,
 					titleClassName: CordisDefineRow_module_css_default.title,
 					chevronClassName: CordisDefineRow_module_css_default.chevron,
-					icon: leadingFor(card.state),
+					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 }),
 					title: t("row.defineTitle"),
 					open,
 					expandable,
@@ -363,6 +408,11 @@ window.__ModuleLoader__.load({
 									role: "tabpanel",
 									"aria-labelledby": `${sourcePanelId}-${activeSource}`,
 									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.CodeBlock, {
+										toolbarLabels: {
+											codeLabel: t("codeBlock.title"),
+											wrapLabel: t("codeBlock.wrap"),
+											unwrapLabel: t("codeBlock.unwrap")
+										},
 										code: activeCode,
 										lang: "javascript",
 										copyLabel: t("body.copy"),
@@ -390,7 +440,7 @@ window.__ModuleLoader__.load({
 								type: "button",
 								className: CordisDefineRow_module_css_default.inspectButton,
 								onClick: inspect,
-								children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), t("action.inspect")]
+								children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutlineRegular, {}), t("action.inspect")]
 							})
 						]
 					})
@@ -460,7 +510,18 @@ window.__ModuleLoader__.load({
 			superseded: "status.superseded"
 		};
 		/** Render one activation result and, when eligible, its Package-owned view. */
-		function CordisRunRow({ callId, block, inspect, renderSlot, useInventory, useLoaded, useRunCards, useActiveRuns, onObserveRunCard, t }) {
+		function CordisRunRow(props) {
+			if (props.phase === "preparing") return (0, react_jsx_runtime.jsx)(CordisPreparingRow, {
+				...props,
+				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 }),
+				title: props.t("row.runTitle"),
+				className: CordisRunRow_module_css_default.card,
+				rowClassName: CordisRunRow_module_css_default.row,
+				titleClassName: CordisRunRow_module_css_default.title
+			});
+			return (0, react_jsx_runtime.jsx)(StartedCordisRunRow, { ...props });
+		}
+		function StartedCordisRunRow({ callId, block, inspect, renderSlot, useInventory, useLoaded, useRunCards, useActiveRuns, onObserveRunCard, t }) {
 			const card = cordisRunCard(block);
 			const inventory = useInventory((snapshot) => snapshot);
 			const loaded = useLoaded((snapshot) => snapshot);
@@ -506,7 +567,7 @@ window.__ModuleLoader__.load({
 						children: [
 							(0, react_jsx_runtime.jsx)("span", {
 								className: CordisRunRow_module_css_default.icon,
-								children: card.state === "error" ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "error" }) : card.state === "stopped" ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "warning" }) : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutline16, { size: 14 })
+								children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 })
 							}),
 							(0, react_jsx_runtime.jsx)("span", {
 								className: CordisRunRow_module_css_default.title,
@@ -529,7 +590,7 @@ window.__ModuleLoader__.load({
 								className: CordisRunRow_module_css_default.inspect,
 								"aria-label": t("action.inspect"),
 								onClick: inspect,
-								children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {})
+								children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutlineRegular, {})
 							})
 						]
 					}),
@@ -568,8 +629,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:C:\Users\Administrator\AppData\Local\Temp\dsh-repair-cd5ef814\packages\extensions\ui-cordis\src\client\CordisPanel.module.css.mjs
-		const css = ".gwtXPW_layer{flex:none;align-items:center;width:100%;height:42px;margin:8px 0 0;display:flex;position:relative}.gwtXPW_footerButtons{align-items:center;width:100%;display:flex}.gwtXPW_badge{width:calc(100% + 4px);height:42px;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:none;border-radius:12px;align-items:center;gap:8px;margin:0 -2px;padding:0 10px 0 8px;font-family:inherit;font-size:14px;display:inline-flex;overflow:hidden}.gwtXPW_badge:hover,.gwtXPW_badge[data-active]{background:var(--dsw-alias-interactive-bg-hover)}.gwtXPW_badgeLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.gwtXPW_badgeCount{color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:12px;line-height:16px}.gwtXPW_layer.gwtXPW_rail{width:36px;height:36px;margin:0}.gwtXPW_rail .gwtXPW_badge{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;padding:0}.gwtXPW_rail .gwtXPW_footerButtons{flex-direction:column;gap:2px}.gwtXPW_panel{z-index:30;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:420px;max-width:calc(100vw - 24px);max-height:60vh;box-shadow:var(--dsw-shadow-lv3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;display:flex;position:fixed;overflow:hidden}.gwtXPW_header{box-sizing:border-box;flex:none;justify-content:space-between;align-items:center;min-height:44px;padding:10px 12px;display:flex}.gwtXPW_body{flex:1;min-height:0;padding:0 12px 12px;overflow-y:auto}.gwtXPW_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:20px}.gwtXPW_note,.gwtXPW_readError{color:var(--dsw-alias-label-tertiary);margin:4px 0;font-size:12px;line-height:18px}.gwtXPW_readError{color:var(--dsw-alias-state-error-primary)}.gwtXPW_group{color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;margin:8px 0;font-size:11px;font-weight:500;line-height:16px}.gwtXPW_rows{flex-direction:column;gap:8px;margin:0;padding:0;list-style:none;display:flex}.gwtXPW_row{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:8px;padding:14px 12px 10px;display:flex}.gwtXPW_row[data-cordis-awaiting]{border-color:var(--dsw-alias-state-business-primary)}.gwtXPW_rowHead{align-items:center;gap:8px;display:flex}.gwtXPW_rowId{color:var(--dsw-alias-label-tertiary);font-family:var(--dsh-font-mono,monospace);flex:none;font-size:11px;line-height:20px}.gwtXPW_rowName{min-width:0;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:13px;font-weight:500;line-height:20px;overflow:hidden}.gwtXPW_rowStatus{background:var(--dsw-alias-button-ghost-active-fill);height:20px;color:var(--dsw-alias-label-caption);border-radius:10px;flex:none;align-items:center;padding:0 6px;font-size:11px;line-height:20px;display:inline-flex}.gwtXPW_row[data-cordis-status=idle] .gwtXPW_rowStatus{background:var(--dsw-alias-button-ghost-active-fill);color:var(--dsw-alias-label-caption)}.gwtXPW_row[data-cordis-status=awaiting-approval] .gwtXPW_rowStatus,.gwtXPW_row[data-cordis-status=client-pending] .gwtXPW_rowStatus{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label)}.gwtXPW_row[data-cordis-status=failed] .gwtXPW_rowStatus{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}.gwtXPW_row[data-cordis-status=running] .gwtXPW_rowStatus{background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary)}.gwtXPW_rowDetail{align-items:center;gap:8px;min-height:28px;display:flex}.gwtXPW_versionPicker{color:var(--dsw-alias-label-caption);align-items:center;gap:8px;font-size:11px;line-height:18px;display:flex}.gwtXPW_versionPicker select{border:1px solid var(--dsw-alias-border-l2);min-width:0;height:26px;color:var(--dsw-alias-label-secondary);font:inherit;background:0 0;border-radius:7px;flex:1;padding:0 8px}.gwtXPW_rowPurpose{min-width:0;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;line-height:18px;overflow:hidden}.gwtXPW_rowError{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}.gwtXPW_rowActions{flex:none;align-items:center;gap:10px;display:flex}.gwtXPW_transition{min-width:0;color:var(--dsw-alias-label-caption);align-items:center;gap:8px;font-size:11px;line-height:18px;display:flex}.gwtXPW_transitionActions{gap:6px;margin-left:auto;display:flex}.gwtXPW_transitionActions button{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border-radius:999px;padding:2px 8px}.gwtXPW_transitionActions button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.gwtXPW_transitionActions button:disabled{opacity:.4;cursor:default}.gwtXPW_activeVersion{color:var(--dsw-alias-label-caption);font-size:11px;line-height:16px}.gwtXPW_actionButton{width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;justify-content:center;align-items:center;padding:0;display:inline-flex}.gwtXPW_actionButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}.gwtXPW_actionButton:disabled{opacity:.4;cursor:default}.gwtXPW_doubleCheck{width:17px;height:14px;display:inline-block;position:relative}.gwtXPW_doubleCheck svg{position:absolute;top:1px}.gwtXPW_doubleCheck svg:first-child{opacity:.7;left:0}.gwtXPW_doubleCheck svg:last-child{left:5px}";
+		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\extensions\ui-cordis\src\client\CordisPanel.module.css.mjs
+		const css = "._qYKaG_layer{flex:none;align-items:center;width:100%;height:42px;margin:8px 0 0;display:flex;position:relative}._qYKaG_footerButtons{align-items:center;width:100%;display:flex}._qYKaG_badge{width:calc(100% + 4px);height:42px;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:none;border-radius:12px;align-items:center;gap:8px;margin:0 -2px;padding:0 10px 0 8px;font-family:inherit;font-size:14px;display:inline-flex;overflow:hidden}._qYKaG_badge:hover,._qYKaG_badge[data-active]{background:var(--dsw-alias-interactive-bg-hover)}._qYKaG_badgeLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}._qYKaG_badgeCount{color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:12px;line-height:16px}._qYKaG_layer._qYKaG_rail{width:36px;height:36px;margin:0}._qYKaG_rail ._qYKaG_badge{corner-shape:round;border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;padding:0}._qYKaG_rail ._qYKaG_footerButtons{flex-direction:column;gap:2px}._qYKaG_panel{isolation:isolate;z-index:30;--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);width:420px;max-width:calc(100vw - 24px);max-height:60vh;box-shadow:var(--dsw-elevation-prominent);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border:0;border-radius:12px;flex-direction:column;display:flex;position:fixed;overflow:hidden}._qYKaG_panel:before{z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);content:\"\";pointer-events:none;position:absolute;inset:0}._qYKaG_header{box-sizing:border-box;flex:none;justify-content:space-between;align-items:center;min-height:44px;padding:10px 12px;display:flex}._qYKaG_body{flex:1;min-height:0;padding:0 12px 12px;overflow-y:auto}._qYKaG_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:20px}._qYKaG_note,._qYKaG_readError{color:var(--dsw-alias-label-tertiary);margin:4px 0;font-size:12px;line-height:18px}._qYKaG_readError{color:var(--dsw-alias-state-error-primary)}._qYKaG_group{color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;margin:8px 0;font-size:11px;font-weight:500;line-height:16px}._qYKaG_rows{flex-direction:column;gap:8px;margin:0;padding:0;list-style:none;display:flex}._qYKaG_row{border:.5px solid var(--dsw-alias-border-l4);border-radius:12px;flex-direction:column;gap:8px;padding:14px 12px 10px;display:flex}._qYKaG_row[data-cordis-awaiting]{border-color:var(--dsw-alias-state-business-primary)}._qYKaG_rowHead{align-items:center;gap:8px;display:flex}._qYKaG_rowId{color:var(--dsw-alias-label-tertiary);font-family:var(--dsh-font-mono,monospace);flex:none;font-size:11px;line-height:20px}._qYKaG_rowName{min-width:0;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:13px;font-weight:500;line-height:20px;overflow:hidden}._qYKaG_rowStatus{height:20px;color:var(--dsw-alias-label-caption);flex:none;align-items:center;gap:4px;font-size:11px;line-height:20px;display:inline-flex}._qYKaG_rowDetail{align-items:center;gap:8px;min-height:28px;display:flex}._qYKaG_versionPicker{color:var(--dsw-alias-label-caption);align-items:center;gap:8px;font-size:11px;line-height:18px;display:flex}._qYKaG_versionPicker select{border:.5px solid var(--dsw-alias-border-l3);min-width:0;height:26px;color:var(--dsw-alias-label-secondary);font:inherit;background:0 0;border-radius:7px;flex:1;padding:0 8px}._qYKaG_rowPurpose{min-width:0;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;line-height:18px;overflow:hidden}._qYKaG_rowError{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}._qYKaG_rowActions{flex:none;align-items:center;gap:10px;display:flex}._qYKaG_transition{min-width:0;color:var(--dsw-alias-label-caption);align-items:center;gap:8px;font-size:11px;line-height:18px;display:flex}._qYKaG_transitionActions{gap:6px;margin-left:auto;display:flex}._qYKaG_transitionActions button{border:.5px solid var(--dsw-alias-border-l3);corner-shape:round;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border-radius:999px;padding:2px 8px}._qYKaG_transitionActions button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._qYKaG_transitionActions button:disabled{opacity:.4;cursor:default}._qYKaG_activeVersion{color:var(--dsw-alias-label-caption);font-size:11px;line-height:16px}._qYKaG_actionButton{corner-shape:round;width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;justify-content:center;align-items:center;padding:0;display:inline-flex}._qYKaG_actionButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}._qYKaG_actionButton:disabled{opacity:.4;cursor:default}._qYKaG_doubleCheck{width:17px;height:14px;display:inline-block;position:relative}._qYKaG_doubleCheck svg{position:absolute;top:1px}._qYKaG_doubleCheck svg:first-child{opacity:.7;left:0}._qYKaG_doubleCheck svg:last-child{left:5px}";
 		const tagId = "@deepseek-ai/dsh-client-ui-cordis/CordisPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -579,35 +640,35 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var CordisPanel_module_css_default = {
-			"actionButton": "gwtXPW_actionButton",
-			"activeVersion": "gwtXPW_activeVersion",
-			"badge": "gwtXPW_badge",
-			"badgeCount": "gwtXPW_badgeCount",
-			"badgeLabel": "gwtXPW_badgeLabel",
-			"body": "gwtXPW_body",
-			"doubleCheck": "gwtXPW_doubleCheck",
-			"footerButtons": "gwtXPW_footerButtons",
-			"group": "gwtXPW_group",
-			"header": "gwtXPW_header",
-			"layer": "gwtXPW_layer",
-			"note": "gwtXPW_note",
-			"panel": "gwtXPW_panel",
-			"rail": "gwtXPW_rail",
-			"readError": "gwtXPW_readError",
-			"row": "gwtXPW_row",
-			"rowActions": "gwtXPW_rowActions",
-			"rowDetail": "gwtXPW_rowDetail",
-			"rowError": "gwtXPW_rowError",
-			"rowHead": "gwtXPW_rowHead",
-			"rowId": "gwtXPW_rowId",
-			"rowName": "gwtXPW_rowName",
-			"rowPurpose": "gwtXPW_rowPurpose",
-			"rowStatus": "gwtXPW_rowStatus",
-			"rows": "gwtXPW_rows",
-			"title": "gwtXPW_title",
-			"transition": "gwtXPW_transition",
-			"transitionActions": "gwtXPW_transitionActions",
-			"versionPicker": "gwtXPW_versionPicker"
+			"actionButton": "_qYKaG_actionButton",
+			"activeVersion": "_qYKaG_activeVersion",
+			"badge": "_qYKaG_badge",
+			"badgeCount": "_qYKaG_badgeCount",
+			"badgeLabel": "_qYKaG_badgeLabel",
+			"body": "_qYKaG_body",
+			"doubleCheck": "_qYKaG_doubleCheck",
+			"footerButtons": "_qYKaG_footerButtons",
+			"group": "_qYKaG_group",
+			"header": "_qYKaG_header",
+			"layer": "_qYKaG_layer",
+			"note": "_qYKaG_note",
+			"panel": "_qYKaG_panel",
+			"rail": "_qYKaG_rail",
+			"readError": "_qYKaG_readError",
+			"row": "_qYKaG_row",
+			"rowActions": "_qYKaG_rowActions",
+			"rowDetail": "_qYKaG_rowDetail",
+			"rowError": "_qYKaG_rowError",
+			"rowHead": "_qYKaG_rowHead",
+			"rowId": "_qYKaG_rowId",
+			"rowName": "_qYKaG_rowName",
+			"rowPurpose": "_qYKaG_rowPurpose",
+			"rowStatus": "_qYKaG_rowStatus",
+			"rows": "_qYKaG_rows",
+			"title": "_qYKaG_title",
+			"transition": "_qYKaG_transition",
+			"transitionActions": "_qYKaG_transitionActions",
+			"versionPicker": "_qYKaG_versionPicker"
 		};
 		//#endregion
 		//#region lib/types/client/CordisPanel.js
@@ -636,6 +697,16 @@ window.__ModuleLoader__.load({
 			if (listed?.activeRun === void 0) return "idle";
 			return cordisVisibleStatus(listed, listed.activeRun.packageId, loaded);
 		}
+		function panelDotState(status, busy) {
+			if (busy) return "ongoing";
+			switch (status) {
+				case "idle": return "idle";
+				case "client-pending": return "ongoing";
+				case "running": return "done";
+				case "awaiting-approval": return "warning";
+				case "failed": return "error";
+			}
+		}
 		function blockingFirst(rows) {
 			return [...rows.filter((row) => row.activity?.phase === "awaiting-approval"), ...rows.filter((row) => row.activity?.phase !== "awaiting-approval")];
 		}
@@ -657,7 +728,7 @@ window.__ModuleLoader__.load({
 			return (0, react_jsx_runtime.jsxs)("span", {
 				className: CordisPanel_module_css_default.doubleCheck,
 				"aria-hidden": true,
-				children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, { size: 12 }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, { size: 12 })]
+				children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 12 }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 12 })]
 			});
 		}
 		/** Render the inventory panel and its unified footer action. */
@@ -667,7 +738,7 @@ window.__ModuleLoader__.load({
 			const errors = useRunErrors((snapshot) => snapshot);
 			const loaded = useLoaded((snapshot) => snapshot);
 			const renderFailures = useRenderFailures((snapshot) => snapshot);
-			const current = useSessions((state) => state.current);
+			const current = useSessions((state) => Object.values(state.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id);
 			const [open, setOpen] = (0, react.useState)(false);
 			const [selected, setSelected] = (0, react.useState)({});
 			const [pending, setPending] = (0, react.useState)(/* @__PURE__ */ new Set());
@@ -785,9 +856,9 @@ window.__ModuleLoader__.load({
 									className: CordisPanel_module_css_default.rowName,
 									children: name
 								}),
-								(0, react_jsx_runtime.jsx)("span", {
+								(0, react_jsx_runtime.jsxs)("span", {
 									className: CordisPanel_module_css_default.rowStatus,
-									children: t(STATUS_LABELS[status])
+									children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: panelDotState(status, busy) }), (0, react_jsx_runtime.jsx)("span", { children: t(STATUS_LABELS[status]) })]
 								})
 							]
 						}),
@@ -827,7 +898,7 @@ window.__ModuleLoader__.load({
 													setOpen(false);
 												});
 											},
-											children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, { size: 14 })
+											children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 })
 										}),
 										(0, react_jsx_runtime.jsx)(RowAction, {
 											label: t("action.approvePlugin"),
@@ -851,7 +922,7 @@ window.__ModuleLoader__.load({
 													setOpen(false);
 												});
 											},
-											children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseOutline16, { size: 14 })
+											children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 14 })
 										})
 									] }),
 									awaiting === void 0 && listed !== void 0 && selectedPackageId !== void 0 && listed.activeRun === void 0 && (0, react_jsx_runtime.jsx)(RowAction, {
@@ -867,7 +938,7 @@ window.__ModuleLoader__.load({
 												hasClientHalf: selectedPackage?.hasClientHalf === true
 											}));
 										},
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutlineRegular, { size: 14 })
 									}),
 									awaiting === void 0 && listed !== void 0 && listed.activeRun !== void 0 && selectedPackageId !== listed.activeRun.packageId && selectedPackage !== void 0 && (0, react_jsx_runtime.jsx)(RowAction, {
 										label: t("action.run"),
@@ -882,7 +953,7 @@ window.__ModuleLoader__.load({
 												hasClientHalf: selectedPackage.hasClientHalf
 											}));
 										},
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutlineRegular, { size: 14 })
 									}),
 									awaiting === void 0 && listed !== void 0 && listed.activeRun !== void 0 && status === "client-pending" && activePackage !== void 0 && selectedPackageId === listed.activeRun.packageId && (0, react_jsx_runtime.jsx)(RowAction, {
 										label: t("action.run"),
@@ -897,7 +968,7 @@ window.__ModuleLoader__.load({
 												hasClientHalf: true
 											}));
 										},
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlayOutlineRegular, { size: 14 })
 									}),
 									awaiting === void 0 && listed !== void 0 && listed.activeRun !== void 0 && (0, react_jsx_runtime.jsx)(RowAction, {
 										label: t("action.stop"),
@@ -906,7 +977,7 @@ window.__ModuleLoader__.load({
 										onClick: () => {
 											runAction(pluginId, () => onStop(listed.agentId, pluginId));
 										},
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconStopFill16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconStopFillRegular, { size: 14 })
 									}),
 									awaiting === void 0 && listed !== void 0 && (0, react_jsx_runtime.jsx)(RowAction, {
 										label: t("action.remove"),
@@ -915,7 +986,7 @@ window.__ModuleLoader__.load({
 										onClick: () => {
 											runAction(pluginId, () => onRemove(listed.agentId, pluginId));
 										},
-										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, { size: 14 })
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 })
 									})
 								]
 							})]
@@ -1045,7 +1116,7 @@ window.__ModuleLoader__.load({
 						onClick: () => {
 							setOpen((value) => !value);
 						},
-						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCordisPluginOutline14, { size: wide ? 16 : 18 }), wide && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)("span", {
+						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCordisPluginOutlineRegular, { size: wide ? 16 : 18 }), wide && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)("span", {
 							className: CordisPanel_module_css_default.badgeLabel,
 							children: t("panel.trigger")
 						}), (0, react_jsx_runtime.jsx)("span", {
@@ -1156,6 +1227,7 @@ window.__ModuleLoader__.load({
 		/** Simplified Chinese Cordis UI messages. */
 		const zh = {
 			"row.defineTitle": "注册 Cordis 插件",
+			"a11y.preparing": "准备调用 Cordis 工具",
 			"row.runTitle": "运行 Cordis 插件",
 			"row.updateTitle": "更新 Cordis 插件",
 			"row.stopTitle": "停止 Cordis 插件",
@@ -1209,6 +1281,7 @@ window.__ModuleLoader__.load({
 		/** English Cordis UI messages. */
 		const en = {
 			"row.defineTitle": "Register Cordis Plugin",
+			"a11y.preparing": "Preparing a Cordis tool call",
 			"row.runTitle": "Run Cordis Plugin",
 			"row.updateTitle": "Update Cordis Plugin",
 			"row.stopTitle": "Stop Cordis Plugin",
@@ -1261,12 +1334,11 @@ window.__ModuleLoader__.load({
 		};
 		//#endregion
 		//#region lib/types/client/index.js
-		/** Cordis dynamic-plugin cards, inventory panel, business-view host, and `@pluginId` source. */
-		/** Required services for the two Tool cards, panel, Remote lifecycle, and Slash source. */
+		/** Cordis dynamic-plugin cards, inventory panel, business-view host. */
+		/** Required services for historical cards, the panel, and Remote lifecycle actions. */
 		const inject = [
 			"slots",
 			"locale",
-			"inputTriggers",
 			"remote",
 			"remote.dynamicCordisRunner",
 			"dynamicCordisRunner"
@@ -1412,37 +1484,6 @@ window.__ModuleLoader__.load({
 					locale: NS
 				}, CordisActionRow);
 			});
-			const rowsOf = (sessionId, query) => inventory.getSnapshot().rows.filter((row) => row.agentId === sessionId && String(row.pluginId).includes(query));
-			const source = {
-				trigger: "@",
-				name: "cordis",
-				order: 1,
-				candidates(session, { query }) {
-					const rows = rowsOf(session.sessionId, query);
-					return Promise.resolve(rows.map((row) => {
-						const packageId = row.nextPackageId ?? row.currentPackageId ?? row.packages.at(-1)?.packageId;
-						const pkg = packageId === void 0 ? void 0 : row.packages.find((candidate) => candidate.packageId === packageId);
-						return {
-							name: String(row.pluginId),
-							...pkg === void 0 ? {} : { description: pkg.purpose }
-						};
-					}));
-				},
-				warm() {
-					inventory.refresh();
-				},
-				lexicon(session) {
-					return rowsOf(session.sessionId, "").map((row) => String(row.pluginId));
-				},
-				subscribeLexicon(_session, listener) {
-					return inventory.subscribe(listener);
-				},
-				onPick({ candidate }) {
-					return { text: `@${candidate.name} ` };
-				}
-			};
-			const slash = ctx.get("inputTriggers");
-			ctx.effect(() => slash.registerSource(source), "ui-cordis: @pluginId source");
 			inventory.refresh();
 		}
 		//#endregion

@@ -39,7 +39,7 @@ var __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, 
     done = true;
 };
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
-import { Remote, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import { z } from 'zod';
 /**
  * Fan-out bound on one remote `describe` batch. A settings page asks about the
@@ -57,11 +57,7 @@ const unsetRequestSchema = z.object({ ref: credentialRefSchema });
 function parseRequest(method, schema, value) {
     const parsed = schema.safeParse(value);
     if (!parsed.success) {
-        throw new TypertRemoteFailure({
-            code: 'bad-request',
-            message: `invalid payload for ${method}`,
-            details: { issues: parsed.error.issues },
-        });
+        throw new RemoteError('gateway/bad-request', `invalid payload for ${method}`, { issues: parsed.error.issues });
     }
     return parsed.data;
 }
@@ -112,9 +108,10 @@ let CredentialsController = (() => {
          * Describe several references for one configuration surface. Batched because
          * a settings page describes every reference its rows name at once, and one
          * round trip keeps those rows from settling separately.
-         * @param refs - reference names, at most {@link MAX_DESCRIBE_REFS}; a name outside the grammar rejects the whole call as `bad-request`.
+         * @param refs - reference names, at most {@link MAX_DESCRIBE_REFS}; a name outside the grammar
+         *   rejects the whole call as `gateway/bad-request`.
          * @returns one view per requested name, keyed by that name.
-         * @throws TypertRemoteFailure when the request is invalid or no credential provider is mounted.
+         * @throws RemoteError when the request is invalid or no credential provider is mounted.
          */
         async describe(refs) {
             const request = parseRequest('credentials.describe', describeRequestSchema, { refs });
@@ -128,7 +125,7 @@ let CredentialsController = (() => {
          * this direction only: no read path returns it.
          * @param ref - reference name to store under.
          * @param value - the non-empty secret value.
-         * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+         * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
          */
         async set(ref, value) {
             const request = parseRequest('credentials.set', setRequestSchema, { ref, value });
@@ -139,7 +136,7 @@ let CredentialsController = (() => {
         /**
          * Remove one reference from a configuration surface.
          * @param ref - reference name to remove.
-         * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+         * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
          */
         async unset(ref) {
             const request = parseRequest('credentials.unset', unsetRequestSchema, { ref });
@@ -151,16 +148,12 @@ let CredentialsController = (() => {
         provider() {
             const credentials = this.ctx.get('credentials');
             if (credentials === undefined) {
-                throw new TypertRemoteFailure({
-                    code: 'internal',
-                    message: 'credentials service is absent: this deployment does not mount a credential provider (e.g. @deepseek-ai/dsh-credentials-local) in its composition',
-                    details: {},
-                });
+                throw new RemoteError('gateway/internal', 'credentials service is absent: this deployment does not mount a credential provider (e.g. @deepseek-ai/dsh-credentials-local) in its composition', {});
             }
             return credentials;
         }
         /**
-         * Run one remote write and report every refusal as `credential-rejected`
+         * Run one remote write and report every refusal as `credential/rejected`
          * carrying the seam's own message: a read-only source shadowing the reference
          * is what a configuration surface must show verbatim. Callers brand the
          * reference before entering, so a name outside the grammar never reaches this
@@ -172,11 +165,7 @@ let CredentialsController = (() => {
                 await write();
             }
             catch (error) {
-                throw new TypertRemoteFailure({
-                    code: 'credential-rejected',
-                    message: error instanceof Error ? error.message : String(error),
-                    details: { ref },
-                });
+                throw new RemoteError('credential/rejected', error instanceof Error ? error.message : String(error), { ref }, { cause: error });
             }
         }
     };

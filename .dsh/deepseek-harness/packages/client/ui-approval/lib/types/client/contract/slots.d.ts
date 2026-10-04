@@ -36,17 +36,24 @@ export interface ApprovalPresentationRequest {
     readonly callId?: ToolCallId;
     /** Human-readable reason supplied by the requester. */
     readonly reason?: string;
+    /** Localized presentation copy; the audit reason remains unchanged. */
+    readonly displayReason?: {
+        readonly en: string;
+        readonly [locale: string]: string;
+    };
     /** Cancellation projected from the Host waterfall. */
     readonly signal?: AbortSignal;
 }
 /** Decisions this interactive Client presentation can return. */
 export type ApprovalDecision = 'allowed-once' | 'rejected';
+/** Domain discriminator literal carried by {@link PendingApproval.kind}. */
+export type ApprovalInteractionKind = 'approval';
 /** One answerable Client presentation of a pending Host waterfall. */
 export declare class PendingApproval {
     #private;
     readonly sessionId: SessionId;
     /** Domain discriminator used by Session pending-interaction consumers. */
-    readonly kind: "approval";
+    readonly kind: 'approval';
     /** Opaque render identity and one-shot remount axis. */
     readonly key: string;
     /** Tool requesting the decision. */
@@ -55,6 +62,8 @@ export declare class PendingApproval {
     readonly callId: ToolCallId | undefined;
     /** Human-readable reason supplied by the asker. */
     readonly reason: string | undefined;
+    /** Localized presentation copy, when supplied by the asker. */
+    readonly displayReason: ApprovalPresentationRequest['displayReason'];
     /** Result returned by the Remote Event listener to the Host waterfall. */
     readonly result: Promise<ApprovalDecision>;
     /**
@@ -62,6 +71,11 @@ export declare class PendingApproval {
      * @param request - Host approval request projected through the Remote Event.
      */
     constructor(sessionId: SessionId, request: ApprovalPresentationRequest);
+    /**
+     * Availability of this pending request after answer or withdrawal.
+     * @returns whether this request can still accept a decision.
+     */
+    get answerable(): boolean;
     /**
      * Resolve the Host waterfall with the user's decision.
      * @param outcome - supported interactive decision.
@@ -82,8 +96,17 @@ export declare class PendingApproval {
     abort(reason: unknown): void;
     private finish;
 }
+/** Locale lookup supplied by the approval registration. */
+export interface ApprovalInjected {
+    /**
+     * Resolve requester-owned copy in the current UI language.
+     * @param reason - localized presentation text with an English fallback.
+     * @returns text for the active UI language.
+     */
+    resolveReason(reason: NonNullable<ApprovalPresentationRequest['displayReason']>): string;
+}
 /** Full props of the approval composer takeover. */
 export type ApprovalComposerProps = PropsRuntime<'conversation.composer'> & PropsRenderSlots<'conversation.approval.detail'> & {
     matched: PendingApproval;
-} & PropsLocale<'approval'>;
+} & PropsLocale<'approval'> & ApprovalInjected;
 //# sourceMappingURL=slots.d.ts.map

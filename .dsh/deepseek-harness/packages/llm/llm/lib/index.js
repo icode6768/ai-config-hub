@@ -1,145 +1,16 @@
 import { createRequire } from "node:module";
-import { Remote, TypertRemoteFailure, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { Remote, RemoteError, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
 import { randomUUID } from "@deepseek-ai/dsh-util-crypto";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import z from "@deepseek-ai/schemastery";
 import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
-//#region lib/types/brand.js
-/**
-* dsh-llm's owned branded ids: tool-call correlation and provider request
-* diagnostics.
-*
-* The `Branded<B>` primitive itself lives in `@deepseek-ai/dsh-brand` (a
-* zero-dependency type-only package) so every owner of a cross-boundary id can
-* brand it without depending on dsh-llm; see that package's README for the
-* nominal-typing policy.
-*
-* @module @deepseek-ai/dsh-llm/brand
-*/
-/**
-* Brand a message identifier.
-* @param id - the opaque message identifier.
-* @returns the same string, branded; no validation is performed.
-*/
-function MessageId(id) {
-	return id;
-}
-/**
-* Brand a string as a {@link ToolCallId}.
-* @param id - the provider-issued (or synthesized) call id.
-* @returns the same string, branded; no validation is performed.
-*/
-function ToolCallId(id) {
-	return id;
-}
-/**
-* Brand a provider-issued request identifier.
-* @param id - the opaque provider-issued string.
-* @returns the same string, branded; no validation is performed.
-*/
-function ProviderRequestId(id) {
-	return id;
-}
-/**
-* Brand an adapter-owned reasoning-effort identifier.
-* @param id - the opaque identifier exposed by one model capability.
-* @returns the same string, branded; no validation is performed.
-*/
-function ReasoningEffortId(id) {
-	return id;
-}
-//#endregion
-//#region lib/types/call-config.js
-/**
-* Conversation call configuration and freeze utilities. Provider routing,
-* model, reasoning effort, and sampling values are request-header state that
-* can affect cache reuse; request waterfalls replace them and the loop logs
-* changed snapshots instead of allowing silent per-call drift.
-* @module dsh-llm/call-config
-*/
-/** Process-local identities of request objects assembled by dsh-agent-loop. */
-const AGENT_LOOP_REQUESTS = /* @__PURE__ */ new WeakSet();
-/**
-* Field-wise equality over {@link LlmCallConfig} — the comparison a caller
-* runs to decide whether a proposed configuration is a real change (worth a
-* logged header snapshot) or the held one restated.
-* @param a - one configuration.
-* @param b - the other.
-* @returns whether every field (including the `stop` list, element-wise) matches.
-*/
-function callConfigEquals(a, b) {
-	if (a.provider !== b.provider || a.model !== b.model || a.reasoningEffort !== b.reasoningEffort || a.temperature !== b.temperature || a.maxTokens !== b.maxTokens) return false;
-	if (a.stop === void 0 || b.stop === void 0) return a.stop === b.stop;
-	return a.stop.length === b.stop.length && a.stop.every((s, i) => s === b.stop?.[i]);
-}
-/**
-* Mark one exact request object as assembled by dsh-agent-loop.
-* @param request - loop-owned request envelope before LLM dispatch.
-* @returns the same request object marked as created by the process-local agent loop.
-*/
-function markAgentLoopRequest(request) {
-	AGENT_LOOP_REQUESTS.add(request);
-	return request;
-}
-/**
-* Test whether the exact request object was assembled by dsh-agent-loop.
-* @param request - request envelope observed at the LLM waterfall.
-* @returns whether {@link markAgentLoopRequest} recorded this object.
-*/
-function isAgentLoopRequest(request) {
-	return AGENT_LOOP_REQUESTS.has(request);
-}
-/**
-* Deep-freeze a value in place with an iterative traversal, guarding cycles,
-* so later mutation throws without imposing a JavaScript call-stack depth cap.
-* {@link AbortSignal} objects are deliberately skipped because they are the
-* request's live cancellation channel and freezing them breaks abort.
-* @param value - the value to freeze in place.
-* @returns the same value, frozen.
-*/
-function deepFreeze(value) {
-	const seen = /* @__PURE__ */ new WeakSet();
-	const pending = [{
-		kind: "visit",
-		node: value
-	}];
-	while (pending.length > 0) {
-		const task = pending.pop();
-		/* v8 ignore next -- the loop condition guarantees one pending task. */
-		if (task === void 0) continue;
-		if (task.kind === "property") {
-			pending.push({
-				kind: "visit",
-				node: task.source[task.key]
-			});
-			continue;
-		}
-		const node = task.node;
-		if (node === null || typeof node !== "object") continue;
-		if (node instanceof AbortSignal) continue;
-		if (seen.has(node)) continue;
-		seen.add(node);
-		Object.freeze(node);
-		const keys = Object.keys(node);
-		for (let index = keys.length - 1; index >= 0; index--) {
-			const key = keys[index];
-			/* v8 ignore next -- the loop is bounded by the captured key count. */
-			if (key === void 0) continue;
-			pending.push({
-				kind: "property",
-				source: node,
-				key
-			});
-		}
-	}
-	return value;
-}
-//#endregion
 //#region lib/types/message.js
 /** Message value types, identity, and immutable construction helpers. */
 /**
-* Bound for a `notice` summary. The account rides a collapsed transcript row
-* and is committed to the durable log, while its inputs — task labels, goal
-* objectives, tool arguments — are caller text with no length of their own.
+* Bound for a `notice` summary. Producers commit the one-line account to the
+* durable log; its inputs — task labels, goal objectives, tool arguments —
+* are caller text with no length of their own.
 */
 const CONTEXT_SUMMARY_MAX_CHARS = 120;
 /**
@@ -164,9 +35,20 @@ function freezeMessage(message) {
 * @returns an immutable message with a fresh stable identity.
 */
 function createMessage(input) {
-	return freezeMessage({
+	return deepFreeze(structuredClone({
 		...input,
-		id: MessageId(randomUUID())
+		id: brandString(randomUUID())
+	}));
+}
+/**
+* Create an identified, immutable developer message.
+* @param input - content and producer source for the new message.
+* @returns a detached developer message with a fresh identity.
+*/
+function createDeveloperMessage(input) {
+	return createMessage({
+		...input,
+		role: "developer"
 	});
 }
 /**
@@ -196,22 +78,36 @@ function createAssistantMessage(input) {
 	});
 }
 /**
+* Create and freeze one identified system-role message holding a rendered
+* system prompt.
+* @param text - the complete rendered prompt; `''` records "no system prompt".
+* @returns an immutable system message with a fresh stable identity.
+*/
+function createSystemMessage(text) {
+	return createMessage({
+		role: "system",
+		content: text.length === 0 ? [] : [{
+			type: "text",
+			text
+		}],
+		source: { kind: "system-prompt" }
+	});
+}
+/**
 * Create and freeze one identified tool-result message.
 * @param input - call identity, raw result blocks, and outcome.
-* @returns an immutable user-role tool-result message.
+* @returns an immutable tool-role message that answers the tool call.
 */
 function createToolResultMessage(input) {
-	return createUserMessage({
+	return createMessage({
+		role: "tool",
 		source: {
 			kind: "tool",
 			callId: input.callId
 		},
-		content: [{
-			type: "tool-result",
-			toolCallId: input.callId,
-			content: input.content,
-			isError: input.isError
-		}]
+		toolCallId: input.callId,
+		content: input.content,
+		isError: input.isError
 	});
 }
 //#endregion
@@ -223,7 +119,7 @@ function createToolResultMessage(input) {
 */
 /**
 * Base class for all harness errors. Carries a `code` (stable, programmatic —
-* e.g. `NO_ADAPTER`, `INVALID_ARGS`, `INVARIANT`) distinct from the
+* e.g. `NO_ADAPTER`, `INVALID_ARGS`) distinct from the
 * human-readable `message`, and supports `cause` chaining via the standard
 * `ErrorOptions`. `name` defaults to the subclass constructor name.
 */
@@ -240,6 +136,8 @@ var HarnessError = class extends Error {
 const CONTEXT_WINDOW_EXCEEDED_CODE = "CONTEXT_WINDOW_EXCEEDED";
 /** Canonical provider-neutral code for an exhausted account quota or balance. */
 const QUOTA_EXCEEDED_CODE = "QUOTA";
+/** Account-token quota that can be replenished through the first-party billing page. */
+const ACCOUNT_QUOTA_EXCEEDED_CODE = "ACCOUNT_QUOTA";
 /**
 * Canonical provider-neutral code for a response that completed normally but
 * carried no content blocks at all. Providers occasionally emit a degenerate
@@ -328,6 +226,14 @@ function errorChain(value) {
 function isHarnessError(value) {
 	return value instanceof HarnessError;
 }
+/**
+* Canonical code for a request an image-capable route cannot send until more
+* of its images are offloaded. The failure's `offloadImages` names how many
+* more of the oldest retained occurrences must be offloaded;
+* `dsh-compaction-image-offload` records an `image/offload` selection before
+* the agent or summarizer retries with freshly derived input.
+*/
+const IMAGE_OFFLOAD_REQUIRED_CODE = "IMAGE_OFFLOAD_REQUIRED";
 //#endregion
 //#region lib/types/retry-policy.js
 /**
@@ -440,6 +346,47 @@ function resolveRetryPolicy(config, path) {
 	}
 }
 //#endregion
+//#region lib/types/call-config.js
+/**
+* Conversation call configuration and freeze utilities. Provider routing,
+* model, reasoning effort, and sampling values are request-header state that
+* can affect cache reuse; request waterfalls replace them and the loop logs
+* changed snapshots instead of allowing silent per-call drift.
+* @module dsh-llm/call-config
+*/
+/** Process-local identities of request objects assembled by dsh-agent-loop. */
+const AGENT_LOOP_REQUESTS = /* @__PURE__ */ new WeakSet();
+/**
+* Field-wise equality over {@link LlmCallConfig} — the comparison a caller
+* runs to decide whether a proposed configuration is a real change (worth a
+* logged header snapshot) or the held one restated.
+* @param a - one configuration.
+* @param b - the other.
+* @returns whether every field (including the `stop` list, element-wise) matches.
+*/
+function callConfigEquals(a, b) {
+	if (a.provider !== b.provider || a.model !== b.model || a.reasoningEffort !== b.reasoningEffort || a.temperature !== b.temperature || a.maxTokens !== b.maxTokens) return false;
+	if (a.stop === void 0 || b.stop === void 0) return a.stop === b.stop;
+	return a.stop.length === b.stop.length && a.stop.every((s, i) => s === b.stop?.[i]);
+}
+/**
+* Mark one exact request object as assembled by dsh-agent-loop.
+* @param request - loop-owned request envelope before LLM dispatch.
+* @returns the same request object marked as created by the process-local agent loop.
+*/
+function markAgentLoopRequest(request) {
+	AGENT_LOOP_REQUESTS.add(request);
+	return request;
+}
+/**
+* Test whether the exact request object was assembled by dsh-agent-loop.
+* @param request - request envelope observed at the LLM waterfall.
+* @returns whether {@link markAgentLoopRequest} recorded this object.
+*/
+function isAgentLoopRequest(request) {
+	return AGENT_LOOP_REQUESTS.has(request);
+}
+//#endregion
 //#region lib/types/adapter-failure.js
 /**
 * Normalization for values thrown by a final LLM adapter boundary.
@@ -498,13 +445,15 @@ function failureSnapshot(value) {
 		const status = candidate.status;
 		const providerRetryAfterMs = candidate.providerRetryAfterMs;
 		const requestId = candidate.requestId;
-		if (typeof message !== "string" || message.length === 0 || typeof code !== "string" || code.length === 0 || status !== void 0 && (!Number.isInteger(status) || status < 100 || status > 599) || providerRetryAfterMs !== void 0 && (!Number.isFinite(providerRetryAfterMs) || providerRetryAfterMs <= 0) || requestId !== void 0 && (typeof requestId !== "string" || requestId.length === 0)) return void 0;
+		const offloadImages = candidate.offloadImages;
+		if (typeof message !== "string" || message.length === 0 || typeof code !== "string" || code.length === 0 || status !== void 0 && (!Number.isInteger(status) || status < 100 || status > 599) || providerRetryAfterMs !== void 0 && (!Number.isFinite(providerRetryAfterMs) || providerRetryAfterMs <= 0) || requestId !== void 0 && (typeof requestId !== "string" || requestId.length === 0) || offloadImages !== void 0 && (!Number.isSafeInteger(offloadImages) || offloadImages <= 0)) return void 0;
 		return Object.freeze({
 			message,
 			code,
 			...status === void 0 ? {} : { status },
 			...providerRetryAfterMs === void 0 ? {} : { providerRetryAfterMs },
-			...requestId === void 0 ? {} : { requestId }
+			...requestId === void 0 ? {} : { requestId },
+			...offloadImages === void 0 ? {} : { offloadImages }
 		});
 	} catch (_sdkFailureGetter) {
 		return;
@@ -563,26 +512,6 @@ function normalizeApiKey(raw) {
 		ok: true,
 		value
 	};
-}
-//#endregion
-//#region lib/types/never.js
-/**
-* Exhaustiveness helper for closed core unions. Use {@link assertNever} at the default branch so a
-* new variant fails compilation at every required handler. Do not use it for declaration-merged
-* unions such as session events or content blocks: handle known variants and explicitly fall
-* through because plugins may add valid unknown cases.
-* @module @deepseek-ai/dsh-llm/never
-*/
-/**
-* Mark an unreachable closed-union branch. A newly unhandled typed variant fails at the call site;
-* a value that escaped its type throws with diagnostics at runtime.
-* @param value - the impossible value; typed `never` so an unhandled variant fails compilation at the call site.
-* @param context - optional label (e.g. the switch site) prefixed into the throw message.
-* @returns never — it always throws, with the offending value JSON-rendered in the message.
-*/
-function assertNever(value, context) {
-	const rendered = JSON.stringify(value) ?? String(value);
-	throw new Error(`unreachable variant${context ? ` in ${context}` : ""}: ${rendered}`);
 }
 //#endregion
 //#region lib/types/content.js
@@ -655,33 +584,82 @@ function offloadedImageText(ref, access) {
 	return `[${identity}${normalizedAccessText(ref, access)}]`;
 }
 /**
-* True when typed model content contains an image block, walking nested
-* tool-result content. This is the one recursive image walk shared by every
-* image policy (capability gating, text-only serialization, compaction
-* survey), so a consumer cannot silently diverge on nesting depth.
+* True when typed model content contains an image block. This is the one image
+* walk shared by every image policy (capability gating, text-only
+* serialization, compaction survey), so a consumer cannot silently diverge.
 * @param content - typed model content blocks.
-* @returns whether any nested block is an image.
+* @returns whether any block is an image.
 */
 function contentHasImage(content) {
-	return content.some((block) => block.type === "image" || block.type === "tool-result" && contentHasImage(block.content));
+	return content.some((block) => block.type === "image");
+}
+/**
+* True when typed model content contains a file block.
+* Reads current content on every call without retaining scan results.
+* @param content - typed model content blocks.
+* @returns whether any block is a file.
+*/
+function contentHasFile(content) {
+	for (const block of content) if (block.type === "file") return true;
+	return false;
+}
+/**
+* Stable model-facing handle for one durable file reference: the address of
+* the verbatim stored copy and the instruction to read it on demand. This is
+* the only representation a provider ever receives for a file.
+* @param ref - durable verbatim file reference.
+* @param readonlyPath - execution-world path of the stored copy, when resolvable.
+* @returns deterministic handle text naming the file, its size, and its address.
+*/
+function fileHandleText(ref, readonlyPath) {
+	const digest = String(ref.attachmentId).slice(7, 15);
+	const identity = `File ${quoted(ref.name)} (${ref.bytes} bytes, sha256:${digest})`;
+	if (readonlyPath === void 0) return `[${identity} was uploaded, but the current execution environment cannot access a readable path. Report that limitation if its contents are needed; do not claim to have read it.]`;
+	return `[${identity}: verbatim read-only copy saved at ${quoted(readonlyPath)}. Read that path with your file tools when its contents are needed; copy it to a writable location before modifying it. When delegating file work, include this saved path in the delegation prompt; only subagents sharing this execution environment can read it.]`;
+}
+/** Replace every file occurrence with handle text. */
+function replaceFilesWithHandles(blocks, resolvePath) {
+	let next;
+	for (const [index, block] of blocks.entries()) {
+		if (block.type === "file") {
+			next ??= blocks.slice(0, index);
+			next.push({
+				type: "text",
+				text: fileHandleText(block.attachment, resolvePath(block.attachment))
+			});
+			continue;
+		}
+		next?.push(block);
+	}
+	return next ?? blocks;
+}
+function projectFilesToText(messages, resolvePath) {
+	if (!messages.some((message) => contentHasFile(message.content))) return messages;
+	return messages.map((message) => {
+		const content = replaceFilesWithHandles(message.content, resolvePath);
+		return content === message.content ? message : {
+			...message,
+			content
+		};
+	});
 }
 /** Base64 length of raw image bytes, including padding. */
 function base64Length(bytes) {
 	return Math.ceil(bytes / 3) * 4;
 }
-/** Collect represented image lengths in request and nested-block order. */
-function collectImageLengths(blocks, lengths, policy) {
-	for (const block of blocks) if (block.type === "image") {
-		const bytes = policy.byteLength === void 0 ? block.attachment.bytes : policy.byteLength(block.attachment);
-		lengths.push(policy.representation === "base64" ? base64Length(bytes) : bytes);
-	} else if (block.type === "tool-result") collectImageLengths(block.content, lengths, policy);
+/**
+* Visit every image occurrence of typed content in message order.
+* @param content - typed model content blocks.
+* @param visit - called once per occurrence.
+*/
+function visitImageBlocks(content, visit) {
+	for (const block of content) if (block.type === "image") visit(block);
 }
-/** Replace the first `remaining.count` image occurrences without mutating durable messages. */
-function replaceOldestImages(blocks, remaining, placeholder) {
+/** Replace every offloaded occurrence with its placeholder. */
+function replaceOffloadedImages(blocks, placeholder) {
 	let next;
 	for (const [index, block] of blocks.entries()) {
-		if (block.type === "image" && remaining.count > 0) {
-			remaining.count -= 1;
+		if (block.type === "image" && block.offloaded === true) {
 			next ??= blocks.slice(0, index);
 			next.push({
 				type: "text",
@@ -689,57 +667,13 @@ function replaceOldestImages(blocks, remaining, placeholder) {
 			});
 			continue;
 		}
-		if (block.type === "tool-result") {
-			const content = replaceOldestImages(block.content, remaining, placeholder);
-			if (content !== block.content) {
-				next ??= blocks.slice(0, index);
-				next.push({
-					...block,
-					content
-				});
-				continue;
-			}
-		}
 		next?.push(block);
 	}
 	return next ?? blocks;
 }
-/** Replace every image occurrence, including nested tool results, for a text-only model. */
-function replaceImagesForTextModel(blocks) {
-	let next;
-	for (const [index, block] of blocks.entries()) {
-		if (block.type === "image") {
-			next ??= blocks.slice(0, index);
-			next.push({
-				type: "text",
-				text: textOnlyImageText(block.attachment)
-			});
-			continue;
-		}
-		if (block.type === "tool-result") {
-			const content = replaceImagesForTextModel(block.content);
-			if (content !== block.content) {
-				next ??= blocks.slice(0, index);
-				next.push({
-					...block,
-					content
-				});
-				continue;
-			}
-		}
-		next?.push(block);
-	}
-	return next ?? blocks;
-}
-/**
-* Project durable image history into deterministic text for an exact text-only model.
-* @param messages - complete request history.
-* @returns the original list without images, otherwise shallow message copies with stable placeholders.
-*/
-function projectImagesForTextModel(messages) {
-	if (!messages.some((message) => contentHasImage(message.content))) return messages;
+function projectOffloadedImages(messages, placeholder) {
 	return messages.map((message) => {
-		const content = replaceImagesForTextModel(message.content);
+		const content = replaceOffloadedImages(message.content, placeholder);
 		return content === message.content ? message : {
 			...message,
 			content
@@ -747,21 +681,21 @@ function projectImagesForTextModel(messages) {
 	});
 }
 /**
-* Number of oldest image occurrences one request projection removes, in whole
-* count and byte quanta, once a route budget is exceeded. The result depends
-* only on the represented lengths, so provider request pricing reproduces the
-* exact serialization decision without building the projected messages.
-* @param lengths - represented byte length of every occurrence, in request order.
-* @param policy - count/byte budgets and removal quanta; unbounded when absent.
-* @returns how many leading occurrences the projection replaces with placeholders.
+* Number of oldest retained image occurrences one route budget removes, in
+* whole count and byte quanta, once the budget is exceeded. The result depends
+* only on the represented lengths, so every route names the count the same
+* way.
+* @param lengths - represented byte length of every retained occurrence, oldest first.
+* @param budget - count/byte budgets and removal quanta; unbounded when absent.
+* @returns how many leading occurrences to offload.
 */
-function offloadedImagePrefixCount(lengths, policy) {
+function offloadedImagePrefixCount(lengths, budget) {
 	const total = lengths.reduce((sum, bytes) => sum + bytes, 0);
-	const excessCount = policy.maxImages === void 0 ? 0 : Math.max(0, lengths.length - policy.maxImages);
-	const excessBytes = policy.maxBytes === void 0 ? 0 : Math.max(0, total - policy.maxBytes);
+	const excessCount = budget.maxImages === void 0 ? 0 : Math.max(0, lengths.length - budget.maxImages);
+	const excessBytes = budget.maxBytes === void 0 ? 0 : Math.max(0, total - budget.maxBytes);
 	if (excessCount === 0 && excessBytes === 0) return 0;
-	const countQuantum = policy.countQuantum ?? 1;
-	const byteQuantum = policy.byteQuantum ?? 1;
+	const countQuantum = budget.countQuantum ?? 1;
+	const byteQuantum = budget.byteQuantum ?? 1;
 	const removeCount = excessCount === 0 ? 0 : Math.ceil(excessCount / countQuantum) * countQuantum;
 	const removeBytes = excessBytes === 0 ? 0 : Math.ceil(excessBytes / byteQuantum) * byteQuantum;
 	let count = 0;
@@ -774,36 +708,139 @@ function offloadedImagePrefixCount(lengths, policy) {
 	return count;
 }
 /**
-* Return a deterministic transient projection whose oldest images are replaced
-* in whole count and byte quanta after a route budget is exceeded. The target
-* depends only on complete durable history: at 129 one-megabyte images under
-* a 128 MiB bound with a 64 MiB quantum, the oldest 65 images are removed so
-* 64 MiB remain; that removed prefix stays fixed until total history exceeds
-* 192 MiB.
-* @param messages - complete request history, oldest first.
-* @param policy - route representation, budgets, and removal quanta.
-* @returns original messages below both bounds, otherwise shallow copies with deterministic placeholders.
+* Number of oldest retained occurrences a route must still offload before a
+* derived request fits its budget at the exact byte length the route sends;
+* zero when the request fits. A route fails with `IMAGE_OFFLOAD_REQUIRED`
+* carrying this count instead of offloading on its own.
+* @param messages - derived request history carrying the surface's `offloaded` marks.
+* @param budget - route representation, budgets, and removal quanta.
+* @param versionBytes - exact request-version byte length of one retained occurrence.
+* @returns how many more leading retained occurrences to offload.
 */
-function offloadRequestImagesWithPolicy(messages, policy) {
+function requiredImageOffload(messages, budget, versionBytes) {
 	const lengths = [];
-	for (const message of messages) collectImageLengths(message.content, lengths, policy);
-	const count = offloadedImagePrefixCount(lengths, policy);
-	if (count === 0) return messages;
-	const remaining = { count };
+	for (const message of messages) visitImageBlocks(message.content, (block) => {
+		if (block.offloaded === true) return;
+		const bytes = versionBytes(block);
+		lengths.push(budget.representation === "base64" ? base64Length(bytes) : bytes);
+	});
+	return offloadedImagePrefixCount(lengths, budget);
+}
+/** Replace every image occurrence for a text-only model. */
+function replaceImagesForTextModel(blocks) {
+	let next;
+	for (const [index, block] of blocks.entries()) {
+		if (block.type === "image") {
+			next ??= blocks.slice(0, index);
+			next.push({
+				type: "text",
+				text: textOnlyImageText(block.attachment)
+			});
+			continue;
+		}
+		next?.push(block);
+	}
+	return next ?? blocks;
+}
+function projectImagesForTextModel(messages) {
+	if (!messages.some((message) => contentHasImage(message.content))) return messages;
 	return messages.map((message) => {
-		const content = replaceOldestImages(message.content, remaining, policy.placeholder);
+		const content = replaceImagesForTextModel(message.content);
 		return content === message.content ? message : {
 			...message,
 			content
 		};
 	});
 }
+function withoutDeveloperMessages(messages) {
+	const retained = messages.filter((message) => message.role !== "developer");
+	return retained.length === messages.length ? messages : retained;
+}
+function toolDeclarations(tools, mode, history) {
+	const declarations = new Map(history.tools.map((tool) => [tool.name, tool]));
+	for (const update of history.updates) for (const tool of update.additions) if (!declarations.has(tool.name)) declarations.set(tool.name, {
+		...tool,
+		deferLoading: true
+	});
+	switch (mode) {
+		case "in-history": return declarations;
+		case "addition-only": {
+			const activeNames = new Set(tools?.map((tool) => tool.name));
+			for (const name of declarations.keys()) if (!activeNames.has(name)) declarations.delete(name);
+			return declarations;
+		}
+		/* v8 ignore next 2 -- closed-union exhaustiveness guard */
+		default: return assertNever(mode);
+	}
+}
+/**
+* Construct provider declarations from session-folded history without changing logged active tools.
+* Unsupported routes and incomplete history use current declarations without developer updates.
+* Explicitly deferred baseline tools become available only after their first retained addition.
+* @param messages - complete request inputs, or the prefix selected for an auxiliary call.
+* @param tools - currently active tool schemas.
+* @param toolUpdate - the resolved route's update mode.
+* @param history - immutable state folded from committed headers and developer messages.
+* @returns provider declarations and the corresponding filtered history.
+*/
+function projectToolUpdates(messages, tools, toolUpdate, history) {
+	if (toolUpdate === void 0) {
+		let immediateTools = tools;
+		if (tools?.some((tool) => tool.deferLoading === true)) immediateTools = tools.map(({ deferLoading: _loading, ...tool }) => tool);
+		return {
+			messages: withoutDeveloperMessages(messages),
+			tools: immediateTools
+		};
+	}
+	if (history === void 0) return {
+		messages: withoutDeveloperMessages(messages),
+		tools
+	};
+	const messageIds = new Set(messages.flatMap((message) => message.role === "developer" ? [message.id] : []));
+	if (history.updates.some((update) => !messageIds.has(update.messageId))) return {
+		messages: withoutDeveloperMessages(messages),
+		tools
+	};
+	const declarations = toolDeclarations(tools, toolUpdate, history);
+	const updateIds = new Set(history.updates.map((update) => update.messageId));
+	const offered = new Set(history.tools.filter((tool) => !tool.deferLoading).map((tool) => tool.name));
+	const projectedMessages = [];
+	for (const message of messages) {
+		if (message.role !== "developer") {
+			projectedMessages.push(message);
+			continue;
+		}
+		if (!updateIds.has(message.id)) continue;
+		const content = message.content.filter((block) => {
+			switch (block.type) {
+				case "tool-addition":
+					if (!declarations.has(block.toolName) || offered.has(block.toolName)) return false;
+					offered.add(block.toolName);
+					return true;
+				case "tool-removal":
+					if (toolUpdate !== "in-history") return false;
+					return offered.delete(block.toolName);
+				default: return true;
+			}
+		});
+		if (content.length === 0) continue;
+		if (content.length === message.content.length) projectedMessages.push(message);
+		else projectedMessages.push({
+			...message,
+			content
+		});
+	}
+	return {
+		messages: projectedMessages.length === messages.length && projectedMessages.every((message, index) => message === messages[index]) ? messages : projectedMessages,
+		tools: [...declarations.values()]
+	};
+}
 //#endregion
 //#region lib/types/attribution.js
 /**
 * Centralize the non-secret product identity every provider request sends as `User-Agent`, keeping
 * adapters from drifting. See
-* `.agents/notes/implemented/architecture/2026-06-21-mandatory-app-attribution-headers.md`.
+* `docs/subsystems/llm-streaming.md#appidentity--app-attribution`.
 *
 * App-attribution vocabulary for provider requests.
 * @module @deepseek-ai/dsh-llm/attribution
@@ -839,6 +876,59 @@ function userAgent(identity = APP_IDENTITY) {
 */
 function attributionHeaders(identity = APP_IDENTITY) {
 	return { "user-agent": userAgent(identity) };
+}
+//#endregion
+//#region lib/types/brand.js
+/**
+* dsh-llm's owned branded ids: tool-call correlation and provider request
+* diagnostics.
+*
+* The `Branded<B>` primitive and stateless constructor live in
+* `@deepseek-ai/dsh-brand` so every owner of a cross-boundary id can brand it
+* without depending on dsh-llm; see that package's README for the
+* nominal-typing policy.
+*
+* @module @deepseek-ai/dsh-llm/brand
+*/
+/**
+* Brand a message identifier.
+* @param id - the opaque message identifier.
+* @returns the same string with the message-id brand.
+*/
+function MessageId(id) {
+	return brandString(id);
+}
+/**
+* Brand a string as a {@link ToolCallId}.
+* @param id - the provider-issued or synthesized call id.
+* @returns the same string with the tool-call-id brand.
+*/
+function ToolCallId(id) {
+	return brandString(id);
+}
+/**
+* Brand a provider-issued request identifier.
+* @param id - the opaque provider-issued string.
+* @returns the same string, branded; no validation is performed.
+*/
+function ProviderRequestId(id) {
+	return brandString(id);
+}
+/**
+* Brand one loop-owned streaming attempt identifier.
+* @param id - the opaque Agent-lifecycle-local identifier.
+* @returns the same string with the attempt-id brand.
+*/
+function LlmAttemptId(id) {
+	return brandString(id);
+}
+/**
+* Brand an adapter-owned reasoning-effort identifier.
+* @param id - the opaque identifier exposed by one model capability.
+* @returns the same string, branded; no validation is performed.
+*/
+function ReasoningEffortId(id) {
+	return brandString(id);
 }
 //#endregion
 //#region lib/types/assembler.js
@@ -940,7 +1030,7 @@ var BlockAssembler = class {
 			};
 			case "tool-call": return {
 				type: "tool-call",
-				id: partial.toolCallId ?? ToolCallId(`call-${index}`),
+				id: partial.toolCallId ?? brandString(`call-${index}`),
 				name: partial.toolCallName ?? "",
 				arguments: partial.toolCallArguments
 			};
@@ -1021,20 +1111,456 @@ var BlockAssembler = class {
 	}
 	/**
 	* The assembled assistant message.
-	* @param source - producer attribution for the assembled message.
+	* @param source - provider/model attribution (without the `kind` tag) for the assembled message.
 	* @returns a frozen assistant-role message over `blocks()` (same open-block assembly rules).
 	*/
-	message(source = {
-		kind: "plugin",
-		plugin: "dsh-llm/assembler"
-	}) {
-		return createMessage({
-			role: "assistant",
+	message(source) {
+		return createAssistantMessage({
 			content: this.blocks(),
 			source
 		});
 	}
 };
+//#endregion
+//#region lib/types/assistant-stream.js
+/**
+* Lossless compact representation of one model-stream attempt, plus record-level
+* readers that answer common consumer questions without materializing members.
+* Readers trust the static record type; expandAssistantStream is the validating
+* path for records read at a durable boundary.
+*/
+function safeTime(value) {
+	if (!Number.isSafeInteger(value)) throw new TypeError(`Assistant stream time must be a safe integer, got ${String(value)}`);
+	return value;
+}
+function safeIndex(value, label) {
+	if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) throw new TypeError(`${label} index must be a non-negative safe integer`);
+	return value;
+}
+function snapshotChunk(chunk) {
+	const snapshot = snapshotJsonValue(chunk);
+	if (snapshot === void 0) throw new TypeError("Assistant stream chunk must be losslessly JSON-serializable");
+	return snapshot;
+}
+function safeGap(previous, next) {
+	const gap = next - previous;
+	return Number.isSafeInteger(gap) && previous + gap === next ? gap : void 0;
+}
+/** Incrementally compacts one attempt without retaining a second raw-chunk list. */
+var AssistantStreamAccumulator = class {
+	records = [];
+	/**
+	* Add one timed chunk to the compact attempt stream.
+	* @param value - model chunk and its original Session timestamp.
+	* @returns a detached immutable copy for assembly and live publication.
+	*/
+	push(value) {
+		const time = safeTime(value.time);
+		const chunk = snapshotChunk(value.chunk);
+		const timed = deepFreeze({
+			time,
+			chunk
+		});
+		const previous = this.records.at(-1);
+		switch (chunk.type) {
+			case "text-delta":
+			case "reasoning-delta": {
+				safeIndex(chunk.index, chunk.type);
+				if (typeof chunk.text !== "string") throw new TypeError(`${chunk.type} text must be a string`);
+				const type = chunk.type === "text-delta" ? "text-chunks" : "reasoning-chunks";
+				const gap = previous !== void 0 && previous.type === type ? safeGap(previous.lastTime, time) : void 0;
+				if (previous !== void 0 && previous.type === type && previous.index === chunk.index && gap !== void 0) {
+					previous.dt.push(gap);
+					previous.texts.push(chunk.text);
+					previous.lastTime = time;
+				} else this.records.push({
+					type,
+					time0: time,
+					index: chunk.index,
+					dt: [],
+					texts: [chunk.text],
+					lastTime: time
+				});
+				return timed;
+			}
+			case "tool-call-delta": {
+				safeIndex(chunk.index, chunk.type);
+				if (typeof chunk.id !== "string") throw new TypeError("tool-call-delta id must be a string");
+				if (Object.hasOwn(chunk, "name") && typeof chunk.name !== "string") throw new TypeError("tool-call-delta name must be a string");
+				if (typeof chunk.argumentsDelta !== "string") throw new TypeError("tool-call-delta argumentsDelta must be a string");
+				if (chunk.id.length === 0 || chunk.name === "") {
+					this.records.push({
+						type: "chunk",
+						time,
+						chunk
+					});
+					return timed;
+				}
+				const gap = previous?.type === "tool-call-chunks" ? safeGap(previous.lastTime, time) : void 0;
+				const sameName = previous?.type === "tool-call-chunks" && Object.hasOwn(previous, "name") === Object.hasOwn(chunk, "name") && previous.name === chunk.name;
+				if (previous?.type === "tool-call-chunks" && previous.index === chunk.index && previous.id === chunk.id && sameName && gap !== void 0) {
+					previous.dt.push(gap);
+					previous.args.push(chunk.argumentsDelta);
+					previous.lastTime = time;
+				} else this.records.push({
+					type: "tool-call-chunks",
+					time0: time,
+					index: chunk.index,
+					dt: [],
+					id: chunk.id,
+					...Object.hasOwn(chunk, "name") ? { name: chunk.name } : {},
+					args: [chunk.argumentsDelta],
+					lastTime: time
+				});
+				return timed;
+			}
+			case "block-start":
+			case "block-end":
+			case "usage":
+			case "finish":
+				this.records.push({
+					type: "chunk",
+					time,
+					chunk
+				});
+				return timed;
+			default: return assertNever(chunk, "AssistantStreamAccumulator.push");
+		}
+	}
+	/**
+	* Return the current compact attempt stream.
+	* @returns a detached immutable record list suitable for a durable event.
+	*/
+	snapshot() {
+		return deepFreeze(this.records.map((record) => {
+			if (record.type === "chunk") return { ...record };
+			const { lastTime: _lastTime, ...durable } = record;
+			if (durable.type === "tool-call-chunks") return {
+				...durable,
+				dt: [...durable.dt],
+				args: [...durable.args]
+			};
+			return {
+				...durable,
+				dt: [...durable.dt],
+				texts: [...durable.texts]
+			};
+		}));
+	}
+};
+/**
+* Expand compact records into the exact timed chunk sequence.
+* @param stream - compact records from one durable Assistant settlement.
+* @returns detached timed chunks with every original delta boundary preserved.
+* @throws {TypeError} when a record or reconstructed timestamp is invalid.
+*/
+function expandAssistantStream(stream) {
+	const chunks = [];
+	for (const candidate of stream) {
+		const record = validateRecord(candidate);
+		if (record.type === "chunk") {
+			chunks.push({
+				time: record.time,
+				chunk: record.chunk
+			});
+			continue;
+		}
+		const members = record.type === "tool-call-chunks" ? record.args : record.texts;
+		let time = record.time0;
+		for (let index = 0; index < members.length; index += 1) {
+			if (index > 0) time += record.dt[index - 1];
+			let chunk;
+			if (record.type === "text-chunks") chunk = {
+				type: "text-delta",
+				index: record.index,
+				text: members[index]
+			};
+			else if (record.type === "reasoning-chunks") chunk = {
+				type: "reasoning-delta",
+				index: record.index,
+				text: members[index]
+			};
+			else chunk = {
+				type: "tool-call-delta",
+				index: record.index,
+				id: record.id,
+				...Object.hasOwn(record, "name") ? { name: record.name } : {},
+				argumentsDelta: members[index]
+			};
+			chunks.push({
+				time,
+				chunk
+			});
+		}
+	}
+	return chunks;
+}
+function hasNonWhitespace(text) {
+	return /\S/.test(text);
+}
+function blockIsVisible(block) {
+	if (block.type === "tool-call") return false;
+	if (block.type === "text" || block.type === "reasoning") return hasNonWhitespace(block.text);
+	return true;
+}
+/**
+* Whether one chunk carries the model's first output token for latency measurement.
+* @param chunk - any stream chunk.
+* @returns true for a non-empty text, reasoning, or Tool-call arguments fragment and for
+*   every name-bearing Tool-call delta; false for block, usage, and finish chunks.
+*/
+function isTokenDelta(chunk) {
+	switch (chunk.type) {
+		case "text-delta":
+		case "reasoning-delta": return chunk.text !== "";
+		case "tool-call-delta": return chunk.argumentsDelta !== "" || chunk.name !== void 0;
+		default: return false;
+	}
+}
+/**
+* Whether one chunk by itself contributes reader-visible transcript content.
+* Text and reasoning count only with non-whitespace content, streamed as a delta or
+* completed as a block; a block of any other kind counts at its start and its end,
+* except a Tool call, which is protocol rather than content. Usage and finish never count.
+* @param chunk - any stream chunk.
+* @returns whether a transcript reader would see this chunk.
+*/
+function isVisibleChunk(chunk) {
+	switch (chunk.type) {
+		case "text-delta":
+		case "reasoning-delta": return hasNonWhitespace(chunk.text);
+		case "block-start": return chunk.blockType !== "text" && chunk.blockType !== "reasoning" && chunk.blockType !== "tool-call";
+		case "block-end": return blockIsVisible(chunk.block);
+		default: return false;
+	}
+}
+/**
+* Whether one chunk carries non-whitespace text, as a text delta or a completed text block.
+* Reasoning, Tool calls, and other block kinds never count.
+* @param chunk - any stream chunk.
+* @returns whether the chunk contributes visible text.
+*/
+function chunkHasVisibleText(chunk) {
+	if (chunk.type === "text-delta") return hasNonWhitespace(chunk.text);
+	return chunk.type === "block-end" && chunk.block.type === "text" && hasNonWhitespace(chunk.block.text);
+}
+function firstRunMemberTime(run, predicate) {
+	const fragments = run.type === "tool-call-chunks" ? run.args : run.texts;
+	let time = run.time0;
+	for (let index = 0; index < fragments.length; index += 1) {
+		if (index > 0) time += run.dt[index - 1];
+		if (predicate(fragments[index])) return time;
+	}
+}
+/**
+* Time of the first member of one packed run that {@link isTokenDelta} accepts: a
+* name-bearing Tool-call run starts at its first member, otherwise the first non-empty fragment.
+* Stops scanning at that member.
+* @param run - one packed delta run.
+* @returns the member's reconstructed time, or undefined when no member qualifies.
+*/
+function runFirstTokenTime(run) {
+	if (run.type === "tool-call-chunks" && run.name !== void 0) return run.time0;
+	return firstRunMemberTime(run, (fragment) => fragment !== "");
+}
+/**
+* Time of the first member of one packed run that {@link isVisibleChunk} accepts: the first
+* non-whitespace text or reasoning fragment. A Tool-call run has none. Stops scanning at that member.
+* @param run - one packed delta run.
+* @returns the member's reconstructed time, or undefined when no member qualifies.
+*/
+function runFirstVisibleTime(run) {
+	return run.type === "tool-call-chunks" ? void 0 : firstRunMemberTime(run, hasNonWhitespace);
+}
+/**
+* Time of the first token in one compact stream per {@link isTokenDelta}, read from the
+* records themselves and stopping at the first qualifying member.
+* @param stream - compact records from one durable Assistant settlement.
+* @returns the first token's time, or undefined when the stream carries no token.
+*/
+function assistantStreamFirstTokenTime(stream) {
+	for (const record of stream) {
+		const time = record.type === "chunk" ? isTokenDelta(record.chunk) ? record.time : void 0 : runFirstTokenTime(record);
+		if (time !== void 0) return time;
+	}
+}
+/**
+* Whether one compact stream carries any reader-visible content per {@link isVisibleChunk},
+* stopping at the first qualifying member.
+* @param stream - compact records from one durable Assistant settlement.
+* @returns whether a transcript reader would see anything from this stream.
+*/
+function assistantStreamHasVisibleContent(stream) {
+	return stream.some((record) => record.type === "chunk" ? isVisibleChunk(record.chunk) : runFirstVisibleTime(record) !== void 0);
+}
+/**
+* Whether one compact stream carries non-whitespace text per {@link chunkHasVisibleText},
+* stopping at the first qualifying member.
+* @param stream - compact records from one durable Assistant settlement.
+* @returns whether the stream contributes visible text.
+*/
+function assistantStreamHasVisibleText(stream) {
+	return stream.some((record) => record.type === "text-chunks" ? record.texts.some(hasNonWhitespace) : record.type === "chunk" && chunkHasVisibleText(record.chunk));
+}
+/**
+* The last raw chunk of one never-packed type, scanning backwards and stopping at the first hit.
+* @param stream - compact records from one durable Assistant settlement.
+* @param type - chunk type that only appears as a raw record.
+* @returns the stream's final chunk of that type, or undefined when it has none.
+*/
+function lastAssistantStreamChunk(stream, type) {
+	for (let index = stream.length - 1; index >= 0; index -= 1) {
+		const record = stream[index];
+		if (record.type === "chunk" && record.chunk.type === type) return record.chunk;
+	}
+}
+/**
+* Every raw chunk of one never-packed type, in stream order.
+* @param stream - compact records from one durable Assistant settlement.
+* @param type - chunk type that only appears as a raw record.
+* @returns the matching chunks; empty when the stream has none.
+*/
+function assistantStreamChunks(stream, type) {
+	const chunks = [];
+	for (const record of stream) if (record.type === "chunk" && record.chunk.type === type) chunks.push(record.chunk);
+	return chunks;
+}
+/**
+* Every streamed text-delta fragment joined in stream order; reasoning and Tool-call fragments are excluded.
+* @param stream - compact records from one durable Assistant settlement.
+* @returns the joined text, empty when the stream carries no text delta.
+*/
+function joinAssistantStreamText(stream) {
+	const parts = [];
+	for (const record of stream) if (record.type === "text-chunks") parts.push(record.texts.join(""));
+	else if (record.type === "chunk" && record.chunk.type === "text-delta") parts.push(record.chunk.text);
+	return parts.join("");
+}
+/**
+* Feed one compact stream into a {@link BlockAssembler} without materializing members.
+* Each run contributes one delta carrying its joined fragments, which assembles the same
+* blocks as the original per-member deltas because assembly only concatenates them;
+* raw chunks are pushed as recorded. The records are trusted, not validated: validate a
+* stream read at a durable boundary with {@link expandAssistantStream} first.
+* @param stream - compact records from one durable Assistant settlement.
+* @param assembler - assembler to feed; a fresh one by default.
+* @returns the same assembler after every record was pushed.
+*/
+function assembleAssistantStream(stream, assembler = new BlockAssembler()) {
+	for (const record of stream) switch (record.type) {
+		case "chunk":
+			assembler.push(record.chunk);
+			break;
+		case "text-chunks":
+			assembler.push({
+				type: "text-delta",
+				index: record.index,
+				text: record.texts.join("")
+			});
+			break;
+		case "reasoning-chunks":
+			assembler.push({
+				type: "reasoning-delta",
+				index: record.index,
+				text: record.texts.join("")
+			});
+			break;
+		case "tool-call-chunks":
+			assembler.push({
+				type: "tool-call-delta",
+				index: record.index,
+				id: record.id,
+				...record.name === void 0 ? {} : { name: record.name },
+				argumentsDelta: record.args.join("")
+			});
+			break;
+		default: assertNever(record, "assembleAssistantStream");
+	}
+	return assembler;
+}
+function validateRecord(value) {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError("Assistant stream record must be an object");
+	const record = value;
+	switch (record.type) {
+		case "text-chunks":
+		case "reasoning-chunks": {
+			exactKeys(record, [
+				"type",
+				"time0",
+				"index",
+				"dt",
+				"texts"
+			], record.type);
+			const texts = stringArray(record.texts, `${record.type} texts`);
+			if (texts.length === 0) throw new TypeError(`${record.type} texts must be non-empty`);
+			validateRun(record, texts.length, record.type);
+			return record;
+		}
+		case "tool-call-chunks": {
+			exactKeys(record, Object.hasOwn(record, "name") ? [
+				"type",
+				"time0",
+				"index",
+				"dt",
+				"id",
+				"name",
+				"args"
+			] : [
+				"type",
+				"time0",
+				"index",
+				"dt",
+				"id",
+				"args"
+			], record.type);
+			const args = stringArray(record.args, "tool-call-chunks args");
+			if (args.length === 0) throw new TypeError("tool-call-chunks args must be non-empty");
+			if (typeof record.id !== "string" || record.id.length === 0) throw new TypeError("tool-call-chunks id must be a non-empty string");
+			if (record.name !== void 0 && (typeof record.name !== "string" || record.name.length === 0)) throw new TypeError("tool-call-chunks name must be a non-empty string");
+			validateRun(record, args.length, record.type);
+			return record;
+		}
+		case "chunk": {
+			exactKeys(record, [
+				"type",
+				"time",
+				"chunk"
+			], "chunk");
+			const time = safeTime(record.time);
+			if (typeof record.chunk !== "object" || record.chunk === null || Array.isArray(record.chunk)) throw new TypeError("Assistant stream raw chunk must be a lossless JSON object");
+			let chunk;
+			try {
+				chunk = snapshotChunk(record.chunk);
+			} catch (error) {
+				throw new TypeError("Assistant stream raw chunk must be a lossless JSON object", { cause: error });
+			}
+			return deepFreeze({
+				type: "chunk",
+				time,
+				chunk
+			});
+		}
+		default: throw new TypeError(`Unsupported Assistant stream record ${JSON.stringify(record.type)}`);
+	}
+}
+function validateRun(record, members, label) {
+	safeTime(record.time0);
+	safeIndex(record.index, label);
+	if (!Array.isArray(record.dt) || record.dt.some((value) => !Number.isSafeInteger(value))) throw new TypeError(`${label} dt must contain safe integers`);
+	if (record.dt.length !== members - 1) throw new TypeError(`${label} dt length must be one less than its members`);
+	let time = record.time0;
+	for (const gap of record.dt) {
+		time += gap;
+		if (!Number.isSafeInteger(time)) throw new TypeError(`${label} member times must stay safe integers`);
+	}
+}
+function stringArray(value, label) {
+	if (!Array.isArray(value) || value.some((member) => typeof member !== "string")) throw new TypeError(`${label} must be a string array`);
+	return value;
+}
+function exactKeys(record, keys, label) {
+	if (Object.keys(record).length !== keys.length || !keys.every((key) => Object.hasOwn(record, key))) throw new TypeError(`${label} Assistant stream record must contain exactly ${keys.join(", ")}`);
+}
 //#endregion
 //#region lib/types/index.js
 /**
@@ -1107,7 +1633,8 @@ var LlmError = class extends HarnessError {
 			code,
 			...options?.status === void 0 ? {} : { status: options.status },
 			...options?.providerRetryAfterMs === void 0 ? {} : { providerRetryAfterMs: options.providerRetryAfterMs },
-			...options?.requestId === void 0 ? {} : { requestId: options.requestId }
+			...options?.requestId === void 0 ? {} : { requestId: options.requestId },
+			...options?.offloadImages === void 0 ? {} : { offloadImages: options.offloadImages }
 		});
 	}
 };
@@ -1170,8 +1697,9 @@ var LlmAdapter = class {
 	imageRequestPricing(_provider, _model) {}
 	/**
 	* List models this adapter can currently advertise for one owned provider.
-	* The result is advisory: an adapter may accept unlisted model ids, and
-	* consumers must not turn absence into request rejection.
+	* Core routing accepts unlisted model ids; catalog-driven entry points such
+	* as the GUI may require membership. Adapters used there must advertise
+	* their available models; the base empty catalog offers no GUI selection.
 	* @param _provider - one provider route owned by this adapter.
 	* @returns discoverable models in adapter-preferred order.
 	*/
@@ -1274,20 +1802,14 @@ let LlmRuntime = (() => {
 		}
 		/** Notify topology observers without letting one broken listener veto the commit. */
 		emitAdaptersUpdated() {
-			let invariantFailure;
 			for (const listener of this.ctx.events.dispatch("emit", ["llm/adapters-updated"])) try {
 				const returned = listener();
 				if (returned != null && typeof returned.then === "function") Promise.resolve(returned).then(void 0, (error) => {
 					this.warnAdaptersListenerFailure(error);
 				});
 			} catch (error) {
-				if (error?.code === "INVARIANT") {
-					invariantFailure ??= error;
-					continue;
-				}
 				this.warnAdaptersListenerFailure(error);
 			}
-			if (invariantFailure !== void 0) throw invariantFailure;
 		}
 		/** Contained-listener diagnostic shared by the sync and async failure paths. */
 		warnAdaptersListenerFailure(error) {
@@ -1478,7 +2000,8 @@ let LlmRuntime = (() => {
 					id: model.id,
 					...model.name === void 0 ? {} : { name: model.name },
 					...model.contextWindow === void 0 ? {} : { contextWindow: model.contextWindow },
-					...model.maxTokens === void 0 ? {} : { maxTokens: model.maxTokens }
+					...model.maxTokens === void 0 ? {} : { maxTokens: model.maxTokens },
+					...model.inputModalities === void 0 ? {} : { inputModalities: [...model.inputModalities] }
 				});
 			}
 			return models;
@@ -1489,20 +2012,16 @@ let LlmRuntime = (() => {
 		* @param request - endpoint, protocol, and one-shot credential to use.
 		* @param signal - caller cancellation supplied by the Remote carrier.
 		* @returns advertised models in endpoint order.
-		* @throws TypertRemoteFailure with `model-discovery-failed` when discovery refuses or fails.
+		* @throws RemoteError with `llm/model-discovery-rejected` when discovery refuses or fails.
 		*/
 		async remoteDiscoverModels(settingsNs, request, signal) {
 			try {
 				return await this.discoverModels(settingsNs, request, signal);
 			} catch (error) {
-				throw new TypertRemoteFailure({
-					code: "model-discovery-failed",
-					message: error instanceof Error ? error.message : String(error),
-					details: {
-						settingsNs,
-						...request.baseURL === void 0 ? {} : { baseURL: request.baseURL }
-					}
-				});
+				throw new RemoteError("llm/model-discovery-rejected", error instanceof Error ? error.message : String(error), {
+					settingsNs,
+					...request.baseURL === void 0 ? {} : { baseURL: request.baseURL }
+				}, { cause: error });
 			}
 		}
 		/**
@@ -1525,13 +2044,23 @@ let LlmRuntime = (() => {
 		imageRequestPricing(provider, model) {
 			return this.adapters.get(provider)?.adapter.imageRequestPricing(provider, model);
 		}
+		/**
+		* Resolve the exact text one durable file occurrence contributes to every
+		* provider request in the current execution environment.
+		* @param ref - durable verbatim file reference from model history.
+		* @returns the same deterministic handle text used at adapter dispatch.
+		*/
+		fileRequestText(ref) {
+			return fileHandleText(ref, this.fileReadPath(ref));
+		}
 		/** Detach typed adapter-owned modality metadata. */
 		detachedModalities(modalities) {
 			return modalities === void 0 ? void 0 : [...modalities];
 		}
 		/**
 		* Discover models advertised by one registered provider. Catalog membership
-		* is advisory and never changes routing or request validation.
+		* does not constrain core routing. Catalog-driven entry points may restrict
+		* selection and submission to the advertised models.
 		* @param provider - registered provider route to inspect.
 		* @returns detached model metadata in adapter-preferred order.
 		*/
@@ -1574,6 +2103,10 @@ let LlmRuntime = (() => {
 			const context = resolved.context;
 			if (context !== void 0 && (!Number.isInteger(context.contextWindow) || context.contextWindow <= 0)) throw new LlmError(`adapter returned invalid context metadata for provider "${provider}" model "${model}"`, "INVALID_MODEL_CONTEXT");
 			const inputModalities = this.detachedModalities(resolved.inputModalities);
+			const systemPromptUpdate = resolved.systemPromptUpdate;
+			if (systemPromptUpdate !== void 0 && systemPromptUpdate !== "in-history") throw new LlmError(`adapter returned invalid system prompt update mode for provider "${provider}" model "${model}"`, "INVALID_MODEL_INFO");
+			const toolUpdate = resolved.toolUpdate;
+			if (toolUpdate !== void 0 && toolUpdate !== "in-history" && toolUpdate !== "addition-only") throw new LlmError(`adapter returned invalid tool update mode for provider "${provider}" model "${model}"`, "INVALID_MODEL_INFO");
 			const defaultMaxTokens = resolved.defaultMaxTokens;
 			if (defaultMaxTokens !== void 0 && (!Number.isSafeInteger(defaultMaxTokens) || defaultMaxTokens <= 0)) throw new LlmError(`adapter returned invalid default maxTokens for provider "${provider}" model "${model}"`, "INVALID_MODEL_MAX_TOKENS");
 			const info = {
@@ -1583,7 +2116,9 @@ let LlmRuntime = (() => {
 				...resolved.description === void 0 ? {} : { description: resolved.description },
 				...inputModalities === void 0 ? {} : { inputModalities },
 				...context === void 0 ? {} : { context: { contextWindow: context.contextWindow } },
-				...defaultMaxTokens === void 0 ? {} : { defaultMaxTokens }
+				...defaultMaxTokens === void 0 ? {} : { defaultMaxTokens },
+				...resolved.systemPromptUpdate === void 0 ? {} : { systemPromptUpdate: resolved.systemPromptUpdate },
+				...resolved.toolUpdate === void 0 ? {} : { toolUpdate: resolved.toolUpdate }
 			};
 			const reasoning = resolved.reasoning;
 			if (reasoning === void 0) return info;
@@ -1677,6 +2212,8 @@ let LlmRuntime = (() => {
 				adapterDefaults,
 				...context === void 0 ? {} : { context },
 				...modelInfo.inputModalities === void 0 ? {} : { inputModalities: Object.freeze([...modelInfo.inputModalities]) },
+				...modelInfo.systemPromptUpdate === void 0 ? {} : { systemPromptUpdate: modelInfo.systemPromptUpdate },
+				...modelInfo.toolUpdate === void 0 ? {} : { toolUpdate: modelInfo.toolUpdate },
 				stream: (options) => {
 					if (dispatched) throw new LlmError("a prepared LLM call can only be dispatched once", "INVALID_PREPARED_CALL");
 					if (!callConfigEquals(options, resolvedConfig)) throw new LlmError("prepared LLM call config changed before adapter dispatch", "INVALID_PREPARED_CALL");
@@ -1698,8 +2235,9 @@ let LlmRuntime = (() => {
 		/** Remove replay state whose historical route is owned by another adapter. */
 		forAdapter(options, adapter) {
 			const messages = options.messages.map((message) => {
+				if (message.role !== "assistant") return message;
 				const source = message.source;
-				if (message.role !== "assistant" || source.kind !== "model" || source.replayState === void 0) return message;
+				if (source.replayState === void 0) return message;
 				if (this.adapters.get(source.provider)?.adapter === adapter) return message;
 				return freezeMessage({
 					...message,
@@ -1716,6 +2254,20 @@ let LlmRuntime = (() => {
 				messages
 			};
 			return Object.isFrozen(options) ? deepFreeze(filtered) : filtered;
+		}
+		/**
+		* Resolve the current execution-world read path of one durable file
+		* reference through the mounted attachment and filesystem providers.
+		*/
+		fileReadPath(ref) {
+			let hostPath;
+			try {
+				hostPath = this.ctx.get("attachments")?.fileHostPath(ref);
+			} catch {
+				return;
+			}
+			if (hostPath === void 0) return void 0;
+			return this.ctx.get("fs")?.processPathFromHostPath(hostPath);
 		}
 		/**
 		* Final adapter boundary. Adapter selection, dispatch, iterator construction,
@@ -1748,13 +2300,20 @@ let LlmRuntime = (() => {
 					...options,
 					...resolvedConfig
 				};
-				const projectedOptions = modelInfo.inputModalities !== void 0 && !modelInfo.inputModalities.includes("image") && resolvedOptions.messages.some((message) => contentHasImage(message.content)) ? Object.isFrozen(resolvedOptions) ? deepFreeze({
-					...resolvedOptions,
-					messages: projectImagesForTextModel(resolvedOptions.messages)
-				}) : {
-					...resolvedOptions,
-					messages: projectImagesForTextModel(resolvedOptions.messages)
-				} : resolvedOptions;
+				let projectedMessages = resolvedOptions.messages;
+				if (projectedMessages.some((message) => contentHasFile(message.content))) projectedMessages = projectFilesToText(projectedMessages, (ref) => this.fileReadPath(ref));
+				if (modelInfo.inputModalities !== void 0 && !modelInfo.inputModalities.includes("image") && projectedMessages.some((message) => contentHasImage(message.content))) projectedMessages = projectImagesForTextModel(projectedMessages);
+				const projectedTools = projectToolUpdates(projectedMessages, resolvedOptions.tools, modelInfo.toolUpdate, resolvedOptions.toolHistory);
+				projectedMessages = projectedTools.messages;
+				let projectedOptions = resolvedOptions;
+				if (projectedMessages !== resolvedOptions.messages || projectedTools.tools !== resolvedOptions.tools) {
+					projectedOptions = {
+						...resolvedOptions,
+						messages: projectedMessages,
+						...projectedTools.tools === void 0 ? {} : { tools: projectedTools.tools }
+					};
+					if (Object.isFrozen(resolvedOptions)) deepFreeze(projectedOptions);
+				}
 				iterator = dispatch(this.forAdapter(projectedOptions, adapter))[Symbol.asyncIterator]();
 			} catch (error) {
 				yield adapterFailureChunk(error, options.signal);
@@ -1822,4 +2381,4 @@ function adapterFailureChunk(error, signal) {
 	};
 }
 //#endregion
-export { APP_IDENTITY, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, INVALID_CREDENTIAL_CODE, LlmAdapter, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, RetryPolicySchema, ToolCallId, assertNever, assertUsableApiKey, attributionHeaders, boundContextSummary, callConfigEquals, contentHasImage, createAssistantMessage, createMessage, createToolResultMessage, createUserMessage, deepFreeze, errorChain, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, markAgentLoopRequest, normalizeApiKey, offloadRequestImagesWithPolicy, offloadedImagePrefixCount, offloadedImageText, projectImagesForTextModel, requestImageHandleText, resolveImageAttachmentAccess, resolveRetryPolicy, textOnlyImageText, userAgent };
+export { ACCOUNT_QUOTA_EXCEEDED_CODE, APP_IDENTITY, AssistantStreamAccumulator, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LlmAdapter, LlmAttemptId, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, RetryPolicySchema, ToolCallId, assembleAssistantStream, assertUsableApiKey, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, attributionHeaders, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText, userAgent };

@@ -11,7 +11,7 @@ export interface TruncatedInstruction {
     includedBytes: number;
 }
 /** Model-facing text plus omitted and truncated source records. */
-export interface RenderedWorkspaceContext {
+export interface RenderedAgentInstructions {
     text: string;
     omitted: InstructionFile[];
     truncated: TruncatedInstruction[];
@@ -87,11 +87,11 @@ export declare function renderInstructionChanges(items: ChangeRenderItem[], maxB
  * @returns bounded public rendering plus files with surviving content, including genuinely empty files.
  * @internal
  */
-export declare function renderWorkspaceInstructionSet(files: LoadedInstructionFile[], options: {
+export declare function renderAgentInstructionSet(files: LoadedInstructionFile[], options: {
     maxBytes: number;
     replacePreviousBaseline?: boolean;
 }): {
-    rendered: RenderedWorkspaceContext;
+    rendered: RenderedAgentInstructions;
     included: LoadedInstructionFile[];
 };
 /**
@@ -100,8 +100,8 @@ export declare function renderWorkspaceInstructionSet(files: LoadedInstructionFi
  * @param options - rendering byte budget and whether this baseline supersedes a visible predecessor.
  * @returns bounded baseline prompt text and budget diagnostics.
  */
-export declare function renderWorkspaceContext(files: LoadedInstructionFile[], options: {
+export declare function renderAgentInstructions(files: LoadedInstructionFile[], options: {
     maxBytes: number;
     replacePreviousBaseline?: boolean;
-}): RenderedWorkspaceContext;
+}): RenderedAgentInstructions;
 //# sourceMappingURL=render.d.ts.map

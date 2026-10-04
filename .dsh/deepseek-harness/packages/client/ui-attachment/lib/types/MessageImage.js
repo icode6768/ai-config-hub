@@ -1,6 +1,7 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ImageLightbox } from "./ImageLightbox.js";
+import { IconLoadingOutlineRegular, IconRefreshOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { ImageLightbox } from '@deepseek-ai/dsh-client-ui-primitives';
 import css from './MessageImage.module.css';
 /** Display box for a lone image (DeepSeek Chat rule): long edge 240px with
  * the rendered aspect ratio clamped to [0.25, 4] — the overflow is cropped by
@@ -31,10 +32,11 @@ function dimensionsOf(image) {
  * preview. A lone image renders at its `singleFit` size; an image among
  * several renders as a fixed 64px square tile. The preview arm displays its
  * local URL directly — no loader round-trip, no failure/retry surface.
+ * List thumbnails use status icons with localized tooltips and accessible names.
  *
  * @param props.image - the durable reference to load, or the local preview to display.
  * @param props.load - session-authorized URL loader for the durable arm.
- * @param props.variant - `single` for a message's lone image, `tile` otherwise.
+ * @param props.variant - lone image, cropped gallery tile, or uncropped list thumbnail.
  * @param props.labels - resolved strings (tooltip, loading, retry, lightbox).
  * @returns the bounded thumbnail button, or the retry control on failure.
  */
@@ -71,20 +73,24 @@ export function MessageImage({ image, load, variant, labels }) {
         return () => { live = false; };
     }, [attachment, load, attempt]);
     const src = preview?.url ?? loaded;
-    const label = (preview?.name ?? attachment?.name) ?? labels.image;
+    const label = ('attachment' in image ? image.label : undefined)
+        ?? preview?.name ?? attachment?.name ?? labels.image;
+    const loadingThumbnail = variant === 'thumbnail' && src === null;
     if (error)
-        return _jsx("button", { type: "button", className: css.error, "data-variant": variant, onClick: request, children: labels.loadFailed });
-    return (_jsxs(_Fragment, { children: [_jsx("button", { type: "button", className: css.frame, "data-variant": variant, style: fit === undefined ? undefined : { width: fit.width, height: fit.height }, title: labels.open, "aria-label": labels.openNamed(label), onClick: () => { if (src !== null)
+        return (_jsx("button", { type: "button", className: css.error, "data-variant": variant, title: variant === 'thumbnail' ? labels.loadFailed : undefined, "aria-label": variant === 'thumbnail' ? labels.loadFailed : undefined, onClick: request, children: variant === 'thumbnail'
+                ? _jsx("span", { "aria-hidden": "true", children: _jsx(IconRefreshOutlineRegular, {}) })
+                : labels.loadFailed }));
+    return (_jsxs(_Fragment, { children: [_jsx("button", { type: "button", className: css.frame, "data-variant": variant, style: fit === undefined ? undefined : { width: fit.width, height: fit.height }, title: loadingThumbnail ? labels.loading : labels.open, "aria-label": loadingThumbnail ? labels.loading : labels.openNamed(label), "aria-busy": loadingThumbnail || undefined, onClick: () => { if (src !== null)
                     setOpen(true); }, children: src === null
-                    ? _jsx("span", { className: css.loading, children: labels.loading })
+                    ? (_jsx("span", { className: css.loading, "aria-hidden": loadingThumbnail || undefined, children: loadingThumbnail ? _jsx(IconLoadingOutlineRegular, { className: css.spinner }) : labels.loading }))
                     : _jsx("img", { src: src, alt: label, style: fit === undefined ? undefined : { objectPosition: fit.objectPosition } }) }), open && src !== null && _jsx(ImageLightbox, { src: src, alt: label, labels: labels.lightbox, onClose: close })] }));
 }
 /** Wrapping image group shared by user and assistant history: a lone image
- * renders large, several render as 64px square tiles (DeepSeek Chat rule). */
-export function ImageGallery({ images, load, align, labels }) {
+ * renders large unless its owner requests compact tiles or contained list thumbnails. */
+export function ImageGallery({ images, load, align, compact = false, thumbnail = false, labels }) {
     if (images.length === 0)
         return null;
-    const variant = images.length === 1 ? 'single' : 'tile';
+    const variant = thumbnail ? 'thumbnail' : compact || images.length > 1 ? 'tile' : 'single';
     return (_jsx("div", { className: css.gallery, "data-align": align, children: images.map((image, index) => (_jsx(MessageImage, { image: image, load: load, variant: variant, labels: labels }, `${'attachment' in image ? image.attachment.attachmentId : image.preview.url}:${index}`))) }));
 }
 //# sourceMappingURL=MessageImage.js.map

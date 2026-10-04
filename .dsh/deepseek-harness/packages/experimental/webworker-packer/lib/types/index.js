@@ -4,5 +4,5 @@
  */
 export { WRAPPER_CONTRACT, } from "./transform-image.js";
 export { CONFIG_PATH, DEFAULT_ROOT, MANIFEST_PATH, packVfsImage, packVfsOverlay, } from "./pack.js";
-export { composeProfile, configTrees, describePack, indexWorkspacePackages, previewFixtures, } from "./repository.js";
+export { composeProfile, configTrees, describePack, indexWorkspacePackages, packPreviewFixture, previewFixtures, } from "./repository.js";
 //# sourceMappingURL=index.js.map

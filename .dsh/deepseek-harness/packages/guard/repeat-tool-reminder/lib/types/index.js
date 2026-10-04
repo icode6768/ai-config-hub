@@ -15,11 +15,11 @@ export const Config = z.object({
     argumentsPreviewChars: z.number().default(500),
 });
 /**
- * The `{kind:'plugin'}` source stamped on every reminder this guard injects —
- * the label is load-bearing (an unlabeled context would render as a user
- * prompt in derived history).
+ * The `{kind:'repeat-tool-reminder'}` producer source stamped on every reminder
+ * this guard injects — the label is load-bearing (an unlabeled context would
+ * render as a user prompt in derived history).
  */
-const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'repeat-tool-reminder' };
+const REMINDER_SOURCE = { kind: 'repeat-tool-reminder' };
 /**
  * The gentle first-threshold reminder. Keyed to `thresholds[0]`, not a literal
  * count, so a custom first threshold keeps the gentle-then-detailed escalation.
@@ -154,7 +154,7 @@ export function apply(ctx, config) {
             : detailedReminder(exec.name, count, previewArguments(canonical, argumentsPreviewChars));
         return createUserMessage({
             content: [{ type: 'text', text }],
-            source: { ...PLUGIN_SOURCE, form: 'notice', summary: `${exec.name} × ${count}` },
+            source: { ...REMINDER_SOURCE, form: 'notice', summary: `${exec.name} × ${count}` },
         });
     }
     // Observe-and-enrich, never veto: count first (state advances regardless of

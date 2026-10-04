@@ -5,9 +5,9 @@
  *
  * @module @deepseek-ai/dsh-llm/assembler
  */
-import { ToolCallId } from "./brand.js";
-import { assertNever } from "./never.js";
-import { createMessage } from "./message.js";
+import { brandString } from '@deepseek-ai/dsh-brand';
+import { assertNever } from '@deepseek-ai/dsh-util-values';
+import { createAssistantMessage } from "./message.js";
 /**
  * Incrementally assembles raw {@link StreamChunk}s into complete
  * {@link ContentBlock}s and a final assistant {@link Message}.
@@ -99,7 +99,7 @@ export class BlockAssembler {
             case 'reasoning': return { type: 'reasoning', text: partial.text };
             case 'tool-call': return {
                 type: 'tool-call',
-                id: partial.toolCallId ?? ToolCallId(`call-${index}`),
+                id: partial.toolCallId ?? brandString(`call-${index}`),
                 name: partial.toolCallName ?? '',
                 arguments: partial.toolCallArguments,
             };
@@ -181,11 +181,11 @@ export class BlockAssembler {
     }
     /**
      * The assembled assistant message.
-     * @param source - producer attribution for the assembled message.
+     * @param source - provider/model attribution (without the `kind` tag) for the assembled message.
      * @returns a frozen assistant-role message over `blocks()` (same open-block assembly rules).
      */
-    message(source = { kind: 'plugin', plugin: 'dsh-llm/assembler' }) {
-        return createMessage({ role: 'assistant', content: this.blocks(), source });
+    message(source) {
+        return createAssistantMessage({ content: this.blocks(), source });
     }
 }
 //# sourceMappingURL=assembler.js.map
