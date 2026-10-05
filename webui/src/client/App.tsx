@@ -995,7 +995,7 @@ export default function App(): React.ReactElement {
                   </span>
                 </label>
                 <div className="hint">
-                  勾选后再点击右上角“保存全局”，会把这套运行环境持久化到当前用户或系统环境中。
+                  {t('勾选后再点击右上角“保存全局”，会把这套运行环境持久化到当前用户或系统环境中。')}
                 </div>
               </div>
               <div className="grid two">
@@ -1046,7 +1046,7 @@ export default function App(): React.ReactElement {
                       ) : (
                         <strong>{currentPreset?.name ?? '自定义'}</strong>
                       )}
-                      <span>全局 API 配置，保存后同步到全部应用</span>
+                      <span>{t('全局 API 配置，保存后同步到全部应用')}</span>
                     </div>
                     <div className="chip">{globalApi.provider}</div>
                   </div>
@@ -1074,7 +1074,7 @@ export default function App(): React.ReactElement {
                     })} />
                   </div>
                   <div className="hint">
-                    保存后会同步到 OpenClaw、Hermes、Claude Code、Codex 和 DeepSeek Harness 的实际配置；DeepSeek 使用 web/desktop Profile Patch，不写入 settings.yaml。
+                    {t('保存后会同步到 OpenClaw、Hermes、Claude Code、Codex 和 DeepSeek Harness 的实际配置；DeepSeek 使用 web/desktop Profile Patch，不写入 settings.yaml。')}
                   </div>
                   <div className="appOps">
                     <button type="button" className="primary" onClick={() => void saveGlobalConfig()} disabled={saving}>
