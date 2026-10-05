@@ -11,6 +11,7 @@ const translations: Record<string, { 'zh-CN': string; en: string }> = {
   '安装技能': { 'zh-CN': '安装技能', en: 'Install skills' },
   '完成安装': { 'zh-CN': '完成安装', en: 'Setup complete' },
   '技术支持': { 'zh-CN': '技术支持', en: 'Support' },
+  '用户操作手册': { 'zh-CN': '用户操作手册', en: 'User guide' },
   '刷新': { 'zh-CN': '刷新', en: 'Refresh' },
   '保存全局': { 'zh-CN': '保存全局', en: 'Save global' },
   '系统环境写入': { 'zh-CN': '系统环境写入', en: 'System environment' },
