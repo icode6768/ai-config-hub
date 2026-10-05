@@ -134,6 +134,10 @@ function packageCommand(name: 'openclaw' | 'claude' | 'codex'): string | null {
     ]) ?? name
   }
   const extension = process.platform === 'win32' ? '.cmd' : ''
+  if (name === 'claude') {
+    const direct = join(runtimeNpmGlobalPath(), 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
+    if (existsSync(direct)) return direct
+  }
   return firstExisting([
     join(runtimeNpmGlobalPath(), `${name}${extension}`),
     join(runtimeNpmGlobalPath(), 'node_modules', '.bin', `${name}${extension}`),
@@ -176,6 +180,10 @@ function commandFor(appId: AppId, config: LauncherConfig): CommandSpec | null {
     return command ? { ...command, env: runtimeEnv(config) } : null
   }
   if (appId === 'claude') {
+    if (process.platform === 'win32') {
+      const wrapper = join(runtimeNpmGlobalPath(), 'node_modules', '@anthropic-ai', 'claude-code', 'cli-wrapper.cjs')
+      if (existsSync(wrapper)) return { command: process.execPath, args: [wrapper], cwd: root, env: runtimeEnv(config) }
+    }
     const command = packageCommand('claude')
     return command ? { command, args: [], cwd: root, env: runtimeEnv(config) } : null
   }

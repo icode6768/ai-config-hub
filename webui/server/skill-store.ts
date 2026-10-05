@@ -242,6 +242,42 @@ export async function installSkill(id: string, url: string): Promise<SkillRecord
   }
 }
 
+export async function installLocalSkill(input: { archiveBase64?: string; files?: Array<{ path: string; contentBase64: string }> }): Promise<SkillRecord[]> {
+  const temp = await mkdtemp(join(tmpdir(), 'usb-lobster-local-skill-'))
+  try {
+    if (input.archiveBase64) {
+      const archive = Buffer.from(input.archiveBase64, 'base64')
+      if (archive.length > 100 * 1024 * 1024) throw new Error('技能压缩包超过 100MB')
+      const archivePath = join(temp, 'skill.zip')
+      await writeFile(archivePath, archive)
+      await execFile(process.platform === 'win32' ? 'tar.exe' : 'tar', ['-xf', archivePath, '-C', temp])
+    } else if (input.files?.length) {
+      for (const file of input.files) {
+        const relative = file.path.replaceAll('\\', '/').replace(/^\/+/, '')
+        const target = resolve(temp, relative)
+        if (!target.startsWith(resolve(temp) + '\\') && !target.startsWith(resolve(temp) + '/')) throw new Error('技能文件路径无效')
+        await mkdir(resolve(target, '..'), { recursive: true })
+        await writeFile(target, Buffer.from(file.contentBase64, 'base64'))
+      }
+    } else throw new Error('请选择 Skill 文件夹或压缩包')
+    const files = await skillFiles(temp)
+    if (!files.length) throw new Error('未找到 SKILL.md，请选择有效的 Skill 文件夹或压缩包')
+    const source = resolve(files[0], '..')
+    const id = basename(source).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+    if (!safeSkillId(id)) throw new Error('Skill 文件夹名称只能包含字母、数字、点、下划线和连字符')
+    const directories = appSkillDirectories()
+    for (const directory of Object.values(directories)) {
+      await mkdir(directory, { recursive: true })
+      await rm(join(directory, id), { recursive: true, force: true })
+      await cp(source, join(directory, id), { recursive: true })
+    }
+    const state = await readState()
+    state[id] = true
+    await writeState(state)
+    return listInstalledSkills()
+  } finally { await rm(temp, { recursive: true, force: true }) }
+}
+
 export async function uninstallSkill(id: string): Promise<SkillRecord[]> {
   if (!safeSkillId(id)) throw new Error('技能 ID 无效')
   for (const directory of Object.values(appSkillDirectories())) {

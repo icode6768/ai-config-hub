@@ -14,7 +14,7 @@ import { getWechatStatus, migrateLegacyWechatConnections, resetWechatConnections
 import { getAppRuntimeStatuses, initializeAppProcesses, openAppTerminal, restartApp, shutdownAppProcesses, startApp, stopApp, updateApp } from './app-processes'
 import { cancelDongchuangAIAuth, getDongchuangAIAuthStatus, startDongchuangAIAuth } from './dongchuangai-oauth'
 import { buildAppEntryUrl, ensureOpenclawGatewayConfig, ensureOpenclawGatewayToken } from './openclaw-auth'
-import { fetchMarketplace, installSkill, listInstalledSkills, setSkillEnabled, syncSkill, uninstallSkill } from './skill-store'
+import { fetchMarketplace, installLocalSkill, installSkill, listInstalledSkills, setSkillEnabled, syncSkill, uninstallSkill } from './skill-store'
 import { checkSoftwareUpdate, prepareSoftwareUpdate } from './software-update'
 import { getWorkBuddyInfo, openWorkBuddy, openWorkBuddyInstaller, uninstallWorkBuddy, workBuddySkillsCandidates } from './workbuddy'
 
@@ -285,6 +285,16 @@ async function main(): Promise<void> {
         const id = typeof body.id === 'string' ? body.id : ''
         const skillUrl = typeof body.url === 'string' ? body.url : ''
         const skills = await installSkill(id, skillUrl)
+        sendJson(res, { ok: true, skills })
+        return
+      }
+
+      if (url.pathname === '/api/skills/upload' && req.method === 'POST') {
+        const body = await readJsonBody(req)
+        const skills = await installLocalSkill({
+          archiveBase64: typeof body.archiveBase64 === 'string' ? body.archiveBase64 : undefined,
+          files: Array.isArray(body.files) ? body.files as Array<{ path: string; contentBase64: string }> : undefined,
+        })
         sendJson(res, { ok: true, skills })
         return
       }

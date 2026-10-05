@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   CheckCircle2,
@@ -358,6 +358,9 @@ export default function App(): React.ReactElement {
   const [appBusy, setAppBusy] = useState<Partial<Record<AppId, boolean>>>({})
   const [skillTab, setSkillTab] = useState<'installed' | 'marketplace'>('marketplace')
   const [skillSearch, setSkillSearch] = useState('')
+  const skillSearchRef = useRef<HTMLInputElement>(null)
+  const skillFolderInputRef = useRef<HTMLInputElement>(null)
+  const skillArchiveInputRef = useRef<HTMLInputElement>(null)
   const [skillCategory, setSkillCategory] = useState('all')
   const [marketplace, setMarketplace] = useState<SkillMarketplace>({ skills: [], tags: [], page: 1, per_page: 50, total: 0, total_pages: 0 })
   const [marketQuery, setMarketQuery] = useState({ page: 1, categoryId: 0, search: '', revision: 0 })
@@ -732,6 +735,49 @@ export default function App(): React.ReactElement {
       setStatus(action === 'install' ? 'WorkBuddy 安装程序已打开' : action === 'update' ? 'WorkBuddy 更新程序已打开' : action === 'uninstall' ? 'WorkBuddy 已卸载' : 'WorkBuddy 已打开')
     } catch (error) { setStatus(error instanceof Error ? error.message : 'WorkBuddy 操作失败') }
     finally { setWorkbuddyBusy(false) }
+  }
+
+  function openSkillMarketplace(): void {
+    setActiveStep('skills')
+    setSkillTab('marketplace')
+    window.setTimeout(() => skillSearchRef.current?.focus(), 0)
+  }
+
+  async function uploadLocalSkill(files: FileList | null, archive = false): Promise<void> {
+    if (!files?.length) return
+    setSkillsBusy(previous => ({ ...previous, __upload__: true }))
+    try {
+      const toBase64 = (buffer: ArrayBuffer) => { let binary = ''; for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte); return btoa(binary) }
+      const payloads: Array<{ archiveBase64?: string; files?: Array<{ path: string; contentBase64: string }> }> = []
+      if (archive) {
+        for (const file of [...files]) payloads.push({ archiveBase64: toBase64(await file.arrayBuffer()) })
+      } else {
+        const grouped = new Map<string, File[]>()
+        const paths = [...files].map(file => ({ file, parts: (file.webkitRelativePath || file.name).split('/').filter(Boolean) }))
+        const first = paths[0]?.parts[0]
+        const hasSharedRoot = Boolean(first) && paths.every(item => item.parts[0] === first && item.parts.length > 1)
+        for (const item of paths) {
+          const group = (hasSharedRoot ? item.parts[1] : item.parts[0]) || item.file.name
+          const relative = item.parts.slice(hasSharedRoot ? 2 : 1).join('/') || item.file.name
+          const current = grouped.get(group) ?? []
+          Object.defineProperty(item.file, '__skillRelativePath', { value: relative, configurable: true })
+          current.push(item.file)
+          grouped.set(group, current)
+        }
+        for (const groupFiles of grouped.values()) payloads.push({ files: await Promise.all(groupFiles.map(async file => ({ path: (file as File & { __skillRelativePath?: string }).__skillRelativePath || file.name, contentBase64: toBase64(await file.arrayBuffer()) }))) })
+      }
+      let installed = bootstrap?.skills ?? []
+      for (const body of payloads) {
+        const response = await fetch('/api/skills/upload', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+        const result = await response.json() as { skills?: SkillRecord[]; error?: string }
+        if (!response.ok || !result.skills) throw new Error(result.error ?? '本地 Skill 导入失败')
+        installed = result.skills
+      }
+      setBootstrap(previous => previous ? { ...previous, skills: installed } : previous)
+      setSkillTab('installed')
+      setStatus('本地 Skill 已同步到全部应用')
+    } catch (error) { setStatus(error instanceof Error ? error.message : '本地 Skill 导入失败') }
+    finally { setSkillsBusy(previous => ({ ...previous, __upload__: false })) }
   }
 
   async function startWechat(appId: AppId): Promise<void> {
@@ -1122,11 +1168,17 @@ export default function App(): React.ReactElement {
               <div className="skillToolbar">
                 <label className="skillSearch">
                   <Search size={22} />
-                  <input value={skillSearch} onChange={event => setSkillSearch(event.target.value)} placeholder="搜索技能" />
+                  <input ref={skillSearchRef} value={skillSearch} onChange={event => setSkillSearch(event.target.value)} placeholder="搜索技能" />
                 </label>
-                <button type="button" className="skillAddButton" onClick={() => setSkillTab('marketplace')}>
-                  <PlusCircle size={20} /> 添加
+                <button type="button" className="skillAddButton" onClick={() => skillFolderInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}>
+                  <PlusCircle size={20} /> {t('添加本地 Skill')}
                 </button>
+                <input ref={skillFolderInputRef} type="file" hidden multiple {...({ webkitdirectory: '' } as Record<string, string>)} onChange={event => { void uploadLocalSkill(event.target.files); event.currentTarget.value = '' }} />
+                <input ref={skillArchiveInputRef} type="file" hidden accept=".zip,.tar,.gz" onChange={event => { void uploadLocalSkill(event.target.files, true); event.currentTarget.value = '' }} />
+                <div className="skillUploadActions">
+                  <button type="button" className="ghost" onClick={() => skillFolderInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}>{t('上传文件夹')}</button>
+                  <button type="button" className="ghost" onClick={() => skillArchiveInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}>{t('上传压缩包')}</button>
+                </div>
               </div>
               <div className="skillTabs">
                 <button type="button" className={skillTab === 'installed' ? 'active' : ''} onClick={() => setSkillTab('installed')}>
