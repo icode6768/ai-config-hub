@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 export type Language = 'zh-CN' | 'en'
 
 const translations: Record<string, { 'zh-CN': string; en: string }> = {
-  '聚合工作台': { 'zh-CN': '聚合工作台', en: 'AI Workbench' },
-  '本地网页引导安装': { 'zh-CN': '本地网页引导安装', en: 'Local setup assistant' },
+  'AI Config Hub': { 'zh-CN': 'AI 配置助手', en: 'AI Config Hub' },
+  '统一安装、配置与管理本地 AI 应用': { 'zh-CN': '统一安装、配置与管理本地 AI 应用', en: 'Install, configure, and manage local AI apps' },
   '检测运行环境': { 'zh-CN': '检测运行环境', en: 'Check runtime' },
   '配置 API 模型': { 'zh-CN': '配置 API 模型', en: 'Configure API models' },
   '配置微信连接': { 'zh-CN': '配置微信连接', en: 'Configure WeChat' },

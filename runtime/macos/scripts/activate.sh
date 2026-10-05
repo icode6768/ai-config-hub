@@ -9,7 +9,7 @@
 
 # --- 获取脚本自身所在目录（自定位核心）---
 # 脚本在 macos/scripts/ 下，运行时根目录在上一级 (macos/)
-if [ -n "${BASH_SOURCE[0]}" ]; then
+if [ -n "${BASH_SOURCE[0]-}" ]; then
   _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 elif [ -n "${ZSH_VERSION}" ]; then
   _SCRIPT_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"

@@ -22,8 +22,8 @@ window.__ModuleLoader__.load({
 			return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-plan\src\client\PlanPreview.module.css.mjs
-		const css$1 = ".KzdNRG_cards{flex-direction:column;gap:10px;display:flex}.KzdNRG_card{--plan-card-fill:var(--dsw-static-neutral-50);--plan-card-hover:var(--dsw-static-neutral-100);box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--plan-card-fill);width:100%;min-width:0;height:60px;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer;align-items:center;gap:10px;margin:0;padding:8px 10px;transition:background-color .12s;display:flex}body[data-ds-dark-theme] .KzdNRG_card{--plan-card-fill:var(--dsw-static-neutral-850);--plan-card-hover:var(--dsw-static-neutral-800)}.KzdNRG_card:hover{background:var(--plan-card-hover)}.KzdNRG_card:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:3px}.KzdNRG_cardIcon{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--plan-card-fill);flex:none;place-items:center;width:40px;height:40px;display:grid}.KzdNRG_cardDetails{flex-direction:column;flex:1;gap:2px;min-width:0;display:flex}.KzdNRG_cardTitle{text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;line-height:20px;overflow:hidden}.KzdNRG_cardDescription{text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:16px;overflow:hidden}.KzdNRG_cardOpen{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-button-floating-fill);flex:none;align-items:center;height:28px;padding:4px 8px;font-size:12px;line-height:18px;display:inline-flex}.KzdNRG_reviewLink{color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border:0;align-items:center;gap:4px;padding:0;display:inline-flex}.KzdNRG_reviewLink:hover{color:var(--dsw-alias-label-primary)}.KzdNRG_reviewLink:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:3px}.KzdNRG_preview{box-sizing:border-box;height:100%;padding:20px 24px 40px;position:relative;overflow:auto}.KzdNRG_document{color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;font-size:14px;line-height:1.75}.KzdNRG_message{color:var(--dsw-alias-label-secondary);padding:24px;font-size:14px}.KzdNRG_titleIcon{flex:none}@media (width<=767px){.KzdNRG_preview{padding:16px 18px 32px}}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-plan/src/client/PlanPreview.module.css.mjs
+		const css$1 = ".hnmHAq_cards{flex-direction:column;gap:10px;display:flex}.hnmHAq_card{--plan-card-fill:var(--dsw-static-neutral-50);--plan-card-hover:var(--dsw-static-neutral-100);box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--plan-card-fill);width:100%;min-width:0;height:60px;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer;align-items:center;gap:10px;margin:0;padding:8px 10px;transition:background-color .12s;display:flex}body[data-ds-dark-theme] .hnmHAq_card{--plan-card-fill:var(--dsw-static-neutral-850);--plan-card-hover:var(--dsw-static-neutral-800)}.hnmHAq_card:hover{background:var(--plan-card-hover)}.hnmHAq_card:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:3px}.hnmHAq_cardIcon{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--plan-card-fill);flex:none;place-items:center;width:40px;height:40px;display:grid}.hnmHAq_cardDetails{flex-direction:column;flex:1;gap:2px;min-width:0;display:flex}.hnmHAq_cardTitle{text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;line-height:20px;overflow:hidden}.hnmHAq_cardDescription{text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:16px;overflow:hidden}.hnmHAq_cardOpen{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-button-floating-fill);flex:none;align-items:center;height:28px;padding:4px 8px;font-size:12px;line-height:18px;display:inline-flex}.hnmHAq_reviewLink{color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border:0;align-items:center;gap:4px;padding:0;display:inline-flex}.hnmHAq_reviewLink:hover{color:var(--dsw-alias-label-primary)}.hnmHAq_reviewLink:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:3px}.hnmHAq_preview{box-sizing:border-box;height:100%;padding:20px 24px 40px;position:relative;overflow:auto}.hnmHAq_document{color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;font-size:14px;line-height:1.75}.hnmHAq_message{color:var(--dsw-alias-label-secondary);padding:24px;font-size:14px}.hnmHAq_titleIcon{flex:none}@media (width<=767px){.hnmHAq_preview{padding:16px 18px 32px}}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-plan/PlanPreview.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -33,18 +33,18 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var PlanPreview_module_css_default = {
-			"card": "KzdNRG_card",
-			"cardDescription": "KzdNRG_cardDescription",
-			"cardDetails": "KzdNRG_cardDetails",
-			"cardIcon": "KzdNRG_cardIcon",
-			"cardOpen": "KzdNRG_cardOpen",
-			"cardTitle": "KzdNRG_cardTitle",
-			"cards": "KzdNRG_cards",
-			"document": "KzdNRG_document",
-			"message": "KzdNRG_message",
-			"preview": "KzdNRG_preview",
-			"reviewLink": "KzdNRG_reviewLink",
-			"titleIcon": "KzdNRG_titleIcon"
+			"card": "hnmHAq_card",
+			"cardDescription": "hnmHAq_cardDescription",
+			"cardDetails": "hnmHAq_cardDetails",
+			"cardIcon": "hnmHAq_cardIcon",
+			"cardOpen": "hnmHAq_cardOpen",
+			"cardTitle": "hnmHAq_cardTitle",
+			"cards": "hnmHAq_cards",
+			"document": "hnmHAq_document",
+			"message": "hnmHAq_message",
+			"preview": "hnmHAq_preview",
+			"reviewLink": "hnmHAq_reviewLink",
+			"titleIcon": "hnmHAq_titleIcon"
 		};
 		//#endregion
 		//#region lib/types/client/PlanCard.js
@@ -475,8 +475,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-plan\src\client\PlanModeControl.module.css.mjs
-		const css = "._99Ea8a_wrap{align-items:center;gap:6px;display:inline-flex}._99Ea8a_chip{border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-state-business-tertiary);min-width:34px;height:28px;color:var(--dsw-alias-state-business-primary);cursor:pointer;border:none;align-items:center;gap:4px;padding:0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}._99Ea8a_chip:hover:not(:disabled){background:color-mix(in srgb, var(--dsw-alias-state-business-tertiary), var(--dsw-alias-state-business-primary) 6%)}._99Ea8a_chip:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}._99Ea8a_chip:disabled{opacity:.6;cursor:default}._99Ea8a_glyph{color:currentColor;flex:none;width:14px;height:14px;display:inline-flex}._99Ea8a_hoverGlyph,._99Ea8a_chip:hover:not(:disabled) ._99Ea8a_restGlyph,._99Ea8a_chip:focus-visible ._99Ea8a_restGlyph{display:none}._99Ea8a_chip:hover:not(:disabled) ._99Ea8a_hoverGlyph,._99Ea8a_chip:focus-visible ._99Ea8a_hoverGlyph{display:block}._99Ea8a_error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-plan/src/client/PlanModeControl.module.css.mjs
+		const css = ".K5t03W_wrap{align-items:center;gap:6px;display:inline-flex}.K5t03W_chip{border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-state-business-tertiary);min-width:34px;height:28px;color:var(--dsw-alias-state-business-primary);cursor:pointer;border:none;align-items:center;gap:4px;padding:0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.K5t03W_chip:hover:not(:disabled){background:color-mix(in srgb, var(--dsw-alias-state-business-tertiary), var(--dsw-alias-state-business-primary) 6%)}.K5t03W_chip:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}.K5t03W_chip:disabled{opacity:.6;cursor:default}.K5t03W_glyph{color:currentColor;flex:none;width:14px;height:14px;display:inline-flex}.K5t03W_hoverGlyph,.K5t03W_chip:hover:not(:disabled) .K5t03W_restGlyph,.K5t03W_chip:focus-visible .K5t03W_restGlyph{display:none}.K5t03W_chip:hover:not(:disabled) .K5t03W_hoverGlyph,.K5t03W_chip:focus-visible .K5t03W_hoverGlyph{display:block}.K5t03W_error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}";
 		const tagId = "@deepseek-ai/dsh-client-ui-plan/PlanModeControl.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -486,12 +486,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var PlanModeControl_module_css_default = {
-			"chip": "_99Ea8a_chip",
-			"error": "_99Ea8a_error",
-			"glyph": "_99Ea8a_glyph",
-			"hoverGlyph": "_99Ea8a_hoverGlyph",
-			"restGlyph": "_99Ea8a_restGlyph",
-			"wrap": "_99Ea8a_wrap"
+			"chip": "K5t03W_chip",
+			"error": "K5t03W_error",
+			"glyph": "K5t03W_glyph",
+			"hoverGlyph": "K5t03W_hoverGlyph",
+			"restGlyph": "K5t03W_restGlyph",
+			"wrap": "K5t03W_wrap"
 		};
 		//#endregion
 		//#region lib/types/client/PlanModeControl.js

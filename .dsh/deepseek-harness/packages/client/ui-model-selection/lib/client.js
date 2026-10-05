@@ -1056,8 +1056,8 @@ window.__ModuleLoader__.load({
 			return n;
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-model-selection\src\client\ModelSelect.module.css.mjs
-		const css = ".SJBnza_root{min-width:0;position:relative}.SJBnza_trigger{border-radius:var(--dsw-radius-sm);min-width:0;max-width:min(360px,45cqw);height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:400;line-height:20px;display:flex}.SJBnza_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.SJBnza_trigger:focus-visible:not([data-selection-focus]){box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}.SJBnza_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.SJBnza_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.SJBnza_triggerEffort{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-caption);flex-shrink:1000;overflow:hidden}.SJBnza_triggerIcon{display:var(--dsh-composer-model-icon-display,none);flex:none}.SJBnza_triggerLabel,.SJBnza_triggerEffort{display:var(--dsh-composer-model-text-display,block)}.SJBnza_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}.SJBnza_chevronOpen{transform:rotate(180deg)}.SJBnza_menu{z-index:1100;--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(360px,100vh - 96px);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border:0;flex-direction:column;padding:4px;display:flex;position:fixed;overflow:hidden}.SJBnza_status,.SJBnza_empty{color:var(--dsw-alias-label-tertiary);padding:8px;font-size:12px;line-height:18px}.SJBnza_error,.SJBnza_warning{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:3px;padding:6px 7px;font-size:11px;line-height:16px;display:flex}.SJBnza_warning{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-state-warn-label)}.SJBnza_retry{color:inherit;font:inherit;cursor:pointer;background:0 0;border:none;flex:none;padding:0;font-weight:600}.SJBnza_searchRow{flex-shrink:0;margin:2px 0 3px;position:relative}.SJBnza_searchRow .SJBnza_search{border-radius:var(--dsw-radius-md);background:0 0;border:0 solid #0000;height:auto;padding:5px 7px;display:flex}.SJBnza_searchRow .SJBnza_searchWithQuery{padding-right:34px}.SJBnza_searchClear{corner-shape:round;width:24px;height:24px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:50%;justify-content:center;align-items:center;padding:0;display:inline-flex;position:absolute;top:50%;right:4px;transform:translateY(-50%)}.SJBnza_searchClear:hover,.SJBnza_searchClear:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:none}.SJBnza_searchRow .SJBnza_search:focus-within{border-color:#0000}.SJBnza_searchRow .SJBnza_search input{padding:0;font-size:12px;line-height:normal}.SJBnza_searchRow .SJBnza_search input::placeholder{color:var(--dsw-alias-label-caption)}.SJBnza_groups{min-height:0;overflow-y:auto}.SJBnza_option{box-sizing:border-box;border-radius:var(--dsw-radius-md);width:auto;min-width:100%;min-height:34px;color:inherit;text-align:left;cursor:pointer;background:0 0;border:none;outline:none;align-items:center;gap:6px;padding:5px 7px;display:flex}.SJBnza_option:not(.SJBnza_modelOption):hover:not(:disabled),.SJBnza_option:focus-visible,.SJBnza_optionActive:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.SJBnza_selected{background:0 0}.SJBnza_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.SJBnza_optionCopy{flex-direction:column;flex:1;min-width:0;display:flex}.SJBnza_modelName{color:inherit;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:400;line-height:18px;overflow:hidden}.SJBnza_check{color:var(--dsw-alias-label-primary);flex:0 0 14px;place-items:center;display:grid}.SJBnza_check svg{width:14px;height:14px}.SJBnza_cell{box-sizing:border-box;border-radius:var(--dsw-radius-md);width:auto;min-width:100%;height:34px;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left;background:0 0;border:none;outline:none;align-items:center;gap:6px;padding:0 8px;font-size:13px;line-height:20px;display:flex}.SJBnza_cell:hover,.SJBnza_cell:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}.SJBnza_cellLabel{white-space:nowrap;flex:none}.SJBnza_cellValue{text-overflow:ellipsis;white-space:nowrap;text-align:right;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;overflow:hidden}.SJBnza_cellChevron{width:12px;height:12px;color:var(--dsw-alias-menu-icon);flex:none}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-model-selection/src/client/ModelSelect.module.css.mjs
+		const css = ".iS7OyW_root{min-width:0;position:relative}.iS7OyW_trigger{border-radius:var(--dsw-radius-sm);min-width:0;max-width:min(360px,45cqw);height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:400;line-height:20px;display:flex}.iS7OyW_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.iS7OyW_trigger:focus-visible:not([data-selection-focus]){box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}.iS7OyW_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.iS7OyW_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.iS7OyW_triggerEffort{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-caption);flex-shrink:1000;overflow:hidden}.iS7OyW_triggerIcon{display:var(--dsh-composer-model-icon-display,none);flex:none}.iS7OyW_triggerLabel,.iS7OyW_triggerEffort{display:var(--dsh-composer-model-text-display,block)}.iS7OyW_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}.iS7OyW_chevronOpen{transform:rotate(180deg)}.iS7OyW_menu{z-index:1100;--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(360px,100vh - 96px);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border:0;flex-direction:column;padding:4px;display:flex;position:fixed;overflow:hidden}.iS7OyW_status,.iS7OyW_empty{color:var(--dsw-alias-label-tertiary);padding:8px;font-size:12px;line-height:18px}.iS7OyW_error,.iS7OyW_warning{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:3px;padding:6px 7px;font-size:11px;line-height:16px;display:flex}.iS7OyW_warning{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-state-warn-label)}.iS7OyW_retry{color:inherit;font:inherit;cursor:pointer;background:0 0;border:none;flex:none;padding:0;font-weight:600}.iS7OyW_searchRow{flex-shrink:0;margin:2px 0 3px;position:relative}.iS7OyW_searchRow .iS7OyW_search{border-radius:var(--dsw-radius-md);background:0 0;border:0 solid #0000;height:auto;padding:5px 7px;display:flex}.iS7OyW_searchRow .iS7OyW_searchWithQuery{padding-right:34px}.iS7OyW_searchClear{corner-shape:round;width:24px;height:24px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:50%;justify-content:center;align-items:center;padding:0;display:inline-flex;position:absolute;top:50%;right:4px;transform:translateY(-50%)}.iS7OyW_searchClear:hover,.iS7OyW_searchClear:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:none}.iS7OyW_searchRow .iS7OyW_search:focus-within{border-color:#0000}.iS7OyW_searchRow .iS7OyW_search input{padding:0;font-size:12px;line-height:normal}.iS7OyW_searchRow .iS7OyW_search input::placeholder{color:var(--dsw-alias-label-caption)}.iS7OyW_groups{min-height:0;overflow-y:auto}.iS7OyW_option{box-sizing:border-box;border-radius:var(--dsw-radius-md);width:auto;min-width:100%;min-height:34px;color:inherit;text-align:left;cursor:pointer;background:0 0;border:none;outline:none;align-items:center;gap:6px;padding:5px 7px;display:flex}.iS7OyW_option:not(.iS7OyW_modelOption):hover:not(:disabled),.iS7OyW_option:focus-visible,.iS7OyW_optionActive:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.iS7OyW_selected{background:0 0}.iS7OyW_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.iS7OyW_optionCopy{flex-direction:column;flex:1;min-width:0;display:flex}.iS7OyW_modelName{color:inherit;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:400;line-height:18px;overflow:hidden}.iS7OyW_check{color:var(--dsw-alias-label-primary);flex:0 0 14px;place-items:center;display:grid}.iS7OyW_check svg{width:14px;height:14px}.iS7OyW_cell{box-sizing:border-box;border-radius:var(--dsw-radius-md);width:auto;min-width:100%;height:34px;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left;background:0 0;border:none;outline:none;align-items:center;gap:6px;padding:0 8px;font-size:13px;line-height:20px;display:flex}.iS7OyW_cell:hover,.iS7OyW_cell:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}.iS7OyW_cellLabel{white-space:nowrap;flex:none}.iS7OyW_cellValue{text-overflow:ellipsis;white-space:nowrap;text-align:right;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;overflow:hidden}.iS7OyW_cellChevron{width:12px;height:12px;color:var(--dsw-alias-menu-icon);flex:none}";
 		const tagId = "@deepseek-ai/dsh-client-ui-model-selection/ModelSelect.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1067,35 +1067,35 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ModelSelect_module_css_default = {
-			"cell": "SJBnza_cell",
-			"cellChevron": "SJBnza_cellChevron",
-			"cellLabel": "SJBnza_cellLabel",
-			"cellValue": "SJBnza_cellValue",
-			"check": "SJBnza_check",
-			"chevron": "SJBnza_chevron",
-			"chevronOpen": "SJBnza_chevronOpen",
-			"empty": "SJBnza_empty",
-			"error": "SJBnza_error",
-			"groups": "SJBnza_groups",
-			"menu": "SJBnza_menu",
-			"modelName": "SJBnza_modelName",
-			"modelOption": "SJBnza_modelOption",
-			"option": "SJBnza_option",
-			"optionActive": "SJBnza_optionActive",
-			"optionCopy": "SJBnza_optionCopy",
-			"retry": "SJBnza_retry",
-			"root": "SJBnza_root",
-			"search": "SJBnza_search",
-			"searchClear": "SJBnza_searchClear",
-			"searchRow": "SJBnza_searchRow",
-			"searchWithQuery": "SJBnza_searchWithQuery",
-			"selected": "SJBnza_selected",
-			"status": "SJBnza_status",
-			"trigger": "SJBnza_trigger",
-			"triggerEffort": "SJBnza_triggerEffort",
-			"triggerIcon": "SJBnza_triggerIcon",
-			"triggerLabel": "SJBnza_triggerLabel",
-			"warning": "SJBnza_warning"
+			"cell": "iS7OyW_cell",
+			"cellChevron": "iS7OyW_cellChevron",
+			"cellLabel": "iS7OyW_cellLabel",
+			"cellValue": "iS7OyW_cellValue",
+			"check": "iS7OyW_check",
+			"chevron": "iS7OyW_chevron",
+			"chevronOpen": "iS7OyW_chevronOpen",
+			"empty": "iS7OyW_empty",
+			"error": "iS7OyW_error",
+			"groups": "iS7OyW_groups",
+			"menu": "iS7OyW_menu",
+			"modelName": "iS7OyW_modelName",
+			"modelOption": "iS7OyW_modelOption",
+			"option": "iS7OyW_option",
+			"optionActive": "iS7OyW_optionActive",
+			"optionCopy": "iS7OyW_optionCopy",
+			"retry": "iS7OyW_retry",
+			"root": "iS7OyW_root",
+			"search": "iS7OyW_search",
+			"searchClear": "iS7OyW_searchClear",
+			"searchRow": "iS7OyW_searchRow",
+			"searchWithQuery": "iS7OyW_searchWithQuery",
+			"selected": "iS7OyW_selected",
+			"status": "iS7OyW_status",
+			"trigger": "iS7OyW_trigger",
+			"triggerEffort": "iS7OyW_triggerEffort",
+			"triggerIcon": "iS7OyW_triggerIcon",
+			"triggerLabel": "iS7OyW_triggerLabel",
+			"warning": "iS7OyW_warning"
 		};
 		//#endregion
 		//#region lib/types/client/provider-order.js

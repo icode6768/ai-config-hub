@@ -7,8 +7,8 @@ window.__ModuleLoader__.load({
 		let _deepseek_ai_dsh_client_ui_slots = require("@deepseek-ai/dsh-client-ui-slots");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-plugins\src\client\PluginsSettingsSection.module.css.mjs
-		const css = ".cEsbhG_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}.cEsbhG_heading{margin:0;font-size:18px;font-weight:600}.cEsbhG_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px}.cEsbhG_tabs{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:flex-end;gap:22px;margin-top:2px;display:flex}.cEsbhG_tab{color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:0;padding:7px 1px 9px;font-size:13px;line-height:20px;position:relative}.cEsbhG_tab:hover,.cEsbhG_tab[data-active=true]{color:var(--dsw-alias-label-primary)}.cEsbhG_tab[data-active=true]:after,.cEsbhG_tab:focus-visible:after{background:var(--dsw-alias-label-primary);content:\"\";border-radius:2px 2px 0 0;height:2px;position:absolute;bottom:-1px;left:0;right:0}.cEsbhG_tab:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px;color:var(--dsw-alias-label-primary);border-radius:2px}.cEsbhG_panel{min-width:0;padding-top:2px}.cEsbhG_cards{flex-direction:column;gap:10px;margin:0;padding:0;list-style:none;display:flex}.cEsbhG_empty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px}.cEsbhG_configurable{flex-direction:column;gap:10px;display:flex}.cEsbhG_presetSettings{flex-direction:column;gap:8px;display:flex}.cEsbhG_presetSettingsTitle{margin:0;font-size:15px;font-weight:600;line-height:22px}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-plugins/src/client/PluginsSettingsSection.module.css.mjs
+		const css = "._09rQuq_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}._09rQuq_heading{margin:0;font-size:18px;font-weight:600}._09rQuq_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px}._09rQuq_tabs{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:flex-end;gap:22px;margin-top:2px;display:flex}._09rQuq_tab{color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:0;padding:7px 1px 9px;font-size:13px;line-height:20px;position:relative}._09rQuq_tab:hover,._09rQuq_tab[data-active=true]{color:var(--dsw-alias-label-primary)}._09rQuq_tab[data-active=true]:after,._09rQuq_tab:focus-visible:after{background:var(--dsw-alias-label-primary);content:\"\";border-radius:2px 2px 0 0;height:2px;position:absolute;bottom:-1px;left:0;right:0}._09rQuq_tab:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px;color:var(--dsw-alias-label-primary);border-radius:2px}._09rQuq_panel{min-width:0;padding-top:2px}._09rQuq_cards{flex-direction:column;gap:10px;margin:0;padding:0;list-style:none;display:flex}._09rQuq_empty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px}._09rQuq_configurable{flex-direction:column;gap:10px;display:flex}._09rQuq_presetSettings{flex-direction:column;gap:8px;display:flex}._09rQuq_presetSettingsTitle{margin:0;font-size:15px;font-weight:600;line-height:22px}";
 		const tagId = "@deepseek-ai/dsh-client-ui-settings-plugins/PluginsSettingsSection.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -18,17 +18,17 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var PluginsSettingsSection_module_css_default = {
-			"cards": "cEsbhG_cards",
-			"configurable": "cEsbhG_configurable",
-			"empty": "cEsbhG_empty",
-			"heading": "cEsbhG_heading",
-			"intro": "cEsbhG_intro",
-			"panel": "cEsbhG_panel",
-			"presetSettings": "cEsbhG_presetSettings",
-			"presetSettingsTitle": "cEsbhG_presetSettingsTitle",
-			"section": "cEsbhG_section",
-			"tab": "cEsbhG_tab",
-			"tabs": "cEsbhG_tabs"
+			"cards": "_09rQuq_cards",
+			"configurable": "_09rQuq_configurable",
+			"empty": "_09rQuq_empty",
+			"heading": "_09rQuq_heading",
+			"intro": "_09rQuq_intro",
+			"panel": "_09rQuq_panel",
+			"presetSettings": "_09rQuq_presetSettings",
+			"presetSettingsTitle": "_09rQuq_presetSettingsTitle",
+			"section": "_09rQuq_section",
+			"tab": "_09rQuq_tab",
+			"tabs": "_09rQuq_tabs"
 		};
 		//#endregion
 		//#region lib/types/client/PluginsSettingsSection.js

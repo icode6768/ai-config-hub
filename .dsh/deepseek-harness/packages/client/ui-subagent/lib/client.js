@@ -8,8 +8,8 @@ window.__ModuleLoader__.load({
 		let react = require("react");
 		let react_dom = require("react-dom");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-subagent\src\client\SubagentHeaderLineage.module.css.mjs
-		const css$2 = ".RQKUVq_root{align-items:center;gap:10px;min-width:0;display:inline-flex;position:relative}.RQKUVq_switcherRoot{min-width:0;margin-left:6px}.RQKUVq_trigger,.RQKUVq_switcherTrigger{border-radius:var(--dsw-radius-sm);min-height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;align-items:center;padding:3px 2px;font-size:12px;line-height:18px;display:inline-flex}.RQKUVq_trigger{gap:4px}.RQKUVq_switcherTrigger{min-width:0;max-width:244px;color:var(--dsw-alias-label-primary);gap:4px;font-weight:500}.RQKUVq_ancestorSwitcherTrigger{color:var(--dsw-alias-label-tertiary);font-weight:400}.RQKUVq_switcherTitle{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;overflow:hidden}.RQKUVq_switcherTrigger svg{flex:none}.RQKUVq_activitySlot{flex:none;justify-content:center;align-items:center;width:14px;height:14px;display:inline-flex}.RQKUVq_trigger:hover,.RQKUVq_trigger:focus-visible,.RQKUVq_switcherTrigger:hover,.RQKUVq_switcherTrigger:focus-visible{color:var(--dsw-alias-label-primary)}.RQKUVq_ancestorSwitcherTrigger:hover,.RQKUVq_ancestorSwitcherTrigger:focus-visible{color:var(--dsw-alias-label-tertiary)}.RQKUVq_trigger svg,.RQKUVq_switcherTrigger svg{transition:transform .12s}.RQKUVq_triggerOpen{transform:rotate(180deg)}.RQKUVq_menu{z-index:100;box-sizing:border-box;border-radius:var(--dsw-radius-lg);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);width:336px;max-width:min(400px,100vw - 32px);max-height:min(560px,100vh - 140px);box-shadow:var(--dsw-elevation-prominent);flex-direction:column;padding:3px;display:flex;position:fixed;overflow:hidden}.RQKUVq_menu:before{content:\"\";z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);position:absolute;inset:0}.RQKUVq_menuBody{flex-direction:column;flex:auto;min-height:0;display:flex;overflow:auto}.RQKUVq_node{min-width:0;position:relative}.RQKUVq_menuBody>.RQKUVq_node{margin-left:-2px}.RQKUVq_row{box-sizing:border-box;border-radius:var(--dsw-radius-lg);width:100%;min-height:44px;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;background:0 0;border:0;outline:none;align-items:flex-start;gap:6px;padding:6px 7px 6px 9px;font-size:12px;line-height:17px;display:flex;position:relative}.RQKUVq_row:hover>.RQKUVq_clickarea,.RQKUVq_row:focus-visible>.RQKUVq_clickarea{background:var(--dsw-alias-interactive-bg-hover)}.RQKUVq_clickarea{box-sizing:border-box;border-radius:var(--dsw-radius-lg);flex:1;align-self:stretch;align-items:flex-start;gap:6px;min-width:0;margin:-6px -7px;padding:6px 7px;display:flex}.RQKUVq_rowActivitySlot{flex:none;justify-content:center;align-items:center;width:14px;height:17px;display:inline-flex}.RQKUVq_disclosure,.RQKUVq_disclosureSpace{flex:none;width:14px;height:17px}.RQKUVq_disclosure{color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;justify-content:center;align-items:center;padding:0;transition:transform .12s;display:inline-flex}.RQKUVq_disclosure svg{width:12px;height:12px}.RQKUVq_disclosure:hover{color:var(--dsw-alias-label-primary)}.RQKUVq_disclosureOpen{transform:rotate(90deg)}.RQKUVq_content{flex-direction:column;flex:1;min-width:0;display:flex}.RQKUVq_label,.RQKUVq_summary{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.RQKUVq_label{color:inherit;font-weight:400}.RQKUVq_currentLabel{font-weight:600}.RQKUVq_summary,.RQKUVq_metrics{color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}.RQKUVq_metrics{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;flex:none;grid-template-rows:17px 15px;display:grid}.RQKUVq_metricToken{grid-row:1;line-height:17px}.RQKUVq_metricDuration{grid-row:2}.RQKUVq_sidebarButton{border-radius:var(--dsw-radius-sm);width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;flex:none;justify-content:center;align-items:center;margin:4px 0;padding:6px;display:inline-flex}.RQKUVq_sidebarButton:hover,.RQKUVq_sidebarButton:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.RQKUVq_children{margin-left:16px;padding-left:3px;position:relative}.RQKUVq_children:before,.RQKUVq_children>.RQKUVq_node:before{content:\"\";border-left:.5px solid var(--dsw-alias-border-l2);position:absolute;left:0}.RQKUVq_children:before{height:23px;top:-23px}.RQKUVq_children[aria-busy=true]:before{content:none}.RQKUVq_children>.RQKUVq_node:before{top:0;bottom:0;left:-3px}.RQKUVq_children>.RQKUVq_node:last-child:before{height:15px;bottom:auto}.RQKUVq_children>.RQKUVq_node>.RQKUVq_row:before{content:\"\";border-top:.5px solid var(--dsw-alias-border-l2);width:12px;position:absolute;top:14px;left:-3px}.RQKUVq_notice,.RQKUVq_error{color:var(--dsw-alias-label-tertiary);padding:8px 10px;font-size:11px;line-height:16px}.RQKUVq_error{color:var(--dsw-alias-state-error-primary);justify-content:space-between;align-items:center;gap:10px;display:flex}.RQKUVq_refresh{border-radius:var(--dsw-radius-sm);color:inherit;cursor:pointer;background:0 0;border:0;flex:none;align-items:center;gap:3px;padding:3px 5px;display:inline-flex}.RQKUVq_refresh svg{width:12px;height:12px}.RQKUVq_refresh:hover{background:var(--dsw-alias-interactive-bg-hover)}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-subagent/src/client/SubagentHeaderLineage.module.css.mjs
+		const css$2 = ".ubYUGG_root{align-items:center;gap:10px;min-width:0;display:inline-flex;position:relative}.ubYUGG_switcherRoot{min-width:0;margin-left:6px}.ubYUGG_trigger,.ubYUGG_switcherTrigger{border-radius:var(--dsw-radius-sm);min-height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;align-items:center;padding:3px 2px;font-size:12px;line-height:18px;display:inline-flex}.ubYUGG_trigger{gap:4px}.ubYUGG_switcherTrigger{min-width:0;max-width:244px;color:var(--dsw-alias-label-primary);gap:4px;font-weight:500}.ubYUGG_ancestorSwitcherTrigger{color:var(--dsw-alias-label-tertiary);font-weight:400}.ubYUGG_switcherTitle{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;overflow:hidden}.ubYUGG_switcherTrigger svg{flex:none}.ubYUGG_activitySlot{flex:none;justify-content:center;align-items:center;width:14px;height:14px;display:inline-flex}.ubYUGG_trigger:hover,.ubYUGG_trigger:focus-visible,.ubYUGG_switcherTrigger:hover,.ubYUGG_switcherTrigger:focus-visible{color:var(--dsw-alias-label-primary)}.ubYUGG_ancestorSwitcherTrigger:hover,.ubYUGG_ancestorSwitcherTrigger:focus-visible{color:var(--dsw-alias-label-tertiary)}.ubYUGG_trigger svg,.ubYUGG_switcherTrigger svg{transition:transform .12s}.ubYUGG_triggerOpen{transform:rotate(180deg)}.ubYUGG_menu{z-index:100;box-sizing:border-box;border-radius:var(--dsw-radius-lg);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);width:336px;max-width:min(400px,100vw - 32px);max-height:min(560px,100vh - 140px);box-shadow:var(--dsw-elevation-prominent);flex-direction:column;padding:3px;display:flex;position:fixed;overflow:hidden}.ubYUGG_menu:before{content:\"\";z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);position:absolute;inset:0}.ubYUGG_menuBody{flex-direction:column;flex:auto;min-height:0;display:flex;overflow:auto}.ubYUGG_node{min-width:0;position:relative}.ubYUGG_menuBody>.ubYUGG_node{margin-left:-2px}.ubYUGG_row{box-sizing:border-box;border-radius:var(--dsw-radius-lg);width:100%;min-height:44px;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;background:0 0;border:0;outline:none;align-items:flex-start;gap:6px;padding:6px 7px 6px 9px;font-size:12px;line-height:17px;display:flex;position:relative}.ubYUGG_row:hover>.ubYUGG_clickarea,.ubYUGG_row:focus-visible>.ubYUGG_clickarea{background:var(--dsw-alias-interactive-bg-hover)}.ubYUGG_clickarea{box-sizing:border-box;border-radius:var(--dsw-radius-lg);flex:1;align-self:stretch;align-items:flex-start;gap:6px;min-width:0;margin:-6px -7px;padding:6px 7px;display:flex}.ubYUGG_rowActivitySlot{flex:none;justify-content:center;align-items:center;width:14px;height:17px;display:inline-flex}.ubYUGG_disclosure,.ubYUGG_disclosureSpace{flex:none;width:14px;height:17px}.ubYUGG_disclosure{color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;justify-content:center;align-items:center;padding:0;transition:transform .12s;display:inline-flex}.ubYUGG_disclosure svg{width:12px;height:12px}.ubYUGG_disclosure:hover{color:var(--dsw-alias-label-primary)}.ubYUGG_disclosureOpen{transform:rotate(90deg)}.ubYUGG_content{flex-direction:column;flex:1;min-width:0;display:flex}.ubYUGG_label,.ubYUGG_summary{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.ubYUGG_label{color:inherit;font-weight:400}.ubYUGG_currentLabel{font-weight:600}.ubYUGG_summary,.ubYUGG_metrics{color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}.ubYUGG_metrics{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;flex:none;grid-template-rows:17px 15px;display:grid}.ubYUGG_metricToken{grid-row:1;line-height:17px}.ubYUGG_metricDuration{grid-row:2}.ubYUGG_sidebarButton{border-radius:var(--dsw-radius-sm);width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;flex:none;justify-content:center;align-items:center;margin:4px 0;padding:6px;display:inline-flex}.ubYUGG_sidebarButton:hover,.ubYUGG_sidebarButton:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.ubYUGG_children{margin-left:16px;padding-left:3px;position:relative}.ubYUGG_children:before,.ubYUGG_children>.ubYUGG_node:before{content:\"\";border-left:.5px solid var(--dsw-alias-border-l2);position:absolute;left:0}.ubYUGG_children:before{height:23px;top:-23px}.ubYUGG_children[aria-busy=true]:before{content:none}.ubYUGG_children>.ubYUGG_node:before{top:0;bottom:0;left:-3px}.ubYUGG_children>.ubYUGG_node:last-child:before{height:15px;bottom:auto}.ubYUGG_children>.ubYUGG_node>.ubYUGG_row:before{content:\"\";border-top:.5px solid var(--dsw-alias-border-l2);width:12px;position:absolute;top:14px;left:-3px}.ubYUGG_notice,.ubYUGG_error{color:var(--dsw-alias-label-tertiary);padding:8px 10px;font-size:11px;line-height:16px}.ubYUGG_error{color:var(--dsw-alias-state-error-primary);justify-content:space-between;align-items:center;gap:10px;display:flex}.ubYUGG_refresh{border-radius:var(--dsw-radius-sm);color:inherit;cursor:pointer;background:0 0;border:0;flex:none;align-items:center;gap:3px;padding:3px 5px;display:inline-flex}.ubYUGG_refresh svg{width:12px;height:12px}.ubYUGG_refresh:hover{background:var(--dsw-alias-interactive-bg-hover)}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-subagent/SubagentHeaderLineage.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -19,35 +19,35 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var SubagentHeaderLineage_module_css_default = {
-			"activitySlot": "RQKUVq_activitySlot",
-			"ancestorSwitcherTrigger": "RQKUVq_ancestorSwitcherTrigger",
-			"children": "RQKUVq_children",
-			"clickarea": "RQKUVq_clickarea",
-			"content": "RQKUVq_content",
-			"currentLabel": "RQKUVq_currentLabel",
-			"disclosure": "RQKUVq_disclosure",
-			"disclosureOpen": "RQKUVq_disclosureOpen",
-			"disclosureSpace": "RQKUVq_disclosureSpace",
-			"error": "RQKUVq_error",
-			"label": "RQKUVq_label",
-			"menu": "RQKUVq_menu",
-			"menuBody": "RQKUVq_menuBody",
-			"metricDuration": "RQKUVq_metricDuration",
-			"metricToken": "RQKUVq_metricToken",
-			"metrics": "RQKUVq_metrics",
-			"node": "RQKUVq_node",
-			"notice": "RQKUVq_notice",
-			"refresh": "RQKUVq_refresh",
-			"root": "RQKUVq_root",
-			"row": "RQKUVq_row",
-			"rowActivitySlot": "RQKUVq_rowActivitySlot",
-			"sidebarButton": "RQKUVq_sidebarButton",
-			"summary": "RQKUVq_summary",
-			"switcherRoot": "RQKUVq_switcherRoot",
-			"switcherTitle": "RQKUVq_switcherTitle",
-			"switcherTrigger": "RQKUVq_switcherTrigger",
-			"trigger": "RQKUVq_trigger",
-			"triggerOpen": "RQKUVq_triggerOpen"
+			"activitySlot": "ubYUGG_activitySlot",
+			"ancestorSwitcherTrigger": "ubYUGG_ancestorSwitcherTrigger",
+			"children": "ubYUGG_children",
+			"clickarea": "ubYUGG_clickarea",
+			"content": "ubYUGG_content",
+			"currentLabel": "ubYUGG_currentLabel",
+			"disclosure": "ubYUGG_disclosure",
+			"disclosureOpen": "ubYUGG_disclosureOpen",
+			"disclosureSpace": "ubYUGG_disclosureSpace",
+			"error": "ubYUGG_error",
+			"label": "ubYUGG_label",
+			"menu": "ubYUGG_menu",
+			"menuBody": "ubYUGG_menuBody",
+			"metricDuration": "ubYUGG_metricDuration",
+			"metricToken": "ubYUGG_metricToken",
+			"metrics": "ubYUGG_metrics",
+			"node": "ubYUGG_node",
+			"notice": "ubYUGG_notice",
+			"refresh": "ubYUGG_refresh",
+			"root": "ubYUGG_root",
+			"row": "ubYUGG_row",
+			"rowActivitySlot": "ubYUGG_rowActivitySlot",
+			"sidebarButton": "ubYUGG_sidebarButton",
+			"summary": "ubYUGG_summary",
+			"switcherRoot": "ubYUGG_switcherRoot",
+			"switcherTitle": "ubYUGG_switcherTitle",
+			"switcherTrigger": "ubYUGG_switcherTrigger",
+			"trigger": "ubYUGG_trigger",
+			"triggerOpen": "ubYUGG_triggerOpen"
 		};
 		//#endregion
 		//#region lib/types/client/SubagentHeaderLineage.js
@@ -646,8 +646,8 @@ window.__ModuleLoader__.load({
 			}, lineageSessionId)] });
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-subagent\src\client\SubagentReadOnlyComposer.module.css.mjs
-		const css$1 = ".uADrdW_frame{border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);min-height:54px;color:var(--dsw-alias-label-tertiary);justify-content:center;align-items:center;gap:8px;margin:0 24px 20px;padding:10px 16px;font-size:13px;line-height:20px;display:flex}.uADrdW_frame strong{color:var(--dsw-alias-label-primary);font-weight:510}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-subagent/src/client/SubagentReadOnlyComposer.module.css.mjs
+		const css$1 = ".Xs6rmW_frame{border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);min-height:54px;color:var(--dsw-alias-label-tertiary);justify-content:center;align-items:center;gap:8px;margin:0 24px 20px;padding:10px 16px;font-size:13px;line-height:20px;display:flex}.Xs6rmW_frame strong{color:var(--dsw-alias-label-primary);font-weight:510}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-subagent/SubagentReadOnlyComposer.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -656,7 +656,7 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$1;
 			document.head.appendChild(tag);
 		}
-		var SubagentReadOnlyComposer_module_css_default = { "frame": "uADrdW_frame" };
+		var SubagentReadOnlyComposer_module_css_default = { "frame": "Xs6rmW_frame" };
 		//#endregion
 		//#region lib/types/client/SubagentReadOnlyComposer.js
 		/**
@@ -673,8 +673,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-subagent\src\client\sidebar-chat\SidebarChat.module.css.mjs
-		const css = ".xXU96q_root{width:100%;min-width:0;height:100%;min-height:0;display:flex}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-subagent/src/client/sidebar-chat/SidebarChat.module.css.mjs
+		const css = ".ItKjeG_root{width:100%;min-width:0;height:100%;min-height:0;display:flex}";
 		const tagId = "@deepseek-ai/dsh-client-ui-subagent/SidebarChat.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -683,7 +683,7 @@ window.__ModuleLoader__.load({
 			tag.textContent = css;
 			document.head.appendChild(tag);
 		}
-		var SidebarChat_module_css_default = { "root": "xXU96q_root" };
+		var SidebarChat_module_css_default = { "root": "ItKjeG_root" };
 		//#endregion
 		//#region lib/types/client/sidebar-chat/index.js
 		/** Stable implementation identity for the Sidebar tab body. */

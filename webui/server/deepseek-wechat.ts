@@ -92,8 +92,8 @@ async function ensureQrcodeInstalled(): Promise<void> {
 
 export function deepseekPackageManagerCommand(platform: NodeJS.Platform = process.platform): { command: string; args: string[]; shell: boolean } {
   return {
-    command: platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    args: ['add', 'qrcode', '-w'],
+    command: platform === 'win32' ? 'pnpm.cmd' : 'corepack',
+    args: platform === 'win32' ? ['add', 'qrcode', '-w'] : ['pnpm', 'add', 'qrcode', '-w'],
     shell: platform === 'win32',
   }
 }

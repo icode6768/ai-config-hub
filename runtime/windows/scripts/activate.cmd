@@ -68,9 +68,13 @@ set "PATH=%NEW_PATH%;%PATH%"
 :: in the process environment only and is never printed by this script.
 set "DONGCHUANGAI_KEY="
 set "DONGCHUANGAI_API_KEY="
+set "DEEPSEEK_API_KEY="
 for %%I in ("%PORTABLE_RUNTIME_DIR%\..\..") do set "USB_LOBSTER_ROOT=%%~fI"
 if defined NODE_DIR if exist "%USB_LOBSTER_ROOT%\config.yaml" if exist "%USB_LOBSTER_ROOT%\webui\node_modules\yaml" (
-  for /f "delims=" %%K in ('node -e "const fs=require('fs');const YAML=require(process.argv[1]);const c=YAML.parse(fs.readFileSync(process.argv[2],'utf8'));process.stdout.write(String(c.global?.api?.apiKey??''))" "%USB_LOBSTER_ROOT%\webui\node_modules\yaml" "%USB_LOBSTER_ROOT%\config.yaml"') do set "DONGCHUANGAI_API_KEY=%%K"
+  for /f "delims=" %%K in ('node -e "const fs=require('fs');const YAML=require(process.argv[1]);const c=YAML.parse(fs.readFileSync(process.argv[2],'utf8'));process.stdout.write(String(c.global?.api?.apiKey??''))" "%USB_LOBSTER_ROOT%\webui\node_modules\yaml" "%USB_LOBSTER_ROOT%\config.yaml"') do (
+    set "DONGCHUANGAI_API_KEY=%%K"
+    set "DEEPSEEK_API_KEY=%%K"
+  )
 )
 
 :: --- 状态报告 ---

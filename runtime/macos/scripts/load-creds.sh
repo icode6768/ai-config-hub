@@ -43,6 +43,12 @@ if [ -z "${DONGCHUANGAI_API_KEY:-}" ] && [ -f "$_ROOT/config.yaml" ]; then
   fi
 fi
 
+# DeepSeek Harness 的 deepseek-official 路由固定读取这个变量。
+# 与面板共享同一份 global.api.apiKey，避免不同启动入口出现凭据不一致。
+if [ -n "${DONGCHUANGAI_API_KEY:-}" ]; then
+  export DEEPSEEK_API_KEY="$DONGCHUANGAI_API_KEY"
+fi
+
 # --- OPENCLAW_*（从 .openclaw/state/openclaw.json 读）---
 _OC_JSON="$_ROOT/.openclaw/state/openclaw.json"
 if [ -f "$_OC_JSON" ]; then

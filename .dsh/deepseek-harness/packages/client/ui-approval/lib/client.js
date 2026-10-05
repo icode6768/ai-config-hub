@@ -7,8 +7,8 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-approval\src\client\ApprovalPanel.module.css.mjs
-		const css = ".MUBFvq_root{padding:8px calc(var(--dsh-composer-side-clearance) + 16px) 12px;flex-direction:column;align-items:center;display:flex}.MUBFvq_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);overflow:hidden}.MUBFvq_strip{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);align-items:center;gap:8px;padding:10px 16px;font-size:13px;line-height:18px;display:flex}.MUBFvq_body{box-sizing:border-box;max-height:var(--dsh-composer-text-max-height);flex-direction:column;gap:6px;padding:12px 16px 0;display:flex;overflow-y:auto}.MUBFvq_headline{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px}.MUBFvq_command{color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);word-break:break-all;font-size:13px;line-height:20px}.MUBFvq_actionRow{justify-content:flex-end;gap:8px;padding:14px 16px;display:flex}.MUBFvq_reject:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-color:#0000}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-approval/src/client/ApprovalPanel.module.css.mjs
+		const css = ".jSJIvG_root{padding:8px calc(var(--dsh-composer-side-clearance) + 16px) 12px;flex-direction:column;align-items:center;display:flex}.jSJIvG_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);overflow:hidden}.jSJIvG_strip{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);align-items:center;gap:8px;padding:10px 16px;font-size:13px;line-height:18px;display:flex}.jSJIvG_body{box-sizing:border-box;max-height:var(--dsh-composer-text-max-height);flex-direction:column;gap:6px;padding:12px 16px 0;display:flex;overflow-y:auto}.jSJIvG_headline{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px}.jSJIvG_command{color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);word-break:break-all;font-size:13px;line-height:20px}.jSJIvG_actionRow{justify-content:flex-end;gap:8px;padding:14px 16px;display:flex}.jSJIvG_reject:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-color:#0000}";
 		const tagId = "@deepseek-ai/dsh-client-ui-approval/ApprovalPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -18,14 +18,14 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ApprovalPanel_module_css_default = {
-			"actionRow": "MUBFvq_actionRow",
-			"body": "MUBFvq_body",
-			"card": "MUBFvq_card",
-			"command": "MUBFvq_command",
-			"headline": "MUBFvq_headline",
-			"reject": "MUBFvq_reject",
-			"root": "MUBFvq_root",
-			"strip": "MUBFvq_strip"
+			"actionRow": "jSJIvG_actionRow",
+			"body": "jSJIvG_body",
+			"card": "jSJIvG_card",
+			"command": "jSJIvG_command",
+			"headline": "jSJIvG_headline",
+			"reject": "jSJIvG_reject",
+			"root": "jSJIvG_root",
+			"strip": "jSJIvG_strip"
 		};
 		//#endregion
 		//#region lib/types/client/ApprovalPanel.js

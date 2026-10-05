@@ -1,0 +1,13 @@
+{
+  "env": {
+    "CLAUDE_CODE_USE_POWERSHELL_TOO": "1",
+    "ANTHROPIC_BASE_URL": "https://api.dongchuangai.com/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "sk-1f7b6c851c3377fe750014dab3e514a7026ef3219fbbe333",
+    "ANTHROPIC_API_KEY": "sk-1f7b6c851c3377fe750014dab3e514a7026ef3219fbbe333",
+    "ANTHROPIC_MODEL": "gpt-5.6-sol"
+  },
+  "model": "gpt-5.6-sol",
+  "autoUpdatesChannel": "stable",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark"
+}

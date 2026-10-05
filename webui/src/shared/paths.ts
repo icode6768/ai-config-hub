@@ -54,6 +54,10 @@ export function dshConfigPath(): string {
   return join(dshHomePath(), 'settings.yaml')
 }
 
+export function dshProfilePatchPaths(): string[] {
+  return ['web', 'desktop'].map(profile => join(dshHomePath(), 'profiles', profile, 'cordis.patch.yml'))
+}
+
 export const APP_FILE_BINDINGS: Record<AppId, FileBinding> = {
   openclaw: { path: join(rootPath(), '.openclaw', 'state', 'openclaw.json'), format: 'json' },
   hermes: { path: join(rootPath(), '.hermes', 'config.yaml'), format: 'yaml' },

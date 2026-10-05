@@ -6,6 +6,7 @@ WEBUI_DIR="$ROOT_DIR/webui"
 cd "$ROOT_DIR"
 export USB_LOBSTER_ROOT="$ROOT_DIR"
 export DSH_HOME="$ROOT_DIR/.dsh"
+export COREPACK_ENABLE_STRICT=0
 mkdir -p "$DSH_HOME"
 export HERMES_HOME="$ROOT_DIR/.hermes"
 mkdir -p "$HERMES_HOME"
@@ -25,7 +26,9 @@ if [ -f "$HOME/.npmrc" ] && grep -qE '^(prefix|globalconfig) *=' "$HOME/.npmrc" 
   export _USER_NPMRC_BAK
 fi
 
+set +u
 source "$ROOT_DIR/runtime/macos/scripts/activate.sh"
+set -u
 
 node "$WEBUI_DIR/scripts/launch-portable.mjs"
 # 注意：不能用 `exec` —— 会替换当前 shell 进程，trap 不会触发，.npmrc 还原失败

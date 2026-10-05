@@ -64,12 +64,14 @@ $env:PATH = ($newPaths -join ";") + ";" + $env:PATH
 # Load the portable project's API key only into the current process environment.
 $env:DONGCHUANGAI_KEY = ''
 $env:DONGCHUANGAI_API_KEY = ''
+$env:DEEPSEEK_API_KEY = ''
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PORTABLE_RUNTIME_DIR)
 $configPath = Join-Path $projectRoot 'config.yaml'
 $yamlModule = Join-Path $projectRoot 'webui\node_modules\yaml'
 if ($NODE_DIR -and (Test-Path $configPath) -and (Test-Path $yamlModule)) {
     $key = & (Join-Path $NODE_DIR 'node.exe') -e "const fs=require('fs');const YAML=require(process.argv[1]);const c=YAML.parse(fs.readFileSync(process.argv[2],'utf8'));process.stdout.write(String(c&&c.global&&c.global.api&&c.global.api.apiKey||''))" $yamlModule $configPath
     $env:DONGCHUANGAI_API_KEY = [string]$key
+    $env:DEEPSEEK_API_KEY = [string]$key
 }
 
 # --- 状态报告 ---

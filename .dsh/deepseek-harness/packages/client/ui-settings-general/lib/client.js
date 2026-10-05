@@ -56,8 +56,8 @@ window.__ModuleLoader__.load({
 			return n;
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-general\src\client\SettingsRoot.module.css.mjs
-		const css$6 = ".Q52lLq_triggerRow{flex:none;align-items:center;gap:8px;width:calc(100% + 4px);margin:4px -2px;display:flex;position:relative}.Q52lLq_triggerRow.Q52lLq_railRow{width:36px;margin:8px 0 10px}.Q52lLq_trigger{box-sizing:border-box;border-radius:var(--dsw-radius-md);cursor:pointer;width:auto;min-width:0;height:42px;color:var(--dsw-alias-label-primary);background:0 0;border:none;flex:1;align-items:center;gap:8px;margin:0;padding:0 10px 0 8px;font-family:inherit;font-size:14px;line-height:22px;display:flex;overflow:hidden}.Q52lLq_trigger:hover{background:var(--dsw-alias-interactive-bg-hover)}.Q52lLq_trigger.Q52lLq_rail{flex:none;justify-content:center;gap:0;width:36px;height:36px;margin:0;padding:0}.Q52lLq_triggerLabel{white-space:nowrap;overflow:hidden}.Q52lLq_overlay{z-index:1000;justify-content:center;align-items:center;display:flex;position:fixed;inset:0}.Q52lLq_mask{inset:var(--dsh-frame-chrome-top,0px) 0 0;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur);position:absolute}.Q52lLq_panel{z-index:1;width:800px;height:min(800px, calc(100vh - 2 * max(24px, var(--dsh-frame-overlay-top,24px))));border-radius:var(--dsw-radius-panel);background:var(--dsw-alias-bg-layer-2);max-width:calc(100vw - 48px);box-shadow:var(--dsw-elevation-prominent);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);display:flex;position:relative;overflow:hidden}.Q52lLq_panel:focus{outline:none}.Q52lLq_nav{box-sizing:border-box;flex-direction:column;flex:none;gap:18px;width:188px;padding:22px 12px 0;display:flex}.Q52lLq_navTitle{color:var(--dsw-alias-label-primary);padding:0 12px;font-size:16px;font-weight:500;line-height:24px}.Q52lLq_navList{flex-direction:column;gap:4px;display:flex;overflow-y:auto}.Q52lLq_navCell{box-sizing:border-box;border-radius:var(--dsw-radius-md);cursor:pointer;height:40px;color:var(--dsw-alias-label-primary);text-align:left;background:0 0;border:none;align-items:center;gap:8px;padding:9px 16px 9px 12px;font-family:inherit;font-size:14px;font-weight:400;line-height:22px;display:flex}.Q52lLq_navCell:hover{background:var(--dsw-specific-sidebar-nav-item-hover)}.Q52lLq_navCell.Q52lLq_active{background:var(--dsw-specific-sidebar-nav-item-active)}.Q52lLq_navIcon{flex:none}.Q52lLq_navLabel{white-space:nowrap;text-overflow:ellipsis;flex:1;min-width:0;overflow:hidden}.Q52lLq_content{flex-direction:column;flex:1;min-width:0;display:flex}.Q52lLq_header{box-sizing:border-box;flex:none;justify-content:space-between;align-items:flex-start;gap:8px;height:54px;padding:20px 14px 8px 10px;display:flex}.Q52lLq_actions{justify-content:flex-end;align-items:center;gap:8px;min-width:0;margin-left:auto;display:flex}.Q52lLq_close{border-radius:var(--dsw-radius-sm);cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-primary);background:0 0;border:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.Q52lLq_close:hover{background:var(--dsw-alias-interactive-bg-hover)}.Q52lLq_options{flex:1;min-height:0;padding:0 24px 24px;overflow-y:auto}.Q52lLq_hiddenLabel{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-general/src/client/SettingsRoot.module.css.mjs
+		const css$6 = ".tcrewG_triggerRow{flex:none;align-items:center;gap:8px;width:calc(100% + 4px);margin:4px -2px;display:flex;position:relative}.tcrewG_triggerRow.tcrewG_railRow{width:36px;margin:8px 0 10px}.tcrewG_trigger{box-sizing:border-box;border-radius:var(--dsw-radius-md);cursor:pointer;width:auto;min-width:0;height:42px;color:var(--dsw-alias-label-primary);background:0 0;border:none;flex:1;align-items:center;gap:8px;margin:0;padding:0 10px 0 8px;font-family:inherit;font-size:14px;line-height:22px;display:flex;overflow:hidden}.tcrewG_trigger:hover{background:var(--dsw-alias-interactive-bg-hover)}.tcrewG_trigger.tcrewG_rail{flex:none;justify-content:center;gap:0;width:36px;height:36px;margin:0;padding:0}.tcrewG_triggerLabel{white-space:nowrap;overflow:hidden}.tcrewG_overlay{z-index:1000;justify-content:center;align-items:center;display:flex;position:fixed;inset:0}.tcrewG_mask{inset:var(--dsh-frame-chrome-top,0px) 0 0;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur);position:absolute}.tcrewG_panel{z-index:1;width:800px;height:min(800px, calc(100vh - 2 * max(24px, var(--dsh-frame-overlay-top,24px))));border-radius:var(--dsw-radius-panel);background:var(--dsw-alias-bg-layer-2);max-width:calc(100vw - 48px);box-shadow:var(--dsw-elevation-prominent);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);display:flex;position:relative;overflow:hidden}.tcrewG_panel:focus{outline:none}.tcrewG_nav{box-sizing:border-box;flex-direction:column;flex:none;gap:18px;width:188px;padding:22px 12px 0;display:flex}.tcrewG_navTitle{color:var(--dsw-alias-label-primary);padding:0 12px;font-size:16px;font-weight:500;line-height:24px}.tcrewG_navList{flex-direction:column;gap:4px;display:flex;overflow-y:auto}.tcrewG_navCell{box-sizing:border-box;border-radius:var(--dsw-radius-md);cursor:pointer;height:40px;color:var(--dsw-alias-label-primary);text-align:left;background:0 0;border:none;align-items:center;gap:8px;padding:9px 16px 9px 12px;font-family:inherit;font-size:14px;font-weight:400;line-height:22px;display:flex}.tcrewG_navCell:hover{background:var(--dsw-specific-sidebar-nav-item-hover)}.tcrewG_navCell.tcrewG_active{background:var(--dsw-specific-sidebar-nav-item-active)}.tcrewG_navIcon{flex:none}.tcrewG_navLabel{white-space:nowrap;text-overflow:ellipsis;flex:1;min-width:0;overflow:hidden}.tcrewG_content{flex-direction:column;flex:1;min-width:0;display:flex}.tcrewG_header{box-sizing:border-box;flex:none;justify-content:space-between;align-items:flex-start;gap:8px;height:54px;padding:20px 14px 8px 10px;display:flex}.tcrewG_actions{justify-content:flex-end;align-items:center;gap:8px;min-width:0;margin-left:auto;display:flex}.tcrewG_close{border-radius:var(--dsw-radius-sm);cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-primary);background:0 0;border:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.tcrewG_close:hover{background:var(--dsw-alias-interactive-bg-hover)}.tcrewG_options{flex:1;min-height:0;padding:0 24px 24px;overflow-y:auto}.tcrewG_hiddenLabel{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
 		const tagId$6 = "@deepseek-ai/dsh-client-ui-settings-general/SettingsRoot.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$6) + "]") === null) {
 			const tag = document.createElement("style");
@@ -67,31 +67,31 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var SettingsRoot_module_css_default = {
-			"actions": "Q52lLq_actions",
-			"active": "Q52lLq_active",
-			"close": "Q52lLq_close",
-			"content": "Q52lLq_content",
-			"header": "Q52lLq_header",
-			"hiddenLabel": "Q52lLq_hiddenLabel",
-			"mask": "Q52lLq_mask",
-			"nav": "Q52lLq_nav",
-			"navCell": "Q52lLq_navCell",
-			"navIcon": "Q52lLq_navIcon",
-			"navLabel": "Q52lLq_navLabel",
-			"navList": "Q52lLq_navList",
-			"navTitle": "Q52lLq_navTitle",
-			"options": "Q52lLq_options",
-			"overlay": "Q52lLq_overlay",
-			"panel": "Q52lLq_panel",
-			"rail": "Q52lLq_rail",
-			"railRow": "Q52lLq_railRow",
-			"trigger": "Q52lLq_trigger",
-			"triggerLabel": "Q52lLq_triggerLabel",
-			"triggerRow": "Q52lLq_triggerRow"
+			"actions": "tcrewG_actions",
+			"active": "tcrewG_active",
+			"close": "tcrewG_close",
+			"content": "tcrewG_content",
+			"header": "tcrewG_header",
+			"hiddenLabel": "tcrewG_hiddenLabel",
+			"mask": "tcrewG_mask",
+			"nav": "tcrewG_nav",
+			"navCell": "tcrewG_navCell",
+			"navIcon": "tcrewG_navIcon",
+			"navLabel": "tcrewG_navLabel",
+			"navList": "tcrewG_navList",
+			"navTitle": "tcrewG_navTitle",
+			"options": "tcrewG_options",
+			"overlay": "tcrewG_overlay",
+			"panel": "tcrewG_panel",
+			"rail": "tcrewG_rail",
+			"railRow": "tcrewG_railRow",
+			"trigger": "tcrewG_trigger",
+			"triggerLabel": "tcrewG_triggerLabel",
+			"triggerRow": "tcrewG_triggerRow"
 		};
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-general\src\client\DesktopUpdateIndicator.module.css.mjs
-		const css$5 = ".j4x_Ea_indicator{box-sizing:border-box;border:1px solid color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 20%, transparent);border-radius:var(--dsw-radius-sm);height:28px;color:var(--dsw-alias-brand-primary-new-colorprimary-new-color);background:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 8%, transparent);text-align:left;white-space:nowrap;cursor:pointer;flex:none;grid-template-columns:14px max-content;align-items:center;column-gap:4px;padding:0 8px;font-family:inherit;font-size:12px;font-weight:500;line-height:18px;display:inline-grid}.j4x_Ea_icon{place-items:center;width:14px;height:14px;display:grid}.j4x_Ea_badge{inset-inline-end:2px;corner-shape:round;background:var(--dsw-alias-brand-primary-new-colorprimary-new-color);border-radius:50%;width:6px;height:6px;position:absolute;top:2px}.j4x_Ea_errorDot{corner-shape:round;background:currentColor;border-radius:50%;width:6px;height:6px}.j4x_Ea_spinner{animation:1s linear infinite j4x_Ea_spin}@keyframes j4x_Ea_spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.j4x_Ea_spinner{animation:none}}.j4x_Ea_indicator[aria-disabled=true]{cursor:default}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-general/src/client/DesktopUpdateIndicator.module.css.mjs
+		const css$5 = "._5jPIBa_indicator{box-sizing:border-box;border:1px solid color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 20%, transparent);border-radius:var(--dsw-radius-sm);height:28px;color:var(--dsw-alias-brand-primary-new-colorprimary-new-color);background:color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 8%, transparent);text-align:left;white-space:nowrap;cursor:pointer;flex:none;grid-template-columns:14px max-content;align-items:center;column-gap:4px;padding:0 8px;font-family:inherit;font-size:12px;font-weight:500;line-height:18px;display:inline-grid}._5jPIBa_icon{place-items:center;width:14px;height:14px;display:grid}._5jPIBa_badge{inset-inline-end:2px;corner-shape:round;background:var(--dsw-alias-brand-primary-new-colorprimary-new-color);border-radius:50%;width:6px;height:6px;position:absolute;top:2px}._5jPIBa_errorDot{corner-shape:round;background:currentColor;border-radius:50%;width:6px;height:6px}._5jPIBa_spinner{animation:1s linear infinite _5jPIBa_spin}@keyframes _5jPIBa_spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){._5jPIBa_spinner{animation:none}}._5jPIBa_indicator[aria-disabled=true]{cursor:default}";
 		const tagId$5 = "@deepseek-ai/dsh-client-ui-settings-general/DesktopUpdateIndicator.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$5) + "]") === null) {
 			const tag = document.createElement("style");
@@ -101,12 +101,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var DesktopUpdateIndicator_module_css_default = {
-			"badge": "j4x_Ea_badge",
-			"errorDot": "j4x_Ea_errorDot",
-			"icon": "j4x_Ea_icon",
-			"indicator": "j4x_Ea_indicator",
-			"spin": "j4x_Ea_spin",
-			"spinner": "j4x_Ea_spinner"
+			"badge": "_5jPIBa_badge",
+			"errorDot": "_5jPIBa_errorDot",
+			"icon": "_5jPIBa_icon",
+			"indicator": "_5jPIBa_indicator",
+			"spin": "_5jPIBa_spin",
+			"spinner": "_5jPIBa_spinner"
 		};
 		//#endregion
 		//#region lib/types/client/DesktopUpdateIndicator.js
@@ -567,8 +567,8 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-general\src\client\chrome.module.css.mjs
-		const css$4 = ".P021hG_triggerLabel{white-space:nowrap;overflow:hidden}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-general/src/client/chrome.module.css.mjs
+		const css$4 = "._4BtKRG_triggerLabel{white-space:nowrap;overflow:hidden}";
 		const tagId$4 = "@deepseek-ai/dsh-client-ui-settings-general/chrome.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$4) + "]") === null) {
 			const tag = document.createElement("style");
@@ -577,7 +577,7 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$4;
 			document.head.appendChild(tag);
 		}
-		var chrome_module_css_default = { "triggerLabel": "P021hG_triggerLabel" };
+		var chrome_module_css_default = { "triggerLabel": "_4BtKRG_triggerLabel" };
 		//#endregion
 		//#region lib/types/client/chrome.js
 		/**
@@ -614,8 +614,8 @@ window.__ModuleLoader__.load({
 			return (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: t("close") });
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-general\src\client\GeneralSection.module.css.mjs
-		const css$3 = ".u_aUCW_section{flex-direction:column;width:100%;display:flex}.u_aUCW_section>[data-slot=\"settings.general.item\"]>:last-child{border-bottom:none}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-general/src/client/GeneralSection.module.css.mjs
+		const css$3 = ".StXM6W_section{flex-direction:column;width:100%;display:flex}.StXM6W_section>[data-slot=\"settings.general.item\"]>:last-child{border-bottom:none}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-settings-general/GeneralSection.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -624,7 +624,7 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$3;
 			document.head.appendChild(tag);
 		}
-		var GeneralSection_module_css_default = { "section": "u_aUCW_section" };
+		var GeneralSection_module_css_default = { "section": "StXM6W_section" };
 		//#endregion
 		//#region lib/types/client/GeneralSection.js
 		/**
@@ -639,8 +639,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-general\src\client\CurrentVersionRow.module.css.mjs
-		const css$2 = ".CfXrlW_row{color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;padding:16px 0;font-size:14px;line-height:22px}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-general/src/client/CurrentVersionRow.module.css.mjs
+		const css$2 = ".wiOifG_row{color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;padding:16px 0;font-size:14px;line-height:22px}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-settings-general/CurrentVersionRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -649,7 +649,7 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$2;
 			document.head.appendChild(tag);
 		}
-		var CurrentVersionRow_module_css_default = { "row": "CfXrlW_row" };
+		var CurrentVersionRow_module_css_default = { "row": "wiOifG_row" };
 		//#endregion
 		//#region lib/types/client/CurrentVersionRow.js
 		/**
@@ -664,8 +664,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-general\src\client\DeveloperToolsRow.module.css.mjs
-		const css$1 = ".NsIXra_row{border-bottom:.5px solid var(--dsw-alias-border-l2);justify-content:space-between;align-items:center;gap:24px;padding:16px 0;display:flex}.NsIXra_title{font-size:14px;line-height:20px}.NsIXra_description{color:var(--dsw-alias-label-secondary);margin-top:4px;font-size:12px;line-height:18px}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-general/src/client/DeveloperToolsRow.module.css.mjs
+		const css$1 = ".sVQBFG_row{border-bottom:.5px solid var(--dsw-alias-border-l2);justify-content:space-between;align-items:center;gap:24px;padding:16px 0;display:flex}.sVQBFG_title{font-size:14px;line-height:20px}.sVQBFG_description{color:var(--dsw-alias-label-secondary);margin-top:4px;font-size:12px;line-height:18px}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-settings-general/DeveloperToolsRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -675,9 +675,9 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var DeveloperToolsRow_module_css_default = {
-			"description": "NsIXra_description",
-			"row": "NsIXra_row",
-			"title": "NsIXra_title"
+			"description": "sVQBFG_description",
+			"row": "sVQBFG_row",
+			"title": "sVQBFG_title"
 		};
 		//#endregion
 		//#region lib/types/client/DeveloperToolsRow.js
@@ -723,8 +723,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-settings-general\src\client\SettingsDocumentAction.module.css.mjs
-		const css = ".KhIj0W_action{align-items:center;gap:8px;min-width:0;display:flex}.KhIj0W_error{max-width:180px;color:var(--dsw-alias-state-error-primary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;overflow:hidden}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-settings-general/src/client/SettingsDocumentAction.module.css.mjs
+		const css = ".mm1Zca_action{align-items:center;gap:8px;min-width:0;display:flex}.mm1Zca_error{max-width:180px;color:var(--dsw-alias-state-error-primary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;overflow:hidden}";
 		const tagId = "@deepseek-ai/dsh-client-ui-settings-general/SettingsDocumentAction.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -734,8 +734,8 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var SettingsDocumentAction_module_css_default = {
-			"action": "KhIj0W_action",
-			"error": "KhIj0W_error"
+			"action": "mm1Zca_action",
+			"error": "mm1Zca_error"
 		};
 		//#endregion
 		//#region lib/types/client/SettingsDocumentAction.js

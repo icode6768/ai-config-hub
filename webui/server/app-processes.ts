@@ -31,6 +31,7 @@ function runtimePathEntries(): string[] {
   return [
     ...(nodeDirectory ? [nodeDirectory] : []),
     ...platformPaths,
+    join(root, 'runtime', process.platform === 'darwin' ? 'macos' : 'windows', 'npm-global', 'bin'),
     join(root, '.hermes', 'bin'),
   ].filter(Boolean)
 }
@@ -43,6 +44,7 @@ function runtimeEnv(config?: LauncherConfig): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: pathEntries.join(process.platform === 'win32' ? ';' : ':'),
+    COREPACK_ENABLE_STRICT: '0',
     DSH_HOME: dshHomePath(),
     HERMES_HOME: join(rootPath(), '.hermes'),
   }
@@ -51,6 +53,16 @@ function runtimeEnv(config?: LauncherConfig): NodeJS.ProcessEnv {
     env.OPENCLAW_CONFIG_PATH = config.global.launch.openclawConfigPath
     env.OPENCLAW_STATE_DIR = config.global.launch.openclawStateDir
     env.DONGCHUANGAI_API_KEY = config.global.api.apiKey
+    env.DEEPSEEK_API_KEY = config.global.api.apiKey
+    const hostname = (() => {
+      try { return new URL(config.global.api.baseUrl).hostname }
+      catch { return '' }
+    })()
+    if (hostname) {
+      const normalizedHostname = hostname.replace(/^api\./i, '')
+      const keyEnv = `HERMES_CUSTOM_API_${normalizedHostname.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}_API_KEY`
+      env[keyEnv] = config.global.api.apiKey
+    }
   }
   return env
 }
@@ -171,9 +183,43 @@ function commandFor(appId: AppId, config: LauncherConfig): CommandSpec | null {
     const command = packageCommand('codex')
     return command ? { command, args: [], cwd: root, env: runtimeEnv(config) } : null
   }
-  return existsSync(deepseekHarnessLauncherPath())
-    ? { command: deepseekHarnessLauncherPath(), args: [], cwd: deepseekHarnessHomePath(), env: runtimeEnv(config) }
-    : null
+  const launcher = deepseekHarnessLauncherPath()
+  if (!existsSync(launcher)) return null
+  return {
+    command: process.platform === 'win32' ? launcher : 'zsh',
+    args: process.platform === 'win32' ? [] : [launcher],
+    cwd: deepseekHarnessHomePath(),
+    env: runtimeEnv(config),
+  }
+}
+
+async function repairOpenclawState(config: LauncherConfig): Promise<void> {
+  const database = join(config.global.launch.openclawStateDir, 'state', 'openclaw.sqlite')
+  if (!existsSync(database)) return
+  const marker = join(config.global.launch.openclawStateDir, '.startup-doctor-version')
+  const packagePath = process.platform === 'darwin'
+    ? join(runtimeNpmGlobalPath(), 'lib', 'node_modules', 'openclaw', 'package.json')
+    : join(runtimeNpmGlobalPath(), 'node_modules', 'openclaw', 'package.json')
+  let version = 'unknown'
+  try {
+    const packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as { version?: unknown }
+    if (typeof packageJson.version === 'string') version = packageJson.version
+  } catch {
+    // The command itself remains the source of truth if package metadata is unavailable.
+  }
+  const signature = version
+  try {
+    if (readFileSync(marker, 'utf8').trim() === signature) return
+  } catch {
+    // Run the repair when the marker does not exist yet.
+  }
+  const spec = commandFor('openclaw', config)
+  if (!spec) return
+  const args = spec.args[0]?.endsWith('.mjs')
+    ? [spec.args[0], 'doctor', '--fix']
+    : ['doctor', '--fix']
+  await runCommand(spec.command, args, spec.cwd, spec.env)
+  writeFileSync(marker, `${version}\n`, 'utf8')
 }
 
 function kindFor(appId: AppId): AppRuntimeStatus['kind'] {
@@ -322,6 +368,7 @@ export async function startApp(appId: AppId, config: LauncherConfig): Promise<vo
     phases.set(appId, 'running')
     return
   }
+  if (appId === 'openclaw') await repairOpenclawState(config)
   // A previous portable-runtime layout can leave a stale gateway process on
   // the configured port. Its HTTP probe returns 503, but OpenClaw still holds
   // the gateway lock and makes the new instance fail with "already running".
@@ -433,12 +480,14 @@ export async function updateApp(appId: AppId, config: LauncherConfig): Promise<v
       const source = deepseekHarnessSourcePath()
       await updateGitSource(source, DEEPSEEK_HARNESS_REMOTE)
       ensureDeepseekWorkspaceCompatibility(source)
-      await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['install', '--filter', '@deepseek-ai/dsh...', '--no-frozen-lockfile'], source, {
+      const manager = process.platform === 'win32' ? 'pnpm.cmd' : join(runtimeBinPath(), 'corepack')
+      const managerArgs = process.platform === 'win32' ? [] : ['pnpm']
+      await runCommand(manager, [...managerArgs, 'install', '--filter', '@deepseek-ai/dsh...', '--no-frozen-lockfile'], source, {
         CI: 'true',
         npm_config_confirm_modules_purge: 'false',
         npm_config_node_linker: 'hoisted',
       })
-      await runCommand(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['run', 'build'], source)
+      await runCommand(manager, [...managerArgs, 'run', 'build'], source)
     }
     phases.set(appId, 'stopped')
   } catch (error) {
@@ -457,6 +506,13 @@ export function terminalEnvironment(root: string, config?: LauncherConfig): Reco
     OPENCLAW_CONFIG_PATH: join(root, '.openclaw', 'state', 'openclaw.json'),
     OPENCLAW_STATE_DIR: join(root, '.openclaw', 'state'),
     DONGCHUANGAI_API_KEY: config?.global.api.apiKey ?? '',
+    DEEPSEEK_API_KEY: config?.global.api.apiKey ?? '',
+    ...(config?.global.api.baseUrl ? {
+      [`HERMES_CUSTOM_API_${(() => {
+        try { return new URL(config.global.api.baseUrl).hostname.replace(/^api\./i, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') }
+        catch { return '' }
+      })()}_API_KEY`]: config.global.api.apiKey,
+    } : {}),
   }
 }
 
@@ -540,16 +596,21 @@ export async function openAppTerminal(appId: AppId, config: LauncherConfig, opti
   }
   if (appId === 'deepseek-harness' && options.desktop) {
     const source = deepseekHarnessSourcePath()
-    const pnpm = process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'pnpm.cmd') : 'pnpm'
+    const pnpm = process.platform === 'win32' ? join(runtimeNpmGlobalPath(), 'pnpm.cmd') : join(runtimeBinPath(), 'corepack')
+    const pnpmArgs = process.platform === 'win32' ? [] : ['pnpm']
     const runtimeFolder = process.platform === 'darwin' ? 'macos' : 'windows'
     const desktopTemp = join(rootPath(), 'runtime', runtimeFolder, 'tmp', 'deepseek-desktop')
     const desktopCache = join(rootPath(), 'runtime', runtimeFolder, 'cache', 'electron')
     mkdirSync(desktopTemp, { recursive: true })
     mkdirSync(desktopCache, { recursive: true })
     const desktopEnv = { ...runtimeEnv(config), DSH_HOME: join(rootPath(), '.dsh'), ELECTRON_CACHE: desktopCache, TEMP: desktopTemp, TMP: desktopTemp }
+    if (!existsSync(join(source, 'apps', 'desktop', 'node_modules', 'electron', 'package.json'))
+      || !existsSync(join(source, 'apps', 'desktop', 'node_modules', '.bin', 'tsx'))) {
+      await runCommand(pnpm, [...pnpmArgs, 'install', '--filter', '@deepseek-ai/dsh-desktop...', '--frozen-lockfile=false'], source, desktopEnv)
+    }
     const child = process.platform === 'win32'
       ? spawn('cmd.exe', ['/d', '/c', 'call', pnpm, '--filter', '@deepseek-ai/dsh-desktop', 'start'], { cwd: source, env: desktopEnv, detached: true, stdio: 'ignore', windowsHide: false })
-      : spawn(pnpm, ['--filter', '@deepseek-ai/dsh-desktop', 'start'], { cwd: source, env: desktopEnv, detached: true, stdio: 'ignore' })
+      : spawn(pnpm, [...pnpmArgs, '--filter', '@deepseek-ai/dsh-desktop', 'start'], { cwd: source, env: desktopEnv, detached: true, stdio: 'ignore' })
     child.once('error', error => {
       errors.set(appId, `DeepSeek Harness 桌面端启动失败：${error.message}`)
       phases.set(appId, 'error')

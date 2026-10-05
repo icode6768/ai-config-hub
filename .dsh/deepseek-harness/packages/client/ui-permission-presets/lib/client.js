@@ -261,8 +261,8 @@ window.__ModuleLoader__.load({
 			return displayPresetName(name);
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-permission-presets\src\client\PermissionSelect.module.css.mjs
-		const css$1 = ".yf2_Cq_trigger{border-radius:var(--dsw-radius-sm);min-width:0;max-width:220px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.yf2_Cq_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.yf2_Cq_trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}.yf2_Cq_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.yf2_Cq_triggerIcon{flex:none;display:inline-flex}.yf2_Cq_triggerIcon svg{width:14px;height:14px}.yf2_Cq_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.yf2_Cq_optionLabel{align-items:baseline;gap:4px;min-width:0;max-width:100%;display:inline-flex}.yf2_Cq_optionLabelText{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.yf2_Cq_badge{color:var(--dsw-alias-label-tertiary);letter-spacing:.2px;flex:none;align-self:flex-start;margin-top:-1px;font-size:8px;font-weight:600;line-height:10px}.yf2_Cq_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s;display:inline-flex}@container (width<=460px){.yf2_Cq_trigger:has(.yf2_Cq_triggerIcon) .yf2_Cq_triggerLabel{display:none}}.yf2_Cq_chevronOpen{transform:rotate(180deg)}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-permission-presets/src/client/PermissionSelect.module.css.mjs
+		const css$1 = "._5vn7Dq_trigger{border-radius:var(--dsw-radius-sm);min-width:0;max-width:220px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}._5vn7Dq_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._5vn7Dq_trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}._5vn7Dq_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}._5vn7Dq_triggerIcon{flex:none;display:inline-flex}._5vn7Dq_triggerIcon svg{width:14px;height:14px}._5vn7Dq_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}._5vn7Dq_optionLabel{align-items:baseline;gap:4px;min-width:0;max-width:100%;display:inline-flex}._5vn7Dq_optionLabelText{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}._5vn7Dq_badge{color:var(--dsw-alias-label-tertiary);letter-spacing:.2px;flex:none;align-self:flex-start;margin-top:-1px;font-size:8px;font-weight:600;line-height:10px}._5vn7Dq_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s;display:inline-flex}@container (width<=460px){._5vn7Dq_trigger:has(._5vn7Dq_triggerIcon) ._5vn7Dq_triggerLabel{display:none}}._5vn7Dq_chevronOpen{transform:rotate(180deg)}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-permission-presets/PermissionSelect.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -272,14 +272,14 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var PermissionSelect_module_css_default = {
-			"badge": "yf2_Cq_badge",
-			"chevron": "yf2_Cq_chevron",
-			"chevronOpen": "yf2_Cq_chevronOpen",
-			"optionLabel": "yf2_Cq_optionLabel",
-			"optionLabelText": "yf2_Cq_optionLabelText",
-			"trigger": "yf2_Cq_trigger",
-			"triggerIcon": "yf2_Cq_triggerIcon",
-			"triggerLabel": "yf2_Cq_triggerLabel"
+			"badge": "_5vn7Dq_badge",
+			"chevron": "_5vn7Dq_chevron",
+			"chevronOpen": "_5vn7Dq_chevronOpen",
+			"optionLabel": "_5vn7Dq_optionLabel",
+			"optionLabelText": "_5vn7Dq_optionLabelText",
+			"trigger": "_5vn7Dq_trigger",
+			"triggerIcon": "_5vn7Dq_triggerIcon",
+			"triggerLabel": "_5vn7Dq_triggerLabel"
 		};
 		//#endregion
 		//#region lib/types/client/PermissionSelect.js
@@ -434,8 +434,8 @@ window.__ModuleLoader__.load({
 			})] });
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-permission-presets\src\client\PermissionRow.module.css.mjs
-		const css = ".JbdPga_row{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.JbdPga_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}.JbdPga_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.JbdPga_desc{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:18px}.JbdPga_selector{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.JbdPga_selector:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.JbdPga_selector:disabled{cursor:default}.JbdPga_chevron{flex:none}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-permission-presets/src/client/PermissionRow.module.css.mjs
+		const css = ".V1uFdG_row{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.V1uFdG_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}.V1uFdG_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.V1uFdG_desc{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:18px}.V1uFdG_selector{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.V1uFdG_selector:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.V1uFdG_selector:disabled{cursor:default}.V1uFdG_chevron{flex:none}";
 		const tagId = "@deepseek-ai/dsh-client-ui-permission-presets/PermissionRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -445,12 +445,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var PermissionRow_module_css_default = {
-			"chevron": "JbdPga_chevron",
-			"desc": "JbdPga_desc",
-			"row": "JbdPga_row",
-			"rowText": "JbdPga_rowText",
-			"selector": "JbdPga_selector",
-			"title": "JbdPga_title"
+			"chevron": "V1uFdG_chevron",
+			"desc": "V1uFdG_desc",
+			"row": "V1uFdG_row",
+			"rowText": "V1uFdG_rowText",
+			"selector": "V1uFdG_selector",
+			"title": "V1uFdG_title"
 		};
 		//#endregion
 		//#region lib/types/client/PermissionRow.js

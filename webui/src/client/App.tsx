@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import type { AppFileState, AppId, AppRuntimeStatus, LauncherConfig, RuntimeVersion, StepStatus } from '../shared/types'
 import { resolveEditorDraft } from '../shared/editor-draft'
+import aiConfigHubLogo from '../assets/ai-config-hub-logo.svg'
 import dongchuangaiLogo from '../assets/logo.png'
 import { useI18n } from './i18n'
 
@@ -832,10 +833,12 @@ export default function App(): React.ReactElement {
     <div className="shell">
       <aside className="rail">
         <div className="brand">
-          <img className="brandLogo" src={dongchuangaiLogo} alt="东创AI" draggable={false} />
-          <div className="brandText">
-            <div className="brandTitle">{t('聚合工作台')}</div>
-            <div className="brandSub">{t('本地网页引导安装')}</div>
+          <div className="brandHeader">
+            <img className="brandLogo" src={aiConfigHubLogo} alt="AI Config Hub" draggable={false} />
+            <div className="brandText">
+              <div className="brandTitle">{t('AI Config Hub')}</div>
+              <div className="brandSub">{t('统一安装、配置与管理本地 AI 应用')}</div>
+            </div>
           </div>
           {softwareUpdate && (
             <button type="button" className="updateNotice" onClick={() => { setUpdateMessage(''); setUpdateModalOpen(true) }}>
@@ -1025,7 +1028,7 @@ export default function App(): React.ReactElement {
                     })} />
                   </div>
                   <div className="hint">
-                    保存后会同步到 OpenClaw、Hermes、Claude Code、Codex 和 DeepSeek Harness 的对应配置文件。
+                    保存后会同步到 OpenClaw、Hermes、Claude Code、Codex 和 DeepSeek Harness 的实际配置；DeepSeek 使用 web/desktop Profile Patch，不写入 settings.yaml。
                   </div>
                   <div className="appOps">
                     <button type="button" className="primary" onClick={() => void saveGlobalConfig()} disabled={saving}>

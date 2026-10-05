@@ -65,8 +65,8 @@ window.__ModuleLoader__.load({
 			return sessionFileAddress(sessionId, normalized);
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-skill\src\client\SkillRow.module.css.mjs
-		const css = ".VtDc3a_card{flex-direction:column;display:flex}.VtDc3a_row{height:calc(24px + var(--dsh-content-font-delta,0px));min-width:0;color:var(--dsw-alias-label-tertiary);align-items:center;transition:color .1s;display:flex;position:relative;overflow:hidden}.VtDc3a_row:hover{color:var(--dsw-alias-label-secondary)}.VtDc3a_row[data-expandable]{cursor:pointer}.VtDc3a_leading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:inherit;flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.VtDc3a_leading svg{width:calc(14px + var(--dsh-content-font-delta,0px));height:calc(14px + var(--dsh-content-font-delta,0px))}.VtDc3a_chevron{color:inherit}.VtDc3a_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.VtDc3a_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.VtDc3a_row:hover .VtDc3a_iconIdle{opacity:0}.VtDc3a_row:hover .VtDc3a_chevronHover{opacity:1}.VtDc3a_title{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:none}.VtDc3a_separator{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.VtDc3a_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:auto;overflow:hidden}.VtDc3a_errorSummary{color:var(--dsw-alias-state-error-primary)}.VtDc3a_stoppedSummary{color:var(--dsw-alias-state-warn-label)}.VtDc3a_bodyWrap{flex-direction:column;display:flex}.VtDc3a_instructionsCard{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:hidden}.VtDc3a_instructionsHeader{border-bottom:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-markdown-code-block-banner);color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:8px 12px;font-size:11px;font-weight:500;line-height:16px}.VtDc3a_instructions{white-space:pre-wrap;overflow-wrap:anywhere;min-height:0;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);margin:0;padding:10px 12px 12px;overflow:auto}.VtDc3a_instructions[data-error]{color:var(--dsw-alias-state-error-primary)}.VtDc3a_instructions::-webkit-scrollbar-thumb{border-radius:var(--dsw-radius-sm);background-clip:padding-box;border:2px solid #0000}.VtDc3a_instructions::-webkit-scrollbar-track{margin:6px 0}.VtDc3a_inspectButton{border:.5px solid var(--dsw-alias-border-l4);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.VtDc3a_card:hover .VtDc3a_inspectButton,.VtDc3a_inspectButton:focus-visible{opacity:1}.VtDc3a_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.VtDc3a_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.VtDc3a_row,.VtDc3a_iconIdle,.VtDc3a_chevronHover,.VtDc3a_inspectButton{transition:none}}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-skill/src/client/SkillRow.module.css.mjs
+		const css = "._43piXG_card{flex-direction:column;display:flex}._43piXG_row{height:calc(24px + var(--dsh-content-font-delta,0px));min-width:0;color:var(--dsw-alias-label-tertiary);align-items:center;transition:color .1s;display:flex;position:relative;overflow:hidden}._43piXG_row:hover{color:var(--dsw-alias-label-secondary)}._43piXG_row[data-expandable]{cursor:pointer}._43piXG_leading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:inherit;flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}._43piXG_leading svg{width:calc(14px + var(--dsh-content-font-delta,0px));height:calc(14px + var(--dsh-content-font-delta,0px))}._43piXG_chevron{color:inherit}._43piXG_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}._43piXG_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}._43piXG_row:hover ._43piXG_iconIdle{opacity:0}._43piXG_row:hover ._43piXG_chevronHover{opacity:1}._43piXG_title{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:none}._43piXG_separator{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}._43piXG_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:auto;overflow:hidden}._43piXG_errorSummary{color:var(--dsw-alias-state-error-primary)}._43piXG_stoppedSummary{color:var(--dsw-alias-state-warn-label)}._43piXG_bodyWrap{flex-direction:column;display:flex}._43piXG_instructionsCard{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:hidden}._43piXG_instructionsHeader{border-bottom:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-markdown-code-block-banner);color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:8px 12px;font-size:11px;font-weight:500;line-height:16px}._43piXG_instructions{white-space:pre-wrap;overflow-wrap:anywhere;min-height:0;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);margin:0;padding:10px 12px 12px;overflow:auto}._43piXG_instructions[data-error]{color:var(--dsw-alias-state-error-primary)}._43piXG_instructions::-webkit-scrollbar-thumb{border-radius:var(--dsw-radius-sm);background-clip:padding-box;border:2px solid #0000}._43piXG_instructions::-webkit-scrollbar-track{margin:6px 0}._43piXG_inspectButton{border:.5px solid var(--dsw-alias-border-l4);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}._43piXG_card:hover ._43piXG_inspectButton,._43piXG_inspectButton:focus-visible{opacity:1}._43piXG_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}._43piXG_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){._43piXG_row,._43piXG_iconIdle,._43piXG_chevronHover,._43piXG_inspectButton{transition:none}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-skill/SkillRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -76,23 +76,23 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var SkillRow_module_css_default = {
-			"bodyWrap": "VtDc3a_bodyWrap",
-			"card": "VtDc3a_card",
-			"chevron": "VtDc3a_chevron",
-			"chevronHover": "VtDc3a_chevronHover",
-			"errorSummary": "VtDc3a_errorSummary",
-			"iconIdle": "VtDc3a_iconIdle",
-			"inspectButton": "VtDc3a_inspectButton",
-			"instructions": "VtDc3a_instructions",
-			"instructionsCard": "VtDc3a_instructionsCard",
-			"instructionsHeader": "VtDc3a_instructionsHeader",
-			"leading": "VtDc3a_leading",
-			"row": "VtDc3a_row",
-			"separator": "VtDc3a_separator",
-			"stoppedSummary": "VtDc3a_stoppedSummary",
-			"summary": "VtDc3a_summary",
-			"title": "VtDc3a_title",
-			"visuallyHidden": "VtDc3a_visuallyHidden"
+			"bodyWrap": "_43piXG_bodyWrap",
+			"card": "_43piXG_card",
+			"chevron": "_43piXG_chevron",
+			"chevronHover": "_43piXG_chevronHover",
+			"errorSummary": "_43piXG_errorSummary",
+			"iconIdle": "_43piXG_iconIdle",
+			"inspectButton": "_43piXG_inspectButton",
+			"instructions": "_43piXG_instructions",
+			"instructionsCard": "_43piXG_instructionsCard",
+			"instructionsHeader": "_43piXG_instructionsHeader",
+			"leading": "_43piXG_leading",
+			"row": "_43piXG_row",
+			"separator": "_43piXG_separator",
+			"stoppedSummary": "_43piXG_stoppedSummary",
+			"summary": "_43piXG_summary",
+			"title": "_43piXG_title",
+			"visuallyHidden": "_43piXG_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/SkillRow.js

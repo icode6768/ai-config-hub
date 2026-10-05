@@ -1,4 +1,4 @@
-# 东创AI-聚合工作台 / DongchuangAI Claw Hub
+# AI Config Hub / AI 配置助手
 
 > **Portable AI Agent Harness** — a self-contained, USB-drive-ready control
 > panel that orchestrates five AI agent frameworks behind a single local web UI.
@@ -139,7 +139,7 @@ when you are ready.
 │   ├── src/client/             ← React UI
 │   ├── src/shared/             ← shared TS modules (config loader, paths)
 │   ├── server/                 ← tsx HTTP server, agent process manager
-│   ├── package.json            ← name: 东创AI-聚合工作台, version: 1.0.2
+│   ├── package.json            ← name: ai-config-hub, version: 1.0.3
 │   └── vite.config.ts
 │
 ├── runtime/                    ← portable runtime (scripts tracked; binaries gitignored)

@@ -1199,8 +1199,8 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-tool\src\client\tool\components\AskQuestionCard.module.css.mjs
-		const css$5 = "._5yndHq_card{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-base);flex-direction:column;gap:16px;max-height:360px;margin:4px 0 4px 4px;padding:16px 20px;display:flex;overflow-y:auto}._5yndHq_item{flex-direction:column;gap:2px;min-width:0;display:flex}._5yndHq_question,._5yndHq_answer{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));margin:0}._5yndHq_question{color:var(--dsw-alias-label-tertiary)}._5yndHq_answer{color:var(--dsw-alias-label-primary)}._5yndHq_answerLine{display:block}._5yndHq_skipped{color:var(--dsw-alias-label-tertiary)}._5yndHq_verdict{color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));margin:0}._5yndHq_questionList{flex-direction:column;gap:8px;margin:0;padding-left:20px;display:flex}._5yndHq_unansweredQuestion{color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-tool/src/client/tool/components/AskQuestionCard.module.css.mjs
+		const css$5 = ".YGysxq_card{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-base);flex-direction:column;gap:16px;max-height:360px;margin:4px 0 4px 4px;padding:16px 20px;display:flex;overflow-y:auto}.YGysxq_item{flex-direction:column;gap:2px;min-width:0;display:flex}.YGysxq_question,.YGysxq_answer{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));margin:0}.YGysxq_question{color:var(--dsw-alias-label-tertiary)}.YGysxq_answer{color:var(--dsw-alias-label-primary)}.YGysxq_answerLine{display:block}.YGysxq_skipped{color:var(--dsw-alias-label-tertiary)}.YGysxq_verdict{color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));margin:0}.YGysxq_questionList{flex-direction:column;gap:8px;margin:0;padding-left:20px;display:flex}.YGysxq_unansweredQuestion{color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}";
 		const tagId$5 = "@deepseek-ai/dsh-client-ui-tool/AskQuestionCard.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$5) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1210,15 +1210,15 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var AskQuestionCard_module_css_default = {
-			"answer": "_5yndHq_answer",
-			"answerLine": "_5yndHq_answerLine",
-			"card": "_5yndHq_card",
-			"item": "_5yndHq_item",
-			"question": "_5yndHq_question",
-			"questionList": "_5yndHq_questionList",
-			"skipped": "_5yndHq_skipped",
-			"unansweredQuestion": "_5yndHq_unansweredQuestion",
-			"verdict": "_5yndHq_verdict"
+			"answer": "YGysxq_answer",
+			"answerLine": "YGysxq_answerLine",
+			"card": "YGysxq_card",
+			"item": "YGysxq_item",
+			"question": "YGysxq_question",
+			"questionList": "YGysxq_questionList",
+			"skipped": "YGysxq_skipped",
+			"unansweredQuestion": "YGysxq_unansweredQuestion",
+			"verdict": "YGysxq_verdict"
 		};
 		//#endregion
 		//#region lib/types/client/tool/components/AskQuestionCard.js
@@ -1262,8 +1262,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-tool\src\client\tool\components\ToolDetails.module.css.mjs
-		const css$4 = ".ZJTwFG_root{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);margin:4px 0 4px 4px;overflow:hidden}.ZJTwFG_list{max-height:320px;margin:0;padding:0;list-style:none;overflow-y:auto}.ZJTwFG_item,.ZJTwFG_empty{margin:0;padding:10px 14px}.ZJTwFG_item+.ZJTwFG_item{border-top:.5px solid var(--dsw-alias-border-l2)}.ZJTwFG_root[data-inspect]:not([data-caption])>.ZJTwFG_list>.ZJTwFG_item,.ZJTwFG_root[data-inspect]:not([data-caption]) .ZJTwFG_empty,.ZJTwFG_root[data-inspect] .ZJTwFG_caption{padding-inline-end:88px}.ZJTwFG_caption{color:var(--dsw-alias-label-caption);padding:10px 14px 6px;font-size:12px}.ZJTwFG_heading{flex-wrap:wrap;align-items:baseline;gap:8px;display:flex}.ZJTwFG_text{white-space:pre-wrap;overflow-wrap:anywhere;flex:1;min-width:0}.ZJTwFG_status{flex:none;justify-content:center;align-self:flex-start;align-items:center;width:14px;height:18px;font-size:16px;line-height:18px;display:inline-flex}.ZJTwFG_pending{box-sizing:border-box;border:1px solid var(--dsw-alias-label-tertiary);border-radius:2px;width:10px;height:10px}.ZJTwFG_heading:has(.ZJTwFG_statusText) .ZJTwFG_text{flex-basis:12em}.ZJTwFG_statusText{color:var(--dsw-alias-label-caption);white-space:nowrap;margin-inline-start:auto;font-size:12px}.ZJTwFG_previous,.ZJTwFG_unchanged{color:var(--dsw-alias-label-tertiary)}.ZJTwFG_item[data-change=added] .ZJTwFG_status{color:var(--dsw-alias-state-success-primary)}.ZJTwFG_item[data-change=removed] .ZJTwFG_status{color:var(--dsw-alias-state-error-primary)}.ZJTwFG_item[data-change=removed] .ZJTwFG_text{color:var(--dsw-alias-label-tertiary);text-decoration:line-through}.ZJTwFG_unchanged{border-top:.5px solid var(--dsw-alias-border-l2)}.ZJTwFG_unchanged summary{cursor:pointer;align-items:center;gap:6px;padding:9px 14px;list-style:none;display:flex}.ZJTwFG_unchanged summary::-webkit-details-marker{display:none}.ZJTwFG_unchanged[open] summary svg{transform:rotate(90deg)}.ZJTwFG_fields{margin:0}.ZJTwFG_heading+.ZJTwFG_fields{margin-top:6px}.ZJTwFG_field{grid-template-columns:5.5em minmax(0,1fr);gap:12px;display:grid}.ZJTwFG_field+.ZJTwFG_field{margin-top:4px}.ZJTwFG_field dt{color:var(--dsw-alias-label-caption)}.ZJTwFG_field dd{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}.ZJTwFG_badge{color:var(--dsw-alias-label-caption);flex:none;align-items:center;gap:5px;font-size:12px;display:inline-flex}.ZJTwFG_badge:before{content:\"\";corner-shape:round;background:currentColor;border-radius:50%;width:5px;height:5px}.ZJTwFG_badge[data-tone=info]{color:var(--dsw-alias-state-business-primary)}.ZJTwFG_badge[data-tone=success]{color:var(--dsw-alias-state-success-primary)}.ZJTwFG_badge[data-tone=warning]{color:var(--dsw-alias-state-warn-primary)}.ZJTwFG_badge[data-tone=error]{color:var(--dsw-alias-state-error-primary)}.ZJTwFG_subtitle{color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere;margin-top:3px;font-size:12px}.ZJTwFG_description{color:var(--dsw-alias-label-caption);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.ZJTwFG_lines{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;padding-inline-start:18px}.ZJTwFG_lines li+li{margin-top:4px}.ZJTwFG_group{border-top:.5px solid var(--dsw-alias-border-l2);margin-top:8px}.ZJTwFG_group>summary{color:var(--dsw-alias-label-caption);cursor:pointer;overflow-wrap:anywhere;align-items:center;gap:6px;padding:8px 0 0;list-style:none;display:flex}.ZJTwFG_group>summary::-webkit-details-marker{display:none}.ZJTwFG_group[open]>summary svg{transform:rotate(90deg)}.ZJTwFG_group>summary svg{flex:none}.ZJTwFG_group .ZJTwFG_list{max-height:none;overflow:visible}.ZJTwFG_group .ZJTwFG_item{padding:9px 0 2px 20px}.ZJTwFG_prose,.ZJTwFG_code{max-width:100%;font-size:13px}.ZJTwFG_prose{margin-top:8px}.ZJTwFG_root .ZJTwFG_item>.ZJTwFG_code{max-height:240px;margin:8px 0 0;overflow:auto}.ZJTwFG_root .ZJTwFG_item:has(>.ZJTwFG_code:only-child){padding:0}.ZJTwFG_root .ZJTwFG_item>.ZJTwFG_code:only-child{margin:0}.ZJTwFG_root .ZJTwFG_group .ZJTwFG_item:has(>.ZJTwFG_code:only-child){padding:4px 0 0 20px}.ZJTwFG_path{min-width:0;color:inherit;font:inherit;text-align:start;overflow-wrap:anywhere;cursor:pointer;background:0 0;border:none;flex:1;padding:0}.ZJTwFG_path:hover{text-decoration:underline}.ZJTwFG_path:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:3px}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css.mjs
+		const css$4 = ".xkHPla_root{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);margin:4px 0 4px 4px;overflow:hidden}.xkHPla_list{max-height:320px;margin:0;padding:0;list-style:none;overflow-y:auto}.xkHPla_item,.xkHPla_empty{margin:0;padding:10px 14px}.xkHPla_item+.xkHPla_item{border-top:.5px solid var(--dsw-alias-border-l2)}.xkHPla_root[data-inspect]:not([data-caption])>.xkHPla_list>.xkHPla_item,.xkHPla_root[data-inspect]:not([data-caption]) .xkHPla_empty,.xkHPla_root[data-inspect] .xkHPla_caption{padding-inline-end:88px}.xkHPla_caption{color:var(--dsw-alias-label-caption);padding:10px 14px 6px;font-size:12px}.xkHPla_heading{flex-wrap:wrap;align-items:baseline;gap:8px;display:flex}.xkHPla_text{white-space:pre-wrap;overflow-wrap:anywhere;flex:1;min-width:0}.xkHPla_status{flex:none;justify-content:center;align-self:flex-start;align-items:center;width:14px;height:18px;font-size:16px;line-height:18px;display:inline-flex}.xkHPla_pending{box-sizing:border-box;border:1px solid var(--dsw-alias-label-tertiary);border-radius:2px;width:10px;height:10px}.xkHPla_heading:has(.xkHPla_statusText) .xkHPla_text{flex-basis:12em}.xkHPla_statusText{color:var(--dsw-alias-label-caption);white-space:nowrap;margin-inline-start:auto;font-size:12px}.xkHPla_previous,.xkHPla_unchanged{color:var(--dsw-alias-label-tertiary)}.xkHPla_item[data-change=added] .xkHPla_status{color:var(--dsw-alias-state-success-primary)}.xkHPla_item[data-change=removed] .xkHPla_status{color:var(--dsw-alias-state-error-primary)}.xkHPla_item[data-change=removed] .xkHPla_text{color:var(--dsw-alias-label-tertiary);text-decoration:line-through}.xkHPla_unchanged{border-top:.5px solid var(--dsw-alias-border-l2)}.xkHPla_unchanged summary{cursor:pointer;align-items:center;gap:6px;padding:9px 14px;list-style:none;display:flex}.xkHPla_unchanged summary::-webkit-details-marker{display:none}.xkHPla_unchanged[open] summary svg{transform:rotate(90deg)}.xkHPla_fields{margin:0}.xkHPla_heading+.xkHPla_fields{margin-top:6px}.xkHPla_field{grid-template-columns:5.5em minmax(0,1fr);gap:12px;display:grid}.xkHPla_field+.xkHPla_field{margin-top:4px}.xkHPla_field dt{color:var(--dsw-alias-label-caption)}.xkHPla_field dd{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}.xkHPla_badge{color:var(--dsw-alias-label-caption);flex:none;align-items:center;gap:5px;font-size:12px;display:inline-flex}.xkHPla_badge:before{content:\"\";corner-shape:round;background:currentColor;border-radius:50%;width:5px;height:5px}.xkHPla_badge[data-tone=info]{color:var(--dsw-alias-state-business-primary)}.xkHPla_badge[data-tone=success]{color:var(--dsw-alias-state-success-primary)}.xkHPla_badge[data-tone=warning]{color:var(--dsw-alias-state-warn-primary)}.xkHPla_badge[data-tone=error]{color:var(--dsw-alias-state-error-primary)}.xkHPla_subtitle{color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere;margin-top:3px;font-size:12px}.xkHPla_description{color:var(--dsw-alias-label-caption);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.xkHPla_lines{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;padding-inline-start:18px}.xkHPla_lines li+li{margin-top:4px}.xkHPla_group{border-top:.5px solid var(--dsw-alias-border-l2);margin-top:8px}.xkHPla_group>summary{color:var(--dsw-alias-label-caption);cursor:pointer;overflow-wrap:anywhere;align-items:center;gap:6px;padding:8px 0 0;list-style:none;display:flex}.xkHPla_group>summary::-webkit-details-marker{display:none}.xkHPla_group[open]>summary svg{transform:rotate(90deg)}.xkHPla_group>summary svg{flex:none}.xkHPla_group .xkHPla_list{max-height:none;overflow:visible}.xkHPla_group .xkHPla_item{padding:9px 0 2px 20px}.xkHPla_prose,.xkHPla_code{max-width:100%;font-size:13px}.xkHPla_prose{margin-top:8px}.xkHPla_root .xkHPla_item>.xkHPla_code{max-height:240px;margin:8px 0 0;overflow:auto}.xkHPla_root .xkHPla_item:has(>.xkHPla_code:only-child){padding:0}.xkHPla_root .xkHPla_item>.xkHPla_code:only-child{margin:0}.xkHPla_root .xkHPla_group .xkHPla_item:has(>.xkHPla_code:only-child){padding:4px 0 0 20px}.xkHPla_path{min-width:0;color:inherit;font:inherit;text-align:start;overflow-wrap:anywhere;cursor:pointer;background:0 0;border:none;flex:1;padding:0}.xkHPla_path:hover{text-decoration:underline}.xkHPla_path:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:3px}";
 		const tagId$4 = "@deepseek-ai/dsh-client-ui-tool/ToolDetails.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$4) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1273,28 +1273,28 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ToolDetails_module_css_default = {
-			"badge": "ZJTwFG_badge",
-			"caption": "ZJTwFG_caption",
-			"code": "ZJTwFG_code",
-			"description": "ZJTwFG_description",
-			"empty": "ZJTwFG_empty",
-			"field": "ZJTwFG_field",
-			"fields": "ZJTwFG_fields",
-			"group": "ZJTwFG_group",
-			"heading": "ZJTwFG_heading",
-			"item": "ZJTwFG_item",
-			"lines": "ZJTwFG_lines",
-			"list": "ZJTwFG_list",
-			"path": "ZJTwFG_path",
-			"pending": "ZJTwFG_pending",
-			"previous": "ZJTwFG_previous",
-			"prose": "ZJTwFG_prose",
-			"root": "ZJTwFG_root",
-			"status": "ZJTwFG_status",
-			"statusText": "ZJTwFG_statusText",
-			"subtitle": "ZJTwFG_subtitle",
-			"text": "ZJTwFG_text",
-			"unchanged": "ZJTwFG_unchanged"
+			"badge": "xkHPla_badge",
+			"caption": "xkHPla_caption",
+			"code": "xkHPla_code",
+			"description": "xkHPla_description",
+			"empty": "xkHPla_empty",
+			"field": "xkHPla_field",
+			"fields": "xkHPla_fields",
+			"group": "xkHPla_group",
+			"heading": "xkHPla_heading",
+			"item": "xkHPla_item",
+			"lines": "xkHPla_lines",
+			"list": "xkHPla_list",
+			"path": "xkHPla_path",
+			"pending": "xkHPla_pending",
+			"previous": "xkHPla_previous",
+			"prose": "xkHPla_prose",
+			"root": "xkHPla_root",
+			"status": "xkHPla_status",
+			"statusText": "xkHPla_statusText",
+			"subtitle": "xkHPla_subtitle",
+			"text": "xkHPla_text",
+			"unchanged": "xkHPla_unchanged"
 		};
 		//#endregion
 		//#region lib/types/client/tool/components/ToolDetails.js
@@ -1436,8 +1436,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-tool\src\client\tool\components\ToolRow.module.css.mjs
-		const css$3 = ".pdj4QG_root{flex-direction:column;display:flex}.pdj4QG_leading{flex-shrink:0}.pdj4QG_root[data-tool^=cordis_] .pdj4QG_title{font-weight:500}.pdj4QG_title{font-weight:400}.pdj4QG_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.pdj4QG_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:auto;overflow:hidden}.pdj4QG_summarySuffix{white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:none;margin-left:4px}.pdj4QG_diffStat{font-family:var(--ds-font-family-code);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);margin-left:10px;transform:translateY(.5px)}.pdj4QG_row:is(:hover,[aria-expanded=true]) .pdj4QG_diffAdded{color:var(--dsw-alias-state-success-primary)}.pdj4QG_row:is(:hover,[aria-expanded=true]) .pdj4QG_diffRemoved{color:var(--dsw-alias-state-error-primary)}.pdj4QG_fileLink{text-overflow:ellipsis;white-space:nowrap;min-width:0;font:inherit;text-align:left;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:inherit;text-underline-offset:3px;cursor:pointer;background:0 0;border:none;flex:0 auto;margin:0;padding:0;text-decoration:underline 1px dotted;overflow:hidden}.pdj4QG_errorSummary{color:var(--dsw-alias-state-error-primary)}.pdj4QG_stoppedSummary{color:var(--dsw-alias-state-warn-label)}.pdj4QG_bodyWrap{flex-direction:column;display:flex}.pdj4QG_inspectButton{border:.5px solid var(--dsw-alias-border-l3);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.pdj4QG_root:hover .pdj4QG_inspectButton,.pdj4QG_inspectButton:focus-visible{opacity:1}.pdj4QG_detailsBodyWrap{position:relative}.pdj4QG_detailsBodyWrap .pdj4QG_inspectButton{margin:0;position:absolute;top:12px;right:12px}.pdj4QG_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.pdj4QG_bodyScroll{max-height:260px;overflow-y:auto}.pdj4QG_ioCard{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);flex-direction:column;margin:4px 0 4px 4px;display:flex}.pdj4QG_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}.pdj4QG_ioSection::-webkit-scrollbar-thumb{border-radius:var(--dsw-radius-sm);background-clip:padding-box;border:2px solid #0000}.pdj4QG_ioSection::-webkit-scrollbar-track{margin:6px 0}.pdj4QG_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}.pdj4QG_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:.5px}.pdj4QG_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}.pdj4QG_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}.pdj4QG_codeBody,.pdj4QG_terminalBody,.pdj4QG_diffBody,.pdj4QG_readBody,.pdj4QG_imageBody,.pdj4QG_searchBody,.pdj4QG_webBody{margin:4px 0 4px 4px}.pdj4QG_searchRecovery{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-tertiary);margin:4px 0 4px 4px}.pdj4QG_imageLabel{overflow-wrap:anywhere;font:var(--dsw-font-sm-13);color:var(--dsw-alias-label-secondary);margin-bottom:4px}.pdj4QG_imageMeta{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-tertiary)}.pdj4QG_terminalBody{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:.5px solid var(--dsw-alias-border-l1)}.pdj4QG_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-tool/src/client/tool/components/ToolRow.module.css.mjs
+		const css$3 = ".YqtWna_root{flex-direction:column;display:flex}.YqtWna_leading{flex-shrink:0}.YqtWna_root[data-tool^=cordis_] .YqtWna_title{font-weight:500}.YqtWna_title{font-weight:400}.YqtWna_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.YqtWna_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:auto;overflow:hidden}.YqtWna_summarySuffix{white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:none;margin-left:4px}.YqtWna_diffStat{font-family:var(--ds-font-family-code);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);margin-left:10px;transform:translateY(.5px)}.YqtWna_row:is(:hover,[aria-expanded=true]) .YqtWna_diffAdded{color:var(--dsw-alias-state-success-primary)}.YqtWna_row:is(:hover,[aria-expanded=true]) .YqtWna_diffRemoved{color:var(--dsw-alias-state-error-primary)}.YqtWna_fileLink{text-overflow:ellipsis;white-space:nowrap;min-width:0;font:inherit;text-align:left;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:inherit;text-underline-offset:3px;cursor:pointer;background:0 0;border:none;flex:0 auto;margin:0;padding:0;text-decoration:underline 1px dotted;overflow:hidden}.YqtWna_errorSummary{color:var(--dsw-alias-state-error-primary)}.YqtWna_stoppedSummary{color:var(--dsw-alias-state-warn-label)}.YqtWna_bodyWrap{flex-direction:column;display:flex}.YqtWna_inspectButton{border:.5px solid var(--dsw-alias-border-l3);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.YqtWna_root:hover .YqtWna_inspectButton,.YqtWna_inspectButton:focus-visible{opacity:1}.YqtWna_detailsBodyWrap{position:relative}.YqtWna_detailsBodyWrap .YqtWna_inspectButton{margin:0;position:absolute;top:12px;right:12px}.YqtWna_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.YqtWna_bodyScroll{max-height:260px;overflow-y:auto}.YqtWna_ioCard{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);flex-direction:column;margin:4px 0 4px 4px;display:flex}.YqtWna_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}.YqtWna_ioSection::-webkit-scrollbar-thumb{border-radius:var(--dsw-radius-sm);background-clip:padding-box;border:2px solid #0000}.YqtWna_ioSection::-webkit-scrollbar-track{margin:6px 0}.YqtWna_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}.YqtWna_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:.5px}.YqtWna_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}.YqtWna_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}.YqtWna_codeBody,.YqtWna_terminalBody,.YqtWna_diffBody,.YqtWna_readBody,.YqtWna_imageBody,.YqtWna_searchBody,.YqtWna_webBody{margin:4px 0 4px 4px}.YqtWna_searchRecovery{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-tertiary);margin:4px 0 4px 4px}.YqtWna_imageLabel{overflow-wrap:anywhere;font:var(--dsw-font-sm-13);color:var(--dsw-alias-label-secondary);margin-bottom:4px}.YqtWna_imageMeta{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-tertiary)}.YqtWna_terminalBody{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:.5px solid var(--dsw-alias-border-l1)}.YqtWna_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-tool/ToolRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1447,39 +1447,39 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ToolRow_module_css_default = {
-			"bodyScroll": "pdj4QG_bodyScroll",
-			"bodyWrap": "pdj4QG_bodyWrap",
-			"codeBody": "pdj4QG_codeBody",
-			"detailsBodyWrap": "pdj4QG_detailsBodyWrap",
-			"diffAdded": "pdj4QG_diffAdded",
-			"diffBody": "pdj4QG_diffBody",
-			"diffRemoved": "pdj4QG_diffRemoved",
-			"diffStat": "pdj4QG_diffStat",
-			"errorSummary": "pdj4QG_errorSummary",
-			"fileLink": "pdj4QG_fileLink",
-			"imageBody": "pdj4QG_imageBody",
-			"imageLabel": "pdj4QG_imageLabel",
-			"imageMeta": "pdj4QG_imageMeta",
-			"inspectButton": "pdj4QG_inspectButton",
-			"ioCard": "pdj4QG_ioCard",
-			"ioDivider": "pdj4QG_ioDivider",
-			"ioLabel": "pdj4QG_ioLabel",
-			"ioSection": "pdj4QG_ioSection",
-			"ioText": "pdj4QG_ioText",
-			"leading": "pdj4QG_leading",
-			"readBody": "pdj4QG_readBody",
-			"root": "pdj4QG_root",
-			"row": "pdj4QG_row",
-			"searchBody": "pdj4QG_searchBody",
-			"searchRecovery": "pdj4QG_searchRecovery",
-			"sep": "pdj4QG_sep",
-			"stoppedSummary": "pdj4QG_stoppedSummary",
-			"summary": "pdj4QG_summary",
-			"summarySuffix": "pdj4QG_summarySuffix",
-			"terminalBody": "pdj4QG_terminalBody",
-			"title": "pdj4QG_title",
-			"visuallyHidden": "pdj4QG_visuallyHidden",
-			"webBody": "pdj4QG_webBody"
+			"bodyScroll": "YqtWna_bodyScroll",
+			"bodyWrap": "YqtWna_bodyWrap",
+			"codeBody": "YqtWna_codeBody",
+			"detailsBodyWrap": "YqtWna_detailsBodyWrap",
+			"diffAdded": "YqtWna_diffAdded",
+			"diffBody": "YqtWna_diffBody",
+			"diffRemoved": "YqtWna_diffRemoved",
+			"diffStat": "YqtWna_diffStat",
+			"errorSummary": "YqtWna_errorSummary",
+			"fileLink": "YqtWna_fileLink",
+			"imageBody": "YqtWna_imageBody",
+			"imageLabel": "YqtWna_imageLabel",
+			"imageMeta": "YqtWna_imageMeta",
+			"inspectButton": "YqtWna_inspectButton",
+			"ioCard": "YqtWna_ioCard",
+			"ioDivider": "YqtWna_ioDivider",
+			"ioLabel": "YqtWna_ioLabel",
+			"ioSection": "YqtWna_ioSection",
+			"ioText": "YqtWna_ioText",
+			"leading": "YqtWna_leading",
+			"readBody": "YqtWna_readBody",
+			"root": "YqtWna_root",
+			"row": "YqtWna_row",
+			"searchBody": "YqtWna_searchBody",
+			"searchRecovery": "YqtWna_searchRecovery",
+			"sep": "YqtWna_sep",
+			"stoppedSummary": "YqtWna_stoppedSummary",
+			"summary": "YqtWna_summary",
+			"summarySuffix": "YqtWna_summarySuffix",
+			"terminalBody": "YqtWna_terminalBody",
+			"title": "YqtWna_title",
+			"visuallyHidden": "YqtWna_visuallyHidden",
+			"webBody": "YqtWna_webBody"
 		};
 		//#endregion
 		//#region lib/types/client/tool/components/ToolRow.js
@@ -1796,8 +1796,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-tool\src\client\tool\ToolCallTree.module.css.mjs
-		const css$2 = ".wfIzqq_callRow{border-radius:var(--dsw-radius-sm)}.wfIzqq_subCalls{border-left:.5px solid var(--dsw-alias-border-l2);flex-direction:column;gap:4px;margin:4px 0 2px 22px;padding-left:8px;display:flex}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-tool/src/client/tool/ToolCallTree.module.css.mjs
+		const css$2 = ".dIPY9q_callRow{border-radius:var(--dsw-radius-sm)}.dIPY9q_subCalls{border-left:.5px solid var(--dsw-alias-border-l2);flex-direction:column;gap:4px;margin:4px 0 2px 22px;padding-left:8px;display:flex}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-tool/ToolCallTree.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1807,8 +1807,8 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ToolCallTree_module_css_default = {
-			"callRow": "wfIzqq_callRow",
-			"subCalls": "wfIzqq_subCalls"
+			"callRow": "dIPY9q_callRow",
+			"subCalls": "dIPY9q_subCalls"
 		};
 		//#endregion
 		//#region lib/types/client/tool/ToolCallTree.js
@@ -1928,8 +1928,8 @@ window.__ModuleLoader__.load({
 		/** Locale namespace supplied by the conversation owner to Tool renderers. */
 		const CONVERSATION_NS = "conversation";
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-tool\src\client\tool\components\QuestionToolRow.module.css.mjs
-		const css$1 = ".oDWEAa_panelButton{height:calc(22px + var(--dsh-content-font-delta,0px));corner-shape:round;background:var(--dsw-alias-button-floating-fill);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);white-space:nowrap;cursor:pointer;border:none;border-radius:999px;flex:none;align-items:center;gap:4px;margin-left:8px;padding:0 10px;line-height:1;transition:background .1s;display:inline-flex}.oDWEAa_panelButton svg{width:13px;height:13px}.oDWEAa_panelButton:hover{background:var(--dsw-alias-button-floating-hover)}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-tool/src/client/tool/components/QuestionToolRow.module.css.mjs
+		const css$1 = ".pc2rVa_panelButton{height:calc(22px + var(--dsh-content-font-delta,0px));corner-shape:round;background:var(--dsw-alias-button-floating-fill);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);white-space:nowrap;cursor:pointer;border:none;border-radius:999px;flex:none;align-items:center;gap:4px;margin-left:8px;padding:0 10px;line-height:1;transition:background .1s;display:inline-flex}.pc2rVa_panelButton svg{width:13px;height:13px}.pc2rVa_panelButton:hover{background:var(--dsw-alias-button-floating-hover)}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-tool/QuestionToolRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1938,7 +1938,7 @@ window.__ModuleLoader__.load({
 			tag.textContent = css$1;
 			document.head.appendChild(tag);
 		}
-		var QuestionToolRow_module_css_default = { "panelButton": "oDWEAa_panelButton" };
+		var QuestionToolRow_module_css_default = { "panelButton": "pc2rVa_panelButton" };
 		//#endregion
 		//#region lib/types/client/tool/components/QuestionToolRow.js
 		/** Question-owned summary action and transcript disclosure. */
@@ -2330,8 +2330,8 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\ui-tool\src\client\tool\toolviews\bash-sample.module.css.mjs
-		const css = ".I0OJkG_card{flex-direction:column;display:flex}.I0OJkG_terminal{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:.5px solid var(--dsw-alias-border-l1);margin:4px 0 4px 4px}.I0OJkG_ioCard{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);flex-direction:column;margin:4px 0 4px 4px;display:flex}.I0OJkG_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}.I0OJkG_ioSection::-webkit-scrollbar-thumb{border-radius:var(--dsw-radius-sm);background-clip:padding-box;border:2px solid #0000}.I0OJkG_ioSection::-webkit-scrollbar-track{margin:6px 0}.I0OJkG_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}.I0OJkG_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:.5px}.I0OJkG_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}.I0OJkG_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}.I0OJkG_root[data-expandable]{cursor:pointer}.I0OJkG_root{height:calc(24px + var(--dsh-content-font-delta,0px));min-width:0;color:var(--dsw-alias-label-tertiary);align-items:center;transition:color .1s;display:flex}.I0OJkG_root:hover{color:var(--dsw-alias-label-secondary)}@media (prefers-reduced-motion:reduce){.I0OJkG_root{transition:none}}.I0OJkG_leading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:inherit;flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.I0OJkG_leading svg:not([data-state]){width:calc(14px + var(--dsh-content-font-delta,0px));height:calc(14px + var(--dsh-content-font-delta,0px))}.I0OJkG_chevron{color:inherit}.I0OJkG_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.I0OJkG_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.I0OJkG_root:hover .I0OJkG_iconIdle{opacity:0}.I0OJkG_root:hover .I0OJkG_chevronHover{opacity:1}.I0OJkG_title{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:none}.I0OJkG_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.I0OJkG_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:auto;overflow:hidden}.I0OJkG_errorSummary{color:var(--dsw-alias-state-error-primary)}.I0OJkG_stoppedSummary{color:var(--dsw-alias-state-warn-label)}.I0OJkG_bodyWrap{flex-direction:column;display:flex}.I0OJkG_inspectButton{border:.5px solid var(--dsw-alias-border-l4);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.I0OJkG_card:hover .I0OJkG_inspectButton,.I0OJkG_inspectButton:focus-visible{opacity:1}.I0OJkG_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.I0OJkG_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css.mjs
+		const css = ".QQrVZq_card{flex-direction:column;display:flex}.QQrVZq_terminal{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:.5px solid var(--dsw-alias-border-l1);margin:4px 0 4px 4px}.QQrVZq_ioCard{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);flex-direction:column;margin:4px 0 4px 4px;display:flex}.QQrVZq_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}.QQrVZq_ioSection::-webkit-scrollbar-thumb{border-radius:var(--dsw-radius-sm);background-clip:padding-box;border:2px solid #0000}.QQrVZq_ioSection::-webkit-scrollbar-track{margin:6px 0}.QQrVZq_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}.QQrVZq_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:.5px}.QQrVZq_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}.QQrVZq_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}.QQrVZq_root[data-expandable]{cursor:pointer}.QQrVZq_root{height:calc(24px + var(--dsh-content-font-delta,0px));min-width:0;color:var(--dsw-alias-label-tertiary);align-items:center;transition:color .1s;display:flex}.QQrVZq_root:hover{color:var(--dsw-alias-label-secondary)}@media (prefers-reduced-motion:reduce){.QQrVZq_root{transition:none}}.QQrVZq_leading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:inherit;flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.QQrVZq_leading svg:not([data-state]){width:calc(14px + var(--dsh-content-font-delta,0px));height:calc(14px + var(--dsh-content-font-delta,0px))}.QQrVZq_chevron{color:inherit}.QQrVZq_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.QQrVZq_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.QQrVZq_root:hover .QQrVZq_iconIdle{opacity:0}.QQrVZq_root:hover .QQrVZq_chevronHover{opacity:1}.QQrVZq_title{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:none}.QQrVZq_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.QQrVZq_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));flex:auto;overflow:hidden}.QQrVZq_errorSummary{color:var(--dsw-alias-state-error-primary)}.QQrVZq_stoppedSummary{color:var(--dsw-alias-state-warn-label)}.QQrVZq_bodyWrap{flex-direction:column;display:flex}.QQrVZq_inspectButton{border:.5px solid var(--dsw-alias-border-l4);corner-shape:round;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.QQrVZq_card:hover .QQrVZq_inspectButton,.QQrVZq_inspectButton:focus-visible{opacity:1}.QQrVZq_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.QQrVZq_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
 		const tagId = "@deepseek-ai/dsh-client-ui-tool/bash-sample.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2341,26 +2341,26 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var bash_sample_module_css_default = {
-			"bodyWrap": "I0OJkG_bodyWrap",
-			"card": "I0OJkG_card",
-			"chevron": "I0OJkG_chevron",
-			"chevronHover": "I0OJkG_chevronHover",
-			"errorSummary": "I0OJkG_errorSummary",
-			"iconIdle": "I0OJkG_iconIdle",
-			"inspectButton": "I0OJkG_inspectButton",
-			"ioCard": "I0OJkG_ioCard",
-			"ioDivider": "I0OJkG_ioDivider",
-			"ioLabel": "I0OJkG_ioLabel",
-			"ioSection": "I0OJkG_ioSection",
-			"ioText": "I0OJkG_ioText",
-			"leading": "I0OJkG_leading",
-			"root": "I0OJkG_root",
-			"sep": "I0OJkG_sep",
-			"stoppedSummary": "I0OJkG_stoppedSummary",
-			"summary": "I0OJkG_summary",
-			"terminal": "I0OJkG_terminal",
-			"title": "I0OJkG_title",
-			"visuallyHidden": "I0OJkG_visuallyHidden"
+			"bodyWrap": "QQrVZq_bodyWrap",
+			"card": "QQrVZq_card",
+			"chevron": "QQrVZq_chevron",
+			"chevronHover": "QQrVZq_chevronHover",
+			"errorSummary": "QQrVZq_errorSummary",
+			"iconIdle": "QQrVZq_iconIdle",
+			"inspectButton": "QQrVZq_inspectButton",
+			"ioCard": "QQrVZq_ioCard",
+			"ioDivider": "QQrVZq_ioDivider",
+			"ioLabel": "QQrVZq_ioLabel",
+			"ioSection": "QQrVZq_ioSection",
+			"ioText": "QQrVZq_ioText",
+			"leading": "QQrVZq_leading",
+			"root": "QQrVZq_root",
+			"sep": "QQrVZq_sep",
+			"stoppedSummary": "QQrVZq_stoppedSummary",
+			"summary": "QQrVZq_summary",
+			"terminal": "QQrVZq_terminal",
+			"title": "QQrVZq_title",
+			"visuallyHidden": "QQrVZq_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/tool/toolviews/bash-sample.js

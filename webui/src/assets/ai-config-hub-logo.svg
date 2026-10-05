@@ -1,0 +1,20 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="hubGradient" x1="14" y1="12" x2="82" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#153B68"/>
+      <stop offset="1" stop-color="#13B8B0"/>
+    </linearGradient>
+    <filter id="hubShadow" x="4" y="4" width="88" height="88" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#153B68" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g filter="url(#hubShadow)">
+    <path d="M48 10L78.311 27.5V62.5L48 80L17.689 62.5V27.5L48 10Z" fill="url(#hubGradient)"/>
+    <path d="M48 24V72M27.5 36L68.5 60M68.5 36L27.5 60" stroke="white" stroke-opacity="0.9" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="48" cy="48" r="11" fill="white"/>
+    <circle cx="48" cy="48" r="5" fill="#13B8B0"/>
+    <circle cx="48" cy="18" r="5" fill="#13B8B0"/>
+    <circle cx="22" cy="63" r="5" fill="#13B8B0"/>
+    <circle cx="74" cy="63" r="5" fill="#13B8B0"/>
+  </g>
+</svg>

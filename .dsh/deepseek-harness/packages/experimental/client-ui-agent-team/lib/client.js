@@ -8,8 +8,8 @@ window.__ModuleLoader__.load({
 		let react = require("react");
 		let react_dom = require("react-dom");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\experimental\client-ui-agent-team\src\client\TeamAction.module.css.mjs
-		const css = ".wJ34wW_root{position:relative}.wJ34wW_trigger{min-height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;border-radius:6px;align-items:center;gap:5px;padding:3px 7px;font-size:12px;display:inline-flex}.wJ34wW_trigger:hover,.wJ34wW_trigger:focus-visible{color:var(--dsw-alias-label-primary)}@container (width<=480px){.wJ34wW_triggerLabel{display:none}}.wJ34wW_count{color:var(--dsw-alias-label-caption);font-variant-numeric:tabular-nums;font-size:12px;font-weight:400;line-height:16px}.wJ34wW_panel{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);z-index:100;box-sizing:border-box;--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);width:min(500px,100vw - 32px);max-height:min(680px,100vh - 32px);box-shadow:var(--dsw-elevation-prominent);border:0;border-radius:12px;flex-direction:column;padding:8px 2px 0;display:flex;position:fixed;overflow:hidden}.wJ34wW_panel:before{content:\"\";z-index:-1;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);border-radius:12px;position:absolute;inset:0}.wJ34wW_panelCompact{width:min(320px,100vw - 32px)}.wJ34wW_panelCompact .wJ34wW_roster{grid-template-columns:minmax(0,1fr)}.wJ34wW_body{--dsh-scrollbar-track-margin:8px;scrollbar-gutter:stable;flex:auto;min-height:0;padding:0 9px 16px 14px;overflow-y:auto}.wJ34wW_taskTitle{align-items:center;gap:8px;display:flex}.wJ34wW_taskTitle strong{font-size:13px;font-weight:500}.wJ34wW_panel h3{color:var(--dsw-alias-label-primary);align-items:center;gap:8px;margin:16px 0 8px 4px;font-size:13px;font-weight:500;display:flex}.wJ34wW_body section:first-of-type h3{margin-top:8px}.wJ34wW_roster{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;display:grid}.wJ34wW_member{--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);min-width:0;box-shadow:var(--dsw-elevation-stroke);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;border:0;border-radius:8px;align-items:flex-start;gap:8px;padding:10px 12px;display:flex}.wJ34wW_member:disabled{cursor:default}.wJ34wW_memberCurrent{--dsw-elevation-stroke-color:color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent);box-shadow:var(--dsw-elevation-stroke), inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent)}.wJ34wW_member:not(:disabled):hover,.wJ34wW_member:not(:disabled):focus-visible{--dsw-elevation-stroke-color:var(--dsw-alias-border-l3);box-shadow:var(--dsw-elevation-panel)}.wJ34wW_memberDot{flex:none;align-items:center;height:1lh;display:inline-flex}.wJ34wW_inactiveIcon{color:var(--dsw-alias-label-tertiary)}.wJ34wW_memberText{flex-direction:column;min-width:0;display:flex}.wJ34wW_memberName{align-items:center;gap:5px;min-width:0;display:inline-flex}.wJ34wW_memberNameText,.wJ34wW_memberText small{white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.wJ34wW_memberModel{display:none}.wJ34wW_member:hover .wJ34wW_memberModel,.wJ34wW_member:focus-visible .wJ34wW_memberModel{display:inline}.wJ34wW_currentTag{text-overflow:ellipsis;flex:0 999 auto;min-width:0;padding:0 4px;font-size:10px;line-height:15px;display:inline-block;overflow:hidden}.wJ34wW_memberText small,.wJ34wW_meta{color:var(--dsw-alias-label-tertiary);font-size:11px}.wJ34wW_diagnostic,.wJ34wW_error,.wJ34wW_warning{color:var(--dsw-alias-state-error-primary)}.wJ34wW_tasks{flex-direction:column;gap:7px;display:flex}.wJ34wW_emptyNotice{color:var(--dsw-alias-label-tertiary);margin:16px 0 0 4px;font-size:12px}.wJ34wW_task{border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:9px;padding:11px 13px}.wJ34wW_taskState{color:var(--dsw-alias-label-tertiary);align-items:center;gap:6px;margin-left:auto;font-size:11px;display:inline-flex}.wJ34wW_task p{color:var(--dsw-alias-label-secondary);white-space:pre-wrap;margin:5px 0;font-size:12px;line-height:18px}.wJ34wW_clampedDescription{-webkit-line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.wJ34wW_expandToggle{float:right;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;align-items:center;gap:2px;margin-left:10px;padding:0;font-size:11px;line-height:20px;display:inline-flex}.wJ34wW_expandToggle:hover,.wJ34wW_expandToggle:focus-visible{color:var(--dsw-alias-label-primary)}.wJ34wW_expandToggle svg{transition:transform .12s}.wJ34wW_expandToggleOpen{transform:rotate(180deg)}.wJ34wW_meta{line-height:20px}.wJ34wW_meta>span{margin-right:10px}.wJ34wW_notice,.wJ34wW_error{align-items:center;gap:6px;padding:9px;font-size:12px;display:flex}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/experimental/client-ui-agent-team/src/client/TeamAction.module.css.mjs
+		const css = ".CIgE-a_root{position:relative}.CIgE-a_trigger{min-height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;border-radius:6px;align-items:center;gap:5px;padding:3px 7px;font-size:12px;display:inline-flex}.CIgE-a_trigger:hover,.CIgE-a_trigger:focus-visible{color:var(--dsw-alias-label-primary)}@container (width<=480px){.CIgE-a_triggerLabel{display:none}}.CIgE-a_count{color:var(--dsw-alias-label-caption);font-variant-numeric:tabular-nums;font-size:12px;font-weight:400;line-height:16px}.CIgE-a_panel{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);z-index:100;box-sizing:border-box;--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);width:min(500px,100vw - 32px);max-height:min(680px,100vh - 32px);box-shadow:var(--dsw-elevation-prominent);border:0;border-radius:12px;flex-direction:column;padding:8px 2px 0;display:flex;position:fixed;overflow:hidden}.CIgE-a_panel:before{content:\"\";z-index:-1;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);border-radius:12px;position:absolute;inset:0}.CIgE-a_panelCompact{width:min(320px,100vw - 32px)}.CIgE-a_panelCompact .CIgE-a_roster{grid-template-columns:minmax(0,1fr)}.CIgE-a_body{--dsh-scrollbar-track-margin:8px;scrollbar-gutter:stable;flex:auto;min-height:0;padding:0 9px 16px 14px;overflow-y:auto}.CIgE-a_taskTitle{align-items:center;gap:8px;display:flex}.CIgE-a_taskTitle strong{font-size:13px;font-weight:500}.CIgE-a_panel h3{color:var(--dsw-alias-label-primary);align-items:center;gap:8px;margin:16px 0 8px 4px;font-size:13px;font-weight:500;display:flex}.CIgE-a_body section:first-of-type h3{margin-top:8px}.CIgE-a_roster{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;display:grid}.CIgE-a_member{--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);min-width:0;box-shadow:var(--dsw-elevation-stroke);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;border:0;border-radius:8px;align-items:flex-start;gap:8px;padding:10px 12px;display:flex}.CIgE-a_member:disabled{cursor:default}.CIgE-a_memberCurrent{--dsw-elevation-stroke-color:color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent);box-shadow:var(--dsw-elevation-stroke), inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent)}.CIgE-a_member:not(:disabled):hover,.CIgE-a_member:not(:disabled):focus-visible{--dsw-elevation-stroke-color:var(--dsw-alias-border-l3);box-shadow:var(--dsw-elevation-panel)}.CIgE-a_memberDot{flex:none;align-items:center;height:1lh;display:inline-flex}.CIgE-a_inactiveIcon{color:var(--dsw-alias-label-tertiary)}.CIgE-a_memberText{flex-direction:column;min-width:0;display:flex}.CIgE-a_memberName{align-items:center;gap:5px;min-width:0;display:inline-flex}.CIgE-a_memberNameText,.CIgE-a_memberText small{white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.CIgE-a_memberModel{display:none}.CIgE-a_member:hover .CIgE-a_memberModel,.CIgE-a_member:focus-visible .CIgE-a_memberModel{display:inline}.CIgE-a_currentTag{text-overflow:ellipsis;flex:0 999 auto;min-width:0;padding:0 4px;font-size:10px;line-height:15px;display:inline-block;overflow:hidden}.CIgE-a_memberText small,.CIgE-a_meta{color:var(--dsw-alias-label-tertiary);font-size:11px}.CIgE-a_diagnostic,.CIgE-a_error,.CIgE-a_warning{color:var(--dsw-alias-state-error-primary)}.CIgE-a_tasks{flex-direction:column;gap:7px;display:flex}.CIgE-a_emptyNotice{color:var(--dsw-alias-label-tertiary);margin:16px 0 0 4px;font-size:12px}.CIgE-a_task{border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:9px;padding:11px 13px}.CIgE-a_taskState{color:var(--dsw-alias-label-tertiary);align-items:center;gap:6px;margin-left:auto;font-size:11px;display:inline-flex}.CIgE-a_task p{color:var(--dsw-alias-label-secondary);white-space:pre-wrap;margin:5px 0;font-size:12px;line-height:18px}.CIgE-a_clampedDescription{-webkit-line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.CIgE-a_expandToggle{float:right;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;align-items:center;gap:2px;margin-left:10px;padding:0;font-size:11px;line-height:20px;display:inline-flex}.CIgE-a_expandToggle:hover,.CIgE-a_expandToggle:focus-visible{color:var(--dsw-alias-label-primary)}.CIgE-a_expandToggle svg{transition:transform .12s}.CIgE-a_expandToggleOpen{transform:rotate(180deg)}.CIgE-a_meta{line-height:20px}.CIgE-a_meta>span{margin-right:10px}.CIgE-a_notice,.CIgE-a_error{align-items:center;gap:6px;padding:9px;font-size:12px;display:flex}";
 		const tagId = "@deepseek-ai/dsh-experimental-client-ui-agent-team/TeamAction.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -19,36 +19,36 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var TeamAction_module_css_default = {
-			"body": "wJ34wW_body",
-			"clampedDescription": "wJ34wW_clampedDescription",
-			"count": "wJ34wW_count",
-			"currentTag": "wJ34wW_currentTag",
-			"diagnostic": "wJ34wW_diagnostic",
-			"emptyNotice": "wJ34wW_emptyNotice",
-			"error": "wJ34wW_error",
-			"expandToggle": "wJ34wW_expandToggle",
-			"expandToggleOpen": "wJ34wW_expandToggleOpen",
-			"inactiveIcon": "wJ34wW_inactiveIcon",
-			"member": "wJ34wW_member",
-			"memberCurrent": "wJ34wW_memberCurrent",
-			"memberDot": "wJ34wW_memberDot",
-			"memberModel": "wJ34wW_memberModel",
-			"memberName": "wJ34wW_memberName",
-			"memberNameText": "wJ34wW_memberNameText",
-			"memberText": "wJ34wW_memberText",
-			"meta": "wJ34wW_meta",
-			"notice": "wJ34wW_notice",
-			"panel": "wJ34wW_panel",
-			"panelCompact": "wJ34wW_panelCompact",
-			"root": "wJ34wW_root",
-			"roster": "wJ34wW_roster",
-			"task": "wJ34wW_task",
-			"taskState": "wJ34wW_taskState",
-			"taskTitle": "wJ34wW_taskTitle",
-			"tasks": "wJ34wW_tasks",
-			"trigger": "wJ34wW_trigger",
-			"triggerLabel": "wJ34wW_triggerLabel",
-			"warning": "wJ34wW_warning"
+			"body": "CIgE-a_body",
+			"clampedDescription": "CIgE-a_clampedDescription",
+			"count": "CIgE-a_count",
+			"currentTag": "CIgE-a_currentTag",
+			"diagnostic": "CIgE-a_diagnostic",
+			"emptyNotice": "CIgE-a_emptyNotice",
+			"error": "CIgE-a_error",
+			"expandToggle": "CIgE-a_expandToggle",
+			"expandToggleOpen": "CIgE-a_expandToggleOpen",
+			"inactiveIcon": "CIgE-a_inactiveIcon",
+			"member": "CIgE-a_member",
+			"memberCurrent": "CIgE-a_memberCurrent",
+			"memberDot": "CIgE-a_memberDot",
+			"memberModel": "CIgE-a_memberModel",
+			"memberName": "CIgE-a_memberName",
+			"memberNameText": "CIgE-a_memberNameText",
+			"memberText": "CIgE-a_memberText",
+			"meta": "CIgE-a_meta",
+			"notice": "CIgE-a_notice",
+			"panel": "CIgE-a_panel",
+			"panelCompact": "CIgE-a_panelCompact",
+			"root": "CIgE-a_root",
+			"roster": "CIgE-a_roster",
+			"task": "CIgE-a_task",
+			"taskState": "CIgE-a_taskState",
+			"taskTitle": "CIgE-a_taskTitle",
+			"tasks": "CIgE-a_tasks",
+			"trigger": "CIgE-a_trigger",
+			"triggerLabel": "CIgE-a_triggerLabel",
+			"warning": "CIgE-a_warning"
 		};
 		//#endregion
 		//#region lib/types/client/TeamAction.js

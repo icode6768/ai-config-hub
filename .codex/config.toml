@@ -1,4 +1,4 @@
-model = "gpt-6.1-sol"
+model = "gpt-5.6-sol"
 model_provider = "dongchuangai"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import YAML from 'yaml'
 import { parse as parseToml, stringify as stringifyToml } from '@iarna/toml'
 import type { AppDraft, AppFileState, AppId, LauncherConfig, SharedApiConfig, StepStatus, WechatConfig } from './types'
-import { APP_FILE_BINDINGS, globalConfigPath, runtimeStartEnvPath } from './paths'
+import { APP_FILE_BINDINGS, dshProfilePatchPaths, globalConfigPath, runtimeStartEnvPath } from './paths'
 
 const defaultWechat = (): WechatConfig => ({
   enabled: false,
@@ -233,6 +233,64 @@ export async function saveGlobalConfig(config: LauncherConfig): Promise<void> {
   await writeAtomic(globalConfigPath(), YAML.stringify(config, { indent: 2 }))
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+export async function syncDeepseekHarnessProfiles(api: SharedApiConfig): Promise<void> {
+  const provider = api.provider.trim() || 'dongchuangai'
+  const baseURL = api.baseUrl.trim()
+  const model = api.model.trim()
+  if (!baseURL || !model) return
+
+  for (const patchPath of dshProfilePatchPaths()) {
+    const currentRaw = await readTextIfExists(patchPath)
+    const parsed = currentRaw?.trim() ? YAML.parse(currentRaw) : []
+    const entries = Array.isArray(parsed) ? parsed : []
+    const index = entries.findIndex(entry => isRecord(entry) && entry.id === 'llm-pi-ai')
+    const existing = index >= 0 && isRecord(entries[index]) ? entries[index] : {}
+    const existingConfig = isRecord(existing.config) ? existing.config : {}
+    const existingProviders = isRecord(existingConfig.providers) ? existingConfig.providers : {}
+    const existingProvider = isRecord(existingProviders[provider]) ? existingProviders[provider] : {}
+    const nextEntry = {
+      ...existing,
+      id: 'llm-pi-ai',
+      config: {
+        ...existingConfig,
+        providers: {
+          ...existingProviders,
+          [provider]: {
+            ...existingProvider,
+            displayName: provider,
+            apiKeyEnv: 'DONGCHUANGAI_API_KEY',
+            api: 'openai-completions',
+            baseURL,
+            models: [{ id: model, name: model }],
+          },
+        },
+      },
+    }
+    if (index >= 0) entries[index] = nextEntry
+    else entries.push(nextEntry)
+
+    const defaultModelIndex = entries.findIndex(entry => isRecord(entry) && entry.id === 'agent-default-model')
+    const existingDefaultModel = defaultModelIndex >= 0 && isRecord(entries[defaultModelIndex]) ? entries[defaultModelIndex] : {}
+    const existingDefaultModelConfig = isRecord(existingDefaultModel.config) ? existingDefaultModel.config : {}
+    const nextDefaultModel = {
+      ...existingDefaultModel,
+      id: 'agent-default-model',
+      config: {
+        ...existingDefaultModelConfig,
+        provider,
+        model,
+      },
+    }
+    if (defaultModelIndex >= 0) entries[defaultModelIndex] = nextDefaultModel
+    else entries.push(nextDefaultModel)
+    await writeAtomic(patchPath, YAML.stringify(entries, { indent: 2 }))
+  }
+}
+
 export async function loadAppFileState(appId: AppId): Promise<AppFileState> {
   const binding = APP_FILE_BINDINGS[appId]
   const raw = await readTextIfExists(binding.path)
@@ -437,29 +495,7 @@ export function syncAppPayload(appId: AppId, config: LauncherConfig, currentRaw 
     return `${JSON.stringify(next, null, 2)}\n`
   }
   if (appId === 'deepseek-harness') {
-    const base = parseYamlFallback(currentRaw)
-    const next = mergePlain(base, {
-      'ui-onboarding': {
-        welcomeNoticeVersion: '2026-08-13.1',
-      },
-      models: {
-        providers: {
-          [api.provider]: {
-            displayName: api.provider,
-            apiKeyEnv: 'DONGCHUANGAI_API_KEY',
-            api: 'openai-completions',
-            baseURL: api.baseUrl,
-            models: [
-              {
-                id: api.model,
-                name: api.model,
-              },
-            ],
-          },
-        },
-      },
-    })
-    return `${YAML.stringify(next, { indent: 2 })}`
+    return ''
   }
   return ''
 }

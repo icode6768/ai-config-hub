@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { createServer as createViteServer } from 'vite'
 import { APP_IDS, type AppId, type AppFileState, type LauncherConfig, type RuntimeVersions } from '../src/shared/types'
 import { APP_FILE_BINDINGS, dshHomePath, globalConfigPath, rootPath } from '../src/shared/paths'
-import { applySharedApi, defaultLauncherConfig, inferSharedApiFromAppFiles, isStepComplete, loadAppFileState, loadGlobalConfig, saveAppFile, saveGlobalConfig, syncAppPayload } from '../src/shared/config'
+import { applySharedApi, defaultLauncherConfig, inferSharedApiFromAppFiles, isStepComplete, loadAppFileState, loadGlobalConfig, saveAppFile, saveGlobalConfig, syncAppPayload, syncDeepseekHarnessProfiles } from '../src/shared/config'
 import { syncRuntimeSystemPath } from '../src/shared/system-path'
 import { ensureDshHome } from '../src/shared/dsh'
 import { detectRuntimeVersions } from '../src/shared/runtime'
@@ -139,6 +139,7 @@ async function main(): Promise<void> {
   })
 
   let currentConfig = await ensureGlobalFile()
+  await syncDeepseekHarnessProfiles(currentConfig.global.api)
   await ensureOpenclawGatewayConfig(currentConfig)
   await restoreOpenclawWechatConnection()
   let currentFiles = await buildAppFiles()
@@ -147,10 +148,11 @@ async function main(): Promise<void> {
   async function syncGlobalConfig(config: LauncherConfig): Promise<Awaited<ReturnType<typeof syncRuntimeSystemPath>>> {
     currentConfig = applySharedApi(config)
     await saveGlobalConfig(currentConfig)
+    await syncDeepseekHarnessProfiles(currentConfig.global.api)
     const systemPathResult = await syncRuntimeSystemPath(rootPath(), currentConfig.global.launch.persistSystemPath)
     await ensureOpenclawGatewayConfig(currentConfig)
     for (const appId of APP_IDS) {
-      if (appId === 'openclaw') continue
+      if (appId === 'openclaw' || appId === 'deepseek-harness') continue
       const raw = currentFiles[appId]?.raw ?? ''
       const payload = syncAppPayload(appId, currentConfig, raw)
       if (payload) await saveAppFile(appId, payload)
@@ -446,6 +448,8 @@ async function main(): Promise<void> {
         }
         if (appId === 'openclaw') {
           await ensureOpenclawGatewayConfig(currentConfig)
+        } else if (appId === 'deepseek-harness') {
+          await syncDeepseekHarnessProfiles(currentConfig.global.api)
         } else {
           const payload = syncAppPayload(appId, currentConfig, currentFiles[appId]?.raw ?? '')
           await saveAppFile(appId, payload)
@@ -531,10 +535,11 @@ async function main(): Promise<void> {
       if (url.pathname === '/api/sync-all' && req.method === 'POST') {
         await ensureOpenclawGatewayConfig(currentConfig)
         for (const appId of APP_IDS) {
-          if (appId === 'openclaw') continue
+          if (appId === 'openclaw' || appId === 'deepseek-harness') continue
           const payload = syncAppPayload(appId, currentConfig, currentFiles[appId]?.raw ?? '')
           if (payload) await saveAppFile(appId, payload)
         }
+        await syncDeepseekHarnessProfiles(currentConfig.global.api)
         currentFiles = await buildAppFiles()
         sendJson(res, { ok: true, steps: isStepComplete(currentConfig, currentFiles, (await listInstalledSkills()).length) })
         return

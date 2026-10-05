@@ -63,8 +63,8 @@ assert.deepEqual(deepseekPackageManagerCommand('win32'), {
   shell: true,
 })
 assert.deepEqual(deepseekPackageManagerCommand('darwin'), {
-  command: 'pnpm',
-  args: ['add', 'qrcode', '-w'],
+  command: 'corepack',
+  args: ['pnpm', 'add', 'qrcode', '-w'],
   shell: false,
 })
 assert.equal(
@@ -110,6 +110,7 @@ assert.equal(terminalEnv.OPENCLAW_STATE_DIR, 'X:\\portable-lobster\\.openclaw\\s
 assert.equal(terminalEnv.CLAUDE_CONFIG_DIR, 'X:\\portable-lobster\\.claude')
 assert.equal(terminalEnv.CODEX_HOME, 'X:\\portable-lobster\\.codex')
 assert.equal(terminalEnv.DONGCHUANGAI_API_KEY, 'test-dongchuangai-key')
+assert.equal(terminalEnv.DEEPSEEK_API_KEY, 'test-dongchuangai-key')
 assert.deepEqual(terminalArgs('openclaw', ['gateway', 'run']), [])
 assert.deepEqual(terminalArgs('codex', ['exec']), ['exec'])
 assert.equal(resolveEditorDraft('{"model":"draft"}', '{"model":"disk"}', false), '{"model":"draft"}')

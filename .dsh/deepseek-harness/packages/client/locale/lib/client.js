@@ -1023,8 +1023,8 @@ window.__ModuleLoader__.load({
 		/** English dictionary, checked complete against the zh key set. */
 		const en = { "language.title": "Language" };
 		//#endregion
-		//#region \0dsh-css:D:\myworks\便携式u盘\.dsh\deepseek-harness\packages\client\locale\src\client\LanguageRow.module.css.mjs
-		const css = "._0H4dWG_row{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}._0H4dWG_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}._0H4dWG_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}._0H4dWG_selector{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}._0H4dWG_selector:hover{background:var(--dsw-alias-interactive-bg-hover)}._0H4dWG_chevron{flex:none}";
+		//#region \0dsh-css:/Users/apple/Desktop/myworks/codes/claw-panels/.dsh/deepseek-harness/packages/client/locale/src/client/LanguageRow.module.css.mjs
+		const css = ".wLUi6a_row{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.wLUi6a_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}.wLUi6a_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.wLUi6a_selector{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.wLUi6a_selector:hover{background:var(--dsw-alias-interactive-bg-hover)}.wLUi6a_chevron{flex:none}";
 		const tagId = "@deepseek-ai/dsh-client-locale/LanguageRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1034,11 +1034,11 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LanguageRow_module_css_default = {
-			"chevron": "_0H4dWG_chevron",
-			"row": "_0H4dWG_row",
-			"rowText": "_0H4dWG_rowText",
-			"selector": "_0H4dWG_selector",
-			"title": "_0H4dWG_title"
+			"chevron": "wLUi6a_chevron",
+			"row": "wLUi6a_row",
+			"rowText": "wLUi6a_rowText",
+			"selector": "wLUi6a_selector",
+			"title": "wLUi6a_title"
 		};
 		//#endregion
 		//#region lib/types/client/LanguageRow.js

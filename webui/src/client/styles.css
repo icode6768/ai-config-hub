@@ -7,8 +7,8 @@
   --line: #dfe3e8;
   --text: #20242c;
   --muted: #70798a;
-  --accent: #ff6b14;
-  --accent-2: #e56a14;
+  --accent: #0c9f9a;
+  --accent-2: #087c91;
   --good: #18a968;
   --bad: #e5484d;
   --skill-bg: #f7f8fa;
@@ -21,7 +21,7 @@
 html, body, #root { height: 100%; margin: 0; }
 body {
   background:
-    radial-gradient(circle at top left, rgba(255, 107, 20, 0.06), transparent 34%),
+    radial-gradient(circle at top left, rgba(19, 184, 176, 0.08), transparent 34%),
     #f7f8fa;
   color: var(--text);
 }
@@ -54,38 +54,59 @@ button, input, textarea {
 
 .brand {
   display: grid;
-  gap: 10px;
-  justify-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brandHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .brandLogo {
-  width: 190px;
-  height: auto;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
   object-fit: contain;
-  object-position: left;
 }
 
 .brandText {
   display: grid;
-  gap: 3px;
-  padding-left: 70px;
+  min-width: 0;
+  gap: 4px;
 }
 
-.brandTitle { font-weight: 700; color: var(--text); }
+.brandTitle {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .brandSub, .muted, .stepText small, .appHead span, .entryRow span, .summaryCard span, .railFooter code, .topbar p, .editorHead p {
   color: var(--muted);
 }
 
+.brandSub {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .updateNotice {
   width: 100%;
-  border: 1px solid #ffc99f;
+  border: 1px solid #a8dfdc;
   border-radius: 8px;
   padding: 8px 10px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: #bd4a09;
-  background: #fff4ec;
+  color: #087c91;
+  background: #eafaf9;
   cursor: pointer;
   font-size: 13px;
   text-align: left;
@@ -109,9 +130,9 @@ button, input, textarea {
 }
 
 .stepItem.active {
-  border-color: rgba(255, 107, 20, 0.6);
-  background: #fff4ec;
-  box-shadow: 0 0 0 1px rgba(255, 107, 20, 0.12) inset;
+  border-color: rgba(12, 159, 154, 0.6);
+  background: #eafaf9;
+  box-shadow: 0 0 0 1px rgba(12, 159, 154, 0.12) inset;
 }
 
 .stepIndex {
@@ -283,8 +304,8 @@ button:disabled {
 }
 
 .primary:hover:not(:disabled) {
-  background: #e5600d;
-  border-color: #e5600d;
+  background: #087c91;
+  border-color: #087c91;
 }
 
 .panel {
@@ -436,12 +457,12 @@ button:disabled {
   cursor: pointer;
 }
 
-.providerCard:hover { border-color: rgba(255, 107, 20, 0.5); }
+.providerCard:hover { border-color: rgba(12, 159, 154, 0.5); }
 
 .providerCard.active {
   border-color: var(--accent);
-  background: #fff4ec;
-  box-shadow: 0 0 0 1px rgba(255, 107, 20, 0.12) inset;
+  background: #eafaf9;
+  box-shadow: 0 0 0 1px rgba(12, 159, 154, 0.12) inset;
 }
 
 .providerMark {
@@ -456,7 +477,7 @@ button:disabled {
   font-size: 15px;
 }
 
-.providerCard.active .providerMark { border-color: rgba(255, 107, 20, 0.45); }
+.providerCard.active .providerMark { border-color: rgba(12, 159, 154, 0.45); }
 
 .providerLogo {
   width: 96px;
@@ -735,7 +756,7 @@ button:disabled {
   bottom: -1px;
   left: -24px;
   height: 3px;
-  background: #ff6b14;
+  background: var(--accent);
   border-radius: 3px 3px 0 0;
 }
 
@@ -771,8 +792,8 @@ button:disabled {
 
 .skillCategories button.active {
   color: #fff;
-  background: #ff6b14;
-  border-color: #ff6b14;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .skillGrid {
@@ -862,8 +883,8 @@ button:disabled {
 
 .skillInstall {
   color: #fff;
-  background: #ff6b14;
-  border: 1px solid #ff6b14;
+  background: var(--accent);
+  border: 1px solid var(--accent);
   cursor: pointer;
 }
 
@@ -885,9 +906,9 @@ button:disabled {
   gap: 5px;
   align-items: center;
   padding: 5px 8px;
-  color: #e56a14;
-  background: #fff2e9;
-  border: 1px solid #ffd7bf;
+  color: var(--accent-2);
+  background: #eafaf9;
+  border: 1px solid #b9e7e3;
   border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
@@ -927,7 +948,7 @@ button:disabled {
   transition: transform .18s ease;
 }
 
-.skillToggle.on { background: #ff6b14; }
+.skillToggle.on { background: var(--accent); }
 .skillToggle.on::after { transform: translateX(23px); }
 .skillPagination {
   display: flex;

@@ -23,9 +23,10 @@ if (base) {
 }
 
 // Load credentials inside Python so terminal commands and shell history contain no API key.
-const bootstrap = `import os, sys, runpy, shutil
+const bootstrap = `import os, sys, runpy, shutil, re
 import yaml
 from pathlib import Path
+from urllib.parse import urlparse
 import hermes_constants
 # Restrict Hermes' managed-runtime lookup to this launcher's platform.
 # Otherwise Windows npm shims can trigger auto-repair on a macOS USB launch.
@@ -52,6 +53,12 @@ if os.path.isfile(config_file):
     key = config.get('global', {}).get('api', {}).get('apiKey')
     if key:
         os.environ['DONGCHUANGAI_API_KEY'] = str(key)
+        base_url = str(config.get('global', {}).get('api', {}).get('baseUrl') or '')
+        hostname = urlparse(base_url).hostname or ''
+        if hostname:
+            hostname = re.sub(r'^api\.', '', hostname, flags=re.IGNORECASE)
+            key_env = 'HERMES_CUSTOM_API_' + re.sub(r'[^A-Z0-9]+', '_', hostname.upper()).strip('_') + '_API_KEY'
+            os.environ[key_env] = str(key)
 os.environ.pop('DONGCHUANGAI_KEY', None)
 sys.argv[0] = 'hermes'
 runpy.run_module('hermes_cli.main', run_name='__main__')
