@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -1048,6 +1049,9 @@ export default function App(): React.ReactElement {
                 <option value="en">English</option>
               </select>
             </label>
+            <a className="ghost docsLink" href="https://docs-confighub.dongchuangai.com" target="_blank" rel="noreferrer" aria-label={t('用户操作手册')}>
+              <BookOpen size={16} /> {t('用户操作手册')} <ExternalLink size={13} />
+            </a>
             <button type="button" className="ghost" onClick={() => void refresh({ reloadDraft: true })}>
               <RefreshCcw size={16} /> {t('刷新')}
             </button>

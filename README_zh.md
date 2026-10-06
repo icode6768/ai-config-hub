@@ -4,7 +4,7 @@
 > 在统一界面下调度五个 AI Agent 框架。
 
 ![Version](https://img.shields.io/badge/version-1.0.2-blue)
-![License](https://img.shields.io/badge/license-LGPL--3.0-green)
+![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B%20%7C%20macOS%2012%2B-lightgrey)
 
 [English](README.md) · [简体中文](README_zh.md)
@@ -130,7 +130,7 @@
 ├── start-windows.bat          ← Windows 启动入口
 ├── start-macos.command         ← macOS 启动入口
 ├── config.yaml                 ← 唯一配置源(已纳入版本控制)
-├── LICENSE                     ← LGPL-3.0 协议全文
+├── LICENSE                     ← MIT 协议全文
 ├── README.md / README_zh.md    ← 你正在看这里
 │
 ├── webui/                      ← 面板源码(已纳入版本控制)
@@ -276,48 +276,11 @@ macOS 上的 helper 还会一并清除 Gatekeeper 隔离属性
 > 前面。若系统另装有 `node`,只会在已激活的 shell 里被遮蔽。激活后跑
 > `where node`,`runtime\windows\bin\` 下那行必须排在第一位。
 
-## 📜 开源协议与商业授权
+## 📜 开源协议与商业使用
 
-本项目采用**双重许可**:
+本项目采用 **MIT License**，完整协议见 [`LICENSE`](LICENSE)。源码完全免费，任何个人、组织和企业都可以自由使用、复制、修改、合并、发布、分发、再许可和销售本项目及其衍生作品，允许任何商业用途，无需另行购买商业授权。
 
-1. **GNU Lesser General Public License v3.0**(`SPDX-License-Identifier:
-   LGPL-3.0-only`)—— 完整协议见 [`LICENSE`](LICENSE)。
-2. 独立的**商业授权** —— 希望规避 LGPL-3.0 弱著佐权义务的组织可走此通道,
-   详见 [商业授权](#商业授权)。
-
-### 免费使用(LGPL-3.0)
-
-LGPL-3.0 本身允许免费使用、复制、修改、再分发本软件。分发本软件(或链接
-到它的 Combined Work)时,须遵循以下 LGPL-3.0 标准义务:
-
-- **保留版权与协议声明** —— 每份副本与每个源文件头均须保留
-  (LGPL-3.0 §1、§4(a))。
-- **对 Library 本身的修改** —— 必须同样以 LGPL-3.0 发布(LGPL-3.0 §2、§5;
-  弱著佐权仅约束 Library 部分,不延伸到你的 Application)。
-- **静态链接** —— 若将 Library 静态链入 Application,须一并提供 Minimal
-  Corresponding Source、Corresponding Application Code,以及明确的 relink 流程
-  (LGPL-3.0 §4(d))。
-- **动态链接** —— 专有 Application 的推荐方式。运行时链接未修改的
-  Library,除保留声明外无额外义务(LGPL-3.0 §4(d)(1))。
-- **禁止规避** —— 不得通过 DRM 等技术手段限制终端用户在 LGPL §3 中的权利
-  (例如禁止替换 Library)。
-- **不得转授限制** —— 不得对 LGPL 部分施加额外限制。
-- **纯 SaaS / 内部使用**(不分发 Library 或 Combined Work)—— 仅需在你持有
-  的源代码中保留声明,无其他义务。
-
-### 商业授权
-
-如果 LGPL-3.0 弱著佐权义务与你的产品、采购或 IP 策略冲突 —— 例如:
-
-- 需要发布**专有 / 闭源衍生作品**,且不愿披露 Library 的修改;
-- 需要**静态链接**且不提供 relink 能力或 Minimal Corresponding Source;
-- 需要 LGPL-3.0 §15、§16 所声明弃权的 **IP 兜底或商业担保**;
-- 法务要求在开源条款之上再加一份**纯合同性授权**文书。
-
-……则可通过商业授权获得上述自由度(通常附带技术支持、定制开发、私有 /
-本地部署协助),并规避 LGPL-3.0 的 copyleft 义务。商务联系:请通过
-[`config.yaml`](config.yaml) 中 `global.api.authAccountName` 字段对应的维护者
-取得联系。
+使用或再分发本项目时，请保留原始版权声明和 MIT License 文本。第三方依赖和 vendored 上游项目仍遵循其各自目录中的原始协议。
 
 ## 🙏 致谢与第三方声明
 
@@ -338,10 +301,6 @@ LGPL-3.0 本身允许免费使用、复制、修改、再分发本软件。分�
 - **运行时依赖**:Node.js (MIT)、Python (PSF)、React (MIT)、Vite (MIT)、
   TypeScript (Apache-2.0)、tsx (MIT),以及 `@iarna/toml`、`yaml`、`qrcode`、
   `lucide-react` 等,均按各自协议授权。
-
-依据 **LGPL-3.0 §1 与 §4(a)**,所有上游 MIT 项目保留其原始版权与协议声明;
-LGPL-3.0 弱著佐权(§2、§5)仅约束本项目自身属于 Library 的源文件的修改,
-不延伸到这些上游 MIT 部分,后者继续遵循其原始 MIT 条款。
 
 ---
 

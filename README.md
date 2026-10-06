@@ -4,7 +4,7 @@
 > panel that orchestrates five AI agent frameworks behind a single local web UI.
 
 ![Version](https://img.shields.io/badge/version-1.0.2-blue)
-![License](https://img.shields.io/badge/license-LGPL--3.0-green)
+![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B%20%7C%20macOS%2012%2B-lightgrey)
 
 [English](README.md) · [简体中文](README_zh.md)
@@ -132,7 +132,7 @@ when you are ready.
 ├── start-windows.bat          ← Windows entry point
 ├── start-macos.command         ← macOS entry point
 ├── config.yaml                 ← single source of truth (tracked)
-├── LICENSE                     ← LGPL-3.0 (this file)
+├── LICENSE                     ← MIT License (this file)
 ├── README.md / README_zh.md    ← you are here
 │
 ├── webui/                      ← panel source (tracked)
@@ -283,61 +283,9 @@ On macOS the helper also strips Gatekeeper quarantine xattrs
 
 ## 📜 License & Commercial Use
 
-This project is dual-licensed:
+This project is licensed under the **MIT License**; see [`LICENSE`](LICENSE) for the full text. The source code is completely free to use. Individuals, organizations, and companies may use, copy, modify, merge, publish, distribute, sublicense, and sell this project and derivative works for any purpose, including any commercial use, without purchasing a separate commercial license.
 
-1. **GNU Lesser General Public License v3.0** (`SPDX-License-Identifier:
-   LGPL-3.0-only`) — see [`LICENSE`](LICENSE) for the full text.
-2. A separate **commercial license** for organizations that want to bypass
-   LGPL-3.0 obligations — see [Commercial license](#commercial-license)
-   below.
-
-### Free use under LGPL-3.0
-
-LGPL-3.0 already permits free use, copying, modification, and
-redistribution of this software. The standard LGPL-3.0 obligations you
-must follow when you distribute this software (or a Combined Work that
-links against it):
-
-- **Preserve copyright & license notices** on every copy and on each
-  source file header (LGPL-3.0 §1, §4(a)).
-- **Modifications to the Library itself** must be released under LGPL-3.0
-  (LGPL-3.0 §2, §5; weak copyleft applies only to the Library portions,
-  not to your Application).
-- **Static linking** — if you link the Library statically into your
-  Application, you must provide the Minimal Corresponding Source plus the
-  Corresponding Application Code, and a clear relinking procedure
-  (LGPL-3.0 §4(d)).
-- **Dynamic linking** — the recommended path for proprietary Applications.
-  You may link against the unmodified Library at run time with no
-  relinking obligations beyond preserving notices (LGPL-3.0 §4(d)(1)).
-- **No anti-circumvention** — do not apply technical measures that
-  restrict the LGPL §3 rights of end users (e.g. DRM that blocks
-  replacement of the Library).
-- **No sublicensing** — you may not impose further restrictions on the
-  LGPL-licensed portions.
-- **Pure SaaS / internal use** (no distribution of the Library or
-  Combined Work) — no LGPL obligations beyond preserving notices in any
-  source you keep.
-
-### Commercial license
-
-If your product, procurement policy, or IP posture makes the LGPL-3.0
-weak-copyleft obligations unworkable — for example:
-
-- You need to ship a **proprietary / closed-source derivative work**
-  without releasing the Library's modifications.
-- You need to **statically link** without providing relinking capability
-  or the Minimal Corresponding Source.
-- You need an **IP indemnification** or commercial warranty that LGPL-3.0
-  disclaims (LGPL-3.0 §15, §16).
-- Your legal team requires a **paperwork-only** license on top of the
-  open-source terms.
-
-…then the commercial license is the alternative path. It grants the
-above freedoms (and usually technical support, custom development, and
-on-premise / private deployment assistance) without the LGPL-3.0
-copyleft obligations. Contact the maintainers via the address in
-[`config.yaml`](config.yaml) → `global.api.authAccountName`.
+When using or redistributing this project, retain the original copyright notice and MIT License text. Third-party dependencies and vendored upstream projects remain under the original licenses in their respective directories.
 
 ## 🙏 Acknowledgments / Third-party Notices
 
@@ -359,12 +307,6 @@ subdirectories.
 - **Runtime dependencies**: Node.js (MIT), Python (PSF), React (MIT), Vite (MIT),
   TypeScript (Apache-2.0), tsx (MIT), `@iarna/toml`, `yaml`, `qrcode`,
   `lucide-react` — each carries its own license.
-
-Per **LGPL-3.0 §1 & §4(a)**, all upstream MIT-licensed subprojects retain
-their original copyright and license notice; the LGPL-3.0 weak-copyleft
-(per §2 & §5) applies only to modifications of this project's own source
-that is part of the Library, not to those upstream MIT-licensed portions,
-which remain under their original MIT terms.
 
 ---
 
