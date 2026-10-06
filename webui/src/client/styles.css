@@ -773,11 +773,61 @@ button:disabled {
   font-size: 13px;
 }
 
+.skillCategoryBar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 22px 0 24px;
+}
+
+.skillBulkActions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 0 0;
+}
+
+.bulkSyncButton {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
 .skillCategories {
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: 9px;
   flex-wrap: wrap;
-  padding: 22px 0 24px;
+  max-height: 48px;
+  overflow: hidden;
+  padding: 0 0 6px;
+  transition: max-height .2s ease;
+}
+
+.skillCategories.expanded {
+  max-height: 800px;
+  overflow: visible;
+  padding-bottom: 18px;
+}
+
+.skillCategoryToggle {
+  flex: 0 0 auto;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px;
+  color: var(--accent-2);
+  background: #eafaf9;
+  border: 1px solid #b9e7e3;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.skillCategoryToggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .skillCategories button {
@@ -897,15 +947,17 @@ button:disabled {
 
 .skillControls {
   display: flex;
-  gap: 13px;
+  gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .syncButton {
   display: inline-flex;
   gap: 5px;
   align-items: center;
-  padding: 5px 8px;
+  padding: 7px 10px;
   color: var(--accent-2);
   background: #eafaf9;
   border: 1px solid #b9e7e3;
@@ -913,6 +965,34 @@ button:disabled {
   cursor: pointer;
   font-size: 12px;
 }
+
+.syncButton:disabled {
+  cursor: default;
+  opacity: .7;
+}
+
+.skillSyncDialog { width: min(520px, 100%); }
+.skillsPageHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.skillScopeHint { display: block; margin-top: -10px; color: var(--skill-muted); font-size: 14px; }
+.skillAddDialog { width: min(720px, 100%); }
+.skillAddTabs { display: flex; gap: 4px; padding: 14px 20px 0; border-bottom: 1px solid var(--line); }
+.skillAddTabs button { padding: 9px 13px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.skillAddTabs button.active { color: var(--accent-2); border-bottom-color: var(--accent); }
+.skillAddSearch { display: flex; align-items: center; gap: 10px; margin: 16px 20px 0; padding: 0 13px; height: 46px; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.skillAddSearch input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 15px; }
+.skillAddSearch input::placeholder { color: var(--muted); }
+.skillAddMarketList { max-height: min(52vh, 520px); display: grid; gap: 8px; overflow: auto; padding: 16px 20px; }
+.skillAddMarketItem { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.skillAddMarketItem > div { min-width: 0; display: grid; gap: 4px; }
+.skillAddMarketItem strong, .skillAddMarketItem span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skillAddMarketItem span { color: var(--muted); font-size: 13px; }
+.skillAddLocalBody { min-height: 150px; }
+.skillAddLocalActions { display: flex; gap: 10px; flex-wrap: wrap; }
+.skillSyncBody { gap: 12px; }
+.skillSyncCount { color: var(--skill-text); font-weight: 700; }
+.skillSyncOptions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.skillSyncOption { display: flex; align-items: center; gap: 10px; padding: 12px; color: var(--skill-text); background: #f7fafb; border: 1px solid var(--skill-line); border-radius: 10px; cursor: pointer; }
+.skillSyncOption input { width: 17px; height: 17px; accent-color: var(--accent); }
 
 .iconButton {
   display: inline-grid;
@@ -1017,4 +1097,7 @@ button:disabled {
 
   .skillToolbar { align-items: stretch; flex-direction: column; }
   .skillAddButton { justify-content: center; }
+  .skillSyncOptions { grid-template-columns: 1fr; }
+  .skillsPageHead { flex-direction: column; }
+  .skillAddMarketItem { align-items: flex-start; flex-direction: column; }
 }

@@ -1,0 +1,72 @@
+时间: 2026-02-21 13:06:00
+请求地址: http://www.msftconnecttest.com/connecttest.txt
+请求方法: GET
+请求协议: http
+请求路径: /connecttest.txt
+请求头:
+  Connection: Close
+  User-Agent: Microsoft NCSI
+  Host: www.msftconnecttest.com
+响应内容:
+Microsoft Connect Test
+====================================================================================================
+时间: 2026-02-21 13:06:00
+请求地址: http://ipv6.msftconnecttest.com/connecttest.txt
+请求方法: GET
+请求协议: http
+请求路径: /connecttest.txt
+请求头:
+  Connection: Close
+  User-Agent: Microsoft NCSI
+  Host: ipv6.msftconnecttest.com
+响应内容:
+Microsoft Connect Test
+====================================================================================================
+时间: 2026-02-21 13:06:00
+请求地址: http://www.msftconnecttest.com/connecttest.txt
+请求方法: GET
+请求协议: http
+请求路径: /connecttest.txt
+请求头:
+  Connection: Close
+  User-Agent: Microsoft NCSI
+  Host: www.msftconnecttest.com
+响应内容:
+Microsoft Connect Test
+====================================================================================================
+时间: 2026-02-21 13:06:00
+请求地址: http://www.msftconnecttest.com/connecttest.txt
+请求方法: GET
+请求协议: http
+请求路径: /connecttest.txt
+请求头:
+  Connection: Close
+  User-Agent: Microsoft NCSI
+  Host: www.msftconnecttest.com
+响应内容:
+Microsoft Connect Test
+====================================================================================================
+时间: 2026-02-21 13:06:00
+请求地址: http://ipv6.msftconnecttest.com/connecttest.txt
+请求方法: GET
+请求协议: http
+请求路径: /connecttest.txt
+请求头:
+  Connection: Close
+  User-Agent: Microsoft NCSI
+  Host: ipv6.msftconnecttest.com
+响应内容:
+Microsoft Connect Test
+====================================================================================================
+时间: 2026-02-21 13:06:00
+请求地址: http://ipv6.msftconnecttest.com/connecttest.txt
+请求方法: GET
+请求协议: http
+请求路径: /connecttest.txt
+请求头:
+  Connection: Close
+  User-Agent: Microsoft NCSI
+  Host: ipv6.msftconnecttest.com
+响应内容:
+Microsoft Connect Test
+====================================================================================================

@@ -218,3 +218,5 @@ docs
 # (形如 agent@<Hostname>.local、agent@openclaw.local),只是本地运行时标记,不入版本控制
 .hermes/hermes-agent/contributors/emails/*@*.local
 .hermes/hermes-agent/contributors/emails/agent@*.local
+
+temp

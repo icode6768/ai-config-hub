@@ -1,0 +1,13 @@
+﻿bin/
+obj/
+Debug/
+Release/
+x86/
+x64/
+downloads/
+.venv/
+.idea/
+__pycache__/
+temp/
+*.log
+data-packet

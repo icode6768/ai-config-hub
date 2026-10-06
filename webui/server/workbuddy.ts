@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { homedir, platform } from 'node:os'
-import { join } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 import { promisify } from 'node:util'
 import { rootPath } from '../src/shared/paths'
 
@@ -79,11 +79,9 @@ export async function uninstallWorkBuddy(): Promise<void> {
   await exec('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Remove-Item -LiteralPath '${path.replace(/'/g, "''")}' -Recurse -Force`], { windowsHide: true })
 }
 
-export function workBuddySkillsCandidates(): string[] {
-  const home = homedir()
-  return platform() === 'win32'
-    ? [join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'WorkBuddy', 'skills'), join(process.env.LOCALAPPDATA ?? join(home, 'AppData', 'Local'), 'WorkBuddy', 'skills')]
-    : platform() === 'darwin' ? [join(home, 'Library', 'Application Support', 'WorkBuddy', 'skills')] : []
+export function workBuddySkillsCandidates(currentPlatform: NodeJS.Platform = platform(), home = currentPlatform === 'win32' ? process.env.USERPROFILE || homedir() : homedir()): string[] {
+  const path = currentPlatform === 'win32' ? win32 : posix
+  return [path.join(home, '.workbuddy', 'skills')]
 }
 
 export const workBuddyStatePath = () => join(rootPath(), '.codex', 'workbuddy.json')

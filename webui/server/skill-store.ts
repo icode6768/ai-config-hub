@@ -1,5 +1,5 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { join, basename, resolve } from 'node:path'
+import { join, basename, dirname, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -14,6 +14,13 @@ const statePath = () => join(rootPath(), '.codex', 'skill-state.yaml')
 
 export type SkillTarget = 'claude' | 'codex' | 'deepseekHarness' | 'hermes' | 'openclaw' | 'workbuddy'
 export type SkillTargets = Record<SkillTarget, boolean>
+export const skillTargets: SkillTarget[] = ['workbuddy', 'claude', 'codex', 'openclaw', 'hermes', 'deepseekHarness']
+
+export class SkillConflictError extends Error {}
+
+export function isSkillTarget(value: unknown): value is SkillTarget {
+  return typeof value === 'string' && skillTargets.includes(value as SkillTarget)
+}
 
 export function appSkillDirectories(): Record<SkillTarget, string> {
   const root = rootPath()
@@ -75,6 +82,7 @@ async function readState(): Promise<Record<string, boolean>> {
 }
 
 async function writeState(enabled: Record<string, boolean>): Promise<void> {
+  await mkdir(dirname(statePath()), { recursive: true })
   await writeFile(statePath(), YAML.stringify({ enabled }, { indent: 2 }), 'utf8')
 }
 
@@ -92,6 +100,32 @@ async function skillFiles(directory: string): Promise<string[]> {
 
 function emptyTargets(): SkillTargets {
   return { claude: false, codex: false, deepseekHarness: false, hermes: false, openclaw: false, workbuddy: false }
+}
+
+function targetDirectory(target: SkillTarget): string {
+  return appSkillDirectories()[target]
+}
+
+async function copySkillToTarget(source: string, target: SkillTarget, id: string, overwrite = false): Promise<void> {
+  if (!safeSkillId(id)) throw new Error('技能 ID 无效')
+  const directory = targetDirectory(target)
+  const destination = join(directory, id)
+  const existing = await readFile(join(destination, 'SKILL.md'), 'utf8').catch(() => null)
+  if (existing !== null && !overwrite) throw new SkillConflictError(`技能 ${id} 已存在，请确认覆盖`)
+  await mkdir(directory, { recursive: true })
+  const backupRoot = await mkdtemp(join(tmpdir(), 'usb-lobster-skill-backup-'))
+  const backup = join(backupRoot, id)
+  try {
+    if (existing !== null) await cp(destination, backup, { recursive: true })
+    await rm(destination, { recursive: true, force: true })
+    await cp(source, destination, { recursive: true })
+  } catch (error) {
+    await rm(destination, { recursive: true, force: true })
+    if (existing !== null) await cp(backup, destination, { recursive: true })
+    throw error
+  } finally {
+    await rm(backupRoot, { recursive: true, force: true })
+  }
 }
 
 function marketplaceRecord(raw: Record<string, unknown>, installed: boolean, enabled: boolean, targets = emptyTargets()): SkillRecord {
@@ -147,6 +181,31 @@ export async function listInstalledSkills(): Promise<SkillRecord[]> {
         targets,
       })
     }
+  }
+  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function listSkillsForTarget(target: SkillTarget): Promise<SkillRecord[]> {
+  const enabledState = await readState()
+  const merged = new Map<string, SkillRecord>()
+  for (const file of await skillFiles(targetDirectory(target))) {
+    const id = basename(resolve(file, '..'))
+    if (!safeSkillId(id)) continue
+    const metadata = parseSkillDocument(await readFile(file, 'utf8').catch(() => ''))
+    const targets = emptyTargets()
+    targets[target] = true
+    merged.set(id, {
+      id,
+      name: metadata.name || id,
+      description: metadata.description,
+      license: metadata.license,
+      source: id.startsWith('.') ? '系统' : '本地',
+      version: '已安装',
+      tags: [],
+      installed: true,
+      enabled: enabledState[id] !== false,
+      targets,
+    })
   }
   return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -242,6 +301,28 @@ export async function installSkill(id: string, url: string): Promise<SkillRecord
   }
 }
 
+export async function installSkillForTarget(target: SkillTarget, id: string, url: string, overwrite = false): Promise<SkillRecord[]> {
+  if (!isSkillTarget(target)) throw new Error('目标 Agent 无效')
+  if (!safeSkillId(id)) throw new Error('技能 ID 无效')
+  if (!url.startsWith('https://')) throw new Error('技能下载地址必须使用 HTTPS')
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`技能下载失败：${response.status}`)
+  const archive = Buffer.from(await response.arrayBuffer())
+  if (archive.length > 100 * 1024 * 1024) throw new Error('技能压缩包超过 100MB')
+  const temp = await mkdtemp(join(tmpdir(), 'usb-lobster-target-skill-'))
+  try {
+    const archivePath = join(temp, `${id}.zip`)
+    await writeFile(archivePath, archive)
+    await execFile(process.platform === 'win32' ? 'tar.exe' : 'tar', ['-xf', archivePath, '-C', temp])
+    const files = await skillFiles(temp)
+    if (!files.length) throw new Error('压缩包中未找到 SKILL.md')
+    await copySkillToTarget(resolve(files[0], '..'), target, id, overwrite)
+    return listSkillsForTarget(target)
+  } finally {
+    await rm(temp, { recursive: true, force: true })
+  }
+}
+
 export async function installLocalSkill(input: { archiveBase64?: string; files?: Array<{ path: string; contentBase64: string }> }): Promise<SkillRecord[]> {
   const temp = await mkdtemp(join(tmpdir(), 'usb-lobster-local-skill-'))
   try {
@@ -278,6 +359,40 @@ export async function installLocalSkill(input: { archiveBase64?: string; files?:
   } finally { await rm(temp, { recursive: true, force: true }) }
 }
 
+export async function installLocalSkillForTarget(input: { target: SkillTarget; overwrite?: boolean; archiveBase64?: string; files?: Array<{ path: string; contentBase64: string }> }): Promise<SkillRecord[]> {
+  if (!isSkillTarget(input.target)) throw new Error('目标 Agent 无效')
+  const temp = await mkdtemp(join(tmpdir(), 'usb-lobster-target-local-skill-'))
+  try {
+    if (input.archiveBase64) {
+      const archive = Buffer.from(input.archiveBase64, 'base64')
+      if (archive.length > 100 * 1024 * 1024) throw new Error('技能压缩包超过 100MB')
+      const archivePath = join(temp, 'skill.zip')
+      await writeFile(archivePath, archive)
+      await execFile(process.platform === 'win32' ? 'tar.exe' : 'tar', ['-xf', archivePath, '-C', temp])
+    } else if (input.files?.length) {
+      for (const file of input.files) {
+        const relative = file.path.replaceAll('\\', '/').replace(/^\/+/, '')
+        const target = resolve(temp, relative)
+        if (!target.startsWith(resolve(temp) + '\\') && !target.startsWith(resolve(temp) + '/')) throw new Error('技能文件路径无效')
+        await mkdir(resolve(target, '..'), { recursive: true })
+        await writeFile(target, Buffer.from(file.contentBase64, 'base64'))
+      }
+    } else throw new Error('请选择 Skill 文件夹或压缩包')
+    const files = await skillFiles(temp)
+    if (!files.length) throw new Error('未找到 SKILL.md，请选择有效的 Skill 文件夹或压缩包')
+    const source = resolve(files[0], '..')
+    const id = basename(source).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+    if (!safeSkillId(id)) throw new Error('Skill 文件夹名称只能包含字母、数字、点、下划线和连字符')
+    await copySkillToTarget(source, input.target, id, input.overwrite === true)
+    const state = await readState()
+    state[id] = true
+    await writeState(state)
+    return listSkillsForTarget(input.target)
+  } finally {
+    await rm(temp, { recursive: true, force: true })
+  }
+}
+
 export async function uninstallSkill(id: string): Promise<SkillRecord[]> {
   if (!safeSkillId(id)) throw new Error('技能 ID 无效')
   for (const directory of Object.values(appSkillDirectories())) {
@@ -305,6 +420,41 @@ export async function syncSkill(id: string): Promise<SkillRecord[]> {
     await mkdir(directory, { recursive: true })
     await rm(join(directory, id), { recursive: true, force: true })
     await cp(source, join(directory, id), { recursive: true })
+  }
+  return listInstalledSkills()
+}
+
+export async function uninstallSkillForTarget(target: SkillTarget, id: string): Promise<SkillRecord[]> {
+  if (!isSkillTarget(target)) throw new Error('目标 Agent 无效')
+  if (!safeSkillId(id)) throw new Error('技能 ID 无效')
+  const directory = targetDirectory(target)
+  const destination = join(directory, id)
+  if (!resolve(destination).startsWith(resolve(directory) + '\\') && !resolve(destination).startsWith(resolve(directory) + '/')) {
+    throw new Error('技能卸载路径无效')
+  }
+  await rm(destination, { recursive: true, force: true })
+  return listSkillsForTarget(target)
+}
+
+export async function syncInstalledSkillsToTargets(targets: SkillTarget[]): Promise<SkillRecord[]> {
+  const selected = new Set(targets)
+  const directories = appSkillDirectories()
+  const sourceDirectory = directories.openclaw
+  const installedIds = new Set<string>()
+  for (const file of await skillFiles(sourceDirectory)) {
+    installedIds.add(basename(resolve(file, '..')))
+  }
+  for (const id of installedIds) {
+    if (!safeSkillId(id)) continue
+    const source = join(sourceDirectory, id)
+    if (await readFile(join(source, 'SKILL.md'), 'utf8').catch(() => null) === null) continue
+    for (const target of selected) {
+      if (target === 'openclaw') continue
+      const directory = directories[target]
+      await mkdir(directory, { recursive: true })
+      await rm(join(directory, id), { recursive: true, force: true })
+      await cp(source, join(directory, id), { recursive: true })
+    }
   }
   return listInstalledSkills()
 }

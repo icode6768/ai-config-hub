@@ -14,7 +14,7 @@ import { getWechatStatus, migrateLegacyWechatConnections, resetWechatConnections
 import { getAppRuntimeStatuses, initializeAppProcesses, openAppTerminal, restartApp, shutdownAppProcesses, startApp, stopApp, updateApp } from './app-processes'
 import { cancelDongchuangAIAuth, getDongchuangAIAuthStatus, startDongchuangAIAuth } from './dongchuangai-oauth'
 import { buildAppEntryUrl, ensureOpenclawGatewayConfig, ensureOpenclawGatewayToken } from './openclaw-auth'
-import { fetchMarketplace, installLocalSkill, installSkill, listInstalledSkills, setSkillEnabled, syncSkill, uninstallSkill } from './skill-store'
+import { fetchMarketplace, installLocalSkill, installLocalSkillForTarget, installSkill, installSkillForTarget, listInstalledSkills, listSkillsForTarget, setSkillEnabled, skillTargets, SkillConflictError, syncInstalledSkillsToTargets, syncSkill, uninstallSkill, uninstallSkillForTarget, type SkillTarget } from './skill-store'
 import { checkSoftwareUpdate, prepareSoftwareUpdate } from './software-update'
 import { getWorkBuddyInfo, openWorkBuddy, openWorkBuddyInstaller, uninstallWorkBuddy, workBuddySkillsCandidates } from './workbuddy'
 
@@ -276,7 +276,12 @@ async function main(): Promise<void> {
       }
 
       if (url.pathname === '/api/skills/installed' && req.method === 'GET') {
-        sendJson(res, { skills: await listInstalledSkills() })
+        const target = url.searchParams.get('target')
+        if (target !== null && !skillTargets.includes(target as SkillTarget)) {
+          sendJson(res, { error: '目标 Agent 无效' }, 400)
+          return
+        }
+        sendJson(res, { skills: target ? await listSkillsForTarget(target as SkillTarget) : await listInstalledSkills() })
         return
       }
 
@@ -284,17 +289,50 @@ async function main(): Promise<void> {
         const body = await readJsonBody(req)
         const id = typeof body.id === 'string' ? body.id : ''
         const skillUrl = typeof body.url === 'string' ? body.url : ''
-        const skills = await installSkill(id, skillUrl)
+        const target = typeof body.target === 'string' ? body.target : undefined
+        if (target !== undefined && !skillTargets.includes(target as SkillTarget)) {
+          sendJson(res, { error: '目标 Agent 无效' }, 400)
+          return
+        }
+        let skills
+        try {
+          skills = target
+            ? await installSkillForTarget(target as SkillTarget, id, skillUrl, body.overwrite === true)
+            : await installSkill(id, skillUrl)
+        } catch (error) {
+          if (error instanceof SkillConflictError) {
+            sendJson(res, { error: error.message }, 409)
+            return
+          }
+          throw error
+        }
         sendJson(res, { ok: true, skills })
         return
       }
 
       if (url.pathname === '/api/skills/upload' && req.method === 'POST') {
         const body = await readJsonBody(req)
-        const skills = await installLocalSkill({
+        const target = typeof body.target === 'string' ? body.target : undefined
+        if (target !== undefined && !skillTargets.includes(target as SkillTarget)) {
+          sendJson(res, { error: '目标 Agent 无效' }, 400)
+          return
+        }
+        const input = {
           archiveBase64: typeof body.archiveBase64 === 'string' ? body.archiveBase64 : undefined,
           files: Array.isArray(body.files) ? body.files as Array<{ path: string; contentBase64: string }> : undefined,
-        })
+        }
+        let skills
+        try {
+          skills = target
+            ? await installLocalSkillForTarget({ ...input, target: target as SkillTarget, overwrite: body.overwrite === true })
+            : await installLocalSkill(input)
+        } catch (error) {
+          if (error instanceof SkillConflictError) {
+            sendJson(res, { error: error.message }, 409)
+            return
+          }
+          throw error
+        }
         sendJson(res, { ok: true, skills })
         return
       }
@@ -302,7 +340,12 @@ async function main(): Promise<void> {
       if (url.pathname === '/api/skills/uninstall' && req.method === 'POST') {
         const body = await readJsonBody(req)
         const id = typeof body.id === 'string' ? body.id : ''
-        sendJson(res, { ok: true, skills: await uninstallSkill(id) })
+        const target = typeof body.target === 'string' ? body.target : undefined
+        if (target !== undefined && !skillTargets.includes(target as SkillTarget)) {
+          sendJson(res, { error: '目标 Agent 无效' }, 400)
+          return
+        }
+        sendJson(res, { ok: true, skills: target ? await uninstallSkillForTarget(target as SkillTarget, id) : await uninstallSkill(id) })
         return
       }
 
@@ -318,6 +361,16 @@ async function main(): Promise<void> {
         const body = await readJsonBody(req)
         const id = typeof body.id === 'string' ? body.id : ''
         sendJson(res, { ok: true, skills: await syncSkill(id) })
+        return
+      }
+
+      if (url.pathname === '/api/skills/sync-all' && req.method === 'POST') {
+        const body = await readJsonBody(req)
+        if (!Array.isArray(body.targets) || body.targets.length === 0 || body.targets.some(target => typeof target !== 'string' || !skillTargets.includes(target as SkillTarget))) {
+          sendJson(res, { error: '请选择至少一个有效的 Agent' }, 400)
+          return
+        }
+        sendJson(res, { ok: true, skills: await syncInstalledSkillsToTargets(body.targets as SkillTarget[]) })
         return
       }
 

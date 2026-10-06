@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Circle,
   Download,
   ExternalLink,
@@ -77,6 +79,19 @@ type SkillRecord = {
     workbuddy?: boolean
   }
 }
+
+type SkillTarget = 'claude' | 'codex' | 'deepseekHarness' | 'hermes' | 'openclaw' | 'workbuddy'
+
+const skillTargetOptions: Array<{ id: SkillTarget; label: string }> = [
+  { id: 'workbuddy', label: 'WorkBuddy' },
+  { id: 'claude', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'openclaw', label: 'OpenClaw' },
+  { id: 'hermes', label: 'Hermes Agent' },
+  { id: 'deepseekHarness', label: 'DeepSeek Harness' },
+]
+
+const allSkillSyncTargets = (): Record<SkillTarget, boolean> => Object.fromEntries(skillTargetOptions.map(target => [target.id, true])) as Record<SkillTarget, boolean>
 
 type SkillMarketplace = {
   skills: SkillRecord[]
@@ -362,6 +377,16 @@ export default function App(): React.ReactElement {
   const skillFolderInputRef = useRef<HTMLInputElement>(null)
   const skillArchiveInputRef = useRef<HTMLInputElement>(null)
   const [skillCategory, setSkillCategory] = useState('all')
+  const [skillCategoriesExpanded, setSkillCategoriesExpanded] = useState(false)
+  const [skillManagerTarget, setSkillManagerTarget] = useState<SkillTarget | null>(null)
+  const [managedSkills, setManagedSkills] = useState<SkillRecord[]>([])
+  const [managedSkillsLoading, setManagedSkillsLoading] = useState(false)
+  const [skillAddOpen, setSkillAddOpen] = useState(false)
+  const [skillAddTab, setSkillAddTab] = useState<'marketplace' | 'local'>('marketplace')
+  const [skillAddSearch, setSkillAddSearch] = useState('')
+  const [skillSyncOpen, setSkillSyncOpen] = useState(false)
+  const [skillSyncTargets, setSkillSyncTargets] = useState<Record<SkillTarget, boolean>>(allSkillSyncTargets)
+  const [skillSyncBusy, setSkillSyncBusy] = useState(false)
   const [marketplace, setMarketplace] = useState<SkillMarketplace>({ skills: [], tags: [], page: 1, per_page: 50, total: 0, total_pages: 0 })
   const [marketQuery, setMarketQuery] = useState({ page: 1, categoryId: 0, search: '', revision: 0 })
   const [marketLoading, setMarketLoading] = useState(false)
@@ -519,14 +544,15 @@ export default function App(): React.ReactElement {
   }, [dongchuangAuth?.sessionKey, dongchuangAuth?.phase])
 
   useEffect(() => {
+    const search = skillManagerTarget && skillAddOpen ? skillAddSearch.trim() : skillSearch.trim()
     const timer = window.setTimeout(() => {
-      setMarketQuery(previous => previous.search === skillSearch.trim() ? previous : { ...previous, page: 1, search: skillSearch.trim() })
+      setMarketQuery(previous => previous.search === search ? previous : { ...previous, page: 1, search })
     }, 300)
     return () => window.clearTimeout(timer)
-  }, [skillSearch])
+  }, [skillSearch, skillAddSearch, skillAddOpen, skillManagerTarget])
 
   useEffect(() => {
-    if (activeStep !== 'skills' || skillTab !== 'marketplace') return
+    if (activeStep !== 'skills' || (skillTab !== 'marketplace' && !skillAddOpen)) return
     const controller = new AbortController()
     const params = new URLSearchParams({ page: String(marketQuery.page), per_page: '50' })
     if (marketQuery.categoryId) params.set('category_id', String(marketQuery.categoryId))
@@ -540,7 +566,7 @@ export default function App(): React.ReactElement {
       .catch(error => { if (!controller.signal.aborted) setMarketError(error instanceof Error ? error.message : '读取技能市场失败') })
       .finally(() => { if (!controller.signal.aborted) setMarketLoading(false) })
     return () => controller.abort()
-  }, [activeStep, skillTab, marketQuery])
+  }, [activeStep, skillTab, skillAddOpen, marketQuery])
 
   function selectSkillCategory(id: string, categoryId = 0): void {
     setSkillCategory(id)
@@ -701,27 +727,85 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function skillAction(action: 'install' | 'uninstall' | 'toggle' | 'sync', skill: SkillRecord): Promise<void> {
+  async function skillAction(action: 'install' | 'uninstall' | 'toggle', skill: SkillRecord, targetOverride?: SkillTarget): Promise<void> {
+    const target = targetOverride ?? skillManagerTarget
     setSkillsBusy(previous => ({ ...previous, [skill.id]: true }))
     setStatus('')
     try {
-      const response = await fetch(`/api/skills/${action}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id: skill.id, url: skill.url, enabled: action === 'toggle' ? !skill.enabled : undefined }),
-      })
-      const body = await response.json() as { skills?: SkillRecord[]; error?: string }
-      if (!response.ok || !body.skills) throw new Error(body.error ?? '技能操作失败')
-      setBootstrap(previous => previous ? { ...previous, skills: body.skills! } : previous)
-      if (action === 'install' || action === 'sync') {
+      let overwrite = false
+      let body: { skills?: SkillRecord[]; error?: string }
+      while (true) {
+        const response = await fetch(`/api/skills/${action}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id: skill.id, url: skill.url, target: target ?? undefined, overwrite, enabled: action === 'toggle' ? !skill.enabled : undefined }),
+        })
+        body = await response.json() as { skills?: SkillRecord[]; error?: string }
+        if (response.status === 409 && !overwrite && window.confirm(`${skill.name} 已存在，是否覆盖当前 Agent 中的版本？`)) {
+          overwrite = true
+          continue
+        }
+        if (!response.ok || !body.skills) throw new Error(body.error ?? '技能操作失败')
+        break
+      }
+      if (target) setManagedSkills(body.skills)
+      else setBootstrap(previous => previous ? { ...previous, skills: body.skills! } : previous)
+      if (!target && action === 'install') {
         const installed = body.skills.find(item => item.id === skill.id)
         setMarketplace(previous => ({ ...previous, skills: previous.skills.map(item => item.id === skill.id ? { ...item, ...installed, installed: true } : item) }))
       }
-      setStatus(action === 'install' ? `${skill.name} 已同步到全部应用` : action === 'sync' ? `${skill.name} 已补齐应用目录` : action === 'uninstall' ? `${skill.name} 已卸载` : `${skill.name} 已${skill.enabled ? '停用' : '启用'}`)
+      if (target && action === 'install') setSkillAddOpen(false)
+      setStatus(action === 'install' ? (target ? `${skill.name} 已添加到当前 Agent` : `${skill.name} 已同步到全部应用`) : action === 'uninstall' ? `${skill.name} 已卸载` : `${skill.name} 已${skill.enabled ? '停用' : '启用'}`)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '技能操作失败')
     } finally {
       setSkillsBusy(previous => ({ ...previous, [skill.id]: false }))
+    }
+  }
+
+  async function loadSkillsForTarget(target: SkillTarget): Promise<void> {
+    setManagedSkillsLoading(true)
+    try {
+      const response = await fetch(`/api/skills/installed?target=${encodeURIComponent(target)}`)
+      const body = await response.json() as { skills?: SkillRecord[]; error?: string }
+      if (!response.ok || !body.skills) throw new Error(body.error ?? '读取 Agent Skills 失败')
+      setManagedSkills(body.skills)
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '读取 Agent Skills 失败')
+    } finally {
+      setManagedSkillsLoading(false)
+    }
+  }
+
+  function openSkillManager(target: SkillTarget): void {
+    setSkillManagerTarget(target)
+    setSkillTab('installed')
+    setSkillSearch('')
+    setSkillCategory('all')
+    setActiveStep('skills')
+    void loadSkillsForTarget(target)
+  }
+
+  async function syncAllSkills(): Promise<void> {
+    const targets = skillTargetOptions.filter(target => skillSyncTargets[target.id]).map(target => target.id)
+    if (!targets.length) return
+    setSkillSyncBusy(true)
+    setStatus('')
+    try {
+      const response = await fetch('/api/skills/sync-all', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targets }),
+      })
+      const body = await response.json() as { skills?: SkillRecord[]; error?: string }
+      if (!response.ok || !body.skills) throw new Error(body.error ?? '批量同步失败')
+      setBootstrap(previous => previous ? { ...previous, skills: body.skills! } : previous)
+      setSkillSyncOpen(false)
+      setStatus(`已将 ${body.skills.length} 个已安装 Skill 同步到 ${targets.length} 个 Agent`)
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '批量同步失败')
+    } finally {
+      setSkillSyncBusy(false)
     }
   }
 
@@ -738,13 +822,16 @@ export default function App(): React.ReactElement {
   }
 
   function openSkillMarketplace(): void {
+    setSkillManagerTarget(null)
+    setSkillAddOpen(false)
     setActiveStep('skills')
     setSkillTab('marketplace')
     window.setTimeout(() => skillSearchRef.current?.focus(), 0)
   }
 
-  async function uploadLocalSkill(files: FileList | null, archive = false): Promise<void> {
+  async function uploadLocalSkill(files: FileList | null, archive = false, targetOverride?: SkillTarget): Promise<void> {
     if (!files?.length) return
+    const target = targetOverride ?? skillManagerTarget
     setSkillsBusy(previous => ({ ...previous, __upload__: true }))
     try {
       const toBase64 = (buffer: ArrayBuffer) => { let binary = ''; for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte); return btoa(binary) }
@@ -767,15 +854,26 @@ export default function App(): React.ReactElement {
         for (const groupFiles of grouped.values()) payloads.push({ files: await Promise.all(groupFiles.map(async file => ({ path: (file as File & { __skillRelativePath?: string }).__skillRelativePath || file.name, contentBase64: toBase64(await file.arrayBuffer()) }))) })
       }
       let installed = bootstrap?.skills ?? []
-      for (const body of payloads) {
-        const response = await fetch('/api/skills/upload', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-        const result = await response.json() as { skills?: SkillRecord[]; error?: string }
-        if (!response.ok || !result.skills) throw new Error(result.error ?? '本地 Skill 导入失败')
+      for (const payload of payloads) {
+        let overwrite = false
+        let result: { skills?: SkillRecord[]; error?: string }
+        while (true) {
+          const response = await fetch('/api/skills/upload', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...payload, target: target ?? undefined, overwrite }) })
+          result = await response.json() as { skills?: SkillRecord[]; error?: string }
+          if (response.status === 409 && !overwrite && window.confirm(`${result.error ?? '同名 Skill 已存在'}，是否覆盖当前 Agent 中的版本？`)) {
+            overwrite = true
+            continue
+          }
+          if (!response.ok || !result.skills) throw new Error(result.error ?? '本地 Skill 导入失败')
+          break
+        }
         installed = result.skills
       }
-      setBootstrap(previous => previous ? { ...previous, skills: installed } : previous)
+      if (target) setManagedSkills(installed)
+      else setBootstrap(previous => previous ? { ...previous, skills: installed } : previous)
       setSkillTab('installed')
-      setStatus('本地 Skill 已同步到全部应用')
+      if (target) setSkillAddOpen(false)
+      setStatus(target ? '本地 Skill 已添加到当前 Agent' : '本地 Skill 已同步到全部应用')
     } catch (error) { setStatus(error instanceof Error ? error.message : '本地 Skill 导入失败') }
     finally { setSkillsBusy(previous => ({ ...previous, __upload__: false })) }
   }
@@ -866,9 +964,9 @@ export default function App(): React.ReactElement {
   const currentPreset = PROVIDER_PRESETS.find(preset => preset.id === globalApi.provider)
   const modelSuggestions = currentPreset?.models.length ? currentPreset.models : []
   const currentFile = bootstrap.appFiles[activeApp]
-  const skillItems = skillTab === 'installed' ? bootstrap.skills : marketplace.skills
+  const skillItems = skillManagerTarget ? managedSkills : skillTab === 'installed' ? bootstrap.skills : marketplace.skills
   const filteredSkills = skillItems.filter(skill => {
-    if (skillTab === 'marketplace') return true
+    if (skillTab === 'marketplace' && !skillManagerTarget) return true
     const queryText = skillSearch.trim().toLowerCase()
     const matchesSearch = !queryText || `${skill.name} ${skill.description}`.toLowerCase().includes(queryText)
     const matchesCategory = skillCategory === 'all' || skill.tags.includes(skillCategory)
@@ -898,7 +996,7 @@ export default function App(): React.ReactElement {
               key={step.id}
               type="button"
               className={`stepItem ${activeStep === step.id ? 'active' : ''}`}
-              onClick={() => setActiveStep(step.id as (typeof stepOrder)[number])}
+              onClick={() => step.id === 'skills' ? openSkillMarketplace() : setActiveStep(step.id as (typeof stepOrder)[number])}
             >
               <span className="stepIndex">{step.completed ? <CheckCircle2 size={16} /> : index + 1}</span>
               <span className="stepText">
@@ -1164,37 +1262,64 @@ export default function App(): React.ReactElement {
 
           {activeStep === 'skills' && (
             <div className="skillsPage">
-              <p className="skillsIntro">为您的智能体提供预封装且可重复的最佳实践与工具</p>
+              <div className="skillsPageHead">
+                <div>
+                  <p className="skillsIntro">{skillManagerTarget ? `${skillTargetLabel(skillManagerTarget)} 的已安装 Skills` : '为您的智能体提供预封装且可重复的最佳实践与工具'}</p>
+                  {skillManagerTarget && <span className="skillScopeHint">当前操作只影响 {skillTargetLabel(skillManagerTarget)}，不会修改其他 Agent。</span>}
+                </div>
+                {skillManagerTarget && <button type="button" className="ghost" onClick={() => { setSkillManagerTarget(null); setSkillTab('marketplace'); setSkillAddOpen(false) }}><RotateCcw size={16} /> 返回技能中心</button>}
+              </div>
               <div className="skillToolbar">
                 <label className="skillSearch">
                   <Search size={22} />
                   <input ref={skillSearchRef} value={skillSearch} onChange={event => setSkillSearch(event.target.value)} placeholder="搜索技能" />
                 </label>
-                <button type="button" className="skillAddButton" onClick={() => skillFolderInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}>
-                  <PlusCircle size={20} /> {t('添加本地 Skill')}
+                <button type="button" className="skillAddButton" onClick={() => skillManagerTarget ? (setSkillAddSearch(''), setSkillAddOpen(true)) : skillFolderInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}>
+                  <PlusCircle size={20} /> {skillManagerTarget ? '添加 Skill' : t('添加本地 Skill')}
                 </button>
                 <input ref={skillFolderInputRef} type="file" hidden multiple {...({ webkitdirectory: '' } as Record<string, string>)} onChange={event => { void uploadLocalSkill(event.target.files); event.currentTarget.value = '' }} />
                 <input ref={skillArchiveInputRef} type="file" hidden accept=".zip,.tar,.gz" onChange={event => { void uploadLocalSkill(event.target.files, true); event.currentTarget.value = '' }} />
-                <div className="skillUploadActions">
+                {!skillManagerTarget && <div className="skillUploadActions">
                   <button type="button" className="ghost" onClick={() => skillFolderInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}>{t('上传文件夹')}</button>
                   <button type="button" className="ghost" onClick={() => skillArchiveInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}>{t('上传压缩包')}</button>
-                </div>
+                </div>}
               </div>
-              <div className="skillTabs">
+              {!skillManagerTarget && <div className="skillTabs">
                 <button type="button" className={skillTab === 'installed' ? 'active' : ''} onClick={() => setSkillTab('installed')}>
                   已安装 <span>{bootstrap.skills.length}</span>
                 </button>
                 <button type="button" className={skillTab === 'marketplace' ? 'active' : ''} onClick={() => setSkillTab('marketplace')}>
                   技能市场
                 </button>
-              </div>
-              <div className="skillCategories">
-                <button type="button" className={skillCategory === 'all' ? 'active' : ''} onClick={() => selectSkillCategory('all')}>全部</button>
-                {marketplace.tags.map(tag => (
-                  <button key={tag.id} type="button" className={skillCategory === tag.id ? 'active' : ''} onClick={() => selectSkillCategory(tag.id, tag.categoryId)}>{tag.label}</button>
-                ))}
-              </div>
-              {skillTab === 'marketplace' && marketError ? (
+              </div>}
+              {!skillManagerTarget && <div className="skillCategoryBar">
+                <div id="skill-category-list" className={`skillCategories ${skillCategoriesExpanded ? 'expanded' : ''}`}>
+                  <button type="button" className={skillCategory === 'all' ? 'active' : ''} onClick={() => selectSkillCategory('all')}>全部</button>
+                  {marketplace.tags.map(tag => (
+                    <button key={tag.id} type="button" className={skillCategory === tag.id ? 'active' : ''} onClick={() => selectSkillCategory(tag.id, tag.categoryId)}>{tag.label}</button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="skillCategoryToggle"
+                  aria-expanded={skillCategoriesExpanded}
+                  aria-controls="skill-category-list"
+                  onClick={() => setSkillCategoriesExpanded(previous => !previous)}
+                >
+                  {skillCategoriesExpanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+                  {skillCategoriesExpanded ? '收起分类' : '展开分类'}
+                </button>
+              </div>}
+              {!skillManagerTarget && skillTab === 'installed' && (
+                <div className="skillBulkActions">
+                  <button type="button" className="syncButton bulkSyncButton" onClick={() => { setSkillSyncTargets(allSkillSyncTargets()); setSkillSyncOpen(true) }} disabled={!bootstrap.skills.length || skillSyncBusy}>
+                    <RefreshCcw size={16} /> 同步到多 Agents
+                  </button>
+                </div>
+              )}
+              {skillManagerTarget && managedSkillsLoading ? (
+                <div className="skillEmpty"><RefreshCcw className="spin" size={22} /> 正在读取 {skillTargetLabel(skillManagerTarget)} Skills...</div>
+              ) : skillTab === 'marketplace' && marketError ? (
                 <div className="skillEmpty" role="alert">{marketError}<button type="button" onClick={() => setMarketQuery(previous => ({ ...previous, revision: previous.revision + 1 }))}><RefreshCcw size={16} /> 重试</button></div>
               ) : skillTab === 'marketplace' && marketLoading ? (
                 <div className="skillEmpty"><Store size={22} /> 正在读取技能市场...</div>
@@ -1216,9 +1341,8 @@ export default function App(): React.ReactElement {
                             )
                           ) : (
                             <div className="skillControls">
-                              {!allSkillTargets(skill) && <button type="button" className="syncButton" title="补齐到全部应用" onClick={() => void skillAction('sync', skill)} disabled={busy}><RefreshCcw size={16} /> 补齐</button>}
-                              <button type="button" className="iconButton" title="卸载技能" onClick={() => void skillAction('uninstall', skill)} disabled={busy}><Trash2 size={18} /></button>
-                              <button type="button" className={`skillToggle ${skill.enabled ? 'on' : ''}`} title={skill.enabled ? '停用技能' : '启用技能'} onClick={() => void skillAction('toggle', skill)} disabled={busy}><Power size={16} /></button>
+                              <button type="button" className="iconButton" title="删除当前 Agent 中的 Skill" onClick={() => { if (window.confirm(`确定删除 ${skill.name} 吗？此操作只影响当前 Agent。`)) void skillAction('uninstall', skill) }} disabled={busy}><Trash2 size={18} /></button>
+                              {!skillManagerTarget && <button type="button" className={`skillToggle ${skill.enabled ? 'on' : ''}`} title={skill.enabled ? '停用技能' : '启用技能'} onClick={() => void skillAction('toggle', skill)} disabled={busy}><Power size={16} /></button>}
                             </div>
                           )}
                         </div>
@@ -1231,7 +1355,7 @@ export default function App(): React.ReactElement {
               ) : (
                 <div className="skillEmpty"><Puzzle size={22} /> 没有匹配的技能</div>
               )}
-              {skillTab === 'marketplace' && !marketLoading && !marketError && (
+              {!skillManagerTarget && skillTab === 'marketplace' && !marketLoading && !marketError && (
                 <div className="skillPagination" aria-label="技能市场分页">
                   <span>共 {marketplace.total} 条 · {marketplace.total_pages ? marketplace.page : 0} / {marketplace.total_pages} 页</span>
                   <button type="button" disabled={marketplace.page <= 1} onClick={() => setMarketQuery(previous => ({ ...previous, page: previous.page - 1 }))}>上一页</button>
@@ -1278,6 +1402,7 @@ export default function App(): React.ReactElement {
                       <button type="button" className="ghost" onClick={() => void workbuddyAction('uninstall')} disabled={workbuddyBusy}>{t('卸载')}</button>
                     </>}
                     <a className="ghost" href={bootstrap.workbuddy.downloadUrl} target="_blank" rel="noreferrer"><Download size={15} /> {t('下载')}</a>
+                    {bootstrap.workbuddy.installed && <button type="button" className="ghost" onClick={() => openSkillManager('workbuddy')}><Puzzle size={15} /> Skills 管理</button>}
                   </div>
                 </div>
                 {appIds().map((id) => {
@@ -1318,6 +1443,9 @@ export default function App(): React.ReactElement {
                             <ExternalLink size={15} /> {t('打开桌面端')}
                           </button>
                         )}
+                        {runtimeStatus?.installed && <button type="button" className="ghost" onClick={() => openSkillManager(id === 'deepseek-harness' ? 'deepseekHarness' : id as SkillTarget)}>
+                            <Puzzle size={15} /> Skills 管理
+                        </button>}
                         <button type="button" className="ghost" onClick={() => { setActiveApp(id); setActiveStep('api') }}>
                             <Settings2 size={15} /> {t('编辑配置')}
                         </button>
@@ -1428,6 +1556,83 @@ export default function App(): React.ReactElement {
           </div>
         </div>
       )}
+      {skillAddOpen && skillManagerTarget && (
+        <div className="authOverlay" role="dialog" aria-modal="true" aria-labelledby="skill-add-title">
+          <div className="authDialog skillAddDialog">
+            <div className="authDialogHead">
+              <div>
+                <h2 id="skill-add-title">添加 Skill 到 {skillTargetLabel(skillManagerTarget)}</h2>
+                <p>选择技能市场中的 Skill，或上传本地文件夹/压缩包。已有同名 Skill 会在确认后覆盖。</p>
+              </div>
+              <button type="button" className="iconButton" title="关闭添加窗口" onClick={() => setSkillAddOpen(false)} disabled={Boolean(skillsBusy.__upload__)}><X size={18} /></button>
+            </div>
+            <div className="skillAddTabs">
+              <button type="button" className={skillAddTab === 'marketplace' ? 'active' : ''} onClick={() => setSkillAddTab('marketplace')}>技能市场</button>
+              <button type="button" className={skillAddTab === 'local' ? 'active' : ''} onClick={() => setSkillAddTab('local')}>本地 Skill</button>
+            </div>
+            {skillAddTab === 'marketplace' ? (
+              <>
+                <label className="skillAddSearch">
+                  <Search size={20} />
+                  <input value={skillAddSearch} onChange={event => setSkillAddSearch(event.target.value)} placeholder="搜索技能市场" autoFocus />
+                </label>
+                <div className="skillAddMarketList">
+                {marketLoading ? <div className="skillEmpty"><RefreshCcw className="spin" size={20} /> 正在读取技能市场...</div> : marketError ? <div className="authDialogBody error">{marketError}</div> : marketplace.skills.filter(skill => !skillAddSearch.trim() || `${skill.name} ${skill.description}`.toLowerCase().includes(skillAddSearch.trim().toLowerCase())).map(skill => {
+                  const installed = managedSkills.some(item => item.id === skill.id)
+                  const busy = Boolean(skillsBusy[skill.id])
+                  return (
+                    <div key={skill.id} className="skillAddMarketItem">
+                      <div><strong>{skill.name}</strong><span>{skill.description || '暂无技能说明'}</span></div>
+                      <button type="button" className={installed ? 'ghost' : 'primary'} onClick={() => void skillAction('install', skill, skillManagerTarget)} disabled={busy || !skill.url}>{installed ? '重新添加' : '添加'}</button>
+                    </div>
+                  )
+                })}
+                </div>
+              </>
+            ) : (
+              <div className="authDialogBody skillAddLocalBody">
+                <p>选择包含 `SKILL.md` 的文件夹，或上传 Skill 压缩包。</p>
+                <div className="skillAddLocalActions">
+                  <button type="button" className="ghost" onClick={() => skillFolderInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}><PlusCircle size={16} /> 选择文件夹</button>
+                  <button type="button" className="ghost" onClick={() => skillArchiveInputRef.current?.click()} disabled={Boolean(skillsBusy.__upload__)}><PackageOpen size={16} /> 选择压缩包</button>
+                </div>
+                {skillsBusy.__upload__ && <span className="muted">正在导入 Skill...</span>}
+              </div>
+            )}
+            <div className="authDialogFooter"><button type="button" className="ghost" onClick={() => setSkillAddOpen(false)} disabled={Boolean(skillsBusy.__upload__)}>关闭</button></div>
+          </div>
+        </div>
+      )}
+      {skillSyncOpen && (
+        <div className="authOverlay" role="dialog" aria-modal="true" aria-labelledby="skill-sync-title">
+          <div className="authDialog skillSyncDialog">
+            <div className="authDialogHead">
+              <div>
+                <h2 id="skill-sync-title">同步到多 Agents</h2>
+                <p>将全部已安装 Skill 同步到选中的 Agent；目标目录中已有的 Skill 将被覆盖。</p>
+              </div>
+              <button type="button" className="iconButton" title="关闭同步窗口" onClick={() => setSkillSyncOpen(false)} disabled={skillSyncBusy}><X size={18} /></button>
+            </div>
+            <div className="authDialogBody skillSyncBody">
+              <div className="skillSyncCount">已选择 {skillTargetOptions.filter(target => skillSyncTargets[target.id]).length} 个 Agent</div>
+              <div className="skillSyncOptions">
+                {skillTargetOptions.map(target => (
+                  <label key={target.id} className="skillSyncOption">
+                    <input type="checkbox" checked={skillSyncTargets[target.id]} onChange={event => setSkillSyncTargets(previous => ({ ...previous, [target.id]: event.target.checked }))} disabled={skillSyncBusy} />
+                    <span>{target.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="authDialogFooter">
+              <button type="button" className="ghost" onClick={() => setSkillSyncOpen(false)} disabled={skillSyncBusy}>取消</button>
+              <button type="button" className="primary" onClick={() => void syncAllSkills()} disabled={skillSyncBusy || !skillTargetOptions.some(target => skillSyncTargets[target.id])}>
+                {skillSyncBusy ? <RefreshCcw className="spin" size={16} /> : <RefreshCcw size={16} />} {skillSyncBusy ? '同步中...' : '确认同步'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1459,8 +1664,8 @@ function runtimeStatusLabel(status: AppRuntimeStatus | undefined): string {
   return status.kind === 'cli' ? '已安装' : '已停止'
 }
 
-function allSkillTargets(skill: SkillRecord): boolean {
-  return Object.values(skill.targets ?? {}).length === 5 && Object.values(skill.targets ?? {}).every(Boolean)
+function skillTargetLabel(target: SkillTarget): string {
+  return skillTargetOptions.find(item => item.id === target)?.label ?? target
 }
 
 function targetSummary(skill: SkillRecord): string {
